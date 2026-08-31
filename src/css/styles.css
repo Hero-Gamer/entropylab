@@ -1191,6 +1191,26 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .exp-card textarea[readonly] { color: var(--muted); }
 .exp-actions { margin-top: var(--space-component); }
+/* The QR reference overlay mirrors the expandable and disclaimer overlays:
+   a dimmed backdrop with one centered card, dismissed by clicking outside
+   or pressing Escape. Shown when an external link is clicked while the
+   page is offline, so the user can scan the QR with an online phone. */
+.qr-ref-overlay {
+  position: fixed; inset: 0; z-index: 200; display: grid; place-items: center;
+  padding: 24px; box-sizing: border-box; background: rgb(0 0 0 / 55%);
+}
+.qr-ref-overlay[hidden] { display: none; }
+.qr-ref-card {
+  width: min(440px, 100%); padding: 24px; border: 1px solid var(--border);
+  border-radius: 12px; background: var(--surface);
+  box-shadow: 0 16px 36px rgb(0 0 0 / 55%); text-align: center;
+}
+.qr-ref-title { margin: 0 0 16px; font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
+.qr-ref-qr { display: inline-block; padding: 12px; background: #fff; border-radius: 8px; }
+.qr-ref-qr svg { display: block; width: 200px; height: 200px; }
+.qr-ref-url { margin: 16px 0 0; font-size: 12px; overflow-wrap: anywhere; word-break: break-all; }
+.qr-ref-hint { margin: 12px 0 0; }
+.qr-ref-actions { margin-top: var(--space-component); justify-content: center; }
 .sp-result, .sp-output { margin-top: var(--space-component); }
 .sp-qr { width: min(220px, 100%); margin: var(--space-control) 0; }
 .sp-qr svg { width: 100%; height: auto; display: block; background: #fff; border-radius: 8px; }

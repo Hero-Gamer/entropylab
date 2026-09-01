@@ -76,6 +76,13 @@ material. Its security posture rests on the following model:
   indexer, and cannot detect payments on its own.
 - Inscription envelope detection is a parser of witness/tap-leaf scripts. It
   does not render inscription media, assign sat numbers, or contact an indexer.
+- PSBT analysis is explicitly bounded. EntropyLab does not independently fetch
+  or verify previous outputs, its output-ownership search covers only the
+  displayed account/address range and supported script types, RFC 6979 replay
+  needs a matching session key plus a supported SegWit v0 digest, and
+  Taproot/Schnorr nonces are not analyzed. The report marks these cases
+  incomplete; a completed individual check is not a security conclusion for
+  the transaction.
 - OP_RETURN detection is a parser of output scripts. It does not create
   data-carrier outputs, assign protocol meaning, or contact an indexer.
 - Low-entropy dice and card transcripts are accepted intentionally so the

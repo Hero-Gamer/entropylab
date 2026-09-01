@@ -1374,6 +1374,12 @@
     assert(out.includes("1.99900000"), "decoded output amount missing");
     assert(out.includes("Signature policy: SIGHASH_ALL"), "sighash policy missing");
     assert(out.includes("r values:"), "finalized signature was not inspected");
+    assert(out.includes("PSBT security analysis"), "analysis status summary missing");
+    assert(out.includes("ANALYSIS INCOMPLETE"), "partial report was not marked incomplete");
+    assert(out.includes("Previous outputs and fee — Incomplete"), "unverified previous-output claims were not exposed");
+    assert(out.includes("Output ownership / derivation — Incomplete"), "missing session-key coverage was not exposed");
+    assert(out.includes("Nonce analysis — Incomplete"), "single-signature nonce limitation was not exposed");
+    assert(!out.includes("LISTED CHECKS COMPLETE"), "an incomplete report was presented as complete");
     // BIP143 "Native P2WPKH" signed transaction (witness-carrying) — the raw
     // transaction path reads the same network select.
     const rawTx =

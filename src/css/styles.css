@@ -1128,6 +1128,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .psbt-ok { color: var(--ok); }
 .psbt-bad { color: var(--danger); }
 .psbt-warn { color: var(--warn); }
+.psbt-analysis-summary { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: var(--space-component); }
+.psbt-analysis-summary > p { margin: 0 0 8px; }
+.psbt-analysis-summary ul { margin: 0 0 8px; padding-left: 20px; }
+.psbt-analysis-summary li + li { margin-top: 8px; }
 .psbted-network-field { margin-top: 0; min-width: 200px; }
 /* The editor's own action row: the network field's label stacks above its
    select, and the row's flex stretch would otherwise pull the Load/Clear

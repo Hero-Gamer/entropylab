@@ -215,12 +215,19 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 .global-sync-toggle .label { margin: 0; }
 .global-sync-note { display: block; margin: 0; font-size: 13px; line-height: 1.45; }
 .global-sync-status {
-  display: inline-flex; flex-wrap: wrap; align-items: center; gap: 5px; flex: 1 1 auto;
-  color: var(--ok); font-size: 13px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto;
+  color: var(--ok); font-size: 13px; font-weight: 600; white-space: nowrap;
 }
-.global-sync-status > span { white-space: nowrap; }
+/* Narrow screens only: the badge drops below the toggle and the shortfall takes
+   its own line, while each phrase stays on one line. */
+@media (max-width: 720px) {
+  .global-sync-head { flex-wrap: wrap; }
+  .global-sync-toggle { flex: 1 1 100%; }
+  .global-sync-status { flex: 1 1 100%; flex-wrap: wrap; white-space: normal; }
+  .global-sync-status > span { white-space: nowrap; }
+}
 .global-sync-shortfall {
-  display: inline-flex; align-items: center; gap: 5px; margin-left: 3px; color: var(--warn);
+  display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; color: var(--warn);
 }
 .global-sync-shortfall svg { display: block; width: 16px; height: 16px; }
 .global-sync-status[hidden] { display: none; }

@@ -5138,6 +5138,30 @@ function hodlGlobalSyncBitBoxBits(value, targetWords = hodlTargetWordCount) {
   }
   return bits.slice(0, config.bits);
 }
+function hodlGlobalSyncSourceBits(targetWords = hodlTargetWordCount) {
+  let value = hodlGlobalSyncCurrentValue(), config = hodlSeedConfig(targetWords);
+  if (!String(value).length) return null;
+  try {
+    if (hodlKeyMode === "dice") {
+      let entropy = hodlDiceEntropy(value, hodlDiceMethod, config.words);
+      if (entropy?.ok && Number.isFinite(entropy.sourceBits)) return entropy.sourceBits;
+      return null;
+    }
+    if (hodlKeyMode === "cards") {
+      let entropy = hodlCardsEntropy(value, config.words, hodlCardColemanSymbols);
+      if (entropy?.ok && Number.isFinite(entropy.sourceBits)) return entropy.sourceBits;
+      return null;
+    }
+    if (hodlKeyMode === "key") {
+      let kind = hodlNormalizePrivateKeyKind(document.querySelector('input[name="kk"]:checked')?.value, String(value));
+      // A brain wallet is only as strong as the text; the other formats carry a
+      // full-length key.
+      return kind === "brain" ? null : 256;
+    }
+  } catch {
+  }
+  return null;
+}
 function hodlGlobalSyncCurrentBits(targetWords = hodlTargetWordCount) {
   let value = hodlGlobalSyncCurrentValue(), config = hodlSeedConfig(targetWords), hashed = hodlGlobalSyncIsHashedMode();
   if (!String(value).length) return "";
@@ -5304,6 +5328,7 @@ function hodlApplyGlobalSync(bits, sourceId = hodlGlobalSyncSourceId()) {
   else if (sourceId === "key:wif") privateKeys.wif = sourceValue;
   state.globalSyncSource = sourceId;
   state.globalSyncBitCount = source.length;
+  state.globalSyncSourceBits = hodlGlobalSyncSourceBits();
   return true;
 }
 function hodlGlobalSyncFromCurrentInput() {
@@ -5330,8 +5355,11 @@ function hodlGlobalSyncControlMarkup(state) {
   // Two rows: the switch and its title, then the explanation beneath. The
   // explanation describes the checkbox rather than naming it, so it stays out
   // of the accessible name and stays reachable through aria-describedby.
-  let syncBits = state?.globalSyncBitCount || 0, syncShort = syncBits && syncBits < hodlGlobalSyncMinimumBits();
-  return `<div class="global-sync-row"><div class="global-sync-head"><label class="seed-autocomplete-toggle global-sync-toggle"><input type="checkbox" id="global-entropy-sync" aria-describedby="global-sync-note" ${state?.globalSync ? "checked" : ""} /><span class="label">Sync entropy across methods</span></label><span class="global-sync-status${syncShort ? " is-warning" : ""}" id="global-sync-status" aria-live="polite" ${state?.globalSync && syncBits ? "" : "hidden"}>${syncShort ? hodlSyncWarningIconMarkup() : hodlCopiedIconMarkup()}<span>${syncBits || 0} bits synced${syncShort ? ` \xB7 under ${hodlGlobalSyncMinimumBits()}` : ""}</span></span></div><p class="seed-autocomplete-note global-sync-note" id="global-sync-note">(Keeps non-hashed methods synchronized. Hashed inputs update them one way and are never overwritten.)</p></div>`;
+  let syncBits = state?.globalSyncBitCount || 0,
+    sourceBits = Number.isFinite(state?.globalSyncSourceBits) ? Math.floor(state.globalSyncSourceBits) : null,
+    effectiveBits = sourceBits === null ? syncBits : Math.min(syncBits, sourceBits),
+    syncShort = Boolean(syncBits) && effectiveBits < hodlGlobalSyncMinimumBits();
+  return `<div class="global-sync-row"><div class="global-sync-head"><label class="seed-autocomplete-toggle global-sync-toggle"><input type="checkbox" id="global-entropy-sync" aria-describedby="global-sync-note" ${state?.globalSync ? "checked" : ""} /><span class="label">Sync entropy across methods</span></label><span class="global-sync-status" id="global-sync-status" aria-live="polite" ${state?.globalSync && syncBits ? "" : "hidden"}>${hodlCopiedIconMarkup()}<span>Key synced</span>${syncShort ? `<span class="global-sync-shortfall">${hodlSyncWarningIconMarkup()}<span>${effectiveBits} bits of entropy \xB7 under ${hodlGlobalSyncMinimumBits()}</span></span>` : ""}</span></div><p class="seed-autocomplete-note global-sync-note" id="global-sync-note">(Keeps non-hashed methods synchronized. Hashed inputs update them one way and are never overwritten.)</p></div>`;
 }
 function hodlRenderGlobalSyncControl() {
   let host = document.getElementById("global-sync-host"), state = hodlKeys[hodlActiveKey];

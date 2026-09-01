@@ -215,10 +215,14 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 .global-sync-toggle .label { margin: 0; }
 .global-sync-note { display: block; margin: 0; font-size: 13px; line-height: 1.45; }
 .global-sync-status {
-  display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto;
-  color: var(--ok); font-size: 13px; font-weight: 600; white-space: nowrap;
+  display: inline-flex; flex-wrap: wrap; align-items: center; gap: 5px; flex: 1 1 auto;
+  color: var(--ok); font-size: 13px; font-weight: 600;
 }
-.global-sync-status.is-warning { color: var(--warn); }
+.global-sync-status > span { white-space: nowrap; }
+.global-sync-shortfall {
+  display: inline-flex; align-items: center; gap: 5px; margin-left: 3px; color: var(--warn);
+}
+.global-sync-shortfall svg { display: block; width: 16px; height: 16px; }
 .global-sync-status[hidden] { display: none; }
 .global-sync-status svg { display: block; width: 16px; height: 16px; }
 .number-base-calculations-toggle { width: 100%; margin-top: var(--space-control); }
@@ -1194,7 +1198,7 @@ label.field.psbted-network-field { display: flex; align-items: stretch; margin-t
    aligned with the bottom of the select. (.psbt-actions alone is shared
    with the other cards' button rows, so scope by the editor's own class.) */
 .psbted-actions { align-items: flex-end; }
-.psbted-actions .btn, .psbted-actions .custom-select-button { min-height: 36px; padding: 6px 10px; }
+.psbted-actions .btn, .psbted-actions .custom-select-button { min-height: 36px; padding: 6px 10px; border-radius: 8px; }
 .psbted-map { margin-top: var(--space-component); }
 .psbted-map > h3 { margin: 0 0 4px; font-size: 15px; }
 .psbted-txhead { display: flex; flex-wrap: wrap; gap: 0 16px; margin-bottom: 4px; }

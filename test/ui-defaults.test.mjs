@@ -1606,7 +1606,7 @@ test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
     assert.match(markup, /<div class="row psbt-actions psbted-actions">/);
   }
   assert.match(css, /\.psbted-actions \{ align-items: flex-end; \}/);
-  assert.match(css, /\.psbted-actions \.btn, \.psbted-actions \.custom-select-button \{ min-height: 36px; padding: 6px 10px; \}/);
+  assert.match(css, /\.psbted-actions \.btn, \.psbted-actions \.custom-select-button \{ min-height: 36px; padding: 6px 10px; border-radius: 8px; \}/);
   assert.match(appSource, /import \{ initPsbtEditor \} from "\.\/psbt-editor\.js"/);
   assert.match(appSource, /initPsbtEditor\(\)/);
   assert.match(css, /#psbted-card\[hidden\]/);

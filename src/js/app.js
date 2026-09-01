@@ -3583,7 +3583,7 @@ function hodlUpdateCards() {
   hodlCardRank = selection.rank;
   if (selection.card && !parsed.invalidRanges.length) {
     hodlCommitCardSelection(input, selection.card);
-    return;
+    return true;
   }
   let dealt = document.getElementById("dealt-cards");
   if (dealt) {
@@ -3632,6 +3632,7 @@ function hodlUpdateCards() {
   let undo = document.getElementById("card-undo");
   if (undo) undo.disabled = !parsed.cards.length && !String(input.value || "").trim();
   hodlQueueMasterFingerprintPreview();
+  return false;
 }
 function hodlSetInputValueAtEnd(input, value) {
   input.value = value;
@@ -5368,16 +5369,25 @@ function hodlRenderKeyForm() {
         hodlQueueMasterFingerprintPreview(0);
       };
     });
+    let cardPadCommitting = false;
     hodlFormEl.querySelectorAll("[data-card-suit]").forEach((button) => {
       button.onclick = () => {
+        if (cardPadCommitting) return;
         hodlCardSuit = hodlToggleCardChoice(hodlCardSuit, button.getAttribute("data-card-suit"));
-        hodlUpdateCards();
+        if (hodlUpdateCards()) {
+          cardPadCommitting = true;
+          queueMicrotask(() => cardPadCommitting = false);
+        }
       };
     });
     hodlFormEl.querySelectorAll("[data-card-rank]").forEach((button) => {
       button.onclick = () => {
+        if (cardPadCommitting) return;
         hodlCardRank = hodlToggleCardChoice(hodlCardRank, button.getAttribute("data-card-rank"));
-        hodlUpdateCards();
+        if (hodlUpdateCards()) {
+          cardPadCommitting = true;
+          queueMicrotask(() => cardPadCommitting = false);
+        }
       };
     });
     hodlBindKeypadPointer(hodlFormEl.querySelectorAll("[data-direct-card-rank], #card-undo"), () => input);

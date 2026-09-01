@@ -432,6 +432,20 @@
     input(cards, "");
   });
 
+  await test("a duplicated card-pad click commits once and clears both selections", async () => {
+    await chooseMode("Cards");
+    const cards = await until(() => document.getElementById("cards"), "card transcript input");
+    const ace = document.querySelector('[data-card-rank="A"]');
+    const hearts = document.querySelector('[data-card-suit="H"]');
+    ace.click();
+    hearts.click();
+    hearts.click();
+    equal(cards.value, "Ah ");
+    assert(!document.querySelector(".card-suit-pad .active"), "Suit remained selected after the duplicated click");
+    assert(!document.querySelector(".card-rank-pad .active"), "Rank remained selected after the duplicated click");
+    input(cards, "");
+  });
+
   await test("partial entropy word grids remain copyable", async () => {
     await chooseMode("Number bases");
     document.querySelector('input[name="entropy-format"][value="bin"]').click();

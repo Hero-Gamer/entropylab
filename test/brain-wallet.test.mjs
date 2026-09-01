@@ -120,5 +120,8 @@ test("the brain-wallet HD output has no silent fingerprint or mnemonic preview p
   assert.match(en["note.brainLabEmpty"], /24 words appear only after \{derive\}/);
   assert.match(app, /hodlError\("error\.brainAck"\)/);
   assert.match(en["error.brainAck"], /Acknowledge the lab warning before deriving/);
+  // Each output is acknowledged on its own, so one does not unlock the other.
+  assert.match(app, /hodlBrainLabAck = \{ scalar: false, hd: false \}/);
+  assert.match(app, /hodlBrainLabAck\[hodlBrainWalletOutput\(\)\] = ack\.checked/);
   assert.doesNotMatch(loadSlice("hodlBrainLabEntropy"), /localStorage/);
 });

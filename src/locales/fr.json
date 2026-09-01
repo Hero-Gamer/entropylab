@@ -386,7 +386,7 @@
   "dice.bitbox.die": "Mot {word} sur {partial} · dé {die} sur 5 (faces 1–4)",
   "msig.thresholdLegend": "Seuil de signatures du multisig",
   "msig.legacyBip87": "Utiliser les comptes BIP87 standardisés",
-  "msig.legacyBip87Help": "Utilise <span class=\"mono\">m/87h/coinh/accounth</span> avec ce descripteur. Les clés de compte BIP87 sont indépendantes du type de script : une même clé de compte sert donc pour tout type de script. Laissez décoché pour la norme propre à ce type de script : BIP45 pour Legacy, BIP48 pour SegWit. Le multisig Taproot utilise toujours BIP87.",
+  "msig.legacyBip87Help": "Utilise <span class=\"mono\">m/87'/coin'/account'</span> avec ce descripteur. Les clés de compte BIP87 sont indépendantes du type de script : une même clé de compte sert donc pour tout type de script. Laissez décoché pour la norme propre à ce type de script : BIP45 pour Legacy, BIP48 pour SegWit. Le multisig Taproot utilise toujours BIP87.",
   "msig.mixed": "Mixte · clés incompatibles",
   "msig.keyOrderHelp": "Trié est le défaut. Les adresses restent les mêmes quel que soit le cosignataire collé en premier. Tel que listé utilise multi : l'ordre des champs fait partie du portefeuille. Taproot utilise sortedmulti_a ou multi_a.",
   "msig.accountPlaceholder": "Dérivé des clés",

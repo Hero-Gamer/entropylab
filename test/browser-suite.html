@@ -1174,8 +1174,8 @@
     );
     assert(passphraseTools.getBoundingClientRect().bottom <= passphrase.getBoundingClientRect().top, "Passphrase tools overlap or follow the input");
     assert(
-      Boolean(fingerprintCards.compareDocumentPosition(keyboardHost) & Node.DOCUMENT_POSITION_FOLLOWING),
-      "Passphrase keyboard is not below the master fingerprint cards",
+      Boolean(keyboardHost.compareDocumentPosition(fingerprintCards) & Node.DOCUMENT_POSITION_FOLLOWING),
+      "Passphrase keyboard is not above the master fingerprint cards",
     );
     assert(toggle.getAttribute("aria-expanded") === "false" && keyboard.hidden, "Dice keyboard did not start closed");
     toggle.click();

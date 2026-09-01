@@ -386,7 +386,7 @@
   "dice.bitbox.die": "Word {word} of {partial} · die {die} of 5 (faces 1–4)",
   "msig.thresholdLegend": "Multisig signature threshold",
   "msig.legacyBip87": "Use standardized BIP87 accounts",
-  "msig.legacyBip87Help": "Uses <span class=\"mono\">m/87h/coinh/accounth</span> with this descriptor. BIP87 account keys are script-agnostic, so one account key serves any script type. Leave unchecked for this script type's own standard: BIP45 for Legacy, BIP48 for SegWit. Taproot multisig always uses BIP87.",
+  "msig.legacyBip87Help": "Uses <span class=\"mono\">m/87'/coin'/account'</span> with this descriptor. BIP87 account keys are script-agnostic, so one account key serves any script type. Leave unchecked for this script type's own standard: BIP45 for Legacy, BIP48 for SegWit. Taproot multisig always uses BIP87.",
   "msig.mixed": "Mixed · incompatible keys",
   "msig.keyOrderHelp": "Sorted is the default. Addresses stay the same no matter which co-signer you paste first. As listed uses multi: the order of the fields is part of the wallet. Taproot uses sortedmulti_a or multi_a.",
   "msig.accountPlaceholder": "Derived from keys",

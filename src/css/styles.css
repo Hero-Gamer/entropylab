@@ -295,9 +295,9 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
   .dplus-calculation-sum { justify-content: flex-start; flex-wrap: wrap; margin-top: 7px; padding-top: 6px; gap: 4px; font-size: 10px; white-space: normal; overflow: visible; }
 }
 .passphrase-field { margin-top: var(--space-component); font-size: 14px; font-weight: 600; }
-.passphrase-keyboard-tools { display: flex; align-items: stretch; gap: var(--space-control); margin-top: var(--space-control); }
+.passphrase-keyboard-tools { display: flex; align-items: flex-start; gap: var(--space-control); margin-top: var(--space-control); }
 .passphrase-keyboard-tools[hidden] { display: none; }
-.passphrase-keyboard-tools .seed-keyboard-toggle { align-self: stretch; height: auto; }
+.passphrase-keyboard-tools .seed-keyboard-toggle { align-self: flex-start; }
 .passphrase-bip39-options { display: grid; flex: 1 1 auto; gap: var(--space-control); }
 .passphrase-bip39-toggle, .passphrase-autocomplete-toggle { width: 100%; margin-top: 0; }
 .passphrase-autocomplete-toggle[hidden] { display: none; }
@@ -1490,7 +1490,8 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .derive-progress {
   display: inline-flex; flex: 0 1 260px; min-width: 170px; align-items: center; gap: 9px;
-  padding: 8px 11px; border: 0;
+  min-height: 44px; box-sizing: border-box; padding: 8px 11px;
+  border: 1px solid color-mix(in oklab, currentColor 35%, transparent);
   border-radius: 9px; background: color-mix(in oklab, var(--accent) 8%, var(--surface)); color: var(--accent);
 }
 .derive-progress[hidden] { display: none !important; }

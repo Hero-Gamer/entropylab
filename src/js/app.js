@@ -629,7 +629,6 @@ hodlRootEl.innerHTML = `
       <div class="row key-action-row current-item-actions">
         <button class="btn primary" id="go" disabled aria-disabled="true">Derive Key</button>
         <div class="derive-progress" id="derive-progress" role="progressbar" aria-label="Key derivation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete" hidden><span class="derive-progress-track"><span class="derive-progress-bar"></span></span><span class="derive-progress-label">0%</span></div>
-        <button class="btn secondary" id="bip85-open" type="button">Derive BIP-85 child</button>
         <button class="btn secondary" id="journal-open" type="button">Save to Journal</button>
         <button class="btn clear-current-action" id="wipe" type="button" disabled aria-disabled="true">Clear Current Key</button>
       </div>
@@ -9361,15 +9360,6 @@ function hodlInitBip85() {
     hodlRefreshStationKeyPickers();
   });
   go.onclick = hodlRunBip85;
-  // Entry point beside Derive Key (idea adopted from PR #150): jump to the
-  // BIP-85 tab with the active key loaded as parent. Errors land in the tab's
-  // own error line; secrets stay behind the existing reveal/wipe flow.
-  let open = document.getElementById("bip85-open");
-  if (open) open.onclick = () => {
-    hodlShowWorkspace("bip85");
-    hodlSelectBip85Bench();
-    hodlPickBip85SessionKey(hodlKeys[hodlActiveKey]);
-  };
   document.getElementById("bip85-wipe").onclick = () => {
     hodlBip85WipeParent();
     document.getElementById("bip85-key").value = "";

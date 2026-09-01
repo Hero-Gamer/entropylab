@@ -1668,14 +1668,20 @@ test("Journal is the last workspace tab and holds the encrypted notebook, notepa
   assert.doesNotMatch(init, /hodlJournalCreate\(\);/);
 });
 
-test("BIP-85 entry point sits beside Derive Key and opens the BIP-85 tab", () => {
+test("the key action row offers only Derive Key and Clear Current Key", () => {
+  // BIP-85 has its own tab, so the shortcut that used to sit beside Derive Key
+  // is gone; the row is Derive, progress, Clear.
   for (const markup of [template, appSource]) {
-    assert.match(markup, /id="go"[^>]*>Derive Key<\/button>[\s\S]*?id="bip85-open"[^>]*>Derive BIP-85 child<\/button>[\s\S]*?id="journal-open"[^>]*>Save to Journal<\/button>[\s\S]*?id="wipe"/);
+    assert.match(markup, /id="go"[^>]*>Derive Key<\/button>[\s\S]*?id="derive-progress"[\s\S]*?id="journal-open"[^>]*>Save to Journal<\/button>[\s\S]*?id="wipe"/);
+    assert.doesNotMatch(markup, /id="bip85-open"/);
+    assert.doesNotMatch(markup, /Derive BIP-85 child<\/button>/);
   }
-  assert.match(appSource, /getElementById\("bip85-open"\)/);
+  assert.doesNotMatch(appSource, /getElementById\("bip85-open"\)/);
   assert.match(appSource, /getElementById\("journal-open"\)/);
-  assert.match(appSource, /open\.onclick = \(\) => \{\s*hodlShowWorkspace\("bip85"\)/);
-  assert.match(appSource, /open\.onclick[\s\S]*?hodlPickBip85SessionKey\(hodlKeys\[hodlActiveKey\]\)/);
+  // The tab keeps its own way to adopt a key, so the removal must not have
+  // taken the underlying session-key path with it.
+  assert.match(appSource, /function hodlPickBip85SessionKey\(/);
+  assert.match(appSource, /hodlRefreshStationKeyPickers\(\)/);
 });
 
 test("Silent Payments sits between Multi Signature and PSBT / Nonce", () => {

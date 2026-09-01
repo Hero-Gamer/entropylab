@@ -551,7 +551,7 @@
     sync.click();
     await wait(0);
     const syncStatus = document.getElementById("global-sync-status");
-    assert(syncStatus && !syncStatus.hidden && syncStatus.textContent.includes("128 bits synced"), "Complete entropy did not show the global synced confirmation");
+    assert(syncStatus && !syncStatus.hidden && syncStatus.textContent.includes("Key synced") && !syncStatus.querySelector(".global-sync-shortfall"), "Complete entropy did not show the global synced confirmation");
     document.querySelector('input[name="entropy-format"][value="hex"]').click();
     const syncedHex = await until(() => document.getElementById("hex"), "synced hex input");
     equal(syncedHex.value, "0".repeat(32));
@@ -584,7 +584,8 @@
     assert(!document.getElementById("go").disabled, "24-word Base32 did not accept a final single entropy bit");
     input(base32For24, "0".repeat(51));
     assert(document.getElementById("global-entropy-sync").checked, "Global sync turned off for incomplete entropy");
-    assert(document.getElementById("global-sync-status").textContent.includes("255 bits synced"), "Incomplete entropy did not report its exact synced bit count");
+    const incompleteStatus = document.getElementById("global-sync-status");
+    assert(incompleteStatus.textContent.includes("Key synced") && !incompleteStatus.querySelector(".global-sync-shortfall"), "Entropy past the minimum did not report a healthy sync");
     document.querySelector('input[name="entropy-format"][value="hex"]').click();
     const preservedHex = await until(() => document.getElementById("hex"), "truncated synchronized hex input");
     assert(preservedHex.value.length === 63, "Global sync did not wait for a complete next hexadecimal character");
@@ -603,7 +604,8 @@
     const syncLabel = directToggle.closest("label").textContent;
     if (!directToggle.checked) directToggle.click();
     input(binary, "000");
-    assert(document.getElementById("global-sync-status").textContent.includes("3 bits synced"), "Partial direct entropy did not sync immediately");
+    const partialStatus = document.getElementById("global-sync-status");
+    assert(partialStatus.textContent.includes("3 bits of entropy") && partialStatus.querySelector(".global-sync-shortfall"), "Partial direct entropy did not sync immediately");
 
     await chooseMode("Dice rolls");
     document.querySelector('input[name="dm"][value="dplus"]').click();
@@ -685,7 +687,7 @@
     assert(diceToggle && !diceToggle.disabled && !diceToggle.checked, "A direct dice method did not offer an enabled, unchecked global sync toggle");
     diceToggle.click();
     for (const face of ["1", "0", "0"]) document.querySelector(`[data-d="${face}"]`).click();
-    assert(document.getElementById("global-sync-status").textContent.includes("11 bits synced"), "Dice pad clicks did not re-run the sync");
+    assert(document.getElementById("global-sync-status").textContent.includes("11 bits of entropy"), "Dice pad clicks did not re-run the sync");
     await chooseMode("Seed phrase");
     equal(document.getElementById("seed").value, "abandon", "Eleven pad-entered bits did not fill the first BIP39 word");
 

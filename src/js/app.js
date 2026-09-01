@@ -4456,7 +4456,7 @@ function hodlBrainOutputMarkup(output = "scalar", acked = hodlBrainAcked(output)
         <li class="is-warning" data-brain-hd-warning ${hd ? "" : "hidden"}>A valid mnemonic does not mean it is the same wallet as hashing the text as a private-key scalar.</li>
       </ul>
     </div>
-    <label class="choice"><input type="checkbox" id="brain-lab-ack" ${acked ? "checked" : ""} /><span><strong>I understand</strong><span class="desc">Required once this session, in page memory only. Derive is still required.</span></span></label>
+    <label class="choice"><input type="checkbox" id="brain-lab-ack" ${acked ? "checked" : ""} /><span><strong>I understand</strong><span class="desc">Required once this session, in page memory only.</span></span></label>
     <div id="brain-lab-zone" ${hd ? "" : "hidden"}>
       <p class="muted" id="brain-lab-help">UTF-8 text is hashed with SHA-256. The 32-byte digest is BIP39 entropy for a 24-word seed. Nothing is derived until you press Derive Key.</p>
       <p class="muted" id="brain-lab-hex" aria-live="polite">SHA-256 hex appears here. 24 words appear only after Derive Key.</p>

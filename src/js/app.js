@@ -5138,6 +5138,7 @@ function hodlGlobalSyncBitBoxBits(value, targetWords = hodlTargetWordCount) {
   }
   return bits.slice(0, config.bits);
 }
+const hodlGlobalSyncUnknownBits = "unknown";
 function hodlGlobalSyncSourceBits(targetWords = hodlTargetWordCount) {
   let value = hodlGlobalSyncCurrentValue(), config = hodlSeedConfig(targetWords);
   if (!String(value).length) return null;
@@ -5156,7 +5157,7 @@ function hodlGlobalSyncSourceBits(targetWords = hodlTargetWordCount) {
       let kind = hodlNormalizePrivateKeyKind(document.querySelector('input[name="kk"]:checked')?.value, String(value));
       // A brain wallet is only as strong as the text; the other formats carry a
       // full-length key.
-      return kind === "brain" ? null : 256;
+      return kind === "brain" ? hodlGlobalSyncUnknownBits : 256;
     }
   } catch {
   }
@@ -5356,10 +5357,13 @@ function hodlGlobalSyncControlMarkup(state) {
   // explanation describes the checkbox rather than naming it, so it stays out
   // of the accessible name and stays reachable through aria-describedby.
   let syncBits = state?.globalSyncBitCount || 0,
-    sourceBits = Number.isFinite(state?.globalSyncSourceBits) ? Math.floor(state.globalSyncSourceBits) : null,
+    reported = state?.globalSyncSourceBits,
+    sourceBits = Number.isFinite(reported) ? Math.floor(reported) : null,
     effectiveBits = sourceBits === null ? syncBits : Math.min(syncBits, sourceBits),
-    syncShort = Boolean(syncBits) && effectiveBits < hodlGlobalSyncMinimumBits();
-  return `<div class="global-sync-row"><div class="global-sync-head"><label class="seed-autocomplete-toggle global-sync-toggle"><input type="checkbox" id="global-entropy-sync" aria-describedby="global-sync-note" ${state?.globalSync ? "checked" : ""} /><span class="label">Sync entropy across methods</span></label><span class="global-sync-status" id="global-sync-status" aria-live="polite" ${state?.globalSync && syncBits ? "" : "hidden"}>${hodlCopiedIconMarkup()}<span>Key synced</span>${syncShort ? `<span class="global-sync-shortfall">${hodlSyncWarningIconMarkup()}<span>${effectiveBits} bits of entropy \xB7 under ${hodlGlobalSyncMinimumBits()}</span></span>` : ""}</span></div><p class="seed-autocomplete-note global-sync-note" id="global-sync-note">(Keeps non-hashed methods synchronized. Hashed inputs update them one way and are never overwritten.)</p></div>`;
+    syncUnknown = Boolean(syncBits) && reported === hodlGlobalSyncUnknownBits,
+    syncShort = Boolean(syncBits) && !syncUnknown && effectiveBits < hodlGlobalSyncMinimumBits(),
+    caution = syncUnknown ? "entropy unknown \xB7 only as strong as the text" : `${effectiveBits} bits of entropy \xB7 under ${hodlGlobalSyncMinimumBits()}`;
+  return `<div class="global-sync-row"><div class="global-sync-head"><label class="seed-autocomplete-toggle global-sync-toggle"><input type="checkbox" id="global-entropy-sync" aria-describedby="global-sync-note" ${state?.globalSync ? "checked" : ""} /><span class="label">Sync entropy across methods</span></label><span class="global-sync-status" id="global-sync-status" aria-live="polite" ${state?.globalSync && syncBits ? "" : "hidden"}>${hodlCopiedIconMarkup()}<span>Key synced</span>${syncShort || syncUnknown ? `<span class="global-sync-shortfall">${hodlSyncWarningIconMarkup()}<span>${caution}</span></span>` : ""}</span></div><p class="seed-autocomplete-note global-sync-note" id="global-sync-note">(Keeps non-hashed methods synchronized. Hashed inputs update them one way and are never overwritten.)</p></div>`;
 }
 function hodlRenderGlobalSyncControl() {
   let host = document.getElementById("global-sync-host"), state = hodlKeys[hodlActiveKey];
@@ -6324,11 +6328,13 @@ function hodlBindKeyFields() {
     };
     document.querySelectorAll('input[name="bo"]').forEach((radio) => radio.addEventListener("change", () => {
       if (state) state.brainWalletOutput = hodlBrainWalletOutput();
+      hodlInvalidateLiveKeyResult();
       refreshBrain();
     }));
     let ack = document.getElementById("brain-lab-ack");
     if (ack) ack.onchange = () => {
       hodlBrainLabAck[hodlBrainWalletOutput()] = ack.checked;
+      hodlInvalidateLiveKeyResult();
       refreshBrain();
     };
     document.getElementById("network")?.addEventListener("change", apply);

@@ -95,3 +95,23 @@ test("pads and pickers that skip bubbling input events still trigger the sync", 
   // and re-syncing from an empty active method there would wipe destinations.
   assert.match(app, /target\.matches\("\[data-lw\], \[data-d\], #card-undo"\)\) hodlGlobalSyncFromCurrentInput\(\)/);
 });
+
+test("a brain wallet reports unknown strength instead of a green tick", () => {
+  // A brain wallet publishes a 256-bit SHA-256 digest however guessable the
+  // text behind it was, so the digest length must never be reported as if it
+  // were counted entropy. Its own answer is required, and it has to stay
+  // distinct from the null that means "this method's published count IS its
+  // entropy" — number bases and typed seeds rely on that null to read healthy.
+  const source = loadSlice("hodlGlobalSyncSourceBits");
+  assert.match(source, /kind === "brain" \? hodlGlobalSyncUnknownBits : 256/);
+  assert.doesNotMatch(source, /kind === "brain" \? null/);
+  assert.match(app, /const hodlGlobalSyncUnknownBits = "unknown"/);
+
+  const markup = loadSlice("hodlGlobalSyncControlMarkup");
+  assert.match(markup, /syncUnknown = Boolean\(syncBits\) && reported === hodlGlobalSyncUnknownBits/);
+  // The unknown case must not be folded into the numeric shortfall test, and
+  // must not be able to satisfy the healthy branch.
+  assert.match(markup, /syncShort = Boolean\(syncBits\) && !syncUnknown && effectiveBits < hodlGlobalSyncMinimumBits\(\)/);
+  assert.match(markup, /syncShort \|\| syncUnknown \?/);
+  assert.match(markup, /entropy unknown/);
+});

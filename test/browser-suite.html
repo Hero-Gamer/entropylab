@@ -1362,6 +1362,55 @@
     input(passphrase, "");
   });
 
+  await test("revoking the brain-wallet acknowledgement retracts the derived wallet", async () => {
+    // The checkbox is re-rendered on every refresh, so it must be looked up
+    // again before each click; holding a reference clicks a detached node and
+    // silently proves nothing.
+    const ackBox = () => document.getElementById("brain-lab-ack");
+    await chooseMode("Private key");
+    document.querySelector('input[name="kk"][value="brain"]').click();
+    if (!ackBox().checked) ackBox().click();
+    const brainInput = await until(() => document.getElementById("key"), "brain-wallet input");
+    input(brainInput, "correct horse battery staple");
+    const derive = await until(() => !document.getElementById("go").disabled && document.getElementById("go"), "brain-wallet derive button");
+    derive.click();
+    await until(() => document.getElementById("out").textContent.trim(), "derived brain wallet");
+    const secretShowing = () => {
+      const text = document.getElementById("out").textContent;
+      // The revealed digest and chain code run together past 64 characters, so
+      // a word boundary never lands on the end of the hex.
+      return /\b[5KL][1-9A-HJ-NP-Za-km-z]{50,51}\b/.test(text) || /[0-9a-f]{64}/.test(text);
+    };
+    const reveal = document.getElementById("reveal");
+    if (reveal) reveal.click();
+    await until(secretShowing, "revealed brain-wallet recovery material");
+
+    ackBox().click();
+    await wait(0);
+    assert(!ackBox().checked, "The acknowledgement did not clear");
+    assert(!document.getElementById("out").textContent.trim(), "Revoking the acknowledgement left the derived wallet on screen");
+    assert(!secretShowing(), "Recovery material survived the revoked acknowledgement");
+
+    // Switching output must retract too: the same text builds a different
+    // wallet, so the previous result would be a wrong address left on screen.
+    // Deriving leaves the key-kind radio on WIF, so brain is re-selected here
+    // exactly as a second run would need to.
+    document.querySelector('input[name="kk"][value="brain"]').click();
+    if (!ackBox().checked) ackBox().click();
+    await wait(0);
+    input(await until(() => document.getElementById("key"), "brain-wallet input for the second run"), "correct horse battery staple");
+    const again = await until(() => !document.getElementById("go").disabled && document.getElementById("go"), "brain-wallet derive button after re-acknowledging");
+    again.click();
+    await until(() => document.getElementById("out").textContent.trim(), "re-derived brain wallet");
+    document.querySelector('input[name="bo"][value="hd"]').click();
+    await wait(0);
+    assert(!document.getElementById("out").textContent.trim(), "Switching brain-wallet output left the other output's result on screen");
+    input(document.getElementById("key") || brainInput, "");
+    document.querySelector('input[name="bo"][value="scalar"]').click();
+    if (ackBox()?.checked) ackBox().click();
+    document.getElementById("wipe").click();
+  });
+
   await test("dice fairness panel stays hidden until the Die Distribution / Fairness Analysis text button expands it", async () => {
     await chooseMode("Dice rolls");
     const dice = await until(() => document.getElementById("dice"), "dice input");

@@ -125,3 +125,28 @@ test("the brain-wallet HD output has no silent fingerprint or mnemonic preview p
   assert.match(app, /hodlBrainLabAck\[hodlBrainWalletOutput\(\)\] = ack\.checked/);
   assert.doesNotMatch(loadSlice("hodlBrainLabEntropy"), /localStorage/);
 });
+
+test("a derived brain wallet does not outlive its acknowledgement or its output choice", () => {
+  // Unticking "I understand" has to retract what it authorised. Without this the
+  // warning can be revoked while the derived private key stays on screen and
+  // stays revealable, which is the opposite of what the checkbox promises.
+  // Switching output is the same failure wearing a different hat: the two
+  // outputs build different wallets from the same text, so a result left over
+  // from the other one is a wrong address waiting to be copied.
+  const ack = app.slice(app.indexOf('let ack = document.getElementById("brain-lab-ack");'));
+  const handler = ack.slice(0, ack.indexOf("};") + 2);
+  assert.match(handler, /hodlBrainLabAck\[hodlBrainWalletOutput\(\)\] = ack\.checked;\s*hodlInvalidateLiveKeyResult\(\);/);
+
+  const radios = app.slice(app.indexOf(`document.querySelectorAll('input[name="bo"]')`));
+  const bound = radios.slice(0, radios.indexOf("}));") + 4);
+  assert.match(bound, /state\.brainWalletOutput = hodlBrainWalletOutput\(\);\s*hodlInvalidateLiveKeyResult\(\);/);
+
+  // The retraction has to clear the rendered result and the reveal flag, not
+  // merely hide the input.
+  const invalidate = loadSlice("hodlInvalidateLiveKeyResult");
+  assert.match(invalidate, /state\.result = null/);
+  assert.match(invalidate, /state\.reveal = false/);
+  assert.match(invalidate, /hodlWalletResult = null/);
+  assert.match(invalidate, /hodlRevealPrivate = false/);
+  assert.match(invalidate, /hodlOutEl\.innerHTML = ""/);
+});

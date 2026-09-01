@@ -1849,7 +1849,7 @@ function hodlShowAccount(id) {
   if (!account) return;
   hodlSetSelectedScriptType(id);
   hodlSyncAccountTabs(id);
-  let branches = hodlAccountAddressBranches(account), firstBranch = branches[0], firstAddress = firstBranch?.rows[0], firstIndex = firstAddress?.index ?? 0, firstLabel = firstBranch ? hodlAddressBranchLabel(firstBranch.branch) : "Address", hasPrivate = hodlAccountHasPrivate(account), purposeLabel = account.imported ? account.def.bip : `Purpose ${hodlOriginPathComponent(account.def.purpose, account.def.purposeHardened !== false)}`;
+  let branches = hodlAccountAddressBranches(account), firstBranch = branches[0], firstAddress = firstBranch?.rows[0], firstIndex = firstAddress?.index ?? 0, firstLabel = firstBranch ? hodlAddressBranchLabel(firstBranch.branch) : "Address", hasPrivate = hodlAccountHasPrivate(account), purposeLabel = account.imported ? account.def.bip : `Purpose ${hodlPathComponent(account.def.purpose, account.def.purposeHardened !== false)}`;
   let privateSection = hasPrivate ? `
     <section class="account-result-section account-private-section" aria-labelledby="account-private-heading">
       <div class="wallet-data-section-head">
@@ -1905,7 +1905,7 @@ function hodlPrivateFieldHtml(label, value) {
   return `<p class="private-field"><span class="muted">${hodlEscapeHtml(label)}</span>${hodlPrivateValue(value)}</p>`;
 }
 function hodlDisplayDerivationPath(value) {
-  return String(value ?? "").replace(/(^|\/)(\d+)'(?=\/|$)/g, "$1$2h");
+  return String(value ?? "").replace(/(^|\/)(\d+)[hH](?=\/|$)/g, "$1$2'");
 }
 function hodlEscapeHtml(value) {
   let entities = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
@@ -2157,7 +2157,7 @@ var hodlRecoverySheetText = function(wallet, revealPrivate) {
     if (wallet.importedPrivateKey) lines.push("", `IMPORTED ${(wallet.importedPrivateLabel || "EXTENDED PRIVATE KEY").toUpperCase()}`, wallet.importedPrivateKey);
     for (let account of wallet.accounts) {
       if (!hodlAccountHasPrivate(account)) continue;
-      lines.push("", `-- ${account.def.label} (${account.imported ? account.def.bip : `Purpose ${hodlOriginPathComponent(account.def.purpose, account.def.purposeHardened !== false)}`}) PRIVATE ACCOUNT MATERIAL --`);
+      lines.push("", `-- ${account.def.label} (${account.imported ? account.def.bip : `Purpose ${hodlPathComponent(account.def.purpose, account.def.purposeHardened !== false)}`}) PRIVATE ACCOUNT MATERIAL --`);
       if (account.primaryPrivate) lines.push(`${account.primaryPrivateLabel}: ${account.primaryPrivate}`);
       if (account.hasAlternateExport && account.genericPrivate) lines.push(`Advanced ${account.genericPrivateLabel} descriptor export: ${account.genericPrivate}`);
       for (let branch of hodlAccountAddressBranches(account)) if (branch.privateDescriptor) lines.push(`Spending ${hodlAddressBranchLabel(branch.branch).toLowerCase()} descriptor: ${branch.privateDescriptor}`);
@@ -2180,7 +2180,7 @@ var hodlRecoverySheetText = function(wallet, revealPrivate) {
   }
   if (wallet.importedPublicKey) lines.push(`Imported ${(wallet.importedPublicLabel || "extended public key").toUpperCase()}: ${wallet.importedPublicKey}`);
   for (let account of wallet.accounts) {
-    lines.push("", `=== ${account.def.label} (${account.imported ? account.def.bip : `Purpose ${hodlOriginPathComponent(account.def.purpose, account.def.purposeHardened !== false)}`}) ===`, account.def.beginner, `Network: ${wallet.network}`, `Account: ${account.imported ? "Imported account key" : account.accountIndex ?? 0}`, `Account path: ${hodlDisplayDerivationPath(account.accountPath)}`);
+    lines.push("", `=== ${account.def.label} (${account.imported ? account.def.bip : `Purpose ${hodlPathComponent(account.def.purpose, account.def.purposeHardened !== false)}`}) ===`, account.def.beginner, `Network: ${wallet.network}`, `Account: ${account.imported ? "Imported account key" : account.accountIndex ?? 0}`, `Account path: ${hodlDisplayDerivationPath(account.accountPath)}`);
     if (account.masterFingerprint || wallet.masterFingerprint) lines.push(`Master fingerprint: ${account.masterFingerprint || wallet.masterFingerprint}`);
     else if (account.parentFingerprint) lines.push(`Encoded parent fingerprint (not a master fingerprint): ${account.parentFingerprint}`);
     if (!account.masterFingerprint && !wallet.masterFingerprint && account.nodeFingerprint) lines.push(`Imported key fingerprint (not a master fingerprint): ${account.nodeFingerprint}`);
@@ -8351,7 +8351,7 @@ function hodlShowMsig() {
   hodlRevealPrivate = false;
   let out = document.getElementById("msig-out");
   if (!out) return;
-  let accountLabel = hodlWalletResult.accountMixed ? " \xB7 Account Mixed" : hodlWalletResult.account == null ? "" : ` \xB7 Account ${hodlWalletResult.account}`, purposeLabel = Number.isSafeInteger(hodlWalletResult.purpose) ? ` \xB7 Purpose ${hodlOriginPathComponent(hodlWalletResult.purpose, hodlWalletResult.hardening?.purpose !== false)}` : "", branches = hodlAccountAddressBranches(hodlWalletResult), firstBranch = branches[0], firstAddress = firstBranch?.rows[0], firstIndex = firstAddress?.index ?? 0, firstLabel = firstBranch ? hodlAddressBranchLabel(firstBranch.branch) : "Address";
+  let accountLabel = hodlWalletResult.accountMixed ? " \xB7 Account Mixed" : hodlWalletResult.account == null ? "" : ` \xB7 Account ${hodlWalletResult.account}`, purposeLabel = Number.isSafeInteger(hodlWalletResult.purpose) ? ` \xB7 Purpose ${hodlPathComponent(hodlWalletResult.purpose, hodlWalletResult.hardening?.purpose !== false)}` : "", branches = hodlAccountAddressBranches(hodlWalletResult), firstBranch = branches[0], firstAddress = firstBranch?.rows[0], firstIndex = firstAddress?.index ?? 0, firstLabel = firstBranch ? hodlAddressBranchLabel(firstBranch.branch) : "Address";
   out.innerHTML = `
     <section class="card account-result-card">
       <div class="kicker">${hodlWalletResult.m}-of-${hodlWalletResult.n} multisig${purposeLabel}${hodlWalletResult.sorted===!1?" \xB7 listed order":""} \xB7 ${hodlWalletResult.network}${accountLabel}</div>

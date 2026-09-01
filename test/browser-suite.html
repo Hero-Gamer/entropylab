@@ -1841,8 +1841,8 @@
     assert(receiveLead?.querySelector("h4")?.textContent.includes("#7"), "The first requested address was not used for the receive QR");
     assert(receiveLead?.querySelector('.qr[aria-label="Receive address 7 QR code"]'), "The receive QR did not use the starting address index");
     equal(receiveLead?.querySelector("p.mono:not(.muted)")?.textContent.trim(), "tb1qq88mz59zeavyc2nvncjmr5fnyhy9wfgg7spmjf", "The custom-purpose Native SegWit address did not match the independent BIP32 vector");
-    assert(receiveLead?.querySelector(".muted.mono")?.textContent.includes("m/69420h/1h/0h/0/7"), "The custom purpose was not used in the displayed address path");
-    assert(document.querySelector("#acct .kicker")?.textContent.includes("Purpose 69420h"), "The result mislabeled the custom purpose as a standard BIP");
+    assert(receiveLead?.querySelector(".muted.mono")?.textContent.includes("m/69420'/1'/0'/0/7"), "The custom purpose was not used in the displayed address path");
+    assert(document.querySelector("#acct .kicker")?.textContent.includes("Purpose 69420'"), "The result mislabeled the custom purpose as a standard BIP");
     const watchText = document.querySelector("#acct .account-watch-section")?.textContent || "";
     assert(watchText.includes("/69420h/1h/0h]"), `The custom purpose was not used in the descriptor origin: ${watchText.slice(0, 600)}`);
     const receiveRows = document.querySelectorAll('#acct [data-address-table="hd-receive"] tbody tr');
@@ -1857,7 +1857,7 @@
     assert(document.getElementById("derivation-path").value.endsWith("/0/7'"), "The path did not show a hardened address index");
     derive.click();
     await until(
-      () => document.querySelector("#acct .account-address-lead .muted.mono")?.textContent.includes("/7h"),
+      () => document.querySelector("#acct .account-address-lead .muted.mono")?.textContent.includes("/7'"),
       "hardened address result",
     );
     addressHarden.click();
@@ -1989,7 +1989,9 @@
     input(document.getElementById("derivation-path"), "m/84h/1h/0h/777/0/7");
     const derive = await until(() => !document.getElementById("go").disabled && document.getElementById("go"), "custom-path derive button");
     derive.click();
-    await until(() => document.querySelector("#acct .account-address-lead .muted.mono")?.textContent.includes("m/84h/1h/0h/777/0/7"), "custom derived path");
+    // Typed with h above, shown with apostrophes here, and carried into the
+    // descriptor origin as h on the next line: both conventions in one test.
+    await until(() => document.querySelector("#acct .account-address-lead .muted.mono")?.textContent.includes("m/84'/1'/0'/777/0/7"), "custom derived path");
     const watchText = document.querySelector("#acct .account-watch-section")?.textContent || "";
     assert(watchText.includes("/84h/1h/0h/777]"), "The custom path did not reach the descriptor key origin");
     assert(document.querySelector("#acct .account-address-lead p.mono:not(.muted)")?.textContent.trim().startsWith("tb1"), "The custom coin type did not control address encoding");
@@ -2022,7 +2024,7 @@
     assert(document.getElementById("branch-start-help").textContent.includes("Hardened"), "Address branch help did not reflect hardened derivation");
     assert(document.getElementById("derivation-path").value.endsWith("/2'/7"), "The path did not show a hardened branch index");
     derive.click();
-    await until(() => document.querySelector('#acct .account-address-lead .muted.mono')?.textContent.includes("/2h/7"), "hardened address branch result");
+    await until(() => document.querySelector('#acct .account-address-lead .muted.mono')?.textContent.includes("/2'/7"), "hardened address branch result");
     const hardenedWatchText = document.querySelector("#acct .account-watch-section")?.textContent || "";
     assert(hardenedWatchText.includes("/2h]") && hardenedWatchText.includes("/*"), "The hardened branch watch-only descriptor did not use a branch-level xpub origin");
     branchHarden.click();
@@ -2212,7 +2214,7 @@
     equal(multisigProgress.getAttribute("aria-valuenow"), "100", "Multisig progress did not reach 100%");
     assert(multisigProgress.querySelector(".derive-progress-label")?.textContent.includes("Done"), "Completed multisig progress did not show Done");
     const resultText = document.getElementById("msig-out").textContent;
-    assert(resultText.includes("1-of-1 multisig · Purpose 87h"), "Result did not identify purpose 87 separately from script type");
+    assert(resultText.includes("1-of-1 multisig · Purpose 87'"), "Result did not identify purpose 87 separately from script type");
     assert(resultText.includes("/87h/1h/0h") && resultText.includes("/<0;1>/*"), "BIP87 wallet descriptor paths are wrong");
     assert(resultText.includes("Receive address #11"), "The multisig receive QR did not use the starting address index");
     const multisigReceiveRows = document.querySelectorAll('#msig-out [data-address-table="msig-receive"] tbody tr');
@@ -2245,7 +2247,7 @@
     equal(multisigPurpose.value, "69420", "A custom co-signer purpose was not auto-detected");
     const deriveCustomMultisig = await until(() => !document.getElementById("msig-go").disabled && document.getElementById("msig-go"), "custom-purpose multisig derive button");
     deriveCustomMultisig.click();
-    await until(() => document.getElementById("msig-out").textContent.includes("Purpose 69420h") || document.getElementById("msig-error").textContent, "custom-purpose multisig result");
+    await until(() => document.getElementById("msig-out").textContent.includes("Purpose 69420'") || document.getElementById("msig-error").textContent, "custom-purpose multisig result");
     assert(
       !document.getElementById("msig-error").textContent,
       `Custom-purpose multisig derivation failed: ${document.getElementById("msig-error").textContent}`,
@@ -2345,7 +2347,7 @@
     const text = await blob.text();
     assert(state.downloadName === "bitcoin-recovery-sheet.txt", "Unexpected filename");
     assert(text.includes(versionHeader) && text.includes("Network: testnet"), "Export headers are missing");
-    assert(text.includes("Native SegWit (Purpose 69420h)") && text.includes("m/69420h/1h/0h"), "The recovery sheet omitted the custom purpose");
+    assert(text.includes("Native SegWit (Purpose 69420')") && text.includes("m/69420'/1'/0'"), "The recovery sheet omitted the custom purpose");
     assert(text.includes("PRIVATE RECOVERY MATERIAL OMITTED"), "Omission notice is missing");
     assert(!text.includes("YOUR SEED PHRASE") && !text.includes("MASTER SEED HEX") && !text.includes("BIP32 ROOT TPRV"), "Watch-only export leaked private data");
 

@@ -59,6 +59,7 @@
         <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="Multi Signature"><span class="workspace-tab-full">Multi Signature</span><span class="workspace-tab-short">MultiSig</span></button>
         <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="Silent Payments"><span class="workspace-tab-full">Silent Payments</span><span class="workspace-tab-short">SP</span></button>
         <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="PSBT"><span class="workspace-tab-full">PSBT</span><span class="workspace-tab-short">PSBT</span></button>
+        <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="Journal"><span class="workspace-tab-full">Journal</span><span class="workspace-tab-short">Journal</span></button>
       </div>
     </nav>
     <div class="workspace-panel" id="workspace-panel">
@@ -540,6 +541,60 @@ words, pick one of the checksum words.</span></span>
       <p class="err" id="psbted-error" role="alert"></p>
       <div id="psbted-out" aria-live="polite"></div>
       <p class="muted">Fees and input amounts shown here are unverified PSBT claims; the editor does not check them against previous transactions or the blockchain. Nothing is signed or broadcast.</p>
+    </section>
+    <div class="tool-intro" id="journal-notes-tool-intro" hidden>
+        <div class="kicker">Write it down. Stamp the clock. Download to keep it.</div>
+        <h2>Notepad</h2>
+        <p class="muted tool-intro-note">Freeform notes for this sitting, each stamped with this computer's date and time. Nothing is stored in the browser. Closing the page discards the notes unless you download them.</p>
+      </div>
+    <div class="tool-intro" id="journal-state-tool-intro" hidden>
+        <div class="kicker">What this sitting derived.</div>
+        <h2>Session state</h2>
+        <p class="muted tool-intro-note">A text summary of every key, multisig, BIP-85 child, and calculator payload currently in this page. Capture replaces the text; you can edit it before downloading. Private recovery material is omitted unless you tick the box — the same rule as the recovery sheet.</p>
+      </div>
+    <div class="tool-intro" id="journal-log-tool-intro" hidden>
+        <div class="kicker">A trace, not a memoir.</div>
+        <h2>Session log</h2>
+        <p class="muted tool-intro-note">An append-only record of what this page did — tool switches, derives, captures, errors — so a later bug report has a clock and a fingerprint instead of a guess. Seed phrases, xprvs, and typed secrets are not written here. Last 400 events. This computer's clock.</p>
+      </div>
+    <section class="key-manager no-print" id="journal-manager" hidden>
+      <div class="key-tab-strip">
+        <div class="key-tabs" id="journal-tool-tabs" role="tablist" aria-label="Journal stations">
+          <button class="tab key-tab is-lab active" id="journal-notes-tab" type="button" role="tab" aria-selected="true" aria-controls="journal-notes-card" data-journal-tool="notes">Notepad</button>
+          <button class="tab key-tab is-lab" id="journal-state-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-state-card" data-journal-tool="state">Session state</button>
+          <button class="tab key-tab is-lab" id="journal-log-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-log-card" data-journal-tool="log">Session log</button>
+        </div>
+      </div>
+    </section>
+      <section class="card no-print" id="journal-notes-card" role="tabpanel" hidden>
+      <p class="muted">Notes stay in this page only. Download them if they need to outlive this sitting.</p>
+      <div id="journal-notes"></div>
+      <div class="row psbt-actions">
+        <button class="btn primary" id="journal-note-add" type="button">Add note</button>
+        <button class="btn secondary" id="journal-notes-download" type="button">Download notes</button>
+      </div>
+    </section>
+      <section class="card no-print" id="journal-state-card" role="tabpanel" hidden>
+      <p class="muted">Capture walks the current stations and writes a snapshot you can edit. Recapture replaces the text.</p>
+      <label class="choice"><input type="checkbox" id="journal-state-private">
+        <span><strong>Include private recovery material</strong>
+        <span class="desc">Same rule as the recovery sheet. Off by default. The file is then a secret — treat the download like a seed backup.</span></span>
+      </label>
+      <div class="row psbt-actions">
+        <button class="btn primary" id="journal-state-capture" type="button">Capture this session</button>
+        <button class="btn secondary" id="journal-state-download" type="button">Download snapshot</button>
+      </div>
+      <label class="field">Session snapshot
+        <textarea id="journal-state-text" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="Capture this session to fill this field. Edit freely afterward."></textarea>
+      </label>
+    </section>
+      <section class="card no-print" id="journal-log-card" role="tabpanel" hidden>
+      <p class="muted">Download this with a bug report. It names tools and fingerprints, not seeds.</p>
+      <pre class="journal-log" id="journal-log-out" aria-live="polite">No events yet.</pre>
+      <div class="row psbt-actions">
+        <button class="btn primary" id="journal-log-download" type="button">Download log</button>
+        <button class="btn secondary" id="journal-log-clear" type="button">Clear log</button>
+      </div>
     </section>
     </div>
     <section class="card muted sources">

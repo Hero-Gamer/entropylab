@@ -101,6 +101,11 @@ Official website: [entropylab.online](https://entropylab.online)
   root xprv, including labeled codes, BIP-392 `spscan` / `spspend` descriptors,
   sender taproot outputs from pasted vin JSON, and receiver verification of
   pasted x-only outputs. This is a calculator: it does not scan the chain.
+- A session **Journal** (last workspace tab) holds a notepad stamped with this
+  computer's date and time, an editable summary of everything derived in this
+  sitting, and a debug log of tool switches and derives (fingerprints, not
+  seeds). Nothing is stored in the browser; download a file to keep it.
+  Closing the page discards the sitting.
 - Runs a quick barrage of startup sanity checks on the host browser (secure
   context, CSPRNG, BigInt, UTF-8 encoding, NFKD, and WebAssembly). If any
   check fails, the page is replaced with a failure report listing the failed
@@ -356,6 +361,7 @@ To remove generated files, run `npm run clean`.
 │   ├── css/styles.css      Application styles
 │   └── js/
 │       ├── app.js          Application logic and explicit package imports
+│       ├── journal.js      Offline session notepad, snapshot, and debug log
 │       ├── secp256k1.js    Curve facade over the WASM module (noble-shaped API)
 │       ├── entropylab-wasm.js Shared WASM module loader
 │       ├── entropylab-wasm-b64.js Generated WASM artifact (committed; build:wasm)

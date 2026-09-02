@@ -168,7 +168,8 @@ file is still self-contained and never registers the hosted service worker.
 ### Verifying the download
 
 Every merge to `rock` publishes a `SHA256SUMS.txt` checksum manifest for
-`entropylab.html` (committed next to it in this repository) and a
+`entropylab.html` (committed next to it in this repository), a matching
+`CID.txt` (CIDv1 raw sha2-256 of those same bytes), and a
 [GitHub artifact attestation](https://github.com/OogaBoogaX/entropylab/attestations)
 for the exact bytes built by CI. After downloading, verify both:
 
@@ -176,6 +177,21 @@ for the exact bytes built by CI. After downloading, verify both:
 sha256sum -c SHA256SUMS.txt
 gh attestation verify entropylab.html -R OogaBoogaX/entropylab
 ```
+
+The CID is a self-describing name for the SHA-256, not a second hash. The
+calculator never talks to IPFS. To store or fetch the file on a **local**
+node without GitHub or `entropylab.online` DNS:
+
+```sh
+ipfs block put --cid-codec=raw --allow-big-block entropylab.html   # pin the bytes you already verified
+ipfs get -o entropylab.html "$(cut -d' ' -f1 CID.txt)"             # retrieve by CID
+sha256sum -c SHA256SUMS.txt
+```
+
+`ipfs add` (UnixFS chunking) produces a different CID; that is expected.
+Public gateways may refuse a multi-megabyte raw block — a local node is the
+intended path. Never open a gateway URL as the wallet origin. Do not put
+seeds or other private material on IPFS.
 
 The attestation is keyless (Sigstore) and bound to this repository's release
 workflow, so it authenticates the artifact independently of the hosting
@@ -320,6 +336,7 @@ To remove generated files, run `npm run clean`.
 ├── scripts/
 │   ├── build.mjs           Locked-dependency esbuild and HTML assembly
 │   ├── build-wasm.mjs      crypto WASM rebuild (npm run build:wasm)
+│   ├── cid.mjs             CIDv1 raw sha2-256 name for the release HTML
 │   └── verify-site.mjs     Site artifact verification (npm run verify)
 ├── entropylab-wasm/        Pinned Rust crate: rust-bitcoin + rust-miniscript -> WebAssembly bindings
 ├── test/

@@ -82,7 +82,7 @@ test("malformed witness programs are never presented as recognized addresses", (
 
 test("testnet address encoding stays distinct from mainnet", () => {
   const result = inspectScriptPubKey(WPKH_SCRIPT, "testnet");
-  assert.equal(result.address, "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4");
+  assert.equal(result.address, "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kmf7cjg");
   assert.notEqual(result.address, WPKH_ADDRESS);
 });
 

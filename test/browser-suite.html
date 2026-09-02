@@ -927,12 +927,16 @@
       tabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
       await until(() => document.activeElement === tabs[5], "ArrowLeft to wrap to the last tab");
     } finally {
+      document.querySelector('#journal-tool-tabs [data-journal-tool="notes"]').click();
       document.querySelector('#workspace [data-workspace="calc"]').click();
       await until(() => !document.getElementById("key-manager").hidden, "key workspace");
     }
   });
   await test("Journal notepad stamps notes, session state captures, and the log omits secrets", async () => {
     document.querySelector('#workspace [data-workspace="journal"]').click();
+    // Earlier tests can leave Journal on Session state or Session log; pick
+    // Notepad explicitly so this case does not depend on that leftover.
+    document.querySelector('#journal-tool-tabs [data-journal-tool="notes"]').click();
     await until(() => !document.getElementById("journal-notes-card").hidden, "Journal notepad");
     document.getElementById("journal-note-add").click();
     const body = await until(() => document.querySelector(".journal-note-body"), "a note field");

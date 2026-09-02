@@ -9320,8 +9320,8 @@ function hodlOwnershipWarning(outputs, network, map) {
 function hodlPsbtAnalysisSummary(checks) {
   let incomplete = checks.some((check) => check.state === "incomplete"),
     problem = checks.some((check) => check.state === "problem"),
-    overall = incomplete ? "ANALYSIS INCOMPLETE" : problem ? "ISSUES FOUND" : "LISTED CHECKS COMPLETE",
-    overallClass = incomplete ? "psbt-warn" : problem ? "psbt-bad" : "psbt-ok";
+    overall = problem && incomplete ? "ISSUES FOUND — ANALYSIS ALSO INCOMPLETE" : problem ? "ISSUES FOUND" : incomplete ? "ANALYSIS INCOMPLETE" : "LISTED CHECKS COMPLETE",
+    overallClass = problem ? "psbt-bad" : incomplete ? "psbt-warn" : "psbt-ok";
   let rows = checks.map((check) => {
     let label = check.state === "complete" ? "Completed" : check.state === "problem" ? "Problem found" : "Incomplete",
       className = check.state === "complete" ? "psbt-ok" : check.state === "problem" ? "psbt-bad" : "psbt-warn";

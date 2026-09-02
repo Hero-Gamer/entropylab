@@ -1380,6 +1380,26 @@
     assert(out.includes("Output ownership / derivation — Incomplete"), "missing session-key coverage was not exposed");
     assert(out.includes("Nonce analysis — Incomplete"), "single-signature nonce limitation was not exposed");
     assert(!out.includes("LISTED CHECKS COMPLETE"), "an incomplete report was presented as complete");
+    // Change the finalized signature's SIGHASH_ALL suffix to SIGHASH_NONE.
+    // The report remains incomplete for unverified prevouts, but the real
+    // policy problem must dominate the overall banner and its severity.
+    const unsafe = Uint8Array.from(atob(vector), (char) => char.charCodeAt(0));
+    const signatureTail = [0xaf, 0x93, 0x19, 0x01, 0x21, 0x03];
+    let suffix = -1;
+    for (let index = 0; index <= unsafe.length - signatureTail.length; index++) {
+      if (signatureTail.every((byte, offset) => unsafe[index + offset] === byte)) {
+        suffix = index + 3;
+        break;
+      }
+    }
+    assert(suffix >= 0, "finalized signature fixture suffix missing");
+    unsafe[suffix] = 0x02;
+    input(box, btoa(String.fromCharCode(...unsafe)));
+    document.getElementById("psbt-go").click();
+    await until(() => document.getElementById("psbt-out").textContent.includes("ISSUES FOUND") || document.getElementById("psbt-error").textContent, "unsafe policy report");
+    equal(document.getElementById("psbt-error").textContent, "", "inspector rejected the unsafe-policy fixture");
+    const problemBanner = document.querySelector("#psbt-out .psbt-analysis-summary > p.psbt-bad");
+    assert(problemBanner && problemBanner.textContent.includes("ISSUES FOUND — ANALYSIS ALSO INCOMPLETE"), "problem did not dominate the incomplete summary");
     // BIP143 "Native P2WPKH" signed transaction (witness-carrying) — the raw
     // transaction path reads the same network select.
     const rawTx =

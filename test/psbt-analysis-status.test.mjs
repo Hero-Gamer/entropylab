@@ -43,16 +43,16 @@ test("a found problem preserves its blocking state", () => {
   assert.doesNotMatch(html, /ANALYSIS INCOMPLETE/);
 });
 
-test("any incomplete check makes the overall analysis incomplete without hiding problems", () => {
+test("a problem outranks incomplete coverage without hiding either state", () => {
   const html = hodlPsbtAnalysisSummary([
     check("problem", "SIGHASH policy"),
     check("incomplete", "Previous outputs & fee"),
   ]);
-  assert.match(html, /ANALYSIS INCOMPLETE/);
+  assert.match(html, /<p class='psbt-bad'><strong>ISSUES FOUND — ANALYSIS ALSO INCOMPLETE<\/strong><\/p>/);
   assert.match(html, /Problem found/);
   assert.match(html, /Incomplete/);
   assert.match(html, /Previous outputs &amp; fee/);
-  assert.doesNotMatch(html, /LISTED CHECKS COMPLETE/);
+  assert.doesNotMatch(html, /<p class='psbt-warn'><strong>|LISTED CHECKS COMPLETE/);
 });
 
 test("the report maps each implemented incomplete-analysis condition", () => {

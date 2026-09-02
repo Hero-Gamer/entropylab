@@ -1,26 +1,20 @@
-import {
-  Address,
-  NETWORK as MAINNET,
-  OutScript,
-  TEST_NETWORK as TESTNET,
-} from "@scure/btc-signer";
+import { addressFromScript, descriptorDerive } from "./addresses.js";
 import { bech32mDecode, fromWords } from "./bech32.js";
-import { addressFromScript } from "./addresses.js";
 
-const REGTEST = { bech32: "bcrt", pubKeyHash: 0x6f, scriptHash: 0xc4 };
 const MAX_SCRIPT_BYTES = 10000;
-const SCRIPT_TYPE_LABELS = Object.freeze({
-  pkh: "P2PKH",
-  sh: "P2SH",
-  wpkh: "P2WPKH",
-  wsh: "P2WSH",
-  tr: "P2TR",
-  ms: "Bare multisig",
-  pk: "Pay to public key (P2PK)",
+const TYPE_LABELS = Object.freeze({
+  p2pkh: "P2PKH",
+  p2sh: "P2SH",
+  p2wpkh: "P2WPKH",
+  p2wsh: "P2WSH",
+  p2tr: "P2TR",
   p2a: "Pay to Anchor (P2A)",
-  tr_ns: "Taproot script path",
-  tr_ms: "Taproot multisig script",
-  tr_pk: "Taproot P2PK script",
+  p2pk: "Pay to public key (P2PK)",
+  multisig: "Bare multisig",
+  op_return: "OP_RETURN",
+  witness: "Witness program",
+  witness_invalid: "Malformed witness program",
+  unknown: "Unrecognized or unsupported script",
 });
 
 const bytesToHex = (bytes) => [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -35,40 +29,58 @@ const hexToBytes = (text) => {
   return out;
 };
 
-const equalBytes = (a, b) => {
-  if (!a || !b || a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
-  return diff === 0;
+const isWitnessVersion = (opcode) => opcode === 0x00 || (opcode >= 0x51 && opcode <= 0x60);
+const witnessVersion = (opcode) => opcode === 0 ? 0 : opcode - 0x50;
+
+const classifyWitnessProgram = (script) => {
+  if (script.length < 2 || !isWitnessVersion(script[0])) return null;
+  const programLength = script[1];
+  if (programLength < 2 || programLength > 40 || script.length !== programLength + 2) {
+    return { type: "witness_invalid", label: TYPE_LABELS.witness_invalid, addressable: false };
+  }
+  const version = witnessVersion(script[0]);
+  if (version === 0 && programLength !== 20 && programLength !== 32) {
+    return { type: "witness_invalid", label: TYPE_LABELS.witness_invalid, addressable: false };
+  }
+  return { type: "witness", label: `Witness v${version} program (${programLength} bytes)`, addressable: true };
 };
 
-const networkObject = (network) => {
-  if (network === "mainnet") return MAINNET;
-  if (network === "regtest") return REGTEST;
-  return TESTNET; // testnet and signet use the same address parameters.
+const classifyBareMultisig = (script) => {
+  if (script.length < 3 || script[0] < 0x51 || script[0] > 0x60 || script.at(-1) !== 0xae) return false;
+  const m = script[0] - 0x50;
+  let offset = 1;
+  let n = null;
+  while (offset < script.length - 2 && script[offset] === 0x21) offset += 34;
+  if (offset >= script.length - 1 || script[offset] < 0x51 || script[offset] > 0x60) return false;
+  n = script[offset] - 0x50;
+  return m <= n && n > 0 && n <= 16 && offset + 2 === script.length - 1;
 };
-
-const networkName = (network) => network === "mainnet" ? "mainnet" : network === "regtest" ? "regtest" : "testnet formats";
 
 export const classifyScript = (script) => {
   if (!(script instanceof Uint8Array)) throw new Error("Script must be a Uint8Array.");
   if (!script.length) return { type: "invalid", label: "Empty script", addressable: false };
 
-  try {
-    const decoded = OutScript.decode(script);
-    const type = String(decoded.type);
-    return {
-      type,
-      label: SCRIPT_TYPE_LABELS[type] || `Recognized output script (${type})`,
-      addressable: ["pkh", "sh", "wpkh", "wsh", "tr", "p2a"].includes(type),
-    };
-  } catch {
-    // A byte-valid script need not be an addressable output template. Keep
-    // that distinction explicit instead of treating every non-addressable
-    // script as malformed.
-    if (script[0] === 0x6a) return { type: "op_return", label: "OP_RETURN", addressable: false };
-    return { type: "unknown", label: "Unrecognized or unsupported script", addressable: false };
-  }
+  if (script.length === 25 && script[0] === 0x76 && script[1] === 0xa9 && script[2] === 0x14 && script[23] === 0x88 && script[24] === 0xac)
+    return { type: "p2pkh", label: TYPE_LABELS.p2pkh, addressable: true };
+  if (script.length === 23 && script[0] === 0xa9 && script[1] === 0x14 && script[22] === 0x87)
+    return { type: "p2sh", label: TYPE_LABELS.p2sh, addressable: true };
+  if (script.length === 22 && script[0] === 0x00 && script[1] === 0x14)
+    return { type: "p2wpkh", label: TYPE_LABELS.p2wpkh, addressable: true };
+  if (script.length === 34 && script[0] === 0x00 && script[1] === 0x20)
+    return { type: "p2wsh", label: TYPE_LABELS.p2wsh, addressable: true };
+  if (script.length === 34 && script[0] === 0x51 && script[1] === 0x20)
+    return { type: "p2tr", label: TYPE_LABELS.p2tr, addressable: true };
+  if (script.length === 4 && bytesToHex(script) === "51024e73")
+    return { type: "p2a", label: TYPE_LABELS.p2a, addressable: true };
+  if (script[0] === 0x6a)
+    return { type: "op_return", label: TYPE_LABELS.op_return, addressable: false };
+
+  const witness = classifyWitnessProgram(script);
+  if (witness) return witness;
+  if (classifyBareMultisig(script)) return { type: "multisig", label: TYPE_LABELS.multisig, addressable: false };
+  if ((script[0] === 0x21 || script[0] === 0x41) && script.at(-1) === 0xac && script.length === script[0] + 2)
+    return { type: "p2pk", label: TYPE_LABELS.p2pk, addressable: false };
+  return { type: "unknown", label: TYPE_LABELS.unknown, addressable: false };
 };
 
 export const inspectScriptPubKey = (input, network = "mainnet") => {
@@ -76,45 +88,23 @@ export const inspectScriptPubKey = (input, network = "mainnet") => {
   try {
     script = input instanceof Uint8Array ? input : hexToBytes(input);
   } catch (error) {
-    return {
-      type: "invalid",
-      label: error instanceof Error ? error.message : String(error),
-      addressable: false,
-      address: null,
-      network: networkName(network),
-    };
+    return { type: "invalid", label: error instanceof Error ? error.message : String(error), addressable: false, address: null };
   }
   const classification = classifyScript(script);
   let address = null;
-  if (classification.addressable) {
-    if (network === "mainnet" || network === "testnet" || network === "signet") {
-      address = addressFromScript(script, network === "mainnet" ? "mainnet" : "testnet");
-    } else {
-      try {
-        address = Address(REGTEST).encode(OutScript.decode(script));
-      } catch {
-        address = null;
-      }
-    }
+  if (classification.addressable && (classification.type !== "witness" || classification.type === "witness")) {
+    address = addressFromScript(script, network);
   }
-  return {
-    scriptHex: bytesToHex(script),
-    ...classification,
-    address,
-    network: networkName(network),
-  };
+  return { scriptHex: bytesToHex(script), ...classification, address };
 };
 
 const decodeSilentPayment = (text) => {
   const raw = String(text ?? "").trim();
   if (!/^t?sp1/i.test(raw)) return null;
   const decoded = bech32mDecode(raw.toLowerCase());
-  if (!decoded || !["sp", "tsp"].includes(decoded.prefix) || decoded.words[0] !== 0) {
-    return { valid: false };
-  }
+  if (!decoded || !["sp", "tsp"].includes(decoded.prefix) || decoded.words[0] !== 0) return { valid: false };
   try {
-    const payload = fromWords(decoded.words.slice(1));
-    return { valid: payload.length === 66 };
+    return { valid: fromWords(decoded.words.slice(1)).length === 66 };
   } catch {
     return { valid: false };
   }
@@ -123,25 +113,12 @@ const decodeSilentPayment = (text) => {
 export const inspectAddress = (input, network = "mainnet") => {
   const text = String(input ?? "").trim();
   if (!text) return { state: "empty" };
-
   const silent = decodeSilentPayment(text);
-  if (silent) {
-    return silent.valid
-      ? { state: "silent-payment", address: text.toLowerCase() }
-      : { state: "invalid-silent-payment", address: text };
-  }
-
+  if (silent) return silent.valid ? { state: "silent-payment", address: text.toLowerCase() } : { state: "invalid-silent-payment", address: text };
   try {
-    const decoded = Address(networkObject(network)).decode(text);
-    const script = OutScript.encode(decoded);
-    const classification = classifyScript(script);
-    return {
-      state: "recognized",
-      address: text,
-      scriptHex: bytesToHex(script),
-      type: classification.type,
-      label: classification.label,
-    };
+    const derived = descriptorDerive(`addr(${text})`, 0, network);
+    const classification = classifyScript(hexToBytes(derived.scriptHex));
+    return { state: "recognized", address: text, scriptHex: derived.scriptHex, type: classification.type, label: classification.label };
   } catch {
     return { state: "invalid", address: text };
   }
@@ -160,8 +137,15 @@ export const compareAddressAndScript = (addressInput, scriptInput, network = "ma
       ? address.state
       : !comparableAddress || !comparableScript
         ? "incomplete"
-        : equalBytes(hexToBytes(address.scriptHex), hexToBytes(script.scriptHex)) ? "match" : "mismatch",
+        : bytesEqual(hexToBytes(address.scriptHex), hexToBytes(script.scriptHex)) ? "match" : "mismatch",
   };
+};
+
+const bytesEqual = (a, b) => {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
 };
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>\"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[char]);
@@ -217,7 +201,6 @@ const makeInspector = () => {
       <select id="scriptpubkey-inspector-network">
         <option value="mainnet">Bitcoin Mainnet</option>
         <option value="testnet">Testnet / Signet</option>
-        <option value="regtest">Regtest</option>
       </select>
     </div>
     <div class="scriptpubkey-inspector-output" id="scriptpubkey-inspector-output" aria-live="polite"></div>

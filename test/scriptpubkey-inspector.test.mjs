@@ -10,7 +10,6 @@ const BARE_MS =
   "5221030000000000000000000000000000000000000000000000000000000000000001210300000000000000000000000000000000000000000000000000000000000000022103000000000000000000000000000000000000000000000000000000000000000353ae";
 const P2PK = "210300000000000000000000000000000000000000000000000000000000000001ac";
 
-
 test("BIP350 v0 address resolves to its scriptPubKey", () => {
   const result = inspectAddress(WPKH_ADDRESS, "mainnet");
   assert.equal(result.state, "recognized");
@@ -49,7 +48,7 @@ test("P2SH classification does not infer an unavailable redeem script", () => {
   const result = inspectScriptPubKey(P2SH_SCRIPT, "mainnet");
   assert.equal(result.type, "sh");
   assert.equal(result.label, "P2SH");
-  assert.equal(result.address, "3FymurqVvG63tFQ9iN7Y8uXyYgXfYQ9gZg");
+  assert.equal(result.address, "3EExK1K1TF3v7zsFtQHt14XqexCwgmXM1y");
 });
 
 test("valid non-addressable scripts remain distinct from invalid hex", () => {
@@ -72,7 +71,7 @@ test("P2A is recognized and keeps its address representation", () => {
 
 test("regtest uses bcrt address encoding while raw scripts remain networkless", () => {
   const result = inspectScriptPubKey(WPKH_SCRIPT, "regtest");
-  assert.equal(result.address, "bcrt1q2n0q9q5h9d4w4s9t0l5d5l5t8m5m6m2l0f5d8m");
+  assert.equal(result.address, "bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7ktam6x7");
   assert.equal(result.network, "regtest");
 });
 

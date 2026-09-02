@@ -53,7 +53,7 @@ const classifyBareMultisig = (script) => {
   if (offset >= script.length - 1 || script[offset] < 0x51 || script[offset] > 0x60) return false;
   const n = script[offset] - 0x50;
   const keyCount = (offset - 1) / 34;
-  return Number.isInteger(keyCount) && keyCount === n && m <= n && n > 0 && n <= 16 && offset + 2 === script.length - 1;
+  return Number.isInteger(keyCount) && keyCount === n && m <= n && n > 0 && n <= 16 && offset + 2 === script.length;
 };
 
 export const classifyScript = (script) => {

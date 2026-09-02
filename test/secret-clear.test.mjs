@@ -48,6 +48,17 @@ test("BIP-85 parent and derived-child fields are explicitly cleared", () => {
   assert.match(lifecycle, /bip85Out\.innerHTML\s*=\s*""/);
 });
 
+test("Entropy Journal password, entries, and encrypted session are explicitly cleared", () => {
+  // The lifecycle's hodlJournalWipeMem clears both the session notepad and the
+  // encrypted notebook (keys, document, and every notebook field).
+  assert.match(lifecycle, /hodlJournalWipeMem\(\)/);
+  assert.match(app, /function hodlJournalWipeMem\(\) \{[\s\S]*?hodlJournalWipeNotebook\(\)[\s\S]*?hodlJournalClearFields\(\)/);
+  assert.match(app, /journal-create-password/);
+  assert.match(app, /journal-input/);
+  assert.match(app, /journal-phrase/);
+  assert.match(app, /journal-entry-notes/);
+});
+
 test("Silent Payments session key and passphrase fields are explicitly cleared", () => {
   assert.match(lifecycle, /getElementById\("sp-key"\)/);
   assert.match(lifecycle, /getElementById\("sp-pass"\)/);

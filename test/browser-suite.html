@@ -883,26 +883,28 @@
       await until(() => !document.getElementById("bip85-card").hidden, "BIP-85 to open on ArrowRight");
       assert(document.activeElement === tabs[1], "Focus should follow the arrow key");
       assert(tabs[1].getAttribute("aria-selected") === "true", "The reached tab should be selected");
-      // End jumps to the last tool, Journal.
+      // End jumps to the last tool, Journal, whose default station is the encrypted notebook.
       tabs[1].dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
-      await until(() => !document.getElementById("journal-notes-card").hidden, "End to reach the Journal tool");
+      await until(() => !document.getElementById("journal-card").hidden, "End to reach the Journal tool");
       assert(document.activeElement === tabs[5], "End should move focus to the last tab");
       const journalTabs = [...document.querySelectorAll("#journal-tool-tabs [data-journal-tool]")];
-      equal(journalTabs.length, 3, "Journal should expose exactly three internal tabs");
-      equal(journalTabs.map((tab) => tab.textContent.trim()).join("|"), "Notepad|Session state|Session log");
+      equal(journalTabs.length, 4, "Journal should expose exactly four internal tabs");
+      equal(journalTabs.map((tab) => tab.textContent.trim()).join("|"), "Journal|Notepad|Session state|Session log");
       const journalManager = document.getElementById("journal-manager");
       assert(journalManager && !journalManager.hidden, "Journal station tabs should be visible inside the Journal tool");
       journalTabs.forEach((tab) => assert(tab.classList.contains("key-tab"), "Journal stations should use folder-style Key Station tabs"));
-      equal(getComputedStyle(document.getElementById("journal-notes-card")).borderTopLeftRadius, "0px", "The active Journal station card should join its folder tab");
+      equal(getComputedStyle(document.getElementById("journal-card")).borderTopLeftRadius, "0px", "The active Journal station card should join its folder tab");
       journalTabs[0].focus();
       journalTabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
-      await until(() => !document.getElementById("journal-state-card").hidden, "ArrowRight to open Session state");
+      await until(() => !document.getElementById("journal-notes-card").hidden, "ArrowRight to open Notepad");
       assert(document.activeElement === journalTabs[1], "Focus should follow the Journal subtab arrow key");
       journalTabs[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      await until(() => !document.getElementById("journal-state-card").hidden, "ArrowRight to open Session state");
+      journalTabs[2].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
       await until(() => !document.getElementById("journal-log-card").hidden, "ArrowRight to open Session log");
-      journalTabs[2].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+      journalTabs[3].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
       await until(() => !document.getElementById("journal-state-card").hidden, "ArrowLeft to open Session state");
-      assert(document.activeElement === journalTabs[1], "Focus should return to Session state");
+      assert(document.activeElement === journalTabs[2], "Focus should return to Session state");
       // PSBT stays a workspace of its own, with station tabs inside it.
       document.querySelector('#workspace [data-workspace="psbt"]').click();
       await until(() => !document.getElementById("psbt-card").hidden, "PSBT tool");

@@ -78,6 +78,12 @@ material. Its security posture rests on the following model:
   does not render inscription media, assign sat numbers, or contact an indexer.
 - OP_RETURN detection is a parser of output scripts. It does not create
   data-carrier outputs, assign protocol meaning, or contact an indexer.
+- The published `CID.txt` is CIDv1 (raw, sha2-256) of the release
+  `entropylab.html` — the same digest as `SHA256SUMS.txt`, written as an IPFS
+  name. The calculator never speaks IPFS: no node, no gateway, no IPNS, no
+  `fetch`. Retrieving the file by CID is an online-machine step; verify
+  `SHA256SUMS.txt` before moving the HTML onto an air-gapped computer. Do not
+  publish seeds, xprvs, or other private material to IPFS.
 - Low-entropy dice and card transcripts are accepted intentionally so the
   calculator can be used for deterministic tests, demonstrations, and
   recovery experiments. EntropyLab does not claim that hashing a short input

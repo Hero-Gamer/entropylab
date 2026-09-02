@@ -1635,6 +1635,10 @@ test("Silent Payments sits between Multi Signature and PSBT / Nonce", () => {
     assert.match(markup, /id="sp-verify-go"/);
     assert.match(markup, /BIP-352/);
   }
+  assert.match(template, /id="sp-payname"/);
+  assert.match(template, /bitcoin:\?sp=/);
+  assert.match(template, /BIP-321/);
+  assert.match(template, /BIP-353/);
   assert.match(css, /#sp-card\[hidden\]/);
 });
 

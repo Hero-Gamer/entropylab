@@ -73,7 +73,10 @@ material. Its security posture rests on the following model:
 - Silent Payments (BIP-352) support is a calculator: it derives reusable
   addresses, sender outputs, and spend tweaks from user-supplied keys and
   pasted transaction data. It does not connect to a node, Electrum server, or
-  indexer, and cannot detect payments on its own.
+  indexer, and cannot detect payments on its own. BIP-321 URIs and BIP-353 DNS
+  TXT records are printed from the derived code so you can publish them on a
+  domain you control; the page never resolves names, never fetches
+  silentpayments.net, and ignores Lightning parameters in a URI.
 - Inscription envelope detection is a parser of witness/tap-leaf scripts. It
   does not render inscription media, assign sat numbers, or contact an indexer.
 - OP_RETURN detection is a parser of output scripts. It does not create

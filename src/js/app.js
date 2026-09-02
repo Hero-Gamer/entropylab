@@ -17,6 +17,12 @@ import {
   spendPrivForOutput,
   bytesToHex as hodlSpBytesToHex,
 } from "./bip352.js";
+import {
+  bip353Lookup,
+  encodeBitcoinUri,
+  encodeBip353Txt,
+  parseRecipientLines,
+} from "./bip321.js";
 import { inspectPsbtInscriptions, describeEnvelope } from "./inscription.js";
 import { parseOpReturn, describeOpReturn } from "./opreturn.js";
 import { parseRawTx, extractEcdsaSignatures, inscriptionHints, isPsbtMagic, serializeTx } from "./tx.js";
@@ -805,7 +811,7 @@ hodlRootEl.innerHTML = `
     <div class="tool-intro" id="sp-tool-intro" hidden>
         <div class="kicker">BIP-352 · reusable address, unique outputs</div>
         <h2>Silent Payments</h2>
-        <p class="muted tool-intro-note">A calculator, not a chain scanner. Derive a reusable <code>sp1q…</code> address from your seed, compute the unique taproot output a sender must pay, or check pasted outputs against your scan key. Nothing here talks to the network.</p>
+        <p class="muted tool-intro-note">A calculator, not a chain scanner. Derive a reusable <code>sp1q…</code> address from your seed, print the BIP-321 URI and BIP-353 DNS TXT to publish on a domain you control, compute the unique taproot output a sender must pay, or check pasted outputs against your scan key. Nothing here talks to the network, resolves names, or fetches from silentpayments.net.</p>
       </div>
       <section class="key-manager no-print" id="sp-manager" hidden>
         <div class="key-tab-strip"><div class="key-tabs" id="sp-tabs" role="tablist" aria-label="Silent Payments"></div></div>
@@ -846,13 +852,18 @@ hodlRootEl.innerHTML = `
           <input id="sp-label" type="number" min="0" max="4294967295" step="1" inputmode="numeric" placeholder="blank = unlabeled · 0 = change (do not hand out)">
           <span class="field-note">Unlabeled is the reusable address you publish. <code>m = 0</code> is reserved for change. <code>m ≥ 1</code> is an extra labeled code from the same scan key.</span>
         </label>
+        <label class="field">Payment name (optional, <code>you@yourdomain</code>)
+          <input id="sp-payname" autocomplete="off" placeholder="you@example.com" spellcheck="false" autocapitalize="off">
+          <span class="field-note">Printed as the BIP-353 lookup to create on <em>your</em> DNS. This page never resolves it.</span>
+        </label>
         <div class="row psbt-actions">
           <button class="btn primary" id="sp-derive" type="button">Derive silent payment address</button>
         </div>
       </div>
       <div id="sp-send" hidden>
-        <label class="field">Recipients (one <code>sp1q…</code> / <code>tsp1q…</code> per line; optional count)
-          <textarea id="sp-recipients" placeholder="sp1qqgste7k9hx0q…&#10;sp1qqgste7k9hx0q… 2" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+        <label class="field">Recipients (one <code>sp1q…</code> / <code>tsp1q…</code> or <code>bitcoin:?sp=</code> URI per line; optional count)
+          <textarea id="sp-recipients" placeholder="sp1qqgste7k9hx0q…&#10;bitcoin:?sp=sp1qqgste7k9hx0q…&#10;sp1qqgste7k9hx0q… 2" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+          <span class="field-note">Paste the code or a BIP-321 URI. Names like you@domain are not resolved here — look the TXT up on an online machine and paste the URI.</span>
         </label>
         <label class="field">Inputs (BIP-352 vin JSON)
           <textarea id="sp-send-vins" placeholder='[{"txid":"\u2026","vout":0,"scriptSig":"\u2026","txinwitness":"","prevout":{"scriptPubKey":{"hex":"\u2026"}},"private_key":"\u2026"}]' spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
@@ -956,7 +967,7 @@ hodlRootEl.innerHTML = `
       <p>D++ D8 &amp; D16 method: <a href="https://thesimplestbitcoinbook.net/wp-content/uploads/2023/09/Roll-Your-Own-Seed-Phrase-PDF.pdf" target="_blank" rel="noopener noreferrer">Roll Your Own Bitcoin Seed Phrase</a> \u2014 the published 24-word workflow uses one D8 labeled 1\u20138 and two hexadecimal D16 dice labeled 0\u2013F per word, then a final D8.</p>
       <p>Jade anti-exfil (sign-to-contract): <a href="https://blog.blockstream.com/anti-exfil-stopping-key-exfiltration/" target="_blank" rel="noopener noreferrer">Anti-Exfil: Stopping Key Exfiltration</a> \u2014 secp256k1-zkp <code>ecdsa_s2c</code> / <code>anti_exfil_host_verify</code>.</p>
       <p>BIP-85 deterministic entropy: <a href="https://github.com/bitcoin/bips/blob/master/bip-0085.mediawiki" target="_blank" rel="noopener noreferrer">bip-0085.mediawiki</a> — HMAC-SHA512 of a fully hardened child; English BIP-39 / WIF / XPRV / HEX / password applications match COLDCARD.</p>
-      <p>BIP-352 Silent Payments: <a href="https://github.com/bitcoin/bips/blob/master/bip-0352.mediawiki" target="_blank" rel="noopener noreferrer">bips/bip-0352</a> — reusable <code>sp1q…</code> addresses and unique taproot outputs. Descriptors: <a href="https://github.com/bitcoin/bips/blob/master/bip-0392.mediawiki" target="_blank" rel="noopener noreferrer">BIP-392</a>.</p>
+      <p>BIP-352 Silent Payments: <a href="https://github.com/bitcoin/bips/blob/master/bip-0352.mediawiki" target="_blank" rel="noopener noreferrer">bips/bip-0352</a> — reusable <code>sp1q…</code> addresses and unique taproot outputs. Descriptors: <a href="https://github.com/bitcoin/bips/blob/master/bip-0392.mediawiki" target="_blank" rel="noopener noreferrer">BIP-392</a>. Publish URI: <a href="https://github.com/bitcoin/bips/blob/master/bip-0321.mediawiki" target="_blank" rel="noopener noreferrer">BIP-321</a>. DNS name: <a href="https://github.com/bitcoin/bips/blob/master/bip-0353.mediawiki" target="_blank" rel="noopener noreferrer">BIP-353</a> — this page prints the TXT, it does not resolve names.</p>
       <p>Inscription envelopes: <a href="https://docs.ordinals.com/inscriptions.html" target="_blank" rel="noopener noreferrer">docs.ordinals.com/inscriptions</a> — <code>OP_FALSE OP_IF "ord"</code> parser only. This tool does not create inscriptions or number sats.</p>
     </section>
     <footer class="page-footer muted no-print"><div>Team Ooga Booga</div><div class="page-footer-emoji">🪨 🔥 🎲 🍌</div><div>Since 964013 · <span class="page-footer-build">v{{VERSION}} · commit <code>{{COMMIT_SHORT}}</code> <img class="page-footer-lifehash" id="page-footer-lifehash" data-commit="{{COMMIT}}" width="20" height="20" alt="LifeHash of the build commit" hidden></span></div><div class="page-footer-links"><a class="btn secondary github-repo-link" href="https://github.com/OogaBoogaX/entropylab" target="_blank" rel="noopener noreferrer" aria-label="View the EntropyLab GitHub repository in a new tab"><svg class="github-mark" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span class="control-label">GitHub</span></a><button type="button" class="theme-toggle" id="theme-toggle" data-theme-mode="dark" aria-label="Theme: dark. Switch to light"><svg class="theme-icon-dark" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg><svg class="theme-icon-light" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button></div></footer>
@@ -9306,13 +9317,7 @@ function hodlSpParseVins(text) {
   return parsed;
 }
 function hodlSpParseRecipients(text) {
-  let lines = String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (!lines.length) throw new Error("Paste at least one silent payment address.");
-  return lines.map((line) => {
-    let match = line.match(/^(sp1[0-9a-z]+|tsp1[0-9a-z]+)(?:\s+(\d+))?$/i);
-    if (!match) throw new Error(`Not a silent payment address: ${line.slice(0, 24)}`);
-    return { address: match[1].toLowerCase(), count: match[2] ? Number(match[2]) : 1 };
-  });
+  return parseRecipientLines(text);
 }
 function hodlSpParseOutputs(text) {
   let raw = String(text || "").trim();
@@ -9367,6 +9372,9 @@ function hodlRenderSpReceive() {
   let scanPoint = hodlSecp256k1.Point.fromBytes(hodlSpKeys.scanPub);
   let spendPoint = hodlSecp256k1.Point.fromBytes(hodlSpKeys.spendPub);
   let address = labeled ? createLabeledSilentPaymentAddress(hodlSpKeys.scanPriv, spendPoint, m, hrp) : encodeSilentPaymentAddress(scanPoint, spendPoint, hrp);
+  let uri = encodeBitcoinUri(address);
+  let txt = encodeBip353Txt(address);
+  let named = bip353Lookup(document.getElementById("sp-payname")?.value);
   let spscan = encodeSpscan(hodlSpKeys.scanPriv, hodlSpKeys.spendPub, hodlSpNetwork());
   let spspend = encodeSpspend(hodlSpKeys.scanPriv, hodlSpKeys.spendPriv, hodlSpNetwork());
   let origin = `${hodlSpKeys.fingerprint}/352h/${hodlSpCoinType()}h/${hodlSpAccount()}h`;
@@ -9378,6 +9386,13 @@ function hodlRenderSpReceive() {
       <div class="sp-qr">${qr}</div>
       <p class="psbt-kv" id="sp-address-value">${hodlSpEscape(address)}</p>
       ${hodlSpCopyButton("sp-address-value", "Copy address")}
+      <p class="label">BIP-321 URI</p>
+      <p class="psbt-kv" id="sp-bip321-uri">${hodlSpEscape(uri)}</p>
+      ${hodlSpCopyButton("sp-bip321-uri", "Copy URI")}
+      <p class="label">BIP-353 DNS TXT</p>
+      <p class="psbt-kv" id="sp-bip353-txt">${hodlSpEscape(txt)}</p>
+      ${hodlSpCopyButton("sp-bip353-txt", "Copy TXT")}
+      <p class="muted">${named ? `Create a TXT record at <code>${hodlSpEscape(named.lookup)}</code> for <code>${hodlSpEscape(named.name)}</code>.` : "Create a TXT record at <code>you._bitcoin-payment.yourdomain</code> (or <code>_bitcoin-payment.yourdomain</code> for a domain-only name)."} This page does not resolve DNS.</p>
       <p class="muted">Scan path <code>${hodlSpKeys.scanPath}</code> · Spend path <code>${hodlSpKeys.spendPath}</code></p>
       <p class="label">Scan public key</p>
       <p class="psbt-kv" id="sp-scan-pub">${hodlSpBytesToHex(hodlSpKeys.scanPub)}</p>
@@ -9395,7 +9410,8 @@ function hodlRenderSpReceive() {
   });
 }
 function hodlRenderSpSend() {
-  let recipients = hodlSpParseRecipients(document.getElementById("sp-recipients")?.value);
+  let parsed = hodlSpParseRecipients(document.getElementById("sp-recipients")?.value);
+  let recipients = parsed.recipients;
   let hrp = hodlSpHrp(hodlSpNetwork());
   for (const recipient of recipients) decodeSilentPaymentAddress(recipient.address, hrp);
   let result = createSilentPaymentOutputs(hodlSpParseVins(document.getElementById("sp-send-vins")?.value), recipients, { hrp });
@@ -9404,7 +9420,7 @@ function hodlRenderSpSend() {
     return;
   }
   let network = hodlSpNetwork();
-  document.getElementById("sp-out").innerHTML = `<p class="psbt-ok">${result.outputs.length} unique taproot output${result.outputs.length === 1 ? "" : "s"}.</p>` + result.outputs.map((xonly, index) => {
+  document.getElementById("sp-out").innerHTML = `<p class="psbt-ok">${result.outputs.length} unique taproot output${result.outputs.length === 1 ? "" : "s"}.</p>` + (parsed.lightning ? `<p class="muted">Lightning parameters in the URI were ignored. This page does not pay invoices or offers.</p>` : "") + result.outputs.map((xonly, index) => {
     let address = p2trAddressFromXonly(xonly, network);
     return `<div class="sp-output"><p class="label">Output ${index + 1}</p><p class="psbt-kv" id="sp-out-addr-${index}">${hodlSpEscape(address)}</p><p class="psbt-kv" id="sp-out-xonly-${index}">${hodlSpEscape(xonly)}</p>${hodlSpCopyButton(`sp-out-addr-${index}`, "Copy P2TR")}</div>`;
   }).join("");
@@ -9467,7 +9483,7 @@ function hodlInitSp() {
   document.getElementById("sp-verify-go").onclick = () => { hodlSpMode = "verify"; hodlRunSp(); };
   document.getElementById("sp-wipe").onclick = () => {
     hodlSpWipeMem();
-    ["sp-key", "sp-pass", "sp-recipients", "sp-send-vins", "sp-verify-vins", "sp-verify-outputs", "sp-label"].forEach((id) => {
+    ["sp-key", "sp-pass", "sp-recipients", "sp-send-vins", "sp-verify-vins", "sp-verify-outputs", "sp-label", "sp-payname"].forEach((id) => {
       let field = document.getElementById(id);
       if (field) field.value = "";
     });
@@ -11573,11 +11589,12 @@ function hodlInitSecretFieldAutoClear() {
     if (spOut) spOut.innerHTML = "";
     if (spError) spError.textContent = "";
     if (spSession) spSession.textContent = hodlSpNote;
-    let spRecipients = document.getElementById("sp-recipients"), spVerifyVins = document.getElementById("sp-verify-vins"), spVerifyOutputs = document.getElementById("sp-verify-outputs"), spLabel = document.getElementById("sp-label");
+    let spRecipients = document.getElementById("sp-recipients"), spVerifyVins = document.getElementById("sp-verify-vins"), spVerifyOutputs = document.getElementById("sp-verify-outputs"), spLabel = document.getElementById("sp-label"), spPayname = document.getElementById("sp-payname");
     if (spRecipients) spRecipients.value = "";
     if (spVerifyVins) spVerifyVins.value = "";
     if (spVerifyOutputs) spVerifyOutputs.value = "";
     if (spLabel) spLabel.value = "";
+    if (spPayname) spPayname.value = "";
     // The <pre> mirrors behind each input hold a second live copy of whatever
     // was typed (dice rolls, seed words, passphrase, private key).
     document.querySelectorAll(".dice-input-highlight").forEach((highlight) => {

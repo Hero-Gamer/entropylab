@@ -1137,6 +1137,24 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .segmented-control.is-stacked > .tab:only-child { border-radius: 8px; }
 #msig-card[hidden], #calc-card[hidden], #psbt-card[hidden], #psbted-card[hidden], #bip85-card[hidden], #sp-card[hidden] { display: none !important; }
 #calc-card:not([hidden]), #msig-card:not([hidden]), #bip85-card:not([hidden]), #sp-card:not([hidden]), #psbt-card:not([hidden]), #psbted-card:not([hidden]) { margin-top: 0; border-radius: 0 0 20px 20px; position: relative; z-index: 1; }
+#journal-notes-card[hidden], #journal-state-card[hidden], #journal-log-card[hidden] { display: none !important; }
+#journal-notes-card:not([hidden]), #journal-state-card:not([hidden]), #journal-log-card:not([hidden]) { margin-top: 0; border-radius: 0 0 20px 20px; position: relative; z-index: 1; }
+.journal-note {
+  margin: 0 0 14px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2);
+}
+.journal-note-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.journal-note-at {
+  width: auto; flex: 1 1 auto; min-width: 0; min-height: 0; margin-top: 0; padding: 6px 10px;
+  letter-spacing: 0; font-size: 13px;
+}
+.journal-note-head .btn { flex: 0 0 auto; min-height: 0; padding: 6px 10px; }
+.journal-note-body { min-height: 88px; margin-top: 0; letter-spacing: 0; }
+.journal-log {
+  font-family: var(--mono); font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
+  margin: 0 0 14px; padding: 12px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface-2); max-height: 420px; overflow: auto;
+}
+#journal-state-text { min-height: 280px; letter-spacing: 0; font-size: 13px; }
 .psbt-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 14px; }
 @media (min-width: 720px) {
   .psbt-grid { grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr); }

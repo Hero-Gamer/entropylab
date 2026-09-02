@@ -78,6 +78,12 @@ material. Its security posture rests on the following model:
   does not render inscription media, assign sat numbers, or contact an indexer.
 - OP_RETURN detection is a parser of output scripts. It does not create
   data-carrier outputs, assign protocol meaning, or contact an indexer.
+- The session Journal (notepad, session snapshot, session log) lives only in
+  this page's memory. It is never written to `localStorage`, IndexedDB, or the
+  network. Closing or hiding the page discards it with the other secret
+  fields. Downloaded notes or snapshots are files the user chose to keep. The
+  log records tool names, timestamps, and fingerprints — not seed phrases,
+  xprvs, or typed secrets.
 - Low-entropy dice and card transcripts are accepted intentionally so the
   calculator can be used for deterministic tests, demonstrations, and
   recovery experiments. EntropyLab does not claim that hashing a short input

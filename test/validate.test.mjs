@@ -46,6 +46,7 @@ const requiredFiles = [
   "src/css/styles.css",
   "src/js/app.js",
   "src/js/psbt-editor.js",
+  "src/js/journal.js",
   "src/js/psbt-wasm.js",
   "src/js/psbt-wasm-b64.js",
   "src/js/bip85.js",
@@ -62,6 +63,7 @@ const requiredFiles = [
   "test/browser-check.test.mjs",
   "test/psbt-metadata.test.mjs",
   "test/secret-clear.test.mjs",
+  "test/journal.test.mjs",
   "test/wipe-wasm.test.mjs",
   ".github/workflows/ci-cd.yml",
 ];

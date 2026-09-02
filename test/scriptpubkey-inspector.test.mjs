@@ -38,10 +38,12 @@ test("malformed address and checksum failure are invalid", () => {
   assert.equal(inspectAddress("not-an-address", "mainnet").state, "invalid");
 });
 
-test("malformed script hex is rejected while whitespace is accepted", () => {
-  assert.throws(() => inspectScriptPubKey("0014xz", "mainnet"), /hexadecimal/);
+test("malformed script hex becomes an invalid inspection result while whitespace is accepted", () => {
+  const malformed = inspectScriptPubKey("0014xz", "mainnet");
+  assert.equal(malformed.type, "invalid");
+  assert.match(malformed.label, /hexadecimal/);
   assert.equal(inspectScriptPubKey("  00\n14\t751e76e8199196d454941c45d1b3a323f1433bd6  ", "mainnet").scriptHex, WPKH_SCRIPT);
-  assert.throws(() => inspectScriptPubKey("0", "mainnet"), /even number/);
+  assert.equal(inspectScriptPubKey("0", "mainnet").type, "invalid");
 });
 
 test("P2SH classification does not infer an unavailable redeem script", () => {

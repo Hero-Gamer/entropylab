@@ -101,6 +101,19 @@ Official website: [entropylab.online](https://entropylab.online)
   root xprv, including labeled codes, BIP-392 `spscan` / `spspend` descriptors,
   sender taproot outputs from pasted vin JSON, and receiver verification of
   pasted x-only outputs. This is a calculator: it does not scan the chain.
+- A session **Journal** (last workspace tab) holds an encrypted **Entropy
+  Journal** notebook, a notepad stamped with this computer's date and time,
+  an editable summary of everything derived in this sitting, and a debug log
+  of tool switches and derives (fingerprints, not seeds). The notebook keeps
+  entropy the user already produced — dice, coins, hex, brain-wallet text, or
+  a seed — under AES-256-GCM; the key is PBKDF2-SHA-256 (600,000 rounds) of a
+  password the user chooses, with the salt derived from the password itself
+  and the IV HMAC-SHA-256 of the plaintext, so the file is a pure function of
+  password and entries and no CSPRNG is ever called. One JSON file the user
+  downloads and loads back. Nothing is stored in the browser; download a file
+  to keep it. Closing the page discards the sitting. The notebook is a
+  calculator companion, not a password manager: it only stores material the
+  user generated themselves.
 - Runs a quick barrage of startup sanity checks on the host browser (secure
   context, CSPRNG, BigInt, UTF-8 encoding, NFKD, and WebAssembly). If any
   check fails, the page is replaced with a failure report listing the failed
@@ -356,6 +369,7 @@ To remove generated files, run `npm run clean`.
 │   ├── css/styles.css      Application styles
 │   └── js/
 │       ├── app.js          Application logic and explicit package imports
+│       ├── journal.js      Encrypted entropy notebook, session notepad, snapshot, and debug log
 │       ├── secp256k1.js    Curve facade over the WASM module (noble-shaped API)
 │       ├── entropylab-wasm.js Shared WASM module loader
 │       ├── entropylab-wasm-b64.js Generated WASM artifact (committed; build:wasm)

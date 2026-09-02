@@ -57,8 +57,13 @@ test("the CID script never talks to the network, browser storage, or a CSPRNG", 
   assert.doesNotMatch(source, /\bgetRandomValues\b/);
 });
 
-test("a built entropylab.html, when present, matches CID.txt", () => {
+test("a built entropylab.html matches CID.txt when it is the published artifact", () => {
   const html = join(root, "entropylab.html");
   if (!existsSync(html)) return;
+  // PRs rebuild the HTML with a different git revision stamp, so the bytes
+  // (and CID) differ from the last rock artifact. CID.txt tracks SHA256SUMS.
+  const published = read("SHA256SUMS.txt").trim().split(/\s+/)[0];
+  const actual = createHash("sha256").update(readFileSync(html)).digest("hex");
+  if (actual !== published) return;
   assert.equal(cidLineForFile(html), read("CID.txt"));
 });

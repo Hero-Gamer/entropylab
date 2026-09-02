@@ -49,10 +49,9 @@ const classifyBareMultisig = (script) => {
   if (script.length < 3 || script[0] < 0x51 || script[0] > 0x60 || script.at(-1) !== 0xae) return false;
   const m = script[0] - 0x50;
   let offset = 1;
-  let n = null;
   while (offset < script.length - 2 && script[offset] === 0x21) offset += 34;
   if (offset >= script.length - 1 || script[offset] < 0x51 || script[offset] > 0x60) return false;
-  n = script[offset] - 0x50;
+  const n = script[offset] - 0x50;
   return m <= n && n > 0 && n <= 16 && offset + 2 === script.length - 1;
 };
 
@@ -91,10 +90,7 @@ export const inspectScriptPubKey = (input, network = "mainnet") => {
     return { type: "invalid", label: error instanceof Error ? error.message : String(error), addressable: false, address: null };
   }
   const classification = classifyScript(script);
-  let address = null;
-  if (classification.addressable && (classification.type !== "witness" || classification.type === "witness")) {
-    address = addressFromScript(script, network);
-  }
+  const address = classification.addressable ? addressFromScript(script, network) : null;
   return { scriptHex: bytesToHex(script), ...classification, address };
 };
 
@@ -124,6 +120,13 @@ export const inspectAddress = (input, network = "mainnet") => {
   }
 };
 
+const bytesEqual = (a, b) => {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
+};
+
 export const compareAddressAndScript = (addressInput, scriptInput, network = "mainnet") => {
   const address = inspectAddress(addressInput, network);
   const hasScriptInput = String(scriptInput ?? "").trim().length > 0;
@@ -139,13 +142,6 @@ export const compareAddressAndScript = (addressInput, scriptInput, network = "ma
         ? "incomplete"
         : bytesEqual(hexToBytes(address.scriptHex), hexToBytes(script.scriptHex)) ? "match" : "mismatch",
   };
-};
-
-const bytesEqual = (a, b) => {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
-  return diff === 0;
 };
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>\"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[char]);

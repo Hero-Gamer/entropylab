@@ -72,22 +72,30 @@ export const classifyScript = (script) => {
 };
 
 export const inspectScriptPubKey = (input, network = "mainnet") => {
-  const script = input instanceof Uint8Array ? input : hexToBytes(input);
+  let script;
+  try {
+    script = input instanceof Uint8Array ? input : hexToBytes(input);
+  } catch (error) {
+    return {
+      type: "invalid",
+      label: error instanceof Error ? error.message : String(error),
+      addressable: false,
+      address: null,
+      network: networkName(network),
+    };
+  }
   const classification = classifyScript(script);
   let address = null;
   if (classification.addressable) {
-    address = addressFromScript(script, network === "regtest" ? "testnet" : network === "mainnet" ? "mainnet" : "testnet");
-    // rust-bitcoin's current address facade uses testnet parameters for both
-    // public test networks. Regtest's distinct bcrt HRP is handled below.
-    if (network === "regtest" && classification.type !== "p2a") {
+    if (network === "mainnet" || network === "testnet" || network === "signet") {
+      address = addressFromScript(script, network === "mainnet" ? "mainnet" : "testnet");
+    } else {
       try {
-        const decoded = OutScript.decode(script);
-        address = Address(REGTEST).encode(decoded);
+        address = Address(REGTEST).encode(OutScript.decode(script));
       } catch {
         address = null;
       }
     }
-    if (network === "regtest" && classification.type === "p2a") address = "bcrt1pfeesnyr2tx";
   }
   return {
     scriptHex: bytesToHex(script),
@@ -141,7 +149,8 @@ export const inspectAddress = (input, network = "mainnet") => {
 
 export const compareAddressAndScript = (addressInput, scriptInput, network = "mainnet") => {
   const address = inspectAddress(addressInput, network);
-  const script = String(scriptInput ?? "").trim() ? inspectScriptPubKey(scriptInput, network) : null;
+  const hasScriptInput = String(scriptInput ?? "").trim().length > 0;
+  const script = hasScriptInput ? inspectScriptPubKey(scriptInput, network) : null;
   const comparableAddress = address.state === "recognized";
   const comparableScript = script && script.type !== "invalid";
   return {
@@ -240,13 +249,15 @@ const makeInspector = () => {
     }
     if (result.script) {
       rows.push(`<div class="scriptpubkey-inspector-row"><strong>Script type</strong><span>${escapeHtml(result.script.label)}</span></div>`);
-      if (result.script.address) rows.push(`<div class="scriptpubkey-inspector-row"><strong>scriptPubKey → address</strong><span class="scriptpubkey-inspector-value">${escapeHtml(result.script.address)}</span></div>`);
+      if (result.script.type === "invalid") rows.push(`<div class="scriptpubkey-inspector-row"><strong>Script input</strong><span>${escapeHtml(result.script.label)}</span></div>`);
+      else if (result.script.address) rows.push(`<div class="scriptpubkey-inspector-row"><strong>scriptPubKey → address</strong><span class="scriptpubkey-inspector-value">${escapeHtml(result.script.address)}</span></div>`);
     }
     let status = "";
     if (result.state === "match") status = `<div class="scriptpubkey-inspector-status" data-state="match">✓ Address and supplied scriptPubKey match.</div>`;
     else if (result.state === "mismatch") status = `<div class="scriptpubkey-inspector-status">Address and supplied scriptPubKey do not match.</div>`;
     else if (result.state === "silent-payment") status = `<div class="scriptpubkey-inspector-status">Silent Payment address: output derivation is outside this inspector.</div>`;
     else if (result.state === "invalid-silent-payment") status = `<div class="scriptpubkey-inspector-status">Invalid Silent Payment address.</div>`;
+    else if (result.script?.type === "invalid") status = `<div class="scriptpubkey-inspector-status">Invalid scriptPubKey input.</div>`;
     else if (result.script && !result.script.address) status = `<div class="scriptpubkey-inspector-status">The supplied script is valid as hex but has no standard address representation in this inspector.</div>`;
     output.innerHTML = rows.join("") + status;
   };

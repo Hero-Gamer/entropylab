@@ -5,7 +5,9 @@ import { classifyScript, compareAddressAndScript, inspectAddress, inspectScriptP
 const WPKH_ADDRESS = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4";
 const WPKH_SCRIPT = "0014751e76e8199196d454941c45d1b3a323f1433bd6";
 const P2SH_SCRIPT = "a91489abcdefabbaabbaabbaabbaabbaabbaabbaabba87";
+const P2SH_ADDRESS = "3EExK1K1TF3v7zsFtQHt14XqexCwgmXM1y";
 const P2A_SCRIPT = "51024e73";
+const P2A_ADDRESS = "bc1pfeessrawgf";
 const BARE_MS =
   "5221030000000000000000000000000000000000000000000000000000000000000001210300000000000000000000000000000000000000000000000000000000000000022103000000000000000000000000000000000000000000000000000000000000000353ae";
 const P2PK = "210300000000000000000000000000000000000000000000000000000000000001ac";
@@ -13,13 +15,13 @@ const P2PK = "210300000000000000000000000000000000000000000000000000000000000001
 test("BIP350 v0 address resolves to its scriptPubKey", () => {
   const result = inspectAddress(WPKH_ADDRESS, "mainnet");
   assert.equal(result.state, "recognized");
-  assert.equal(result.type, "wpkh");
+  assert.equal(result.type, "p2wpkh");
   assert.equal(result.scriptHex, WPKH_SCRIPT);
 });
 
 test("scriptPubKey resolves back to the supported address", () => {
   const result = inspectScriptPubKey(WPKH_SCRIPT, "mainnet");
-  assert.equal(result.type, "wpkh");
+  assert.equal(result.type, "p2wpkh");
   assert.equal(result.address, WPKH_ADDRESS);
 });
 
@@ -48,33 +50,34 @@ test("malformed script hex becomes an invalid inspection result while whitespace
 
 test("P2SH classification does not infer an unavailable redeem script", () => {
   const result = inspectScriptPubKey(P2SH_SCRIPT, "mainnet");
-  assert.equal(result.type, "sh");
+  assert.equal(result.type, "p2sh");
   assert.equal(result.label, "P2SH");
-  assert.equal(result.address, "3EExK1K1TF3v7zsFtQHt14XqexCwgmXM1y");
+  assert.equal(result.address, P2SH_ADDRESS);
+  assert.equal(inspectAddress(P2SH_ADDRESS, "mainnet").scriptHex, P2SH_SCRIPT);
 });
 
 test("valid non-addressable scripts remain distinct from invalid hex", () => {
-  assert.deepEqual(classifyScript(Buffer.from("6a02abcd", "hex")), {
+  assert.deepEqual(classifyScript(Uint8Array.from(Buffer.from("6a02abcd", "hex"))), {
     type: "op_return",
     label: "OP_RETURN",
     addressable: false,
   });
-  assert.equal(classifyScript(Buffer.from(P2PK, "hex")).type, "pk");
-  assert.equal(classifyScript(Buffer.from(BARE_MS, "hex")).type, "ms");
+  assert.equal(classifyScript(Uint8Array.from(Buffer.from(P2PK, "hex"))).type, "p2pk");
+  assert.equal(classifyScript(Uint8Array.from(Buffer.from(BARE_MS, "hex"))).type, "multisig");
   assert.equal(inspectScriptPubKey("51ae", "mainnet").type, "unknown");
 });
 
 test("P2A is recognized and keeps its address representation", () => {
   const result = inspectScriptPubKey(P2A_SCRIPT, "mainnet");
   assert.equal(result.type, "p2a");
-  assert.equal(result.address, "bc1pfeessrawgf");
-  assert.equal(inspectAddress("bc1pfeessrawgf", "mainnet").scriptHex, P2A_SCRIPT);
+  assert.equal(result.address, P2A_ADDRESS);
+  assert.equal(inspectAddress(P2A_ADDRESS, "mainnet").scriptHex, P2A_SCRIPT);
 });
 
-test("regtest uses bcrt address encoding while raw scripts remain networkless", () => {
-  const result = inspectScriptPubKey(WPKH_SCRIPT, "regtest");
-  assert.equal(result.address, "bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7ktam6x7");
-  assert.equal(result.network, "regtest");
+test("malformed witness programs are never presented as recognized addresses", () => {
+  const result = inspectScriptPubKey("0015" + "00".repeat(21), "mainnet");
+  assert.equal(result.type, "witness_invalid");
+  assert.equal(result.address, null);
 });
 
 test("Silent Payment addresses take a distinct path", () => {

@@ -1907,7 +1907,7 @@ test("BIP-85 and SP Stations can bring in compatible Key Station roots", () => {
   }
   assert.match(appSource, /function hodlSessionHdRootKeys\(\) \{/);
   assert.match(appSource, /state\.result\?\.kind === "hd" && \(state\.result\.mnemonic \|\| state\.result\.rootXprv\)/);
-  assert.match(appSource, /function hodlFillStationKeyPicker\(id, selectedSource, onSelect\) \{/);
+  assert.match(appSource, /function hodlFillStationKeyPicker\(id, selectedSource, onSelect, keys = hodlSessionHdRootKeys\(\)\) \{/);
   assert.match(appSource, /hodlFillKeyTabLifehash\(image, fingerprint\)/);
   assert.match(appSource, /function hodlPickBip85SessionKey\(state\) \{/);
   assert.match(appSource, /function hodlPickSpSessionKey\(state\) \{/);
@@ -1992,7 +1992,10 @@ test("the vanity grinder is a workspace tab that ships collapsed and never auto-
   for (const markup of [template, appSource]) {
     assert.match(markup, /<div class="tool-intro" id="vanity-tool-intro" hidden>/);
     assert.match(markup, /<section class="card no-print" id="vanity-card" role="tabpanel" hidden>/);
-    assert.match(markup, /id="vanity-import" type="button">Import from the Keys tab<\/button>/);
+    // Entropy comes in through the same clickable Key Station picker the
+    // BIP-85 and Silent Payments tabs use.
+    assert.match(markup, /<p class="label">Bring in a passphrase from Key Station<\/p>/);
+    assert.match(markup, /<div class="session-key-picker" id="vanity-session-keys" role="group" aria-label="Key Station keys with a passphrase" hidden><\/div>/);
     assert.match(markup, /<input id="vanity-salt" autocomplete="off" spellcheck="false"[^>]*aria-describedby="vanity-salt-note">/);
     assert.match(markup, /<select id="vanity-script">[\s\S]*?<option value="p2wpkh" selected(?:="selected")?>[\s\S]*?<option value="p2tr">/);
     assert.match(markup, /<input id="vanity-prefix" autocomplete="off" spellcheck="false"[^>]*aria-describedby="vanity-prefix-help">/);
@@ -2033,6 +2036,22 @@ test("the vanity grinder is a workspace tab that ships collapsed and never auto-
   // Blob workers keep the artifact one file; the CSP pins exactly that.
   assert.match(template, /worker-src 'self' blob:/);
   assert.match(read("src/js/vanity.js"), /new Blob\(\[VANITY_WORKER_SOURCE\]/);
+  // The picker rides the shared station-key plumbing and copies the key's
+  // passphrase verbatim — the grind extends the user's own text and never
+  // rehashes it into something else first.
+  assert.match(appSource, /hodlFillStationKeyPicker\("vanity-session-keys", hodlVanitySaltSource, hodlPickVanitySessionKey, hodlVanitySourceKeys\(\)\)/);
+  assert.match(appSource, /function hodlVanitySourceKeys\(\) \{\s*return hodlKeys\.filter\(\(state\) => String\(state\?\.fields\?\.pass \?\? ""\)\.length > 0\);/);
+  assert.match(appSource, /function hodlPickVanitySessionKey\(state\) \{[\s\S]*?let pass = String\(state\.fields\?\.pass \?\? ""\);[\s\S]*?field\.value = validateVanitySalt\(pass\);/);
+  const vanityJs = read("src/js/vanity.js");
+  assert.doesNotMatch(vanityJs, /vanitySessionSalt|JSON\.stringify|\\bsha256\\b/, "no salt derivation or rehashing in the vanity module");
+  // Grinding is WASM-only: candidates are produced by the vanity_grind export
+  // inside the worker's WebAssembly instance. The JS side has no curve or
+  // hash grind loop and no CPU fallback — it spawns workers, validates input,
+  // and re-encodes matching records for display (through the WASM-backed
+  // address facade, like every other tool).
+  assert.match(read("src/js/vanity-worker.js"), /wasm\.vanity_grind\(/);
+  assert.doesNotMatch(vanityJs, /secp256k1|getPublicKey|Point\./, "no curve math on the JS side");
+  assert.doesNotMatch(vanityJs, /fallback/i, "no CPU fallback grind path");
   // The calculator contract: no randomness anywhere in the vanity code paths.
   for (const path of ["src/js/vanity.js", "src/js/vanity-worker.js"]) {
     assert.doesNotMatch(read(path), /Math\.random|getRandomValues/, `${path} must never invent entropy`);

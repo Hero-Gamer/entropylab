@@ -34,7 +34,6 @@ import {
   vanityAddressFromHash160,
   vanityAddressFromRecord,
   vanityBuckets,
-  vanitySessionSalt,
 } from "../src/js/vanity.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -210,10 +209,10 @@ test("vanity_grind rejects invalid arguments", () => {
   assert.equal(grind("1", 1, 0n, 1n, 1, "p2pkh", "x".repeat(256)).status, 0, "256-character salt accepted");
 });
 
-test("a session salt prefixes every candidate before hashing", () => {
-  // The salt the app computes from the session: the passphrase verbatim.
-  const salt = vanitySessionSalt("correct horse battery staple", ["415263"]);
-  assert.equal(salt, "correct horse battery staple");
+test("a salt prefixes every candidate verbatim before hashing", () => {
+  // The salt is the user's own text — a typed salt or a Key Station
+  // passphrase — and the engine extends it, never rehashes it.
+  const salt = "correct horse battery staple";
   const salted = expectedAddress(salt + "a");
   const run = grind(salted.address.slice(0, 2), 1, 0n, 62n, 1 << 8, "p2pkh", salt);
   assert.equal(run.status, 0);
@@ -229,34 +228,16 @@ test("a session salt prefixes every candidate before hashing", () => {
   for (const candidate of run.records) {
     assert.equal(vanityAddressFromRecord(candidate), expectedAddress(salt + candidate.passphrase).address);
   }
-  // A different session (different passphrase) re-keys the same counters.
-  const other = grind("1", 1, 0n, 62n, 1 << 8, "p2pkh", vanitySessionSalt("other", []));
+  // A different salt re-keys the same counters.
+  const other = grind("1", 1, 0n, 62n, 1 << 8, "p2pkh", "other");
   assert.equal(other.status, 0);
   const otherZero = other.records.find((candidate) => candidate.counter === 0n);
   assert.notEqual(vanityAddressFromRecord(otherZero), salted.address, "another salt re-keys the same counter");
-  // Entropy-only sessions fall back to the digest of the entropy inputs.
-  const digest = vanitySessionSalt("", ["415263"]);
-  assert.match(digest, /^[0-9a-f]{64}$/);
-  const fallback = grind("1", 1, 0n, 62n, 1 << 8, "p2pkh", digest);
-  assert.equal(vanityAddressFromRecord(fallback.records[0]), expectedAddress(digest + fallback.records[0].passphrase).address);
-});
-
-test("vanitySessionSalt returns the passphrase verbatim, else digests the entropy inputs", () => {
-  assert.equal(vanitySessionSalt("", []), "", "no inputs, no salt: the public counter mapping");
-  assert.equal(vanitySessionSalt("", ["", "", ""]), "", "empty fields alone never salt");
-  assert.equal(vanitySessionSalt("hunter2", []), "hunter2", "the passphrase is the salt, verbatim");
-  assert.equal(vanitySessionSalt("hunter2", ["roll roll roll"]), "hunter2", "the passphrase wins over the entropy inputs");
-  assert.equal(vanitySessionSalt(null, []), "", "a missing passphrase reads as empty");
-  const salt = vanitySessionSalt("", ["hunter2", "roll roll roll"]);
-  assert.match(salt, /^[0-9a-f]{64}$/);
-  assert.equal(salt, vanitySessionSalt("", ["hunter2", "roll roll roll"]), "same inputs, same salt");
-  assert.equal(salt, vanitySessionSalt("", ["", "hunter2", "", "roll roll roll", ""]), "empty fields do not change the salt");
-  assert.equal(salt, vanitySessionSalt("", ["hunter2", null, "roll roll roll"]), "missing fields read as empty");
-  assert.notEqual(salt, vanitySessionSalt("", ["roll roll roll", "hunter2"]), "field order matters");
-  assert.notEqual(salt, vanitySessionSalt("", ["hunter2", "roll roll rolL"]), "any input change re-salts");
-  // Pinned recipe: SHA-256 of the JSON array of the non-empty inputs, so the
-  // digest cannot drift silently.
-  assert.equal(salt, createHash("sha256").update(JSON.stringify(["hunter2", "roll roll roll"]), "utf8").digest("hex"));
+  // A 64-hex-character salt (the shape of a pasted hex secret) is still just
+  // text to the engine: verbatim, never interpreted or rehashed.
+  const hexSalt = "eb1f8a82904d045816bb0e7c04b0c4f1a2c54f3d9a1e2b3c4d5e6f708192a3b4c5d6";
+  const hexRun = grind("1", 1, 0n, 62n, 1 << 8, "p2pkh", hexSalt);
+  assert.equal(vanityAddressFromRecord(hexRun.records[0]), expectedAddress(hexSalt + hexRun.records[0].passphrase).address);
 });
 
 test("validateVanitySalt bounds the salt to the WASM buffer", () => {
@@ -408,7 +389,7 @@ test("worker source: init, grind, progress, done — with a matching hit", async
 test("worker source: the grind message's salt re-keys the candidates", async () => {
   const worker = await initWorker();
   try {
-    const salt = vanitySessionSalt("session passphrase", []);
+    const salt = "session passphrase";
     const events = [];
     worker.onmessage = (event) => events.push(event.data);
     worker.postMessage({ type: "grind", prefix: "1", passLen: 1, start: 0n, count: 62n, salt });
@@ -519,10 +500,9 @@ test("VanityGrinder pool passes the selected script type to workers", async () =
 });
 
 test("VanityGrinder pool salts every worker and reports the full passphrase", async () => {
-  // The session's passphrase is the salt verbatim: a found passphrase reads
-  // as the passphrase followed by the counter odometer string.
-  const salt = vanitySessionSalt("a BIP39 passphrase", ["dice rolls"]);
-  assert.equal(salt, "a BIP39 passphrase");
+  // The salt prefixes candidates verbatim: a found passphrase reads as the
+  // salt followed by the counter odometer string.
+  const salt = "a BIP39 passphrase";
   const expected = expectedAddress(salt + "a");
   const matches = [];
   const result = await new Promise((resolve, reject) => {

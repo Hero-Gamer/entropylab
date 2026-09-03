@@ -33,7 +33,7 @@ import { wordlist as bip39English } from "./bip39-english.js";
 import { initPsbtEditor } from "./psbt-editor.js";
 import { renderSVG as hodlUqrRenderSvg } from "uqr";
 import { BIP39_LANGUAGE_ENGLISH, BIP85_APPS, bip85Path, deriveApplication, parseChildIndex, wipeBip85Result, wipeBytes as hodlWipeBytes } from "./bip85.js";
-import { VANITY_SCRIPTS, VanityGrinder, estimateVanityWork, validateVanityPrefix, validateVanityRange, validateVanitySalt, vanitySessionSalt } from "./vanity.js";
+import { VANITY_SCRIPTS, VanityGrinder, estimateVanityWork, validateVanityPrefix, validateVanityRange, validateVanitySalt } from "./vanity.js";
 import { t as hodlT, hodlInitLocale, hodlFillLocaleSelect, hodlGetLocale } from "./i18n.js";
 import {
   METHOD_LABELS as hodlJournalMethodLabels,
@@ -646,17 +646,16 @@ hodlRootEl.innerHTML = `
       <section class="card no-print" id="vanity-card" role="tabpanel" hidden>
         <div class="wallet-result-messages" role="note">
           <ul>
-            <li class="is-warning">Vanity passphrases are brain wallets: with an empty or guessable salt, anyone grinding the same counter space finds the same keys and takes the coins. Import session entropy or type a strong salt first.</li>
+            <li class="is-warning">Vanity passphrases are brain wallets: with an empty or guessable salt, anyone grinding the same counter space finds the same keys and takes the coins. Bring in a Key Station passphrase or type a strong salt first.</li>
             <li class="is-warning">A vanity key is a single key, not an HD wallet. Paste a found passphrase into Keys \u2192 Private key \u2192 Brain-wallet text to see every script type and the WIF.</li>
           </ul>
         </div>
         <div class="station-key-source">
-          <p class="label">Entropy for this grind</p>
-          <div class="row vanity-entropy-actions">
-            <button class="btn secondary" id="vanity-import" type="button">Import from the Keys tab</button>
-          </div>
+          <p class="label">Bring in a passphrase from Key Station</p>
+          <div class="session-key-picker" id="vanity-session-keys" role="group" aria-label="Key Station keys with a passphrase" hidden></div>
+          <p class="field-note">Choose a Key Station key to grind on its passphrase, or type a salt below. The salt is used verbatim \u2014 every candidate is the salt plus the counter characters, never a rehash of anything else.</p>
           <label class="field">Salt (kept in page memory)
-            <input id="vanity-salt" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Type a salt, or import the session's entropy" aria-describedby="vanity-salt-note">
+            <input id="vanity-salt" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Type a salt, or pick a Key Station key above" aria-describedby="vanity-salt-note">
             <span class="field-note" id="vanity-salt-note">No salt \u2014 candidates use the public counter mapping, and anyone grinding the same space finds the same keys.</span>
           </label>
         </div>
@@ -7653,10 +7652,9 @@ function hodlSessionMsigKeys() {
 function hodlSessionHdRootKeys() {
   return hodlKeys.filter((state) => !state.isLab && state.result?.kind === "hd" && (state.result.mnemonic || state.result.rootXprv));
 }
-function hodlFillStationKeyPicker(id, selectedSource, onSelect) {
+function hodlFillStationKeyPicker(id, selectedSource, onSelect, keys = hodlSessionHdRootKeys()) {
   let box = document.getElementById(id);
   if (!box) return;
-  let keys = hodlSessionHdRootKeys();
   box.replaceChildren();
   box.hidden = !keys.length;
   keys.forEach((state) => {
@@ -7681,6 +7679,7 @@ function hodlFillStationKeyPicker(id, selectedSource, onSelect) {
 function hodlRefreshStationKeyPickers() {
   hodlFillStationKeyPicker("bip85-session-keys", hodlBip85Source, hodlPickBip85SessionKey);
   hodlFillStationKeyPicker("sp-session-keys", hodlSpSource, hodlPickSpSessionKey);
+  hodlFillStationKeyPicker("vanity-session-keys", hodlVanitySaltSource, hodlPickVanitySessionKey, hodlVanitySourceKeys());
 }
 function hodlMatchingMsigExport(result) {
   if (!result?.multisigCosignerExports?.length) return "";
@@ -11313,6 +11312,9 @@ function hodlShowWorkspace(id) {
     hodlRenderBip85Tabs();
     hodlSyncBip85View();
     hodlBip85SyncOptions();
+  } else if (id === "vanity") {
+    // Keys may have gained or lost passphrases since the picker last filled.
+    hodlFillStationKeyPicker("vanity-session-keys", hodlVanitySaltSource, hodlPickVanitySessionKey, hodlVanitySourceKeys());
   }
   if (hodlWorkspaceScrollFrame) cancelAnimationFrame(hodlWorkspaceScrollFrame);
   window.scrollTo(preservedLeft, preservedTop);
@@ -12106,20 +12108,44 @@ function hodlSyncWorkspaceOverflow() {
 // The engine (src/js/vanity.js + vanity-wasm) is a calculator: a counter maps
 // to a base-62 odometer passphrase, SHA-256 makes it a private key, and the
 // selected mainnet address type is checked against the user's prefix. The
-// salt — typed here or imported from the Keys tab — prefixes every candidate,
-// so a found passphrase is salt + counter characters and replays by hand.
-var hodlVanityGrinder = null, hodlVanityMatches = [], hodlVanityFound = 0, hodlVanityRunning = false, hodlVanityReveal = false, hodlVanityDisplayLimit = 100, hodlVanitySaltMode = "", hodlVanityResultSaltMode = "";
-// The active key's entropy inputs, in a fixed order, plus its private-key
-// fields — the inputs the digest salt commits to, so the same counters
-// reproduce only while those inputs stay unchanged.
-var hodlVanitySaltFields = ["dice", "bitboxDice", "dplusDice", "hex", "bin", "base4", "base8", "base32", "base64", "cards", "directCards", "seed", "seedNumbers", "brainLab", "key"];
-function hodlVanitySessionSalt() {
-  let fields = hodlKeys[hodlActiveKey]?.fields || {};
-  let values = hodlVanitySaltFields.map((id) => String(fields[id] ?? ""));
-  let privateKeys = fields.privateKeys || {};
-  for (let kind of hodlPrivateKeyKinds) values.push(String(privateKeys[kind] ?? ""));
-  let salt = vanitySessionSalt(fields.pass, values);
-  return { salt, mode: String(fields.pass ?? "").length ? "passphrase" : salt.length ? "digest" : "" };
+// salt prefixes every candidate verbatim — it is the user's own text, typed
+// here or brought in from a Key Station key's passphrase with one click, and
+// is never hashed or transformed first — so a found passphrase is the salt
+// followed by the counter characters and replays by hand.
+var hodlVanityGrinder = null, hodlVanityMatches = [], hodlVanityFound = 0, hodlVanityRunning = false, hodlVanityReveal = false, hodlVanityDisplayLimit = 100, hodlVanitySaltMode = "", hodlVanityResultSaltMode = "", hodlVanityResultSaltLabel = "", hodlVanitySaltSource = "";
+// The picker offers every Key Station tab that currently holds a passphrase —
+// including the scratch Station itself, which can hold one before any derive;
+// the grind only needs the passphrase text, never a derived result. The chip
+// identifies the key by its master fingerprint (or its tab name before the
+// first derive), same as the BIP-85 and Silent Payments pickers.
+function hodlVanitySourceKeys() {
+  return hodlKeys.filter((state) => String(state?.fields?.pass ?? "").length > 0);
+}
+function hodlVanitySaltSourceLabel() {
+  let state = hodlKeys.find((candidate) => "key:" + candidate.id === hodlVanitySaltSource);
+  return state ? state.result?.masterFingerprint || state.name || "Key " + state.number : "";
+}
+function hodlPickVanitySessionKey(state) {
+  let error = document.getElementById("vanity-error"), field = document.getElementById("vanity-salt");
+  if (error) error.textContent = "";
+  if (!field || !state) return;
+  // The passphrase is read fresh at pick time and copied verbatim — the grind
+  // extends exactly the user's text, character by character.
+  let pass = String(state.fields?.pass ?? "");
+  if (!pass.length) {
+    if (error) error.textContent = "That Key Station key has no passphrase right now — enter one on the Keys tab, or type a salt below.";
+    return;
+  }
+  try {
+    field.value = validateVanitySalt(pass);
+  } catch (exception) {
+    if (error) error.textContent = exception.message || String(exception);
+    return;
+  }
+  hodlVanitySaltMode = "key";
+  hodlVanitySaltSource = "key:" + state.id;
+  hodlVanitySyncSaltNote();
+  hodlRefreshStationKeyPickers();
 }
 function hodlVanityScript() {
   return VANITY_SCRIPTS[document.getElementById("vanity-script")?.value] ?? VANITY_SCRIPTS.p2wpkh;
@@ -12140,40 +12166,20 @@ function hodlVanitySyncScriptNote() {
   if (help) help.textContent = meta.bech32 ? `${meta.label} prefix, starts with “${meta.prefix}”. Live-filtered to lowercase bech32 characters; each free character multiplies the work by ~32.` : `${meta.label} prefix, starts with “${meta.prefix}”. Live-filtered to base58 characters; each free character multiplies the work by ~58.`;
   if (input) input.placeholder = `${meta.prefix}…`;
 }
-// The salt note states plainly what currently salts the grind: an imported
-// passphrase or entropy digest, text typed here, or nothing (public mapping).
+// The salt note states plainly what currently salts the grind: a Key Station
+// passphrase brought in verbatim, text typed here, or nothing (public
+// mapping). The grind extends that text — it never rehashes it.
 function hodlVanitySyncSaltNote() {
   let note = document.getElementById("vanity-salt-note");
   if (!note) return;
   if (document.getElementById("vanity-salt")?.value.length) {
-    note.textContent = hodlVanitySaltMode === "passphrase"
-      ? "Salted with the Keys tab passphrase, imported verbatim — a found passphrase is that passphrase followed by the counter characters."
-      : hodlVanitySaltMode === "digest"
-        ? "Salted with a SHA-256 digest of the Keys tab entropy inputs — the same counters reproduce these addresses only while those inputs stay unchanged."
-        : "Salted with the text above exactly as typed — same salt and counter always reproduce the same key.";
+    let label = hodlVanitySaltSourceLabel();
+    note.textContent = hodlVanitySaltMode === "key" && label
+      ? `Salted with the passphrase of Key Station key ${label}, copied verbatim — a found passphrase is that passphrase followed by the counter characters.`
+      : "Salted with the text above exactly as typed — a found passphrase is that text followed by the counter characters.";
     return;
   }
   note.textContent = "No salt — candidates use the public counter mapping, and anyone grinding the same space finds the same keys.";
-}
-function hodlVanityImport() {
-  let error = document.getElementById("vanity-error"), field = document.getElementById("vanity-salt");
-  if (error) error.textContent = "";
-  if (!field) return;
-  // Import reads the active key's saved state, not whichever method form is
-  // currently on screen, so entropy entered under any method comes along.
-  let { salt, mode } = hodlVanitySessionSalt();
-  if (!salt.length) {
-    if (error) error.textContent = "The active Keys tab holds no entropy to import — enter dice rolls, a seed, a passphrase, or a private key there first.";
-    return;
-  }
-  try {
-    field.value = validateVanitySalt(salt);
-  } catch (exception) {
-    if (error) error.textContent = exception.message || String(exception);
-    return;
-  }
-  hodlVanitySaltMode = mode;
-  hodlVanitySyncSaltNote();
 }
 function hodlVanityEstimate() {
   let estimateEl = document.getElementById("vanity-estimate"), input = document.getElementById("vanity-prefix"), scriptId = document.getElementById("vanity-script")?.value ?? "p2wpkh";
@@ -12254,7 +12260,7 @@ function hodlRenderVanityOut() {
     return `<tr><th scope="row">${index + 1}</th><td class="mono">${match.counter.toString()}</td><td><span class="vanity-secret">${secret}<button type="button" class="seed-phrase-copy" data-vanity-copy="${index}" aria-label="Copy passphrase" title="Copy passphrase">${hodlClipboardIconMarkup()}</button><span class="vanity-copied muted" aria-live="polite"></span></span></td><td><span class="vanity-secret"><span class="mono">${hodlEscapeHtml(match.address)}</span><button type="button" class="seed-phrase-copy" data-vanity-copy-address="${index}" aria-label="Copy address" title="Copy address">${hodlClipboardIconMarkup()}</button><span class="vanity-copied muted" aria-live="polite"></span></span></td></tr>`;
   }).join("");
   let overflow = hodlVanityFound > hodlVanityMatches.length ? `<p class="muted">Only the first ${hodlVanityMatches.length} matches are listed; ${hodlVanityFormatCount(hodlVanityFound)} found in total.</p>` : "";
-  let saltNote = hodlVanityResultSaltMode === "passphrase" ? " Passphrases are the Keys tab passphrase followed by the counter characters; the same counters reproduce these addresses only while that passphrase stays unchanged." : hodlVanityResultSaltMode === "digest" ? " Passphrases begin with a SHA-256 digest of the Keys tab entropy inputs; the same counters reproduce these addresses only while those inputs stay unchanged." : hodlVanityResultSaltMode === "custom" ? " Passphrases are the salt above followed by the counter characters." : " No salt was set: these passphrases are the public counter mapping — anyone grinding the same space finds the same keys.";
+  let saltNote = hodlVanityResultSaltMode === "key" ? ` Passphrases are the imported Key Station passphrase${hodlVanityResultSaltLabel ? ` (${hodlEscapeHtml(hodlVanityResultSaltLabel)})` : ""} followed by the counter characters; the same counters reproduce these addresses only while that passphrase text stays as it was.` : hodlVanityResultSaltMode === "custom" ? " Passphrases are the salt above followed by the counter characters, exactly as typed." : " No salt was set: these passphrases are the public counter mapping — anyone grinding the same space finds the same keys.";
   box.innerHTML = `<section class="wallet-data-section wallet-private-section" aria-labelledby="vanity-matches-heading">
       <div class="wallet-data-section-head"><h3 id="vanity-matches-heading">Matching addresses</h3>
       <p class="muted" id="vanity-matches-description">Each passphrase reproduces its address (SHA-256 → ${hodlEscapeHtml(meta.label)}, brain-wallet convention). Anyone who finds the same passphrase takes the coins.${hodlEscapeHtml(saltNote)}</p></div>
@@ -12301,6 +12307,7 @@ function hodlVanityClearResults(status = "Idle. No range has been ground this se
   hodlVanityFound = 0;
   hodlVanityReveal = false;
   hodlVanityResultSaltMode = "";
+  hodlVanityResultSaltLabel = "";
   hodlRenderVanityOut();
   hodlVanitySetStatus(status);
   hodlVanitySyncControls();
@@ -12327,11 +12334,12 @@ function hodlRunVanity() {
   hodlVanityFound = 0;
   // The run's salt is fixed at start; snapshot its description so the results
   // note cannot drift if the field is edited mid-grind.
-  hodlVanityResultSaltMode = hodlVanitySaltMode;
+  hodlVanityResultSaltMode = inputs.salt ? hodlVanitySaltMode : "";
+  hodlVanityResultSaltLabel = hodlVanityResultSaltMode === "key" ? hodlVanitySaltSourceLabel() : "";
   hodlRenderVanityOut();
   hodlVanityRunning = true;
   hodlVanitySyncControls();
-  hodlVanitySetStatus(inputs.salt ? "Starting workers — candidates are prefixed with the salt…" : "Starting workers — no salt: candidates use the public counter mapping…");
+  hodlVanitySetStatus(inputs.salt ? "Starting workers — each candidate extends the salt with the counter characters…" : "Starting workers — no salt: candidates use the public counter mapping…");
   let progressBar = document.getElementById("vanity-progress");
   hodlVanityGrinder = new VanityGrinder({
     onProgress: ({ done, total, rate }) => {
@@ -12376,11 +12384,13 @@ function hodlInitVanity() {
   go.onclick = hodlRunVanity;
   document.getElementById("vanity-stop").onclick = hodlVanityStop;
   document.getElementById("vanity-wipe").onclick = () => hodlVanityClearResults();
-  document.getElementById("vanity-import").onclick = hodlVanityImport;
   let salt = document.getElementById("vanity-salt");
   salt?.addEventListener("input", () => {
+    // Hand-editing the salt severs the link to a picked Key Station key.
     hodlVanitySaltMode = salt.value.length ? "custom" : "";
+    hodlVanitySaltSource = "";
     hodlVanitySyncSaltNote();
+    hodlRefreshStationKeyPickers();
   });
   let prefix = document.getElementById("vanity-prefix");
   prefix.addEventListener("input", () => {
@@ -12418,6 +12428,7 @@ function hodlInitVanity() {
   hodlVanitySyncSaltNote();
   hodlVanityEstimate();
   hodlVanitySyncControls();
+  hodlFillStationKeyPicker("vanity-session-keys", hodlVanitySaltSource, hodlPickVanitySessionKey, hodlVanitySourceKeys());
 }
 function hodlInitWorkspace() {
   let box = hodlElement("#workspace");
@@ -12773,14 +12784,16 @@ function hodlInitSecretFieldAutoClear() {
     if (spVerifyVins) spVerifyVins.value = "";
     if (spVerifyOutputs) spVerifyOutputs.value = "";
     if (spLabel) spLabel.value = "";
-    // Found vanity passphrases and the imported salt are private key material;
-    // stop the grinder and drop them too.
+    // Found vanity passphrases and the brought-in salt are private key
+    // material; stop the grinder and drop them too.
     hodlVanityCancel();
     hodlVanityMatches = [];
     hodlVanityFound = 0;
     hodlVanityReveal = false;
     hodlVanitySaltMode = "";
     hodlVanityResultSaltMode = "";
+    hodlVanityResultSaltLabel = "";
+    hodlVanitySaltSource = "";
     let vanitySalt = document.getElementById("vanity-salt"), vanityOut = document.getElementById("vanity-out"), vanityError = document.getElementById("vanity-error"), vanityStatus = document.getElementById("vanity-status");
     if (vanitySalt) vanitySalt.value = "";
     if (vanityOut) vanityOut.innerHTML = "";
@@ -12788,6 +12801,9 @@ function hodlInitSecretFieldAutoClear() {
     if (vanityStatus) vanityStatus.textContent = "Idle. No range has been ground this session.";
     hodlVanitySyncSaltNote();
     hodlVanitySyncControls();
+    // The keys above were just reset, so their passphrases (and thus the
+    // vanity picker's chips) are gone too.
+    hodlRefreshStationKeyPickers();
     // The <pre> mirrors behind each input hold a second live copy of whatever
     // was typed (dice rolls, seed words, passphrase, private key).
     document.querySelectorAll(".dice-input-highlight").forEach((highlight) => {

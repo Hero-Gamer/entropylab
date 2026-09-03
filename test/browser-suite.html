@@ -939,13 +939,30 @@
   });
 
   await test("the Vanity tab grinds a known prefix end to end and masks the passphrase", async () => {
+    // A Key Station passphrase is brought in through the same clickable chip
+    // picker BIP-85 and Silent Payments use, and it salts the grind verbatim.
+    input(document.getElementById("pass"), "correct horse battery staple");
+    document.querySelector('#workspace [data-workspace="vanity"]').click();
+    await until(() => !document.getElementById("vanity-card").hidden, "Vanity tool to open");
+    await until(() => document.querySelector("#vanity-session-keys .session-key-option"), "the Key Station chip to appear for a key with a passphrase");
+    const chip = document.querySelector("#vanity-session-keys .session-key-option");
+    chip.click();
+    await wait(0);
+    const saltField = document.getElementById("vanity-salt");
+    assert(saltField.value === "correct horse battery staple", "the chip copies the key's passphrase verbatim, never a rehash");
+    assert(document.getElementById("vanity-salt-note").textContent.includes("Key Station key"), "the salt note names the source key");
+    // The picker re-renders on pick, so re-query rather than reusing the chip.
+    assert(document.querySelector("#vanity-session-keys .session-key-option").classList.contains("active"), "the picked chip shows active");
+    // Clearing the field by hand severs the link and restores the warning.
+    input(saltField, "");
+    await wait(0);
+    assert(!document.querySelector("#vanity-session-keys .session-key-option.active"), "hand-editing the salt clears the chip's active state");
+    assert(document.getElementById("vanity-salt-note").textContent.startsWith("No salt"), "cleared salt restores the public-mapping warning");
     // Counter 0 / passphrase "a" derives the pinned P2PKH address
     // 14dD6ygPi5WXdwwBTt1FBZK3aD8uDem1FY (see test/vanity-wasm.test.mjs), so a
     // one-character space with prefix "14" must hit it. This exercises the
     // whole browser path: the blob-URL worker under the CSP, the WASM module
     // instantiated inside the worker, the match protocol, and the rendering.
-    document.querySelector('#workspace [data-workspace="vanity"]').click();
-    await until(() => !document.getElementById("vanity-card").hidden, "Vanity tool to open");
     const script = document.getElementById("vanity-script");
     script.value = "p2pkh";
     script.dispatchEvent(new Event("change", { bubbles: true }));
@@ -972,6 +989,8 @@
     await until(() => !document.querySelector("#vanity-out table"), "Clear results to drop the table");
     document.querySelector('#workspace [data-workspace="calc"]').click();
     await until(() => !document.getElementById("key-manager").hidden, "key workspace");
+    // Leave no passphrase behind for the derivation tests that follow.
+    input(document.getElementById("pass"), "");
   });
   await test("Journal notepad stamps notes, session state captures, and the log omits secrets", async () => {
     document.querySelector('#workspace [data-workspace="journal"]').click();

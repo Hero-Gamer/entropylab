@@ -1185,7 +1185,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 @media (min-width: 720px) {
   .vanity-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 }
-.vanity-entropy-actions { margin-bottom: 4px; }
 .vanity-secret { display: inline-flex; align-items: center; gap: 6px; }
 .vanity-secret .seed-phrase-copy { flex: 0 0 auto; }
 .psbt-kv { font-family: var(--mono); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }

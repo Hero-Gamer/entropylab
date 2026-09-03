@@ -120,8 +120,9 @@ material. Its security posture rests on the following model:
   convention), so it invents no entropy — but every found passphrase is a
   brain wallet. With no salt (or a guessable one), the counter space is
   public and anyone grinding the same range finds the same keys; the tab
-  warns and offers to salt the grind with entropy imported from the Keys
-  tab. Found passphrases live only in page memory, are masked until
+  warns and offers to salt the grind with a Key Station passphrase, brought
+  in verbatim (never rehashed) through the same chip picker as the other
+  tools. Found passphrases live only in page memory, are masked until
   revealed, and are dropped by the same pagehide/bfcache clearing as every
   other secret.
 - BIP-85 children are a deterministic transformation of the parent BIP32 root,

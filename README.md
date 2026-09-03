@@ -106,10 +106,12 @@ Official website: [entropylab.online](https://entropylab.online)
   key (the brain-wallet convention), and the selected mainnet address type
   (legacy, nested SegWit, native SegWit, or Taproot) is checked against the
   chosen prefix. The grind runs in a dedicated WebAssembly module, one Web
-  Worker per CPU core, and can be salted with entropy imported from the Keys
-  tab — same salt and counter always reproduce the same key, so nothing is
-  invented. Found passphrases stay in page memory, are masked until revealed,
-  and are wiped with the session.
+  Worker per CPU core, and the salt is the user's own text used verbatim — a
+  Key Station passphrase brought in with one click (the same chip picker as
+  BIP-85 and Silent Payments) or typed on the tab — so a found passphrase is
+  the salt followed by the counter characters: same salt and counter always
+  reproduce the same key, and nothing is invented. Found passphrases stay in
+  page memory, are masked until revealed, and are wiped with the session.
 - A session **Journal** (last workspace tab) holds an encrypted **Entropy
   Journal** notebook, a notepad stamped with this computer's date and time,
   an editable summary of everything derived in this sitting, and a debug log

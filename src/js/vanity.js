@@ -7,20 +7,18 @@
 // counter, same address — so this is a calculator over a user-chosen range,
 // not an entropy source.
 //
-// Session salt: when the Keys tab holds a passphrase, that passphrase itself
-// prefixes every candidate (vanitySessionSalt below), so a found passphrase
-// is the session's passphrase followed by the counter characters and
-// reproduces from the passphrase alone. With no passphrase but entropy
-// entered, the SHA-256 hex digest of those inputs prefixes every candidate
-// instead — the digest, never the inputs themselves, crosses into workers
-// and appears in found passphrases.
+// Session salt: the salt prefixes every candidate verbatim, so a found
+// passphrase is the salt followed by the counter characters and reproduces
+// from the salt alone. The salt is the user's own text — typed on the tab or
+// a Key Station passphrase brought in with one click — and is never hashed,
+// stretched, or otherwise transformed before it prefixes candidates.
 //
 // Buckets: the counter space splits into contiguous ranges, and because the
 // encoding is an odometer, each range is a bucket of passphrases sharing
 // leading characters. One Web Worker grinds one range at a time; workers are
 // spawned from an inline Blob source so the shipped file stays self-contained
 // (CSP worker-src blob:).
-import { sha256, hash160 } from "./hashes.js";
+import { hash160 } from "./hashes.js";
 import { addressFromScript } from "./addresses.js";
 import { VANITY_WASM_B64 } from "./vanity-wasm-b64.js";
 import { VANITY_WORKER_SOURCE } from "./vanity-worker.js";
@@ -38,8 +36,6 @@ export const VANITY_SCRIPTS = Object.freeze({
 });
 // The Rust counter is a u64, so the addressable space saturates at u64::MAX.
 const COUNTER_LIMIT = (1n << 64n) - 1n;
-
-const bytesToHex = (bytes) => [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 
 // Decoded once on the main thread; each worker receives its own copy and
 // instantiates privately (no shared memory — works without cross-origin
@@ -75,23 +71,8 @@ export function validateVanityPrefix(prefix, script = "p2pkh") {
 // (MAX_SALT_LEN in vanity-wasm/src/lib.rs, MAX_SALT in vanity-worker.js).
 export const VANITY_MAX_SALT_LEN = 256;
 
-// Session salt for a grind: the session's passphrase verbatim when one is
-// entered, so a found passphrase is that passphrase followed by the counter
-// characters and reproduces from the passphrase alone. With no passphrase,
-// fall back to the SHA-256 hex digest of the session's non-empty entropy
-// inputs in the caller's fixed order — empty inputs are dropped, so the
-// digest only changes when an actual value does. With no inputs at all the
-// salt is empty and counters map to the public odometer passphrases.
-export function vanitySessionSalt(passphrase, values = []) {
-  const pass = String(passphrase ?? "");
-  if (pass.length) return pass;
-  const list = [...values].map((value) => String(value ?? "")).filter((value) => value.length > 0);
-  if (!list.length) return "";
-  return bytesToHex(sha256(new TextEncoder().encode(JSON.stringify(list))));
-}
-
-// A verbatim passphrase can run past the WASM salt buffer, so check before
-// spawning workers instead of failing mid-grind.
+// A long salt can run past the WASM salt buffer, so check before spawning
+// workers instead of failing mid-grind.
 export function validateVanitySalt(salt) {
   const text = String(salt ?? "");
   const length = new TextEncoder().encode(text).length;
@@ -179,9 +160,8 @@ const spawnBlobWorker = () => {
 // and terminates the pool when the run completes, is stopped, or fails.
 // Callbacks: onProgress({ done, total, rate }), onMatch({ counter, passphrase,
 // address }), onDone({ done, stopped, found }), onError(message). The reported
-// passphrase is the full brain-wallet passphrase: `salt` (the session's
-// passphrase verbatim, or the entropy digest fallback; default "") followed
-// by the counter odometer string.
+// passphrase is the full brain-wallet passphrase: `salt` (default "")
+// followed by the counter odometer string.
 // `spawn` is the worker factory; it is injectable so the test suite can run
 // this pool under node:worker_threads (which has no Blob URLs).
 export class VanityGrinder {

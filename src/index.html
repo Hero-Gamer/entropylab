@@ -218,17 +218,16 @@ words, pick one of the checksum words.</span></span>
       <section class="card no-print" id="vanity-card" role="tabpanel" hidden>
         <div class="wallet-result-messages" role="note">
           <ul>
-            <li class="is-warning">Vanity passphrases are brain wallets: with an empty or guessable salt, anyone grinding the same counter space finds the same keys and takes the coins. Import session entropy or type a strong salt first.</li>
+            <li class="is-warning">Vanity passphrases are brain wallets: with an empty or guessable salt, anyone grinding the same counter space finds the same keys and takes the coins. Bring in a Key Station passphrase or type a strong salt first.</li>
             <li class="is-warning">A vanity key is a single key, not an HD wallet. Paste a found passphrase into Keys → Private key → Brain-wallet text to see every script type and the WIF.</li>
           </ul>
         </div>
         <div class="station-key-source">
-          <p class="label">Entropy for this grind</p>
-          <div class="row vanity-entropy-actions">
-            <button class="btn secondary" id="vanity-import" type="button">Import from the Keys tab</button>
-          </div>
+          <p class="label">Bring in a passphrase from Key Station</p>
+          <div class="session-key-picker" id="vanity-session-keys" role="group" aria-label="Key Station keys with a passphrase" hidden></div>
+          <p class="field-note">Choose a Key Station key to grind on its passphrase, or type a salt below. The salt is used verbatim — every candidate is the salt plus the counter characters, never a rehash of anything else.</p>
           <label class="field">Salt (kept in page memory)
-            <input id="vanity-salt" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Type a salt, or import the session's entropy" aria-describedby="vanity-salt-note">
+            <input id="vanity-salt" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Type a salt, or pick a Key Station key above" aria-describedby="vanity-salt-note">
             <span class="field-note" id="vanity-salt-note">No salt — candidates use the public counter mapping, and anyone grinding the same space finds the same keys.</span>
           </label>
         </div>

@@ -106,10 +106,36 @@ Official website: [entropylab.online](https://entropylab.online)
   root xprv, including labeled codes, BIP-392 `spscan` / `spspend` descriptors,
   sender taproot outputs from pasted vin JSON, and receiver verification of
   pasted x-only outputs. This is a calculator: it does not scan the chain.
+- Grinds vanity addresses for a Key Station key (Vanity tab), picked through
+  the same chip picker as BIP-85 and Silent Payments. Two methods: the
+  **passphrase grind** extends the key's BIP39 passphrase with base-62
+  odometer counter characters, the **derivation grind** keeps the passphrase
+  and steps through BIP32 account indexes. Every candidate is derived the
+  standard way (PBKDF2 seed, BIP32 path — the key's own purpose, account,
+  branch, and address index) in a dedicated WebAssembly module, one Web Worker
+  per CPU core, and its mainnet address of the selected type (legacy, nested
+  SegWit, native SegWit, Taproot, or a BIP-352 Silent Payment code) is checked
+  against the chosen prefix. A short timing sample on tab entry (fixed
+  published constants, never the session's keys) turns the odds into an
+  expected time to a match, and **Stop on first find** halts the grind at the
+  first hit. Same key and counter always reproduce the same
+  address, so nothing is invented; **Update key** writes a found passphrase or
+  account index back to the key and re-derives it, so the Keys tab, its
+  exports, and the Journal show the vanity wallet. Found passphrases stay in
+  page memory, are masked until revealed, and are wiped with the session.
 - A session **Journal** (last workspace tab) holds an encrypted **Entropy
   Journal** notebook, a notepad stamped with this computer's date and time,
-  an editable summary of everything derived in this sitting, and a debug log
-  of tool switches and derives (fingerprints, not seeds). The notebook keeps
+  a live summary of everything derived in this sitting, and a debug log
+  of tool switches and derives (fingerprints, not seeds). Its introduction
+  remains above the Journal controls. Notepad, Session state, and Session log
+  stay visible but disabled until the user creates a journal with a valid
+  password or successfully opens an existing journal; the create/open gate
+  then disappears and the Journal starts on Notepad. The create form reports
+  password length and confirmation matches live without exposing what was
+  typed. Journal-wide **Download journal** and **Clear journal** actions stay
+  below the introduction once a journal is unlocked; clearing wipes the
+  encrypted entries, notepad, session snapshot, and log from page memory and
+  returns to the create/open gate. The notebook keeps
   entropy the user already produced — dice, coins, hex, brain-wallet text, or
   a seed — under AES-256-GCM; the key is PBKDF2-SHA-256 (600,000 rounds) of a
   password the user chooses, with the salt derived from the password itself
@@ -119,6 +145,45 @@ Official website: [entropylab.online](https://entropylab.online)
   to keep it. Closing the page discards the sitting. The notebook is a
   calculator companion, not a password manager: it only stores material the
   user generated themselves.
+  The Journal also includes a paged notepad. Pages use
+  the Key Station's numbered naming convention, can be added or removed with
+  the +/− controls, and can be renamed by activating the selected page again
+  or pressing F2. Default names such as `Page 1` shorten to `P1` in narrow
+  windows. A responsive control row below the editor sets each page's
+  typeface, text size, and line spacing. Its key picker lists the currently
+  derived Key Station keys with their LifeHashes; choosing one inserts a
+  public inline reference with a line-height LifeHash and master fingerprint.
+  Downloads in all three Journal tabs use the unlocked journal password by
+  default. Their matching checkboxes stay synchronized, so one change applies
+  to Notepad, Session state, and Session log; unchecking exports the original
+  plain JSON or text. Notepad can upload either its plain notebook JSON or its
+  password-encrypted export while that journal is unlocked.
+  Each page opens
+  with a live local timestamp and freezes it when note text is entered. Delete
+  the note back to its timestamp to return to the live new-note prompt. Press
+  Enter after a note to open the next live timestamp and prompt. Press Enter on
+  that empty prompt to leave an unstamped blank line and move a fresh live
+  prompt to the line below. Delete at the empty prompt moves it back through
+  those blank lines; once it reaches a completed note, the empty timestamp and
+  prompt disappear and the caret returns to that note's end. Clicking any blank
+  line moves an untouched live note there, or inserts a new live note there if
+  the last note is already written; dragging across blank lines only selects
+  them. Deleting a selected bottom section opens a live prompt on the blank line
+  left at the caret. Clicking a written note cancels an untouched pending note
+  and keeps the caret where clicked. Moving the pointer over the editor briefly
+  reveals its clipboard button at the right edge; the same control is reachable
+  from the keyboard and copies the active page as readable text. **Download notebook** writes versioned
+  UTF-8 JSON containing page names, styles, and structured text/key runs; it
+  stores only the key's display name and public fingerprint, then regenerates
+  the LifeHash locally when that file is uploaded in a later session. Older
+  `.txt` notes can also be uploaded as a single page. The Journal also holds
+  a read-only summary that updates as the sitting changes and a debug log of
+  meaningful dashboard actions: tool and station changes, calculations and
+  failures, safe setting changes, copies, imports, downloads, clears, and PSBT
+  structural edits. The log records public fingerprints where useful, but never
+  secret-field values, filenames, note bodies, PSBT bytes, or individual entry
+  keystrokes. It can be copied from its output field or downloaded. Nothing is stored in the
+  browser; download a file to keep it. Closing the page discards the sitting.
 - Runs a quick barrage of startup sanity checks on the host browser (secure
   context, CSPRNG, BigInt, UTF-8 encoding, NFKD, and WebAssembly). If any
   check fails, the page is replaced with a failure report listing the failed

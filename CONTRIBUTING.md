@@ -64,7 +64,7 @@ browser test that asserts this must stay green.
   `entropylab.html`).
 
 ```sh
-git clone https://github.com/w-s-bitcoin/entropylab.git && cd entropylab
+git clone https://github.com/OogaBoogaX/entropylab.git && cd entropylab
 node --version   # >= 20.19
 npm ci
 npm run build    # src/ → entropylab.html
@@ -123,7 +123,11 @@ image, so `npm ci` and `npm run build:wasm` work without further downloads.
   ([SECURITY.md](SECURITY.md)), not as public issues.
 - **License:** public domain ([LICENSE](LICENSE)). By opening a pull request
   you confirm your contribution can be public domain; if not, open an issue
-  instead.
+  instead. Exception: `src/js/lifehash.js` is an adaptation of the LifeHash
+  reference implementations and is *not* public domain — the MIT
+  (AndreasGassmann/lifehash) and BSD-2-Clause-Patent
+  (BlockchainCommons/bc-lifehash) notices in its header must be preserved in
+  copies and derivative works, including the built `entropylab.html`.
 
 ## A final sanity check
 

@@ -4,7 +4,7 @@
 
 Only the most recent release receives security fixes. Users are encouraged to
 always use the latest version, available from the
-[releases page](https://github.com/w-s-bitcoin/entropylab/releases) and the
+[releases page](https://github.com/OogaBoogaX/entropylab/releases) and the
 [official website](https://entropylab.online).
 
 | Version | Supported          |
@@ -85,6 +85,31 @@ material. Its security posture rests on the following model:
   the transaction.
 - OP_RETURN detection is a parser of output scripts. It does not create
   data-carrier outputs, assign protocol meaning, or contact an indexer.
+- The published `CID.txt` is CIDv1 (raw, sha2-256) of the release
+  `entropylab.html` — the same digest as `SHA256SUMS.txt`, written as an IPFS
+  name. The calculator never speaks IPFS: no node, no gateway, no IPNS, no
+  `fetch`. Retrieving the file by CID is an online-machine step; verify
+  `SHA256SUMS.txt` before moving the HTML onto an air-gapped computer. Do not
+  publish seeds, xprvs, or other private material to IPFS.
+- The session Journal (notepad, session snapshot, session log) lives only in
+  this page's memory. It is never written to `localStorage`, IndexedDB, or the
+  network. Closing or hiding the page discards it with the other secret
+  fields. Downloads from all three tabs reuse the unlocked Entropy Journal
+  keys and are password-encrypted by default; the synchronized checkbox can
+  explicitly switch them back to plain JSON or text. The log records tool
+  names, timestamps, and fingerprints — not seed phrases, xprvs, or typed
+  secrets.
+- The Entropy Journal notebook is an encrypted notebook of entropy the user
+  already produced, not a password manager and not a key generator. The
+  AES-256-GCM key is PBKDF2-SHA-256 (600,000 rounds) of a password the user
+  types, with the salt derived from the password itself; the IV is
+  HMAC-SHA-256 of the plaintext under a second derived key. The file is
+  therefore a deterministic function of the password and the entries — the
+  journal never calls a CSPRNG. The trade-off is brute-force cost: anyone
+  holding the file can test passwords at 600,000 SHA-256 rounds per guess, so
+  the password needs real length. The plaintext never goes to localStorage,
+  IndexedDB, or the network. Anyone with the file and the journal password
+  can read every entry.
 - Low-entropy dice and card transcripts are accepted intentionally so the
   calculator can be used for deterministic tests, demonstrations, and
   recovery experiments. EntropyLab does not claim that hashing a short input
@@ -99,6 +124,18 @@ material. Its security posture rests on the following model:
   as a Bitcoin Core private key, and it is not a backup of a Core hdseed or
   address key. The private-key brain-wallet mode remains a separate scalar
   path.
+- The vanity grinder (Vanity tab) is deterministic and works only on a Key
+  Station key: a counter either extends that key's BIP39 passphrase (base-62
+  odometer characters) or selects its BIP32 account index, and every
+  candidate is derived the standard way (PBKDF2 seed, BIP32 path), so it
+  invents no entropy and every result is a setting of a wallet the user
+  already holds. A found passphrase is still a BIP39 passphrase: the words
+  alone no longer recover the wallet, and the tab says so before Update key
+  writes it back to the key. The key's seed words (passphrase grind) or the
+  parent node above the account (derivation grind) are handed to the page's
+  own Web Workers and wiped with the run. Found passphrases live only in page
+  memory, are masked until revealed, and are dropped by the same
+  pagehide/bfcache clearing as every other secret.
 - BIP-85 children are a deterministic transformation of the parent BIP32 root,
   not newly generated entropy. A BIP-39 passphrase, when present, is part of
   that root (the same rule COLDCARD uses). Anyone who has the parent seed,
@@ -117,7 +154,7 @@ material. Its security posture rests on the following model:
 ## Reporting a Vulnerability
 
 Please report suspected security issues privately through
-[GitHub Security Advisories](https://github.com/w-s-bitcoin/entropylab/security/advisories/new)
+[GitHub Security Advisories](https://github.com/OogaBoogaX/entropylab/security/advisories/new)
 rather than opening a public issue. If private reporting is unavailable, reach
 the maintainers through the [official website](https://entropylab.online).
 

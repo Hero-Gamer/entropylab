@@ -887,7 +887,7 @@
       await until(() => !document.getElementById("bip85-card").hidden, "BIP-85 to open on the next ArrowRight");
       assert(document.activeElement === tabs[2], "Focus should follow the arrow key");
       const introToTabsGap = (intro, tabs) => {
-        const bodyBottom = Math.max(...[...intro.querySelectorAll(":scope > p.muted, :scope > .tool-intro > p.muted")]
+        const bodyBottom = Math.max(...[...intro.querySelectorAll(":scope > p.muted, :scope > .journal-global-actions, :scope > .tool-intro > p.muted")]
           .map((body) => body.getBoundingClientRect().bottom));
         return tabs.getBoundingClientRect().top - bodyBottom;
       };
@@ -895,33 +895,110 @@
         document.getElementById("bip85-tool-intro"),
         document.querySelector("#bip85-manager > .key-tab-strip"),
       );
-      // End jumps to the last tool, Journal, whose default station is the encrypted notebook.
+      // End jumps to the last tool. Journal begins at its create/open gate while
+      // keeping the three destination tabs visible but unavailable.
       tabs[2].dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
       await until(() => !document.getElementById("journal-card").hidden, "End to reach the Journal tool");
       assert(document.activeElement === tabs[6], "End should move focus to the last tab");
       const journalTabs = [...document.querySelectorAll("#journal-tool-tabs [data-journal-tool]")];
-      equal(journalTabs.length, 4, "Journal should expose exactly four internal tabs");
-      equal(journalTabs.map((tab) => tab.textContent.trim()).join("|"), "Journal|Notepad|Session state|Session log");
+      equal(journalTabs.length, 3, "Journal should expose exactly three internal tabs");
+      equal(journalTabs.map((tab) => tab.textContent.trim()).join("|"), "Notepad|Session state|Session log");
       const journalManager = document.getElementById("journal-manager");
       assert(journalManager && !journalManager.hidden, "Journal station tabs should be visible inside the Journal tool");
-      equal(introToTabsGap(document.getElementById("journal-tool-intros"), journalManager.querySelector(":scope > .key-tab-strip")), singleIntroGap, "Journal intro-to-tabs spacing differs from a single-intro tool");
+      const journalIntro = document.getElementById("journal-tool-intro");
+      assert(journalIntro && !journalIntro.hidden, "Entropy Journal introduction should remain visible at the gate");
+      const journalGlobalDownload = document.getElementById("journal-global-download");
+      const journalGlobalClear = document.getElementById("journal-global-clear");
+      assert(journalGlobalDownload.disabled && journalGlobalClear.disabled, "Journal-wide actions should be disabled before a journal is opened");
+      equal(introToTabsGap(journalIntro, journalManager.querySelector(":scope > .key-tab-strip")), singleIntroGap, "Journal intro-to-tabs spacing differs from a single-intro tool");
       const documentTop = (element) => element.getBoundingClientRect().top + scrollY;
       const journalManagerTop = documentTop(journalManager);
       journalTabs.forEach((tab) => assert(tab.classList.contains("key-tab"), "Journal stations should use folder-style Key Station tabs"));
-      equal(getComputedStyle(document.getElementById("journal-card")).borderTopLeftRadius, "0px", "The active Journal station card should join its folder tab");
+      journalTabs.forEach((tab) => {
+        assert(tab.disabled, "Journal station tabs should be disabled before a journal is opened");
+        equal(tab.getAttribute("aria-disabled"), "true", "A locked Journal tab should expose its disabled state");
+        equal(tab.getAttribute("aria-selected"), "false", "No locked Journal tab should be selected");
+      });
+      journalTabs[0].click();
+      assert(!document.getElementById("journal-card").hidden, "A disabled Journal tab should leave the create/open gate in place");
+      const journalPasswordInput = document.getElementById("journal-create-password");
+      const journalConfirmInput = document.getElementById("journal-create-confirm");
+      const journalPasswordStatus = document.getElementById("journal-create-password-status");
+      const journalConfirmStatus = document.getElementById("journal-create-confirm-status");
+      const journalCreateReady = document.getElementById("journal-create-ready");
+      assert(journalPasswordStatus.hidden && journalConfirmStatus.hidden && journalCreateReady.hidden, "Empty Journal password fields should not show validation messages");
+      input(journalPasswordInput, "too short");
+      assert(!journalPasswordStatus.hidden && journalPasswordStatus.classList.contains("is-invalid"), "A short Journal password should show a red warning");
+      equal(journalPasswordStatus.textContent, "Password has too few characters");
+      assert(Math.abs(journalPasswordStatus.getBoundingClientRect().right - journalPasswordInput.getBoundingClientRect().right) <= 2, "Password validation should align to the right of its label");
+      input(journalPasswordInput, "");
+      assert(journalPasswordStatus.hidden, "Clearing the Journal password should hide its validation message");
+      input(journalPasswordInput, "too short");
+      input(journalConfirmInput, "different");
+      assert(!journalConfirmStatus.hidden && journalConfirmStatus.classList.contains("is-invalid"), "A mismatched confirmation should show a red warning");
+      equal(journalConfirmStatus.textContent, "Passwords do not match");
+      const journalPassword = "correct horse battery staple";
+      input(journalPasswordInput, journalPassword);
+      assert(journalPasswordStatus.classList.contains("is-valid") && journalPasswordStatus.textContent.includes("Password is long enough"), "A long Journal password should show a green check");
+      input(journalConfirmInput, journalPassword);
+      assert(journalConfirmStatus.classList.contains("is-valid"), "Matching Journal passwords should show a green check");
+      equal(journalConfirmStatus.textContent, "\u2713 Passwords match");
+      assert(!journalCreateReady.hidden, "Valid matching passwords should show readiness beside Create journal");
+      equal(journalCreateReady.textContent.trim(), "← Ready to create journal");
+      assert(document.getElementById("journal-create").getBoundingClientRect().right < journalCreateReady.getBoundingClientRect().left, "The ready message should sit to the right of Create journal");
+      input(journalConfirmInput, "");
+      assert(journalConfirmStatus.hidden && journalCreateReady.hidden, "Clearing the confirmation should hide its validation and ready messages");
+      input(journalPasswordInput, "too short");
+      input(journalConfirmInput, "too short");
+      document.getElementById("journal-create").click();
+      await until(() => document.getElementById("journal-error").textContent.includes("12"), "short journal password error");
+      assert(!document.getElementById("journal-card").hidden, "A rejected password should leave the Journal gate visible");
+      journalTabs.forEach((tab) => assert(tab.disabled, "A rejected password should not unlock Journal tabs"));
+      input(journalPasswordInput, journalPassword);
+      input(journalConfirmInput, journalPassword);
+      document.getElementById("journal-create").click();
+      await until(() => !document.getElementById("journal-notes-card").hidden, "valid journal creation to open Notepad");
+      assert(document.getElementById("journal-card").hidden, "The create/open gate should disappear after journal creation");
+      assert(!journalIntro.hidden, "Entropy Journal introduction should remain visible after journal creation");
+      journalTabs.forEach((tab) => {
+        assert(!tab.disabled, "Journal station tabs should enable after journal creation");
+        equal(tab.getAttribute("aria-disabled"), "false", "An unlocked Journal tab should expose its enabled state");
+      });
+      assert(journalTabs[0].classList.contains("active"), "A newly created journal should start on Notepad");
+      equal(journalTabs[0].getAttribute("aria-selected"), "true", "Notepad should be selected after journal creation");
+      assert(!journalGlobalDownload.disabled && !journalGlobalClear.disabled, "Journal-wide actions should enable after journal creation");
+      state.lastBlob = null;
+      journalGlobalDownload.click();
+      const encryptedJournalText = await (await until(() => state.lastBlob, "encrypted Journal download")).text();
+      journalGlobalClear.click();
+      await until(() => !document.getElementById("journal-card").hidden, "Journal gate after clearing");
+      journalTabs.forEach((tab) => assert(tab.disabled, "Clearing should disable the Journal tabs again"));
+      assert(journalGlobalDownload.disabled && journalGlobalClear.disabled, "Clearing should disable the Journal-wide actions again");
+      document.querySelector('#journal-gate-modes [data-journal-gate="open"]').click();
+      const encryptedJournalInput = document.getElementById("journal-file");
+      Object.defineProperty(encryptedJournalInput, "files", { configurable: true, value: [new File([encryptedJournalText], "entropylab-journal.json", { type: "application/json" })] });
+      encryptedJournalInput.dispatchEvent(new Event("change", { bubbles: true }));
+      input(document.getElementById("journal-open-password"), journalPassword);
+      await wait(250);
+      document.getElementById("journal-unlock").click();
+      await until(() => !document.getElementById("journal-notes-card").hidden || document.getElementById("journal-error").textContent, "successful Journal file open result");
+      assert(!document.getElementById("journal-notes-card").hidden, `Opening the encrypted Journal failed: ${document.getElementById("journal-error").textContent}`);
+      assert(document.getElementById("journal-card").hidden, "The create/open gate should disappear after opening a journal");
+      assert(!journalIntro.hidden, "Entropy Journal introduction should remain visible after opening a journal");
+      journalTabs.forEach((tab) => assert(!tab.disabled, "Opening a journal should enable its three tabs"));
+      assert(journalTabs[0].classList.contains("active"), "An opened journal should start on Notepad");
+      equal(getComputedStyle(document.getElementById("journal-notes-card")).borderTopLeftRadius, "0px", "The active Notepad card should join its folder tab");
       journalTabs[0].focus();
       journalTabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
-      await until(() => !document.getElementById("journal-notes-card").hidden, "ArrowRight to open Notepad");
-      equal(documentTop(journalManager), journalManagerTop, "Notepad moved the Journal tab strip");
+      await until(() => !document.getElementById("journal-state-card").hidden, "ArrowRight to open Session state");
+      equal(documentTop(journalManager), journalManagerTop, "Session state moved the Journal tab strip");
       assert(document.activeElement === journalTabs[1], "Focus should follow the Journal subtab arrow key");
       journalTabs[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
-      await until(() => !document.getElementById("journal-state-card").hidden, "ArrowRight to open Session state");
-      journalTabs[2].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
       await until(() => !document.getElementById("journal-log-card").hidden, "ArrowRight to open Session log");
-      journalTabs[3].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+      journalTabs[2].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
       equal(documentTop(journalManager), journalManagerTop, "Session log moved the Journal tab strip");
       await until(() => !document.getElementById("journal-state-card").hidden, "ArrowLeft to open Session state");
-      assert(document.activeElement === journalTabs[2], "Focus should return to Session state");
+      assert(document.activeElement === journalTabs[1], "Focus should return to Session state");
       // PSBT stays a workspace of its own, with station tabs inside it.
       document.querySelector('#workspace [data-workspace="psbt"]').click();
       await until(() => !document.getElementById("psbt-card").hidden, "PSBT tool");
@@ -1148,6 +1225,7 @@
     const journalStatus = document.getElementById("journal-notes-status");
     const headerDownloadStyle = getComputedStyle(document.querySelector(".download-controls .download-html"));
     equal(getComputedStyle(body).borderTopLeftRadius, "0px", "the page tab should join directly to the top-left of the editor");
+    equal(getComputedStyle(pageTabs[0]).backgroundColor, getComputedStyle(notesWrap).backgroundColor, "the selected page tab should use the editor background");
     assert(notesCopy && notesCopy.classList.contains("seed-phrase-copy"), "the notepad should reuse the clipboard icon button");
     equal(Math.round(notesCopy.getBoundingClientRect().top - notesWrap.getBoundingClientRect().top), 10, "the notepad copy button should align with the bottom of the first text line");
     equal(Math.round(notesWrap.getBoundingClientRect().right - notesCopy.getBoundingClientRect().right), 12, "the notepad copy button should sit in the top-right corner");
@@ -1167,9 +1245,22 @@
       equal(downloadButton.textContent.trim(), "Download", `${id} should use the concise header download label`);
       equal(downloadButton.querySelector(".download-mark path")?.getAttribute("d"), "M12 3v12M7 11l5 5 5-5M5 21h14", `${id} should use the header download icon`);
     }
+    const journalGlobalDownload = document.getElementById("journal-global-download");
+    for (const property of ["backgroundColor", "color", "borderTopColor"]) equal(getComputedStyle(journalGlobalDownload)[property], headerDownloadStyle[property], `Download journal should use the header download button's ${property}`);
+    assert(document.getElementById("journal-global-clear").classList.contains("clear-current-action"), "Clear journal should use the shared red clear-button treatment");
+    const encryptChoices = [...document.querySelectorAll(".journal-encrypt-download")];
+    equal(encryptChoices.length, 3, "each Journal tab should expose the encryption choice");
+    assert(encryptChoices.every((checkbox) => checkbox.checked), "Journal tab downloads should be encrypted by default");
+    encryptChoices[0].checked = false;
+    encryptChoices[0].dispatchEvent(new Event("change", { bubbles: true }));
+    assert(encryptChoices.every((checkbox) => !checkbox.checked), "unchecking encryption in Notepad should sync every Journal tab");
+    encryptChoices[1].checked = true;
+    encryptChoices[1].dispatchEvent(new Event("change", { bubbles: true }));
+    assert(encryptChoices.every((checkbox) => checkbox.checked), "checking encryption in Session state should sync every Journal tab");
     const uploadButton = document.getElementById("journal-notes-upload");
     equal(uploadButton.textContent.trim(), "Upload", "the notebook upload should use a concise label");
     equal(uploadButton.querySelector(".download-mark path")?.getAttribute("d"), "M12 17V5M7 10l5-5 5 5M5 21h14", "the notebook upload should put its up arrow above a bottom tray");
+    assert(uploadButton.getBoundingClientRect().left > document.querySelector(".journal-file-actions .journal-download-options").getBoundingClientRect().right, "the notebook upload should sit on the right side of its action row");
     assert(!document.getElementById("journal-notes-download-text"), "the notepad should offer only its reloadable notebook download");
     for (const [id, value, attribute] of [["journal-font", "serif", "font"], ["journal-size", "large", "size"], ["journal-spacing", "spacious", "spacing"]]) {
       const select = document.getElementById(id);
@@ -1347,7 +1438,26 @@
     state.lastBlob = null;
     state.downloadName = "";
     document.getElementById("journal-notes-download").click();
-    const notebookBlob = await until(() => state.lastBlob, "notebook download");
+    const encryptedNotebookBlob = await until(() => state.lastBlob, "encrypted notebook download");
+    const encryptedNotebookText = await encryptedNotebookBlob.text();
+    const encryptedNotebookDocument = JSON.parse(encryptedNotebookText);
+    equal(state.downloadName, "entropylab-notebook.encrypted.json", "encrypted notebook downloads should advertise their format in the filename");
+    equal(encryptedNotebookDocument.entropylabJournalExport, 1, "the default notebook download should be a password-encrypted Journal export");
+    body.value = "temporary encrypted replacement";
+    body.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "temporary encrypted replacement" }));
+    const fileInput = document.getElementById("journal-notes-file");
+    Object.defineProperty(fileInput, "files", { configurable: true, value: [new File([encryptedNotebookText], "field-notes.encrypted.json", { type: "application/json" })] });
+    fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+    await until(() => body.value.includes("kitchen table dice"), "encrypted notebook import");
+    equal(pageTabsRoot.children[0].querySelector(".journal-page-tab-full").textContent, "Field notes", "uploading an encrypted notebook should restore page labels");
+    const encryptChoice = document.getElementById("journal-notes-encrypt");
+    encryptChoice.checked = false;
+    encryptChoice.dispatchEvent(new Event("change", { bubbles: true }));
+    assert([...document.querySelectorAll(".journal-encrypt-download")].every((checkbox) => !checkbox.checked), "the unencrypted choice should remain synced before other tab downloads");
+    state.lastBlob = null;
+    state.downloadName = "";
+    document.getElementById("journal-notes-download").click();
+    const notebookBlob = await until(() => state.lastBlob, "plain notebook download");
     const notebookText = await notebookBlob.text();
     const notebookDocument = JSON.parse(notebookText);
     equal(state.downloadName, "entropylab-notebook.json", "the reloadable notebook should use a JSON filename");
@@ -1357,7 +1467,7 @@
     document.getElementById("journal-notes-upload").click();
     body.value = "temporary replacement";
     body.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "temporary replacement" }));
-    const fileInput = document.getElementById("journal-notes-file");
+    document.getElementById("journal-notes-status").textContent = "";
     Object.defineProperty(fileInput, "files", { configurable: true, value: [new File([notebookText], "field-notes.json", { type: "application/json" })] });
     fileInput.dispatchEvent(new Event("change", { bubbles: true }));
     await until(() => document.getElementById("journal-notes-status").textContent.includes("Imported"), "notebook import");

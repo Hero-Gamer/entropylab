@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   JOURNAL_ITERATIONS,
+  JOURNAL_EXPORT_VERSION,
   JOURNAL_LOG_LIMIT,
   JOURNAL_VERSION,
   METHODS,
@@ -23,10 +24,12 @@ import {
   formatNotebookPages,
   formatStamp,
   openDocument,
+  openExport,
   parseFile,
   removeEntry,
   searchEntries,
   sealDocument,
+  sealExport,
   snapshotFromKeyState,
   wipeDocument,
   journalFromPlainText,
@@ -294,6 +297,22 @@ test("encryption is deterministic: same password and entries, same file", async 
   const after = await sealDocument(created.doc, created.keys);
   assert.notEqual(after.iv, before.iv);
   assert.deepEqual(before, first);
+});
+
+test("tab exports reuse the unlocked journal password keys and remain deterministic", async () => {
+  const created = await createDocument(password, password);
+  const first = await sealExport("notebook", "reloadable notebook JSON", created.keys);
+  const second = await sealExport("notebook", "reloadable notebook JSON", created.keys);
+  assert.equal(first.entropylabJournalExport, JOURNAL_EXPORT_VERSION);
+  assert.deepEqual(second, first);
+  assert.deepEqual(await openExport(JSON.stringify(first), created.keys), {
+    kind: "notebook",
+    content: "reloadable notebook JSON",
+  });
+  const other = await createDocument(otherPassword, otherPassword);
+  await assert.rejects(() => openExport(first, other.keys), /different journal password/);
+  await assert.rejects(() => sealExport("unknown", "text", created.keys), /not supported/);
+  await assert.rejects(() => openExport("{}", created.keys), /not an encrypted Journal export/);
 });
 
 test("encodeFile stores the IV and iteration count next to the ciphertext", () => {

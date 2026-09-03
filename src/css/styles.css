@@ -1166,6 +1166,8 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 #journal-card:not([hidden]), #journal-notes-card:not([hidden]), #journal-state-card:not([hidden]), #journal-log-card:not([hidden]) { margin-top: 0; border-radius: 0 0 20px 20px; position: relative; z-index: 1; }
 #journal-locked-panel[hidden], #journal-work-panel[hidden], #journal-create-panel[hidden], #journal-open-panel[hidden], #journal-editor[hidden], #journal-view[hidden] { display: none; }
 .journal-intro { margin: var(--space-control) 0 0; }
+.journal-global-actions { align-items: center; margin-top: var(--space-component); }
+.journal-global-actions .journal-download-action { display: inline-flex; align-items: center; gap: 6px; }
 .journal-status { display: flex; align-items: center; gap: 14px; margin-bottom: var(--space-component); }
 .journal-status-lifehash { width: 48px; height: 48px; border-radius: 8px; image-rendering: pixelated; flex: 0 0 auto; }
 .journal-status-title { margin: 0; font-weight: 700; }
@@ -1187,8 +1189,24 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .journal-note {
   margin: 0 0 14px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2);
 }
+.journal-password-label { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; }
+.journal-password-validation { margin-inline-start: auto; font-size: 12px; font-weight: 700; line-height: 1.4; text-align: end; }
+.journal-password-validation[hidden] { display: none; }
+.journal-password-validation.is-invalid { color: var(--danger); }
+.journal-password-validation.is-valid { color: var(--ok); }
+.journal-create-actions { align-items: center; }
+.journal-create-ready { display: inline-flex; align-items: center; gap: 7px; color: var(--ok); font-size: 13px; font-weight: 700; }
+.journal-create-ready[hidden] { display: none; }
+.journal-create-ready-arrow { display: inline-block; font-size: 18px; line-height: 1; }
+.journal-section-intro { margin: 0 0 24px; }
+.journal-section-intro h2 { margin: 5px 0 8px; }
+.journal-section-intro > .muted { max-width: 760px; margin: 0; }
+#journal-tool-tabs .key-tab:disabled,
+#journal-tool-tabs .key-tab:disabled:hover {
+  background: transparent; color: var(--faint); opacity: .52; cursor: not-allowed;
+}
 .journal-page-tab-strip { margin-top: 0; margin-bottom: -1px; }
-.journal-page-tab.active, .journal-page-tab.key-tab-editing { background: var(--bg); border-bottom-color: var(--bg); }
+.key-tab.journal-page-tab.active, .key-tab.journal-page-tab.key-tab-editing { background: var(--bg); border-bottom-color: var(--bg); }
 .journal-page-tab .journal-page-tab-short { display: none; }
 .journal-format-bar {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;
@@ -1248,6 +1266,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .journal-notes-copy.is-copied, .journal-notes-copy.is-copied:not(:disabled):hover { color: var(--ok); }
 @media (prefers-reduced-motion: reduce) { .journal-notes-copy { transition: none; } }
 .journal-file-actions { margin-top: var(--space-component); }
+.journal-download-options { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; min-width: 0; }
+.journal-encrypt-option { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 700; cursor: pointer; }
+.journal-encrypt-option input { margin: 0; accent-color: var(--ok); }
+.journal-file-actions .journal-upload-action { margin-inline-start: auto; }
 .journal-file-actions .journal-upload-action {
   border-color: color-mix(in oklab, var(--blue) 65%, var(--border));
   background: color-mix(in oklab, var(--blue) 14%, var(--surface)); color: var(--blue);
@@ -1999,6 +2021,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   .current-item-actions > *,
   .bip85-actions > *,
   .psbt-actions > * { width: 100%; justify-content: center; }
+  .journal-download-options { justify-content: flex-start; }
+  .journal-download-options > .btn { width: auto; }
+  .journal-create-ready-arrow { transform: rotate(90deg); }
 }
 .key-tab-icon { display: inline-flex; flex: 0 0 auto; width: 16px; height: 16px; color: var(--key-color); }
 .key-tab-icon svg { display: block; width: 16px; height: 16px; }

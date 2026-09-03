@@ -868,9 +868,9 @@
   await test("tool tabs answer the arrow keys and name themselves in full", async () => {
     const strip = document.getElementById("workspace-tabs");
     const tabs = [...strip.querySelectorAll("[data-workspace]")];
-    assert(tabs.length === 6, `Expected six tool tabs, found ${tabs.length}`);
+    assert(tabs.length === 7, `Expected seven tool tabs, found ${tabs.length}`);
     // The visible label may be abbreviated; the accessible name never is.
-    const names = ["Keys", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "Journal"];
+    const names = ["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "Journal"];
     tabs.forEach((tab, i) => {
       assert(tab.getAttribute("aria-label") === names[i], `Tab ${i} should be named "${names[i]}"`);
     });
@@ -880,13 +880,16 @@
       start.focus();
       // Right moves to the next tool and takes focus with it.
       start.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
-      await until(() => !document.getElementById("bip85-card").hidden, "BIP-85 to open on ArrowRight");
+      await until(() => !document.getElementById("vanity-card").hidden, "Vanity to open on ArrowRight");
       assert(document.activeElement === tabs[1], "Focus should follow the arrow key");
       assert(tabs[1].getAttribute("aria-selected") === "true", "The reached tab should be selected");
+      tabs[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      await until(() => !document.getElementById("bip85-card").hidden, "BIP-85 to open on the next ArrowRight");
+      assert(document.activeElement === tabs[2], "Focus should follow the arrow key");
       // End jumps to the last tool, Journal, whose default station is the encrypted notebook.
-      tabs[1].dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
+      tabs[2].dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
       await until(() => !document.getElementById("journal-card").hidden, "End to reach the Journal tool");
-      assert(document.activeElement === tabs[5], "End should move focus to the last tab");
+      assert(document.activeElement === tabs[6], "End should move focus to the last tab");
       const journalTabs = [...document.querySelectorAll("#journal-tool-tabs [data-journal-tool]")];
       equal(journalTabs.length, 4, "Journal should expose exactly four internal tabs");
       equal(journalTabs.map((tab) => tab.textContent.trim()).join("|"), "Journal|Notepad|Session state|Session log");
@@ -923,16 +926,52 @@
       await until(() => !document.getElementById("psbt-card").hidden, "ArrowLeft to open PSBT / Nonce");
       assert(document.activeElement === psbtTabs[0], "Focus should return to PSBT / Nonce");
       // Home returns to the first top-level tool.
-      tabs[5].dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+      tabs[6].dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
       await until(() => document.activeElement === tabs[0], "Home to return to the first tab");
       // Left from the first wraps round to the last.
       tabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
-      await until(() => document.activeElement === tabs[5], "ArrowLeft to wrap to the last tab");
+      await until(() => document.activeElement === tabs[6], "ArrowLeft to wrap to the last tab");
     } finally {
       document.querySelector('#journal-tool-tabs [data-journal-tool="notes"]').click();
       document.querySelector('#workspace [data-workspace="calc"]').click();
       await until(() => !document.getElementById("key-manager").hidden, "key workspace");
     }
+  });
+
+  await test("the Vanity tab grinds a known prefix end to end and masks the passphrase", async () => {
+    // Counter 0 / passphrase "a" derives the pinned P2PKH address
+    // 14dD6ygPi5WXdwwBTt1FBZK3aD8uDem1FY (see test/vanity-wasm.test.mjs), so a
+    // one-character space with prefix "14" must hit it. This exercises the
+    // whole browser path: the blob-URL worker under the CSP, the WASM module
+    // instantiated inside the worker, the match protocol, and the rendering.
+    document.querySelector('#workspace [data-workspace="vanity"]').click();
+    await until(() => !document.getElementById("vanity-card").hidden, "Vanity tool to open");
+    const script = document.getElementById("vanity-script");
+    script.value = "p2pkh";
+    script.dispatchEvent(new Event("change", { bubbles: true }));
+    input(document.getElementById("vanity-prefix"), "14");
+    input(document.getElementById("vanity-length"), "1");
+    input(document.getElementById("vanity-start"), "0");
+    input(document.getElementById("vanity-count"), "62");
+    input(document.getElementById("vanity-workers"), "1");
+    assert(document.getElementById("vanity-estimate").textContent.includes("1 in 58"), "the estimate line prices one free base58 character");
+    assert(document.getElementById("vanity-salt-note").textContent.startsWith("No salt"), "an unsalted grind says so");
+    document.getElementById("vanity-go").click();
+    await until(() => document.querySelector("#vanity-out table tbody tr"), "a match row to render");
+    await until(() => document.getElementById("vanity-status").textContent.includes("Range complete"), "the range to complete");
+    const row = document.querySelector("#vanity-out table tbody tr");
+    const cells = [...row.children];
+    assert(cells[1].textContent.trim() === "0", "the hit is counter 0");
+    const secretCell = cells[2].querySelector(".mono");
+    assert(/^•+$/.test(secretCell.textContent), "the passphrase is masked until revealed");
+    assert(cells[3].textContent.includes("14dD6ygPi5WXdwwBTt1FBZK3aD8uDem1FY"), "the hit address is the pinned vector");
+    document.getElementById("vanity-reveal").click();
+    await until(() => secretCell.isConnected === false || secretCell.textContent === "a", "the reveal toggle to show the passphrase");
+    assert(document.querySelector("#vanity-out .vanity-secret .mono").textContent === "a", "the revealed passphrase is the counter odometer string");
+    document.getElementById("vanity-wipe").click();
+    await until(() => !document.querySelector("#vanity-out table"), "Clear results to drop the table");
+    document.querySelector('#workspace [data-workspace="calc"]').click();
+    await until(() => !document.getElementById("key-manager").hidden, "key workspace");
   });
   await test("Journal notepad stamps notes, session state captures, and the log omits secrets", async () => {
     document.querySelector('#workspace [data-workspace="journal"]').click();

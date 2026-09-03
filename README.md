@@ -101,6 +101,15 @@ Official website: [entropylab.online](https://entropylab.online)
   root xprv, including labeled codes, BIP-392 `spscan` / `spspend` descriptors,
   sender taproot outputs from pasted vin JSON, and receiver verification of
   pasted x-only outputs. This is a calculator: it does not scan the chain.
+- Grinds vanity addresses from a deterministic counter (Vanity tab): the
+  counter becomes a base-62 odometer passphrase, SHA-256 makes it the private
+  key (the brain-wallet convention), and the selected mainnet address type
+  (legacy, nested SegWit, native SegWit, or Taproot) is checked against the
+  chosen prefix. The grind runs in a dedicated WebAssembly module, one Web
+  Worker per CPU core, and can be salted with entropy imported from the Keys
+  tab — same salt and counter always reproduce the same key, so nothing is
+  invented. Found passphrases stay in page memory, are masked until revealed,
+  and are wiped with the session.
 - A session **Journal** (last workspace tab) holds an encrypted **Entropy
   Journal** notebook, a notepad stamped with this computer's date and time,
   an editable summary of everything derived in this sitting, and a debug log

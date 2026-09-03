@@ -33,6 +33,7 @@ import { wordlist as bip39English } from "./bip39-english.js";
 import { initPsbtEditor } from "./psbt-editor.js";
 import { renderSVG as hodlUqrRenderSvg } from "uqr";
 import { BIP39_LANGUAGE_ENGLISH, BIP85_APPS, bip85Path, deriveApplication, parseChildIndex, wipeBip85Result, wipeBytes as hodlWipeBytes } from "./bip85.js";
+import { VANITY_SCRIPTS, VanityGrinder, estimateVanityWork, validateVanityPrefix, validateVanityRange, validateVanitySalt, vanitySessionSalt } from "./vanity.js";
 import { t as hodlT, hodlInitLocale, hodlFillLocaleSelect, hodlGetLocale } from "./i18n.js";
 import {
   METHOD_LABELS as hodlJournalMethodLabels,
@@ -637,6 +638,72 @@ hodlRootEl.innerHTML = `
       </div>
       <div id="out"></div>
     </section>
+      <div class="tool-intro" id="vanity-tool-intro" hidden>
+        <div class="kicker">Same salt, same counter, same address</div>
+        <h2>Grind a vanity address</h2>
+        <p class="muted tool-intro-note">A counter becomes the passphrase: base-62 over a-zA-Z0-9 in odometer order ("aaa\u2026", "aab\u2026"). Every candidate passphrase is hashed with SHA-256 into a private key \u2014 the brain-wallet convention \u2014 and its address of the selected type is checked against your prefix, one Web Worker per CPU core, in a dedicated WebAssembly module. This does not invent entropy: same salt and counter always reproduce the same key, so every result replays by hand. Address matching is Bitcoin mainnet; a found passphrase derives on any network.</p>
+      </div>
+      <section class="card no-print" id="vanity-card" role="tabpanel" hidden>
+        <div class="wallet-result-messages" role="note">
+          <ul>
+            <li class="is-warning">Vanity passphrases are brain wallets: with an empty or guessable salt, anyone grinding the same counter space finds the same keys and takes the coins. Import session entropy or type a strong salt first.</li>
+            <li class="is-warning">A vanity key is a single key, not an HD wallet. Paste a found passphrase into Keys \u2192 Private key \u2192 Brain-wallet text to see every script type and the WIF.</li>
+          </ul>
+        </div>
+        <div class="station-key-source">
+          <p class="label">Entropy for this grind</p>
+          <div class="row vanity-entropy-actions">
+            <button class="btn secondary" id="vanity-import" type="button">Import from the Keys tab</button>
+          </div>
+          <label class="field">Salt (kept in page memory)
+            <input id="vanity-salt" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Type a salt, or import the session's entropy" aria-describedby="vanity-salt-note">
+            <span class="field-note" id="vanity-salt-note">No salt \u2014 candidates use the public counter mapping, and anyone grinding the same space finds the same keys.</span>
+          </label>
+        </div>
+        <div class="vanity-grid">
+          <label class="field">Address type
+            <select id="vanity-script">
+              <option value="p2pkh">Legacy P2PKH \xB7 1\u2026</option>
+              <option value="p2sh-p2wpkh">Nested SegWit P2SH-P2WPKH \xB7 3\u2026</option>
+              <option value="p2wpkh" selected="selected">Native SegWit P2WPKH \xB7 bc1q\u2026</option>
+              <option value="p2tr">Taproot P2TR \xB7 bc1p\u2026</option>
+            </select>
+          </label>
+          <label class="field">Address prefix
+            <input id="vanity-prefix" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="bc1q\u2026" aria-describedby="vanity-prefix-help">
+            <span class="field-note" id="vanity-prefix-help">Native SegWit P2WPKH prefix, starts with \u201Cbc1q\u201D. Live-filtered to lowercase bech32 characters; each free character multiplies the work by ~32.</span>
+          </label>
+        </div>
+        <div class="vanity-grid">
+          <label class="field">Passphrase length
+            <input id="vanity-length" type="number" min="1" max="32" step="1" inputmode="numeric" value="8" aria-describedby="vanity-length-help">
+            <span class="field-note" id="vanity-length-help">Counter characters a-zA-Z0-9, appended after the salt. 62^10 counters fill the 64-bit counter; longer passphrases grind their low range.</span>
+          </label>
+          <label class="field">Start counter
+            <input id="vanity-start" inputmode="numeric" autocomplete="off" spellcheck="false" value="0" aria-describedby="vanity-start-help">
+            <span class="field-note" id="vanity-start-help">First counter tried. Counter 0 is passphrase "aaa\u2026".</span>
+          </label>
+          <label class="field">Range size
+            <input id="vanity-count" inputmode="numeric" autocomplete="off" spellcheck="false" value="1000000" aria-describedby="vanity-count-help">
+            <span class="field-note" id="vanity-count-help">Candidates to grind. After a run, Start continues where the range ended.</span>
+          </label>
+          <label class="field">Workers
+            <input id="vanity-workers" type="number" min="1" max="64" step="1" inputmode="numeric" value="1" aria-describedby="vanity-workers-help">
+            <span class="field-note" id="vanity-workers-help">One per CPU core is fastest; defaults to this device's core count.</span>
+          </label>
+        </div>
+        <p class="muted" id="vanity-estimate" aria-live="polite"></p>
+        <div class="row current-item-actions">
+          <button class="btn primary" id="vanity-go" type="button">Start grinding</button>
+          <div class="derive-progress" id="vanity-progress" role="progressbar" aria-label="Vanity grinding progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete" hidden><span class="derive-progress-track"><span class="derive-progress-bar"></span></span><span class="derive-progress-label">0%</span></div>
+          <button class="btn secondary" id="vanity-stop" type="button" disabled>Stop</button>
+          <button class="btn clear-current-action" id="vanity-wipe" type="button" disabled aria-disabled="true">Clear results</button>
+        </div>
+        <p class="muted" id="vanity-status" aria-live="polite">Idle. No range has been ground this session.</p>
+        <p class="err" id="vanity-error" role="alert"></p>
+        <div id="vanity-out" aria-live="polite"></div>
+        <p class="muted">Found passphrases remain in this page only and are never intentionally stored or sent. Memory clearing is best-effort because browsers may retain internal copies; close the page before reconnecting the computer.</p>
+      </section>
       <div class="tool-intro" id="bip85-tool-intro" hidden>
         <div class="kicker">One seed. Many children.</div>
         <h2>Derive BIP-85 child entropy</h2>
@@ -11207,6 +11274,7 @@ function hodlShowWorkspace(id) {
   let preservedTop = window.scrollY, preservedLeft = window.scrollX;
   if (hodlWorkspace === "calc") hodlCaptureKey();
   else if (hodlWorkspace === "msig") hodlCaptureMsig();
+  else if (hodlWorkspace === "vanity") hodlVanityCancel();
   hodlWorkspace = id;
   [...hodlElement("#workspace-tabs").querySelectorAll("[data-workspace]")].forEach((button) => {
     let active = button.dataset.workspace === id;
@@ -11223,9 +11291,10 @@ function hodlShowWorkspace(id) {
   document.getElementById("msig-card").hidden = true;
   document.getElementById("bip85-card").hidden = id !== "bip85";
   document.getElementById("sp-card").hidden = id !== "sp";
+  document.getElementById("vanity-card").hidden = id !== "vanity";
   // The context block sits outside its tool's card, so it is shown and hidden
   // with the card rather than by it.
-  ["bip85", "sp", "msig", "calc"].forEach((tool) => {
+  ["bip85", "sp", "msig", "calc", "vanity"].forEach((tool) => {
     document.getElementById(`${tool}-tool-intro`).hidden = id !== tool;
   });
   hodlSyncPsbtTool();
@@ -11344,7 +11413,7 @@ function hodlInitDefaultTabStates() {
 }
 // Each tool carries a full name and a short one. Narrow screens show the
 // short form so more tools stay on screen instead of off the right edge.
-var hodlWorkspaceTabs = [["calc", "workspace.key", "workspace.keyShort"], ["bip85", "workspace.bip85", "workspace.bip85Short"], ["msig", "workspace.msig", "workspace.msigShort"], ["sp", "workspace.sp", "workspace.spShort"], ["psbt", "workspace.psbt", "workspace.psbtShort"], ["journal", "workspace.journal", "workspace.journalShort"]];
+var hodlWorkspaceTabs = [["calc", "workspace.key", "workspace.keyShort"], ["vanity", "workspace.vanity", "workspace.vanityShort"], ["bip85", "workspace.bip85", "workspace.bip85Short"], ["msig", "workspace.msig", "workspace.msigShort"], ["sp", "workspace.sp", "workspace.spShort"], ["psbt", "workspace.psbt", "workspace.psbtShort"], ["journal", "workspace.journal", "workspace.journalShort"]];
 var hodlPsbtTool = "nonce";
 function hodlSyncPsbtTool() {
   let visible = hodlWorkspace === "psbt",
@@ -12033,6 +12102,323 @@ function hodlSyncWorkspaceOverflow() {
   if (!strip || !hint) return;
   hint.hidden = strip.scrollWidth - strip.clientWidth - strip.scrollLeft <= 1;
 }
+// ── Vanity grinder (workspace tab) ─────────────────────────────────────────
+// The engine (src/js/vanity.js + vanity-wasm) is a calculator: a counter maps
+// to a base-62 odometer passphrase, SHA-256 makes it a private key, and the
+// selected mainnet address type is checked against the user's prefix. The
+// salt — typed here or imported from the Keys tab — prefixes every candidate,
+// so a found passphrase is salt + counter characters and replays by hand.
+var hodlVanityGrinder = null, hodlVanityMatches = [], hodlVanityFound = 0, hodlVanityRunning = false, hodlVanityReveal = false, hodlVanityDisplayLimit = 100, hodlVanitySaltMode = "", hodlVanityResultSaltMode = "";
+// The active key's entropy inputs, in a fixed order, plus its private-key
+// fields — the inputs the digest salt commits to, so the same counters
+// reproduce only while those inputs stay unchanged.
+var hodlVanitySaltFields = ["dice", "bitboxDice", "dplusDice", "hex", "bin", "base4", "base8", "base32", "base64", "cards", "directCards", "seed", "seedNumbers", "brainLab", "key"];
+function hodlVanitySessionSalt() {
+  let fields = hodlKeys[hodlActiveKey]?.fields || {};
+  let values = hodlVanitySaltFields.map((id) => String(fields[id] ?? ""));
+  let privateKeys = fields.privateKeys || {};
+  for (let kind of hodlPrivateKeyKinds) values.push(String(privateKeys[kind] ?? ""));
+  let salt = vanitySessionSalt(fields.pass, values);
+  return { salt, mode: String(fields.pass ?? "").length ? "passphrase" : salt.length ? "digest" : "" };
+}
+function hodlVanityScript() {
+  return VANITY_SCRIPTS[document.getElementById("vanity-script")?.value] ?? VANITY_SCRIPTS.p2wpkh;
+}
+function hodlVanityFormatCount(value) {
+  return BigInt(value).toLocaleString("en-US");
+}
+function hodlFilterVanityPrefix(value, meta = hodlVanityScript()) {
+  let text = String(value ?? "");
+  if (meta.bech32) {
+    let allowed = new Set((meta.prefix + "bc1qpzry9x8gf2tvdw0s3jn54khce6mua7l").split(""));
+    return [...text.toLowerCase()].filter((character) => !/\s/.test(character) && allowed.has(character)).join("");
+  }
+  return [...text].filter((character) => !/\s/.test(character) && "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".includes(character)).join("");
+}
+function hodlVanitySyncScriptNote() {
+  let meta = hodlVanityScript(), help = document.getElementById("vanity-prefix-help"), input = document.getElementById("vanity-prefix");
+  if (help) help.textContent = meta.bech32 ? `${meta.label} prefix, starts with “${meta.prefix}”. Live-filtered to lowercase bech32 characters; each free character multiplies the work by ~32.` : `${meta.label} prefix, starts with “${meta.prefix}”. Live-filtered to base58 characters; each free character multiplies the work by ~58.`;
+  if (input) input.placeholder = `${meta.prefix}…`;
+}
+// The salt note states plainly what currently salts the grind: an imported
+// passphrase or entropy digest, text typed here, or nothing (public mapping).
+function hodlVanitySyncSaltNote() {
+  let note = document.getElementById("vanity-salt-note");
+  if (!note) return;
+  if (document.getElementById("vanity-salt")?.value.length) {
+    note.textContent = hodlVanitySaltMode === "passphrase"
+      ? "Salted with the Keys tab passphrase, imported verbatim — a found passphrase is that passphrase followed by the counter characters."
+      : hodlVanitySaltMode === "digest"
+        ? "Salted with a SHA-256 digest of the Keys tab entropy inputs — the same counters reproduce these addresses only while those inputs stay unchanged."
+        : "Salted with the text above exactly as typed — same salt and counter always reproduce the same key.";
+    return;
+  }
+  note.textContent = "No salt — candidates use the public counter mapping, and anyone grinding the same space finds the same keys.";
+}
+function hodlVanityImport() {
+  let error = document.getElementById("vanity-error"), field = document.getElementById("vanity-salt");
+  if (error) error.textContent = "";
+  if (!field) return;
+  // Import reads the active key's saved state, not whichever method form is
+  // currently on screen, so entropy entered under any method comes along.
+  let { salt, mode } = hodlVanitySessionSalt();
+  if (!salt.length) {
+    if (error) error.textContent = "The active Keys tab holds no entropy to import — enter dice rolls, a seed, a passphrase, or a private key there first.";
+    return;
+  }
+  try {
+    field.value = validateVanitySalt(salt);
+  } catch (exception) {
+    if (error) error.textContent = exception.message || String(exception);
+    return;
+  }
+  hodlVanitySaltMode = mode;
+  hodlVanitySyncSaltNote();
+}
+function hodlVanityEstimate() {
+  let estimateEl = document.getElementById("vanity-estimate"), input = document.getElementById("vanity-prefix"), scriptId = document.getElementById("vanity-script")?.value ?? "p2wpkh";
+  if (!estimateEl || !input) return;
+  try {
+    let prefix = validateVanityPrefix(input.value, scriptId);
+    estimateEl.textContent = `Prefix “${prefix}” matches about 1 in ${hodlVanityFormatCount(estimateVanityWork(prefix, scriptId))} ${hodlVanityScript().label} candidates on average.`;
+  } catch {
+    estimateEl.textContent = "";
+  }
+}
+function hodlVanityParseInputs() {
+  let script = document.getElementById("vanity-script")?.value ?? "p2wpkh";
+  let prefix = validateVanityPrefix(document.getElementById("vanity-prefix").value, script);
+  let passLen = Number(document.getElementById("vanity-length").value);
+  let parseCounter = (id, label) => {
+    let raw = document.getElementById(id).value.trim();
+    if (!/^\d+$/.test(raw)) throw new Error(`${label} is a whole number (digits only).`);
+    return BigInt(raw);
+  };
+  let start = parseCounter("vanity-start", "The start counter");
+  let count = parseCounter("vanity-count", "The range size");
+  let workers = Math.max(1, Math.min(64, Number(document.getElementById("vanity-workers").value) || 1));
+  let salt = validateVanitySalt(document.getElementById("vanity-salt")?.value ?? "");
+  return { prefix, ...validateVanityRange(passLen, start, count), workers, script, salt };
+}
+function hodlCopyVanityValue(button, value, label) {
+  if (!value || !button || button.disabled) return;
+  let done = () => {
+    let note = button.closest(".vanity-secret")?.querySelector(".vanity-copied");
+    button.classList.add("is-copied");
+    button.innerHTML = hodlCopiedIconMarkup();
+    button.setAttribute("aria-label", "Copied");
+    button.title = "Copied";
+    if (note) note.textContent = "Copied";
+    clearTimeout(button.hodlCopiedTimer);
+    button.hodlCopiedTimer = setTimeout(() => {
+      if (!button.isConnected) return;
+      button.classList.remove("is-copied");
+      button.innerHTML = hodlClipboardIconMarkup();
+      button.setAttribute("aria-label", label);
+      button.title = label;
+      if (note) note.textContent = "";
+    }, 1600);
+  };
+  let fallback = () => {
+    let field = document.createElement("textarea");
+    field.value = value;
+    field.setAttribute("readonly", "");
+    field.style.position = "fixed";
+    field.style.left = "-9999px";
+    document.body.appendChild(field);
+    field.select();
+    try {
+      document.execCommand("copy");
+      done();
+    } finally {
+      field.remove();
+    }
+  };
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(value).then(done).catch(fallback);
+  else fallback();
+}
+function hodlRenderVanityOut() {
+  let box = document.getElementById("vanity-out");
+  if (!box) return;
+  if (!hodlVanityMatches.length) {
+    box.innerHTML = "";
+    return;
+  }
+  let meta = hodlVanityScript();
+  // Passphrases are private key material: masked until the reveal toggle, and
+  // copied from match state (never a DOM attribute) so the wipe drops them.
+  let rows = hodlVanityMatches.map((match, index) => {
+    let secret = hodlVanityReveal
+      ? `<span class="mono">${hodlEscapeHtml(match.passphrase)}</span>`
+      : `<span class="mono" aria-hidden="true">${hodlEscapeHtml("•".repeat(12))}</span><span class="sr-only">Passphrase hidden — tick Show passphrases to reveal</span>`;
+    return `<tr><th scope="row">${index + 1}</th><td class="mono">${match.counter.toString()}</td><td><span class="vanity-secret">${secret}<button type="button" class="seed-phrase-copy" data-vanity-copy="${index}" aria-label="Copy passphrase" title="Copy passphrase">${hodlClipboardIconMarkup()}</button><span class="vanity-copied muted" aria-live="polite"></span></span></td><td><span class="vanity-secret"><span class="mono">${hodlEscapeHtml(match.address)}</span><button type="button" class="seed-phrase-copy" data-vanity-copy-address="${index}" aria-label="Copy address" title="Copy address">${hodlClipboardIconMarkup()}</button><span class="vanity-copied muted" aria-live="polite"></span></span></td></tr>`;
+  }).join("");
+  let overflow = hodlVanityFound > hodlVanityMatches.length ? `<p class="muted">Only the first ${hodlVanityMatches.length} matches are listed; ${hodlVanityFormatCount(hodlVanityFound)} found in total.</p>` : "";
+  let saltNote = hodlVanityResultSaltMode === "passphrase" ? " Passphrases are the Keys tab passphrase followed by the counter characters; the same counters reproduce these addresses only while that passphrase stays unchanged." : hodlVanityResultSaltMode === "digest" ? " Passphrases begin with a SHA-256 digest of the Keys tab entropy inputs; the same counters reproduce these addresses only while those inputs stay unchanged." : hodlVanityResultSaltMode === "custom" ? " Passphrases are the salt above followed by the counter characters." : " No salt was set: these passphrases are the public counter mapping — anyone grinding the same space finds the same keys.";
+  box.innerHTML = `<section class="wallet-data-section wallet-private-section" aria-labelledby="vanity-matches-heading">
+      <div class="wallet-data-section-head"><h3 id="vanity-matches-heading">Matching addresses</h3>
+      <p class="muted" id="vanity-matches-description">Each passphrase reproduces its address (SHA-256 → ${hodlEscapeHtml(meta.label)}, brain-wallet convention). Anyone who finds the same passphrase takes the coins.${hodlEscapeHtml(saltNote)}</p></div>
+      <div class="wallet-data-actions no-print">
+        <label class="reveal-private-toggle">
+          <input type="checkbox" id="vanity-reveal" ${hodlVanityReveal ? "checked" : ""} aria-describedby="vanity-matches-description">
+          <span>Show passphrases <span class="reveal-private-toggle-note">(air-gap only)</span></span>
+        </label>
+      </div>
+      <div class="wallet-address-table"><div class="wallet-table wallet-table-public" role="region" tabindex="0" aria-label="Matching vanity addresses table"><table aria-rowcount="${hodlVanityMatches.length + 1}"><caption class="sr-only">Matching vanity addresses</caption><thead><tr><th scope="col">#</th><th scope="col">Counter</th><th scope="col">Passphrase (the new entropy — keep it secret)</th><th scope="col">Address</th></tr></thead><tbody>${rows}</tbody></table></div></div>
+      ${overflow}</section>`;
+}
+function hodlVanitySyncControls() {
+  let go = document.getElementById("vanity-go"), stop = document.getElementById("vanity-stop"), wipe = document.getElementById("vanity-wipe"), progress = document.getElementById("vanity-progress");
+  if (go) {
+    go.disabled = hodlVanityRunning;
+    go.setAttribute("aria-disabled", String(hodlVanityRunning));
+    go.textContent = hodlVanityRunning ? "Grinding…" : "Start grinding";
+  }
+  if (stop) stop.disabled = !hodlVanityRunning;
+  let dirty = hodlVanityFound > 0 && !hodlVanityRunning;
+  if (wipe) {
+    wipe.disabled = !dirty;
+    wipe.setAttribute("aria-disabled", String(!dirty));
+  }
+  if (progress) progress.hidden = !hodlVanityRunning;
+}
+function hodlVanitySetStatus(text) {
+  let status = document.getElementById("vanity-status");
+  if (status) status.textContent = text;
+}
+function hodlVanityStop() {
+  if (hodlVanityGrinder && hodlVanityRunning) hodlVanityGrinder.stop();
+}
+function hodlVanityCancel() {
+  let wasRunning = hodlVanityRunning;
+  if (hodlVanityGrinder) hodlVanityGrinder.cancel();
+  hodlVanityRunning = false;
+  if (wasRunning) hodlVanitySetStatus("Stopped.");
+  hodlVanitySyncControls();
+}
+function hodlVanityClearResults(status = "Idle. No range has been ground this session.") {
+  hodlVanityMatches = [];
+  hodlVanityFound = 0;
+  hodlVanityReveal = false;
+  hodlVanityResultSaltMode = "";
+  hodlRenderVanityOut();
+  hodlVanitySetStatus(status);
+  hodlVanitySyncControls();
+}
+function hodlVanityScriptChanged() {
+  hodlVanityCancel();
+  let input = document.getElementById("vanity-prefix");
+  if (input) hodlApplyFilteredInput(input, (value) => hodlFilterVanityPrefix(value));
+  hodlVanityClearResults();
+  hodlVanitySyncScriptNote();
+  hodlVanityEstimate();
+}
+function hodlRunVanity() {
+  let error = document.getElementById("vanity-error");
+  if (error) error.textContent = "";
+  let inputs;
+  try {
+    inputs = hodlVanityParseInputs();
+  } catch (exception) {
+    if (error) error.textContent = exception.message || String(exception);
+    return;
+  }
+  hodlVanityMatches = [];
+  hodlVanityFound = 0;
+  // The run's salt is fixed at start; snapshot its description so the results
+  // note cannot drift if the field is edited mid-grind.
+  hodlVanityResultSaltMode = hodlVanitySaltMode;
+  hodlRenderVanityOut();
+  hodlVanityRunning = true;
+  hodlVanitySyncControls();
+  hodlVanitySetStatus(inputs.salt ? "Starting workers — candidates are prefixed with the salt…" : "Starting workers — no salt: candidates use the public counter mapping…");
+  let progressBar = document.getElementById("vanity-progress");
+  hodlVanityGrinder = new VanityGrinder({
+    onProgress: ({ done, total, rate }) => {
+      let percent = total > 0n ? Number((done * 10000n) / total) / 100 : 0;
+      if (progressBar) {
+        progressBar.setAttribute("aria-valuenow", String(Math.floor(percent)));
+        progressBar.setAttribute("aria-valuetext", `${percent.toFixed(1)}% complete`);
+        let fill = progressBar.querySelector(".derive-progress-bar"), label = progressBar.querySelector(".derive-progress-label");
+        if (fill) fill.style.width = `${percent}%`;
+        if (label) label.textContent = `${percent.toFixed(1)}%`;
+      }
+      hodlVanitySetStatus(`${hodlVanityFormatCount(done)} / ${hodlVanityFormatCount(total)} candidates · ${hodlVanityFormatCount(Math.round(rate))}/s · ${hodlVanityFound} match${hodlVanityFound === 1 ? "" : "es"}`);
+    },
+    onMatch: (match) => {
+      hodlVanityFound += 1;
+      if (hodlVanityMatches.length < hodlVanityDisplayLimit) {
+        hodlVanityMatches.push(match);
+        hodlRenderVanityOut();
+      }
+    },
+    onDone: ({ done, stopped }) => {
+      hodlVanityRunning = false;
+      // The next run resumes where this range ended; the counter field is the
+      // durable record of what has been ground.
+      let nextStart = inputs.start + done;
+      let startField = document.getElementById("vanity-start");
+      if (startField) startField.value = nextStart.toString();
+      hodlVanitySetStatus(`${stopped ? "Stopped" : "Range complete"}: ${hodlVanityFormatCount(done)} candidates, ${hodlVanityFound} match${hodlVanityFound === 1 ? "" : "es"}. Next counter: ${nextStart.toString()}.`);
+      hodlVanitySyncControls();
+    },
+    onError: (message) => {
+      if (error) error.textContent = message;
+    },
+  });
+  hodlVanityGrinder.start(inputs);
+}
+function hodlInitVanity() {
+  let go = document.getElementById("vanity-go");
+  if (!go) return;
+  let workersField = document.getElementById("vanity-workers");
+  if (workersField && navigator.hardwareConcurrency) workersField.value = String(Math.max(1, Math.min(64, navigator.hardwareConcurrency)));
+  go.onclick = hodlRunVanity;
+  document.getElementById("vanity-stop").onclick = hodlVanityStop;
+  document.getElementById("vanity-wipe").onclick = () => hodlVanityClearResults();
+  document.getElementById("vanity-import").onclick = hodlVanityImport;
+  let salt = document.getElementById("vanity-salt");
+  salt?.addEventListener("input", () => {
+    hodlVanitySaltMode = salt.value.length ? "custom" : "";
+    hodlVanitySyncSaltNote();
+  });
+  let prefix = document.getElementById("vanity-prefix");
+  prefix.addEventListener("input", () => {
+    hodlApplyFilteredInput(prefix, (value) => hodlFilterVanityPrefix(value));
+    hodlVanityEstimate();
+  });
+  document.getElementById("vanity-script")?.addEventListener("change", hodlVanityScriptChanged);
+  for (let id of ["vanity-length", "vanity-start", "vanity-count", "vanity-workers"]) {
+    let input = document.getElementById(id);
+    input?.addEventListener("input", () => hodlApplyFilteredInput(input, (value) => String(value ?? "").replace(/\D/g, "")));
+  }
+  // Copy buttons carry the match index, never the secret; the click reads the
+  // live match list, so wiped state cannot be copied back.
+  let out = document.getElementById("vanity-out");
+  out?.addEventListener("click", (event) => {
+    let secretButton = event.target.closest("[data-vanity-copy]");
+    if (secretButton) {
+      let match = hodlVanityMatches[Number(secretButton.dataset.vanityCopy)];
+      if (match) hodlCopyVanityValue(secretButton, match.passphrase, "Copy passphrase");
+      return;
+    }
+    let addressButton = event.target.closest("[data-vanity-copy-address]");
+    if (addressButton) {
+      let match = hodlVanityMatches[Number(addressButton.dataset.vanityCopyAddress)];
+      if (match) hodlCopyVanityValue(addressButton, match.address, "Copy address");
+    }
+  });
+  out?.addEventListener("change", (event) => {
+    if (event.target?.id === "vanity-reveal") {
+      hodlVanityReveal = event.target.checked;
+      hodlRenderVanityOut();
+    }
+  });
+  hodlVanitySyncScriptNote();
+  hodlVanitySyncSaltNote();
+  hodlVanityEstimate();
+  hodlVanitySyncControls();
+}
 function hodlInitWorkspace() {
   let box = hodlElement("#workspace");
   box.innerHTML = "";
@@ -12093,6 +12479,7 @@ function hodlInitWorkspace() {
   hodlInitPsbt();
   initPsbtEditor();
   hodlInitBip85();
+  hodlInitVanity();
   hodlInitSp();
 }
 var hodlKeyClearSyncQueued = false, hodlMsigClearSyncQueued = false, hodlDeriveSyncQueued = false;
@@ -12386,6 +12773,21 @@ function hodlInitSecretFieldAutoClear() {
     if (spVerifyVins) spVerifyVins.value = "";
     if (spVerifyOutputs) spVerifyOutputs.value = "";
     if (spLabel) spLabel.value = "";
+    // Found vanity passphrases and the imported salt are private key material;
+    // stop the grinder and drop them too.
+    hodlVanityCancel();
+    hodlVanityMatches = [];
+    hodlVanityFound = 0;
+    hodlVanityReveal = false;
+    hodlVanitySaltMode = "";
+    hodlVanityResultSaltMode = "";
+    let vanitySalt = document.getElementById("vanity-salt"), vanityOut = document.getElementById("vanity-out"), vanityError = document.getElementById("vanity-error"), vanityStatus = document.getElementById("vanity-status");
+    if (vanitySalt) vanitySalt.value = "";
+    if (vanityOut) vanityOut.innerHTML = "";
+    if (vanityError) vanityError.textContent = "";
+    if (vanityStatus) vanityStatus.textContent = "Idle. No range has been ground this session.";
+    hodlVanitySyncSaltNote();
+    hodlVanitySyncControls();
     // The <pre> mirrors behind each input hold a second live copy of whatever
     // was typed (dice rolls, seed words, passphrase, private key).
     document.querySelectorAll(".dice-input-highlight").forEach((highlight) => {

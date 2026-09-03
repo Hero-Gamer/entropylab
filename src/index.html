@@ -211,33 +211,47 @@ words, pick one of the checksum words.</span></span>
       <div id="out"></div>
     </section>
       <div class="tool-intro" id="vanity-tool-intro" hidden>
-        <div class="kicker">Same salt, same counter, same address</div>
+        <div class="kicker">Same key, same counter, same address</div>
         <h2>Grind a vanity address</h2>
-        <p class="muted tool-intro-note">A counter becomes the passphrase: base-62 over a-zA-Z0-9 in odometer order ("aaa…", "aab…"). Every candidate passphrase is hashed with SHA-256 into a private key — the brain-wallet convention — and its address of the selected type is checked against your prefix, one Web Worker per CPU core, in a dedicated WebAssembly module. This does not invent entropy: same salt and counter always reproduce the same key, so every result replays by hand. Address matching is Bitcoin mainnet; a found passphrase derives on any network.</p>
+        <p class="muted tool-intro-note">Pick a Key Station key and turn one of its dials. Passphrase grind extends the key's BIP39 passphrase with counter characters (base-62 over a-zA-Z0-9 in odometer order: "aaa…", "aab…"); derivation grind keeps the passphrase and steps through account indexes. Every candidate is derived the standard way — PBKDF2 seed, BIP32 path — in a dedicated WebAssembly module, one Web Worker per CPU core, and its address of the selected type (including BIP-352 Silent Payment codes) is checked against your prefix. This invents no entropy: same key and counter always reproduce the same address, so every result replays by hand, and Update key writes the winning passphrase or account back to the key it came from.</p>
       </div>
       <section class="card no-print" id="vanity-card" role="tabpanel" hidden>
         <div class="wallet-result-messages" role="note">
           <ul>
-            <li class="is-warning">Vanity passphrases are brain wallets: with an empty or guessable salt, anyone grinding the same counter space finds the same keys and takes the coins. Bring in a Key Station passphrase or type a strong salt first.</li>
-            <li class="is-warning">A vanity key is a single key, not an HD wallet. Paste a found passphrase into Keys → Private key → Brain-wallet text to see every script type and the WIF.</li>
+            <li class="is-warning">A vanity passphrase is a BIP39 passphrase: the seed words alone no longer recover the wallet. After Update key, record the passphrase with the same care as the words.</li>
+            <li>Matching is Bitcoin mainnet, at the key's first receive address (its own purpose, account, branch, and address index). Update key re-derives the key, so the Keys tab, its exports, and the Journal show the vanity wallet.</li>
           </ul>
         </div>
         <div class="station-key-source">
-          <p class="label">Bring in a passphrase from Key Station</p>
+          <p class="label">Bring in a key from Key Station</p>
           <div class="session-key-picker" id="vanity-session-keys" role="group" aria-label="Key Station keys" hidden></div>
-          <p class="field-note">Pick a Key Station key to grind on its passphrase — a key without one gets a passphrase on the Keys tab first — or type a salt below. The salt is used verbatim: every candidate is the salt plus the counter characters, never a rehash of anything else.</p>
-          <label class="field">Salt (kept in page memory)
-            <input id="vanity-salt" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Type a salt, or pick a Key Station key above" aria-describedby="vanity-salt-note">
-            <span class="field-note" id="vanity-salt-note">No salt — candidates use the public counter mapping, and anyone grinding the same space finds the same keys.</span>
-          </label>
+          <p class="field-note" id="vanity-session-note">Derive a key on the Keys tab first — the grinder searches that key's passphrase or account index. A key with seed words supports both methods; a root-xprv key supports the derivation grind only.</p>
+        </div>
+        <div class="vanity-source" id="vanity-source" hidden>
+          <div class="vanity-source-head">
+            <span class="vanity-source-kicker">Selected key</span>
+            <span class="vanity-source-key"><img class="key-tab-lifehash" id="vanity-source-lifehash" width="22" height="22" alt="" hidden><code id="vanity-source-name"></code></span>
+            <span class="muted" id="vanity-source-kind"></span>
+          </div>
+          <label class="field" for="vanity-pass">Starting passphrase <span class="vanity-source-from" id="vanity-pass-from"></span></label>
+          <input id="vanity-pass" readonly autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="No passphrase — the key uses its seed words alone" aria-describedby="vanity-pass-note">
+          <span class="field-note" id="vanity-pass-note"></span>
         </div>
         <div class="vanity-grid">
+          <label class="field">Method
+            <select id="vanity-method">
+              <option value="passphrase" selected="selected">Passphrase grind</option>
+              <option value="derivation">Derivation grind</option>
+            </select>
+            <span class="field-note" id="vanity-method-help">Each candidate is the starting passphrase followed by the counter characters, stretched into a seed (2,048 PBKDF2 rounds) and derived at the key's path. A match is a new passphrase for this key.</span>
+          </label>
           <label class="field">Address type
             <select id="vanity-script">
               <option value="p2pkh">Legacy P2PKH · 1…</option>
               <option value="p2sh-p2wpkh">Nested SegWit P2SH-P2WPKH · 3…</option>
               <option value="p2wpkh" selected="selected">Native SegWit P2WPKH · bc1q…</option>
               <option value="p2tr">Taproot P2TR · bc1p…</option>
+              <option value="sp">Silent Payments BIP-352 · sp1qq…</option>
             </select>
           </label>
           <label class="field">Address prefix
@@ -246,17 +260,25 @@ words, pick one of the checksum words.</span></span>
           </label>
         </div>
         <div class="vanity-grid">
-          <label class="field">Passphrase length
+          <label class="field" data-vanity-method="passphrase">Passphrase length
             <input id="vanity-length" type="number" min="1" max="32" step="1" inputmode="numeric" value="8" aria-describedby="vanity-length-help">
-            <span class="field-note" id="vanity-length-help">Counter characters a-zA-Z0-9, appended after the salt. 62^10 counters fill the 64-bit counter; longer passphrases grind their low range.</span>
+            <span class="field-note" id="vanity-length-help">Counter characters a-zA-Z0-9 appended after the starting passphrase. 62^10 counters fill the 64-bit counter; longer passphrases grind their low range.</span>
           </label>
-          <label class="field">Start counter
+          <label class="field" data-vanity-method="passphrase">Start counter
             <input id="vanity-start" inputmode="numeric" autocomplete="off" spellcheck="false" value="0" aria-describedby="vanity-start-help">
-            <span class="field-note" id="vanity-start-help">First counter tried. Counter 0 is passphrase "aaa…".</span>
+            <span class="field-note" id="vanity-start-help">First counter tried. Counter 0 is "aaa…".</span>
           </label>
-          <label class="field">Range size
+          <label class="field" data-vanity-method="passphrase">Range size
             <input id="vanity-count" inputmode="numeric" autocomplete="off" spellcheck="false" value="1000000" aria-describedby="vanity-count-help">
             <span class="field-note" id="vanity-count-help">Candidates to grind. After a run, Start continues where the range ended.</span>
+          </label>
+          <label class="field" data-vanity-method="derivation" hidden>Start account
+            <input id="vanity-account-start" inputmode="numeric" autocomplete="off" spellcheck="false" value="0" aria-describedby="vanity-account-start-help">
+            <span class="field-note" id="vanity-account-start-help">First BIP32 account index tried (0 to 2,147,483,647). Each match is an account index holding the vanity address.</span>
+          </label>
+          <label class="field" data-vanity-method="derivation" hidden>Accounts to try
+            <input id="vanity-account-count" inputmode="numeric" autocomplete="off" spellcheck="false" value="100000" aria-describedby="vanity-account-count-help">
+            <span class="field-note" id="vanity-account-count-help">Account indexes to grind. After a run, Start account continues where the range ended.</span>
           </label>
           <label class="field">Workers
             <input id="vanity-workers" type="number" min="1" max="64" step="1" inputmode="numeric" value="1" aria-describedby="vanity-workers-help">

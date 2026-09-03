@@ -938,68 +938,133 @@
     }
   });
 
-  await test("the Vanity tab grinds a known prefix end to end and masks the passphrase", async () => {
-    // The chip picker lists the Key Station tabs even before any passphrase
-    // exists — a picker that vanishes reads as broken — and a passphraseless
-    // key explains itself when picked.
+  await test("the Vanity tab grinds a Key Station key's passphrase and account index, and Update key writes the match back", async () => {
+    // Without a derived key there is nothing to grind: no chips, a note that
+    // says so, and a disabled Start button. The Key Station lab tab is never
+    // offered as a chip.
     document.querySelector('#workspace [data-workspace="vanity"]').click();
     await until(() => !document.getElementById("vanity-card").hidden, "Vanity tool to open");
-    await until(() => document.querySelector("#vanity-session-keys .session-key-option"), "a Key Station chip is listed even with no passphrase set");
-    document.querySelector("#vanity-session-keys .session-key-option").click();
-    await wait(0);
-    assert(document.getElementById("vanity-error").textContent.includes("no passphrase"), "picking a passphraseless key says what to do");
-    // A Key Station passphrase is brought in through the same clickable chip
-    // picker BIP-85 and Silent Payments use, and it salts the grind verbatim.
+    assert(document.getElementById("vanity-session-keys").hidden, "no chips are listed before a key is derived");
+    assert(document.getElementById("vanity-session-note").textContent.includes("Derive a key on the Keys tab first"), "the picker note says what to do first");
+    assert(document.getElementById("vanity-go").disabled, "Start grinding is disabled without a key");
+    // Derive a key with a passphrase (the BIP39 24-word vector), then bring
+    // it in through the same clickable chip picker BIP-85 and Silent Payments use.
     document.querySelector('#workspace [data-workspace="calc"]').click();
     await until(() => !document.getElementById("key-manager").hidden, "key workspace");
+    await chooseMode("Seed phrase");
+    input(document.getElementById("seed"), Array(23).fill("abandon").join(" ") + " art");
     input(document.getElementById("pass"), "correct horse battery staple");
+    await until(() => !document.getElementById("go").disabled, "Derive Key to enable");
+    document.getElementById("go").click();
+    await until(() => [...document.querySelectorAll("#key-tabs .key-tab")].some((tab) => tab.textContent.includes("ef94d090")), "the derived key tab ef94d090");
     document.querySelector('#workspace [data-workspace="vanity"]').click();
-    await until(() => document.querySelector("#vanity-session-keys .session-key-option"), "the Key Station chip to appear for a key with a passphrase");
-    const chip = document.querySelector("#vanity-session-keys .session-key-option");
-    chip.click();
+    await until(() => document.querySelector("#vanity-session-keys .session-key-option"), "the Key Station chip to appear");
+    const chips = [...document.querySelectorAll("#vanity-session-keys .session-key-option")].map((chip) => chip.textContent.trim());
+    equal(chips.join(","), "ef94d090", "only the derived key is a chip — never the Key Station lab tab");
+    document.querySelector("#vanity-session-keys .session-key-option").click();
     await wait(0);
-    const saltField = document.getElementById("vanity-salt");
-    assert(saltField.value === "correct horse battery staple", "the chip copies the key's passphrase verbatim, never a rehash");
-    assert(document.getElementById("vanity-salt-note").textContent.includes("Key Station key"), "the salt note names the source key");
     // The picker re-renders on pick, so re-query rather than reusing the chip.
-    assert(document.querySelector("#vanity-session-keys .session-key-option").classList.contains("active"), "the picked chip shows active");
-    // Clearing the field by hand severs the link and restores the warning.
-    input(saltField, "");
-    await wait(0);
-    assert(!document.querySelector("#vanity-session-keys .session-key-option.active"), "hand-editing the salt clears the chip's active state");
-    assert(document.getElementById("vanity-salt-note").textContent.startsWith("No salt"), "cleared salt restores the public-mapping warning");
-    // Counter 0 / passphrase "a" derives the pinned P2PKH address
-    // 14dD6ygPi5WXdwwBTt1FBZK3aD8uDem1FY (see test/vanity-wasm.test.mjs), so a
-    // one-character space with prefix "14" must hit it. This exercises the
-    // whole browser path: the blob-URL worker under the CSP, the WASM module
-    // instantiated inside the worker, the match protocol, and the rendering.
-    const script = document.getElementById("vanity-script");
-    script.value = "p2pkh";
-    script.dispatchEvent(new Event("change", { bubbles: true }));
-    input(document.getElementById("vanity-prefix"), "14");
+    const picked = document.querySelector("#vanity-session-keys .session-key-option");
+    assert(picked.classList.contains("active") && picked.getAttribute("aria-pressed") === "true", "the picked chip shows active");
+    assert(getComputedStyle(picked.querySelector(".session-key-check")).display !== "none", "the picked chip carries a visible check mark");
+    assert(!document.getElementById("vanity-source").hidden, "the selected-key panel opens");
+    equal(document.getElementById("vanity-source-name").textContent, "ef94d090", "the panel names the key");
+    equal(document.getElementById("vanity-pass").value, "correct horse battery staple", "the starting passphrase is the key's passphrase, verbatim");
+    assert(document.getElementById("vanity-pass").readOnly, "the starting passphrase is read-only here — it changes on the Keys tab");
+    assert(document.getElementById("vanity-pass-from").textContent.includes("ef94d090"), "the passphrase is labelled with its source key");
+    assert(!document.getElementById("vanity-go").disabled, "Start grinding enables once a key is picked");
+    // Passphrase grind: counter 0 / "a" makes the passphrase
+    // "correct horse battery staplea", whose m/84'/0'/0'/0/0 P2WPKH address is
+    // bc1qylthc2drk6x5q0czdljal99vqwed9tja80z06d (scure re-derivation in
+    // test/vanity-wasm.test.mjs). This exercises the whole browser path: the
+    // blob-URL worker under the CSP, the WASM module instantiated inside the
+    // worker, PBKDF2 + BIP32 in WASM, the match protocol, and the rendering.
+    equal(document.getElementById("vanity-method").value, "passphrase", "the passphrase grind is the default method");
+    assert(!document.querySelector('#vanity-card [data-vanity-method="passphrase"]').hidden && document.querySelector('#vanity-card [data-vanity-method="derivation"]').hidden, "the passphrase grind shows counter fields, not account fields");
+    input(document.getElementById("vanity-prefix"), "bc1qyl");
     input(document.getElementById("vanity-length"), "1");
     input(document.getElementById("vanity-start"), "0");
     input(document.getElementById("vanity-count"), "62");
     input(document.getElementById("vanity-workers"), "1");
-    assert(document.getElementById("vanity-estimate").textContent.includes("1 in 58"), "the estimate line prices one free base58 character");
-    assert(document.getElementById("vanity-salt-note").textContent.startsWith("No salt"), "an unsalted grind says so");
+    assert(document.getElementById("vanity-estimate").textContent.includes("1 in 1,024"), "the estimate line prices two free bech32 characters");
     document.getElementById("vanity-go").click();
-    await until(() => document.querySelector("#vanity-out table tbody tr"), "a match row to render");
-    await until(() => document.getElementById("vanity-status").textContent.includes("Range complete"), "the range to complete");
-    const row = document.querySelector("#vanity-out table tbody tr");
-    const cells = [...row.children];
+    await until(() => document.querySelector("#vanity-out table tbody tr"), "a match row to render", 60000);
+    await until(() => document.getElementById("vanity-status").textContent.includes("Range complete"), "the range to complete", 60000);
+    let row = document.querySelector("#vanity-out table tbody tr");
+    let cells = [...row.children];
     assert(cells[1].textContent.trim() === "0", "the hit is counter 0");
     const secretCell = cells[2].querySelector(".mono");
     assert(/^•+$/.test(secretCell.textContent), "the passphrase is masked until revealed");
-    assert(cells[3].textContent.includes("14dD6ygPi5WXdwwBTt1FBZK3aD8uDem1FY"), "the hit address is the pinned vector");
+    assert(cells[3].textContent.includes("bc1qylthc2drk6x5q0czdljal99vqwed9tja80z06d"), "the hit address is the pinned vector");
+    assert(row.querySelector("[data-vanity-apply]"), "every match offers Update key");
     document.getElementById("vanity-reveal").click();
-    await until(() => secretCell.isConnected === false || secretCell.textContent === "a", "the reveal toggle to show the passphrase");
-    assert(document.querySelector("#vanity-out .vanity-secret .mono").textContent === "a", "the revealed passphrase is the counter odometer string");
-    document.getElementById("vanity-wipe").click();
-    await until(() => !document.querySelector("#vanity-out table"), "Clear results to drop the table");
+    await until(() => document.querySelector("#vanity-out .vanity-secret .mono").textContent === "correct horse battery staplea", "the reveal toggle to show the full passphrase");
+    // Update key writes the passphrase to the key and re-derives it in place:
+    // the tab keeps its slot, takes the new fingerprint, and shows the vanity
+    // address as its first receive address.
+    document.querySelector("#vanity-out [data-vanity-apply]").click();
+    await until(() => document.getElementById("vanity-status").textContent.includes("Saved to key c55401c7"), "Update key to finish", 60000);
+    assert(document.querySelector("#vanity-out .vanity-saved").textContent.includes("c55401c7"), "the row records where it was saved");
+    equal(document.getElementById("vanity-pass").value, "correct horse battery staplea", "the selected-key panel now shows the saved passphrase");
+    equal([...document.querySelectorAll("#key-tabs .key-tab")].map((tab) => tab.textContent.trim()).join(","), "Key Station,c55401c7", "the key kept its tab and took the new fingerprint");
+    assert(document.getElementById("calc-card").hidden && !document.getElementById("vanity-card").hidden, "the Vanity tab stays in front");
     document.querySelector('#workspace [data-workspace="calc"]').click();
     await until(() => !document.getElementById("key-manager").hidden, "key workspace");
-    // Leave no passphrase behind for the derivation tests that follow.
+    equal(document.getElementById("pass").value, "correct horse battery staplea", "the Keys tab carries the new passphrase");
+    assert(document.getElementById("out").textContent.includes("bc1qylthc2drk6x5q0czdljal99vqwed9tja80z06d"), "the Keys tab derives the vanity address");
+    // Derivation grind: with the passphrase fixed, account 3' of this key is
+    // bc1qf5q2vkxyuccj242qk4xny2e50aq736a2xgdjf7 at m/84'/0'/3'/0/0.
+    document.querySelector('#workspace [data-workspace="vanity"]').click();
+    await until(() => !document.getElementById("vanity-card").hidden, "Vanity tool to open");
+    const method = document.getElementById("vanity-method");
+    method.value = "derivation";
+    method.dispatchEvent(new Event("change", { bubbles: true }));
+    await wait(0);
+    assert(document.querySelector('#vanity-card [data-vanity-method="passphrase"]').hidden && !document.querySelector('#vanity-card [data-vanity-method="derivation"]').hidden, "the derivation grind swaps in the account index fields");
+    assert(!document.querySelector("#vanity-out table"), "changing the method clears the previous results");
+    input(document.getElementById("vanity-prefix"), "bc1qf5q");
+    input(document.getElementById("vanity-account-start"), "0");
+    input(document.getElementById("vanity-account-count"), "10");
+    document.getElementById("vanity-go").click();
+    await until(() => document.querySelector("#vanity-out table tbody tr"), "an account match row to render", 60000);
+    await until(() => document.getElementById("vanity-status").textContent.includes("Range complete"), "the account range to complete", 60000);
+    row = document.querySelector("#vanity-out table tbody tr");
+    cells = [...row.children];
+    equal(cells[1].textContent.trim(), "3'", "the hit is account 3, hardened like the key's account");
+    equal(cells[2].textContent.trim(), "m/84h/0h/3h/0/0", "the row shows the concrete path");
+    assert(cells[3].textContent.includes("bc1qf5q2vkxyuccj242qk4xny2e50aq736a2xgdjf7"), "the account address is the pinned vector");
+    equal(document.getElementById("vanity-account-start").value, "10", "Start account continues where the range ended");
+    document.querySelector("#vanity-out [data-vanity-apply]").click();
+    await until(() => document.getElementById("vanity-status").textContent.includes("account 3 is now on the key"), "Update key to set the account", 60000);
+    assert(document.getElementById("vanity-source-kind").textContent.includes("m/84h/0h/3h/0/0"), "the selected-key panel shows the new path");
+    equal([...document.querySelectorAll("#key-tabs .key-tab")].map((tab) => tab.textContent.trim()).join(","), "Key Station,c55401c7", "an account change keeps the same fingerprint and tab");
+    // Silent Payments: the prefix filter lowercases, "sp1qq" is fixed, and
+    // account 1' of this key is sp1qqtjetnp0fgkeulzm….
+    const script = document.getElementById("vanity-script");
+    script.value = "sp";
+    script.dispatchEvent(new Event("change", { bubbles: true }));
+    await wait(0);
+    input(document.getElementById("vanity-prefix"), "SP1QQT");
+    equal(document.getElementById("vanity-prefix").value, "sp1qqt", "the Silent Payment prefix is lowercased bech32");
+    assert(document.getElementById("vanity-estimate").textContent.includes("1 in 8 "), "the parity character has eight values");
+    input(document.getElementById("vanity-account-start"), "0");
+    input(document.getElementById("vanity-account-count"), "3");
+    document.getElementById("vanity-go").click();
+    await until(() => document.getElementById("vanity-status").textContent.includes("Range complete"), "the Silent Payment range to complete", 60000);
+    row = document.querySelector("#vanity-out table tbody tr");
+    assert(row, "the Silent Payment grind finds account 1");
+    equal(row.children[1].textContent.trim(), "1'", "the hit is account 1");
+    assert(row.children[3].textContent.includes("sp1qqtjetnp0fgkeulzm"), "the row shows the 116-character Silent Payment code");
+    document.getElementById("vanity-wipe").click();
+    await until(() => !document.querySelector("#vanity-out table"), "Clear results to drop the table");
+    // Leave Key Station as the tests that follow expect it: no derived key,
+    // no passphrase.
+    document.querySelector('#workspace [data-workspace="calc"]').click();
+    await until(() => !document.getElementById("key-manager").hidden, "key workspace");
+    [...document.querySelectorAll("#key-tabs .key-tab")].find((tab) => tab.textContent.includes("c55401c7")).click();
+    await until(() => !document.getElementById("delete-key").disabled, "Delete current key to enable");
+    document.getElementById("delete-key").click();
+    await until(() => [...document.querySelectorAll("#key-tabs .key-tab")].every((tab) => !tab.textContent.includes("c55401c7")), "the derived key to be deleted");
     input(document.getElementById("pass"), "");
   });
   await test("Journal notepad stamps notes, session state captures, and the log omits secrets", async () => {

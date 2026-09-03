@@ -101,16 +101,19 @@ Official website: [entropylab.online](https://entropylab.online)
   root xprv, including labeled codes, BIP-392 `spscan` / `spspend` descriptors,
   sender taproot outputs from pasted vin JSON, and receiver verification of
   pasted x-only outputs. This is a calculator: it does not scan the chain.
-- Grinds vanity addresses from a deterministic counter (Vanity tab): the
-  counter becomes a base-62 odometer passphrase, SHA-256 makes it the private
-  key (the brain-wallet convention), and the selected mainnet address type
-  (legacy, nested SegWit, native SegWit, or Taproot) is checked against the
-  chosen prefix. The grind runs in a dedicated WebAssembly module, one Web
-  Worker per CPU core, and the salt is the user's own text used verbatim — a
-  Key Station passphrase brought in with one click (the same chip picker as
-  BIP-85 and Silent Payments) or typed on the tab — so a found passphrase is
-  the salt followed by the counter characters: same salt and counter always
-  reproduce the same key, and nothing is invented. Found passphrases stay in
+- Grinds vanity addresses for a Key Station key (Vanity tab), picked through
+  the same chip picker as BIP-85 and Silent Payments. Two methods: the
+  **passphrase grind** extends the key's BIP39 passphrase with base-62
+  odometer counter characters, the **derivation grind** keeps the passphrase
+  and steps through BIP32 account indexes. Every candidate is derived the
+  standard way (PBKDF2 seed, BIP32 path — the key's own purpose, account,
+  branch, and address index) in a dedicated WebAssembly module, one Web Worker
+  per CPU core, and its mainnet address of the selected type (legacy, nested
+  SegWit, native SegWit, Taproot, or a BIP-352 Silent Payment code) is checked
+  against the chosen prefix. Same key and counter always reproduce the same
+  address, so nothing is invented; **Update key** writes a found passphrase or
+  account index back to the key and re-derives it, so the Keys tab, its
+  exports, and the Journal show the vanity wallet. Found passphrases stay in
   page memory, are masked until revealed, and are wiped with the session.
 - A session **Journal** (last workspace tab) holds an encrypted **Entropy
   Journal** notebook, a notepad stamped with this computer's date and time,

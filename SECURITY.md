@@ -115,16 +115,18 @@ material. Its security posture rests on the following model:
   as a Bitcoin Core private key, and it is not a backup of a Core hdseed or
   address key. The private-key brain-wallet mode remains a separate scalar
   path.
-- The vanity grinder (Vanity tab) is deterministic: a counter maps to a
-  base-62 passphrase hashed with SHA-256 into a private key (the brain-wallet
-  convention), so it invents no entropy — but every found passphrase is a
-  brain wallet. With no salt (or a guessable one), the counter space is
-  public and anyone grinding the same range finds the same keys; the tab
-  warns and offers to salt the grind with a Key Station passphrase, brought
-  in verbatim (never rehashed) through the same chip picker as the other
-  tools. Found passphrases live only in page memory, are masked until
-  revealed, and are dropped by the same pagehide/bfcache clearing as every
-  other secret.
+- The vanity grinder (Vanity tab) is deterministic and works only on a Key
+  Station key: a counter either extends that key's BIP39 passphrase (base-62
+  odometer characters) or selects its BIP32 account index, and every
+  candidate is derived the standard way (PBKDF2 seed, BIP32 path), so it
+  invents no entropy and every result is a setting of a wallet the user
+  already holds. A found passphrase is still a BIP39 passphrase: the words
+  alone no longer recover the wallet, and the tab says so before Update key
+  writes it back to the key. The key's seed words (passphrase grind) or the
+  parent node above the account (derivation grind) are handed to the page's
+  own Web Workers and wiped with the run. Found passphrases live only in page
+  memory, are masked until revealed, and are dropped by the same
+  pagehide/bfcache clearing as every other secret.
 - BIP-85 children are a deterministic transformation of the parent BIP32 root,
   not newly generated entropy. A BIP-39 passphrase, when present, is part of
   that root (the same rule COLDCARD uses). Anyone who has the parent seed,

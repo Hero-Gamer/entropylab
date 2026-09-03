@@ -6,19 +6,26 @@
 //
 // Protocol (structured clone; counters are BigInt):
 //   main -> worker  { type: "init", wasm: ArrayBuffer }        -> { type: "ready" }
-//   main -> worker  { type: "grind", prefix, passLen, start, count, script, salt }
+//   main -> worker  { type: "grind", mode, key, salt, path, counterSlot,
+//                     prefix, passLen, start, count, script }
 //   worker -> main  { type: "progress", done, matches }        per chunk
 //   worker -> main  { type: "done", done, stopped }            range finished
 //   main -> worker  { type: "stop" }                           cooperative stop
 //   worker -> main  { type: "error", message }
-// Match: { counter: BigInt, passphrase: string, payload: Uint8Array(32) }.
-// payload is HASH160 (first 20 bytes) for hash-based scripts, or the x-only
-// output key for P2TR. passphrase is the counter odometer string; the ground
-// brain-wallet passphrase is salt + passphrase (salt defaults to ""). The
-// salt is the session's passphrase verbatim, or — with no passphrase — the
-// SHA-256 hex digest of the session's entropy inputs.
-// The private key (SHA-256 of salt followed by the passphrase) never leaves
-// the WASM loop.
+// grind fields: mode 0 grinds the BIP39 passphrase — key is the NFKD mnemonic
+// (Uint8Array), salt the NFKD starting passphrase (Uint8Array), path the full
+// derivation path (array of u32 with the hardened bit), and the counter is
+// the passLen-character odometer string appended to the passphrase. mode 1
+// grinds one path component — key is a 64-byte BIP32 node (private key then
+// chain code), path the components below it, and the counter replaces
+// path[counterSlot]. script 0-3 are the single-signature address types,
+// 4 is a BIP-352 Silent Payment code (path ends at the account node).
+// Match: { counter: BigInt, passphrase: string, payload: Uint8Array(66) }.
+// passphrase is the bare odometer string (empty in mode 1); the candidate
+// BIP39 passphrase is salt + passphrase. payload is HASH160 (first 20 bytes)
+// for hash-based scripts, the x-only output key (32 bytes) for P2TR, or the
+// scan and spend compressed public keys (33 + 33 bytes) for Silent Payments.
+// Private keys never leave the WASM loop.
 //
 // The string must stay free of backticks and "${" (it lives in a template
 // literal below).
@@ -28,14 +35,21 @@ var wasm = null;
 var stopRequested = false;
 var prefixPtr = 0;
 var saltPtr = 0;
+var keyPtr = 0;
+var pathPtr = 0;
 var outPtr = 0;
 var CHUNK = 4096;
 var RECORD_CAP = 8192;
-var RECORD_LEN = 72;
+var RECORD_LEN = 106;
+var PAYLOAD_LEN = 66;
 var OUT_CAP = 12 + RECORD_LEN * RECORD_CAP;
-var MAX_PREFIX = 62;
-// Same limit as MAX_SALT_LEN in vanity-wasm/src/lib.rs.
+// Same limits as MAX_ADDR_LEN, MAX_SALT_LEN, MAX_KEY_LEN, and MAX_PATH_LEN in
+// vanity-wasm/src/lib.rs.
+var MAX_PREFIX = 116;
 var MAX_SALT = 256;
+var MAX_KEY = 1024;
+var MAX_PATH = 16;
+var NO_SLOT = 0xffffffff;
 var encoder = new TextEncoder();
 var decoder = new TextDecoder();
 
@@ -53,21 +67,47 @@ function drain(passLen) {
     matches.push({
       counter: new DataView(wasm.memory.buffer, at, 8).getBigUint64(0, true),
       passphrase: decoder.decode(heap().slice(at + 8, at + 8 + passLen)),
-      payload: heap().slice(at + 40, at + 72)
+      payload: heap().slice(at + 40, at + 40 + PAYLOAD_LEN)
     });
   }
   return { processed: processed, matches: matches };
 }
 
+function bytesOf(value) {
+  if (value instanceof Uint8Array) return value;
+  if (value instanceof ArrayBuffer) return new Uint8Array(value);
+  return encoder.encode(String(value == null ? "" : value));
+}
+
 function grind(msg) {
+  var mode = msg.mode === 1 ? 1 : 0;
   var prefixBytes = encoder.encode(msg.prefix);
+  if (prefixBytes.length === 0 || prefixBytes.length > MAX_PREFIX) {
+    postMessage({ type: "error", message: "vanity prefix is empty or longer than " + MAX_PREFIX + " characters" });
+    return;
+  }
   heap().set(prefixBytes, prefixPtr);
-  var saltBytes = encoder.encode(msg.salt || "");
+  var keyBytes = bytesOf(msg.key);
+  if (keyBytes.length === 0 || keyBytes.length > MAX_KEY) {
+    postMessage({ type: "error", message: "vanity key material is empty or longer than " + MAX_KEY + " bytes" });
+    return;
+  }
+  heap().set(keyBytes, keyPtr);
+  var saltBytes = mode === 1 ? new Uint8Array(0) : bytesOf(msg.salt);
   if (saltBytes.length > MAX_SALT) {
-    postMessage({ type: "error", message: "vanity salt is longer than " + MAX_SALT + " characters" });
+    postMessage({ type: "error", message: "vanity starting passphrase is longer than " + MAX_SALT + " bytes" });
     return;
   }
   heap().set(saltBytes, saltPtr);
+  var path = Array.isArray(msg.path) ? msg.path : [];
+  if (path.length === 0 || path.length > MAX_PATH) {
+    postMessage({ type: "error", message: "vanity derivation path has 1 to " + MAX_PATH + " components" });
+    return;
+  }
+  var pathView = new DataView(wasm.memory.buffer, pathPtr, MAX_PATH * 4);
+  for (var i = 0; i < path.length; i++) pathView.setUint32(i * 4, Number(path[i]) >>> 0, true);
+  var counterSlot = mode === 1 ? Number(msg.counterSlot) >>> 0 : NO_SLOT;
+  var passLen = mode === 1 ? 0 : Number(msg.passLen);
   var total = BigInt(msg.count);
   var cursor = BigInt(msg.start);
   var done = BigInt(0);
@@ -79,12 +119,12 @@ function grind(msg) {
     }
     var remaining = total - done;
     var chunk = remaining > BigInt(CHUNK) ? CHUNK : Number(remaining);
-    var status = wasm.vanity_grind(prefixPtr, prefixBytes.length, msg.passLen, cursor, BigInt(chunk), outPtr, OUT_CAP, msg.script || 0, saltPtr, saltBytes.length);
+    var status = wasm.vanity_grind(mode, keyPtr, keyBytes.length, saltPtr, saltBytes.length, pathPtr, path.length, counterSlot, prefixPtr, prefixBytes.length, passLen, cursor, BigInt(chunk), outPtr, OUT_CAP, msg.script || 0);
     if (status === -1) {
       postMessage({ type: "error", message: "vanity_grind rejected its arguments" });
       return;
     }
-    var drained = drain(msg.passLen);
+    var drained = drain(passLen);
     done += drained.processed;
     cursor += drained.processed;
     postMessage({ type: "progress", done: done, matches: drained.matches });
@@ -107,6 +147,8 @@ self.onmessage = function (event) {
       wasm = result.instance.exports;
       prefixPtr = wasm.vanity_alloc(MAX_PREFIX);
       saltPtr = wasm.vanity_alloc(MAX_SALT);
+      keyPtr = wasm.vanity_alloc(MAX_KEY);
+      pathPtr = wasm.vanity_alloc(MAX_PATH * 4);
       outPtr = wasm.vanity_alloc(OUT_CAP);
       postMessage({ type: "ready" });
     }).catch(function (error) {

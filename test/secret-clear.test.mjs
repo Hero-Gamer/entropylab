@@ -111,8 +111,10 @@ test("Vanity grinder salt, matches, and running workers are cleared", () => {
   assert.match(lifecycle, /hodlVanityMatches\s*=\s*\[\]/);
   assert.match(lifecycle, /hodlVanityFound\s*=\s*0/);
   assert.match(lifecycle, /hodlVanityReveal\s*=\s*false/);
-  assert.match(lifecycle, /getElementById\("vanity-salt"\)/);
-  assert.match(lifecycle, /vanitySalt\.value\s*=\s*""/);
+  assert.match(lifecycle, /hodlVanitySource\s*=\s*""/);
+  assert.match(lifecycle, /hodlVanityRun\s*=\s*null/);
+  assert.match(lifecycle, /getElementById\("vanity-pass"\)/);
+  assert.match(lifecycle, /vanityPass\.value\s*=\s*""/);
   assert.match(lifecycle, /getElementById\("vanity-out"\)/);
   assert.match(lifecycle, /vanityOut\.innerHTML\s*=\s*""/);
   assert.match(lifecycle, /getElementById\("vanity-error"\)/);

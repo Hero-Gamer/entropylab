@@ -218,6 +218,18 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
   display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto;
   color: var(--ok); font-size: 13px; font-weight: 600; white-space: nowrap;
 }
+/* Narrow screens only: the badge drops below the toggle and the shortfall takes
+   its own line, while each phrase stays on one line. */
+@media (max-width: 720px) {
+  .global-sync-head { flex-wrap: wrap; }
+  .global-sync-toggle { flex: 1 1 100%; }
+  .global-sync-status { flex: 1 1 100%; flex-wrap: wrap; white-space: normal; }
+  .global-sync-status > span { white-space: nowrap; }
+}
+.global-sync-shortfall {
+  display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; color: var(--warn);
+}
+.global-sync-shortfall svg { display: block; width: 16px; height: 16px; }
 .global-sync-status[hidden] { display: none; }
 .global-sync-status svg { display: block; width: 16px; height: 16px; }
 .number-base-calculations-toggle { width: 100%; margin-top: var(--space-control); }
@@ -295,9 +307,9 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
   .dplus-calculation-sum { justify-content: flex-start; flex-wrap: wrap; margin-top: 7px; padding-top: 6px; gap: 4px; font-size: 10px; white-space: normal; overflow: visible; }
 }
 .passphrase-field { margin-top: var(--space-component); font-size: 14px; font-weight: 600; }
-.passphrase-keyboard-tools { display: flex; align-items: stretch; gap: var(--space-control); margin-top: var(--space-control); }
+.passphrase-keyboard-tools { display: flex; align-items: flex-start; gap: var(--space-control); margin-top: var(--space-control); }
 .passphrase-keyboard-tools[hidden] { display: none; }
-.passphrase-keyboard-tools .seed-keyboard-toggle { align-self: stretch; height: auto; }
+.passphrase-keyboard-tools .seed-keyboard-toggle { align-self: flex-start; }
 .passphrase-bip39-options { display: grid; flex: 1 1 auto; gap: var(--space-control); }
 .passphrase-bip39-toggle, .passphrase-autocomplete-toggle { width: 100%; margin-top: 0; }
 .passphrase-autocomplete-toggle[hidden] { display: none; }
@@ -1378,7 +1390,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    stretched to the row's full height. (.psbt-actions alone is shared with the
    other cards' button rows, so scope by the editor's own class.) */
 .psbted-actions { align-items: flex-end; }
-.psbted-actions .btn { min-height: 0; padding: 6px 10px; }
+.psbted-actions .btn, .psbted-actions .custom-select-button { min-height: 36px; padding: 6px 10px; border-radius: 8px; }
 .psbted-map { margin-top: var(--space-component); }
 .psbted-map > h3 { margin: 0 0 4px; font-size: 15px; }
 .psbted-txhead { display: flex; flex-wrap: wrap; gap: 0 16px; margin-bottom: 4px; }
@@ -1703,7 +1715,8 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .derive-progress {
   display: inline-flex; flex: 0 1 260px; min-width: 170px; align-items: center; gap: 9px;
-  padding: 8px 11px; border: 0;
+  min-height: 44px; box-sizing: border-box; padding: 8px 11px;
+  border: 1px solid color-mix(in oklab, currentColor 35%, transparent);
   border-radius: 9px; background: color-mix(in oklab, var(--accent) 8%, var(--surface)); color: var(--accent);
 }
 .derive-progress[hidden] { display: none !important; }

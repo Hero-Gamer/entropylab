@@ -548,7 +548,7 @@
     sync.click();
     await wait(0);
     const syncStatus = document.getElementById("global-sync-status");
-    assert(syncStatus && !syncStatus.hidden && syncStatus.textContent.includes("128 bits synced"), "Complete entropy did not show the global synced confirmation");
+    assert(syncStatus && !syncStatus.hidden && syncStatus.textContent.includes("Key synced") && !syncStatus.querySelector(".global-sync-shortfall"), "Complete entropy did not show the global synced confirmation");
     document.querySelector('input[name="entropy-format"][value="hex"]').click();
     const syncedHex = await until(() => document.getElementById("hex"), "synced hex input");
     equal(syncedHex.value, "0".repeat(32));
@@ -581,7 +581,8 @@
     assert(!document.getElementById("go").disabled, "24-word Base32 did not accept a final single entropy bit");
     input(base32For24, "0".repeat(51));
     assert(document.getElementById("global-entropy-sync").checked, "Global sync turned off for incomplete entropy");
-    assert(document.getElementById("global-sync-status").textContent.includes("255 bits synced"), "Incomplete entropy did not report its exact synced bit count");
+    const incompleteStatus = document.getElementById("global-sync-status");
+    assert(incompleteStatus.textContent.includes("Key synced") && !incompleteStatus.querySelector(".global-sync-shortfall"), "Entropy past the minimum did not report a healthy sync");
     document.querySelector('input[name="entropy-format"][value="hex"]').click();
     const preservedHex = await until(() => document.getElementById("hex"), "truncated synchronized hex input");
     assert(preservedHex.value.length === 63, "Global sync did not wait for a complete next hexadecimal character");
@@ -600,7 +601,8 @@
     const syncLabel = directToggle.closest("label").textContent;
     if (!directToggle.checked) directToggle.click();
     input(binary, "000");
-    assert(document.getElementById("global-sync-status").textContent.includes("3 bits synced"), "Partial direct entropy did not sync immediately");
+    const partialStatus = document.getElementById("global-sync-status");
+    assert(partialStatus.textContent.includes("3 bits of entropy") && partialStatus.querySelector(".global-sync-shortfall"), "Partial direct entropy did not sync immediately");
 
     await chooseMode("Dice rolls");
     document.querySelector('input[name="dm"][value="dplus"]').click();
@@ -682,7 +684,7 @@
     assert(diceToggle && !diceToggle.disabled && !diceToggle.checked, "A direct dice method did not offer an enabled, unchecked global sync toggle");
     diceToggle.click();
     for (const face of ["1", "0", "0"]) document.querySelector(`[data-d="${face}"]`).click();
-    assert(document.getElementById("global-sync-status").textContent.includes("11 bits synced"), "Dice pad clicks did not re-run the sync");
+    assert(document.getElementById("global-sync-status").textContent.includes("11 bits of entropy"), "Dice pad clicks did not re-run the sync");
     await chooseMode("Seed phrase");
     equal(document.getElementById("seed").value, "abandon", "Eleven pad-entered bits did not fill the first BIP39 word");
 
@@ -1170,12 +1172,12 @@
     row = document.querySelector("#vanity-out table tbody tr");
     cells = [...row.children];
     equal(cells[1].textContent.trim(), "3'", "the hit is account 3, hardened like the key's account");
-    equal(cells[2].textContent.trim(), "m/84h/0h/3h/0/0", "the row shows the concrete path");
+    equal(cells[2].textContent.trim(), "m/84'/0'/3'/0/0", "the row shows the concrete path");
     assert(cells[3].textContent.includes("bc1qf5q2vkxyuccj242qk4xny2e50aq736a2xgdjf7"), "the account address is the pinned vector");
     equal(document.getElementById("vanity-account-start").value, "10", "Start account continues where the range ended");
     document.querySelector("#vanity-out [data-vanity-apply]").click();
     await until(() => document.getElementById("vanity-status").textContent.includes("account 3 is now on the key"), "Update key to set the account", 60000);
-    assert(document.getElementById("vanity-source-kind").textContent.includes("m/84h/0h/3h/0/0"), "the selected-key panel shows the new path");
+    assert(document.getElementById("vanity-source-kind").textContent.includes("m/84'/0'/3'/0/0"), "the selected-key panel shows the new path");
     equal([...document.querySelectorAll("#key-tabs .key-tab")].map((tab) => tab.textContent.trim()).join(","), "Key Station,c55401c7", "an account change keeps the same fingerprint and tab");
     // Silent Payments: the prefix filter lowercases, "sp1qq" is fixed, and
     // account 1' of this key is sp1qqtjetnp0fgkeulzm….
@@ -1811,8 +1813,8 @@
     );
     assert(passphraseTools.getBoundingClientRect().bottom <= passphrase.getBoundingClientRect().top, "Passphrase tools overlap or follow the input");
     assert(
-      Boolean(fingerprintCards.compareDocumentPosition(keyboardHost) & Node.DOCUMENT_POSITION_FOLLOWING),
-      "Passphrase keyboard is not below the master fingerprint cards",
+      Boolean(keyboardHost.compareDocumentPosition(fingerprintCards) & Node.DOCUMENT_POSITION_FOLLOWING),
+      "Passphrase keyboard is not above the master fingerprint cards",
     );
     assert(toggle.getAttribute("aria-expanded") === "false" && keyboard.hidden, "Dice keyboard did not start closed");
     toggle.click();
@@ -1995,6 +1997,86 @@
     keyboard = document.getElementById("seed-keyboard");
     assert(toggle.getAttribute("aria-expanded") === "false" && keyboard.hidden, "Seed keyboard did not inherit the Private-key toggle state");
     input(passphrase, "");
+  });
+
+  await test("revoking the brain-wallet acknowledgement retracts the derived wallet", async () => {
+    // The checkbox is re-rendered on every refresh, so it must be looked up
+    // again before each click; holding a reference clicks a detached node and
+    // silently proves nothing.
+    const ackBox = () => document.getElementById("brain-lab-ack");
+    await chooseMode("Private key");
+    document.querySelector('input[name="kk"][value="brain"]').click();
+    if (!ackBox().checked) ackBox().click();
+    const brainInput = await until(() => document.getElementById("key"), "brain-wallet input");
+    input(brainInput, "correct horse battery staple");
+    const derive = await until(() => !document.getElementById("go").disabled && document.getElementById("go"), "brain-wallet derive button");
+    derive.click();
+    await until(() => document.getElementById("out").textContent.trim(), "derived brain wallet");
+    const secretShowing = () => {
+      const text = document.getElementById("out").textContent;
+      // The revealed digest and chain code run together past 64 characters, so
+      // a word boundary never lands on the end of the hex.
+      return /\b[5KL][1-9A-HJ-NP-Za-km-z]{50,51}\b/.test(text) || /[0-9a-f]{64}/.test(text);
+    };
+    const reveal = document.getElementById("reveal");
+    if (reveal) reveal.click();
+    await until(secretShowing, "revealed brain-wallet recovery material");
+
+    ackBox().click();
+    await wait(0);
+    assert(!ackBox().checked, "The acknowledgement did not clear");
+    assert(!document.getElementById("out").textContent.trim(), "Revoking the acknowledgement left the derived wallet on screen");
+    assert(!secretShowing(), "Recovery material survived the revoked acknowledgement");
+
+    // Switching output must retract too: the same text builds a different
+    // wallet, so the previous result would be a wrong address left on screen.
+    // Deriving leaves the key-kind radio on WIF, so brain is re-selected here
+    // exactly as a second run would need to.
+    document.querySelector('input[name="kk"][value="brain"]').click();
+    if (!ackBox().checked) ackBox().click();
+    await wait(0);
+    input(await until(() => document.getElementById("key"), "brain-wallet input for the second run"), "correct horse battery staple");
+    const again = await until(() => !document.getElementById("go").disabled && document.getElementById("go"), "brain-wallet derive button after re-acknowledging");
+    again.click();
+    await until(() => document.getElementById("out").textContent.trim(), "re-derived brain wallet");
+    document.querySelector('input[name="bo"][value="hd"]').click();
+    await wait(0);
+    assert(!document.getElementById("out").textContent.trim(), "Switching brain-wallet output left the other output's result on screen");
+
+    // Revoking has to reach committed key tabs too: they re-render their stored
+    // result without asking again. Park one brain wallet in its tab, derive a
+    // second from the Key Station, and revoke from there — the parked tab must
+    // lose its recovery material as well.
+    document.getElementById("key-tab-lab").click();
+    await chooseMode("Private key");
+    document.querySelector('input[name="kk"][value="brain"]').click();
+    if (!ackBox().checked) ackBox().click();
+    input(await until(() => document.getElementById("key"), "brain-wallet input for the parked run"), "correct horse battery staple");
+    (await until(() => !document.getElementById("go").disabled && document.getElementById("go"), "brain-wallet derive button for the parked run")).click();
+    await until(() => document.getElementById("out").textContent.trim(), "parked brain wallet");
+    const parkedTabId = document.getElementById("calc-card").getAttribute("aria-labelledby");
+    document.getElementById("reveal")?.click();
+    await until(secretShowing, "parked brain-wallet recovery material");
+
+    document.getElementById("key-tab-lab").click();
+    await chooseMode("Private key");
+    document.querySelector('input[name="kk"][value="brain"]').click();
+    input(await until(() => document.getElementById("key"), "brain-wallet input for the second tab"), "a different brain wallet text");
+    (await until(() => !document.getElementById("go").disabled && document.getElementById("go"), "brain-wallet derive button for the second tab")).click();
+    await until(() => document.getElementById("out").textContent.trim(), "second tab's brain wallet");
+    ackBox().click();
+    await wait(0);
+    assert(!ackBox().checked, "The acknowledgement did not clear for the second tab");
+    assert(!document.getElementById("out").textContent.trim(), "Revoking the acknowledgement left the second tab's wallet on screen");
+    document.getElementById(parkedTabId).click();
+    await wait(0);
+    assert(!document.getElementById("out").textContent.trim(), "Revoking the acknowledgement left the parked tab's wallet restorable");
+    assert(!secretShowing(), "Recovery material survived the revoked acknowledgement in the parked tab");
+
+    input(document.getElementById("key") || brainInput, "");
+    document.querySelector('input[name="bo"][value="scalar"]').click();
+    if (ackBox()?.checked) ackBox().click();
+    document.getElementById("wipe").click();
   });
 
   await test("dice fairness panel stays hidden until the Die Distribution / Fairness Analysis text button expands it", async () => {
@@ -2524,8 +2606,8 @@
     assert(receiveLead?.querySelector("h4")?.textContent.includes("#7"), "The first requested address was not used for the receive QR");
     assert(receiveLead?.querySelector('.qr[aria-label="Receive address 7 QR code"]'), "The receive QR did not use the starting address index");
     equal(receiveLead?.querySelector("p.mono:not(.muted)")?.textContent.trim(), "tb1qq88mz59zeavyc2nvncjmr5fnyhy9wfgg7spmjf", "The custom-purpose Native SegWit address did not match the independent BIP32 vector");
-    assert(receiveLead?.querySelector(".muted.mono")?.textContent.includes("m/69420h/1h/0h/0/7"), "The custom purpose was not used in the displayed address path");
-    assert(document.querySelector("#acct .kicker")?.textContent.includes("Purpose 69420h"), "The result mislabeled the custom purpose as a standard BIP");
+    assert(receiveLead?.querySelector(".muted.mono")?.textContent.includes("m/69420'/1'/0'/0/7"), "The custom purpose was not used in the displayed address path");
+    assert(document.querySelector("#acct .kicker")?.textContent.includes("Purpose 69420'"), "The result mislabeled the custom purpose as a standard BIP");
     const watchText = document.querySelector("#acct .account-watch-section")?.textContent || "";
     assert(watchText.includes("/69420h/1h/0h]"), `The custom purpose was not used in the descriptor origin: ${watchText.slice(0, 600)}`);
     const receiveRows = document.querySelectorAll('#acct [data-address-table="hd-receive"] tbody tr');
@@ -2540,7 +2622,7 @@
     assert(document.getElementById("derivation-path").value.endsWith("/0/7'"), "The path did not show a hardened address index");
     derive.click();
     await until(
-      () => document.querySelector("#acct .account-address-lead .muted.mono")?.textContent.includes("/7h"),
+      () => document.querySelector("#acct .account-address-lead .muted.mono")?.textContent.includes("/7'"),
       "hardened address result",
     );
     addressHarden.click();
@@ -2724,7 +2806,9 @@
     input(document.getElementById("derivation-path"), "m/84h/1h/0h/777/0/7");
     const derive = await until(() => !document.getElementById("go").disabled && document.getElementById("go"), "custom-path derive button");
     derive.click();
-    await until(() => document.querySelector("#acct .account-address-lead .muted.mono")?.textContent.includes("m/84h/1h/0h/777/0/7"), "custom derived path");
+    // Typed with h above, shown with apostrophes here, and carried into the
+    // descriptor origin as h on the next line: both conventions in one test.
+    await until(() => document.querySelector("#acct .account-address-lead .muted.mono")?.textContent.includes("m/84'/1'/0'/777/0/7"), "custom derived path");
     const watchText = document.querySelector("#acct .account-watch-section")?.textContent || "";
     assert(watchText.includes("/84h/1h/0h/777]"), "The custom path did not reach the descriptor key origin");
     assert(document.querySelector("#acct .account-address-lead p.mono:not(.muted)")?.textContent.trim().startsWith("tb1"), "The custom coin type did not control address encoding");
@@ -2757,7 +2841,7 @@
     assert(document.getElementById("branch-start-help").textContent.includes("Hardened"), "Address branch help did not reflect hardened derivation");
     assert(document.getElementById("derivation-path").value.endsWith("/2'/7"), "The path did not show a hardened branch index");
     derive.click();
-    await until(() => document.querySelector('#acct .account-address-lead .muted.mono')?.textContent.includes("/2h/7"), "hardened address branch result");
+    await until(() => document.querySelector('#acct .account-address-lead .muted.mono')?.textContent.includes("/2'/7"), "hardened address branch result");
     const hardenedWatchText = document.querySelector("#acct .account-watch-section")?.textContent || "";
     assert(hardenedWatchText.includes("/2h]") && hardenedWatchText.includes("/*"), "The hardened branch watch-only descriptor did not use a branch-level xpub origin");
     branchHarden.click();
@@ -2947,7 +3031,7 @@
     equal(multisigProgress.getAttribute("aria-valuenow"), "100", "Multisig progress did not reach 100%");
     assert(multisigProgress.querySelector(".derive-progress-label")?.textContent.includes("Done"), "Completed multisig progress did not show Done");
     const resultText = document.getElementById("msig-out").textContent;
-    assert(resultText.includes("1-of-1 multisig · Purpose 87h"), "Result did not identify purpose 87 separately from script type");
+    assert(resultText.includes("1-of-1 multisig · Purpose 87'"), "Result did not identify purpose 87 separately from script type");
     assert(resultText.includes("/87h/1h/0h") && resultText.includes("/<0;1>/*"), "BIP87 wallet descriptor paths are wrong");
     assert(resultText.includes("Receive address #11"), "The multisig receive QR did not use the starting address index");
     const multisigReceiveRows = document.querySelectorAll('#msig-out [data-address-table="msig-receive"] tbody tr');
@@ -2980,7 +3064,7 @@
     equal(multisigPurpose.value, "69420", "A custom co-signer purpose was not auto-detected");
     const deriveCustomMultisig = await until(() => !document.getElementById("msig-go").disabled && document.getElementById("msig-go"), "custom-purpose multisig derive button");
     deriveCustomMultisig.click();
-    await until(() => document.getElementById("msig-out").textContent.includes("Purpose 69420h") || document.getElementById("msig-error").textContent, "custom-purpose multisig result");
+    await until(() => document.getElementById("msig-out").textContent.includes("Purpose 69420'") || document.getElementById("msig-error").textContent, "custom-purpose multisig result");
     assert(
       !document.getElementById("msig-error").textContent,
       `Custom-purpose multisig derivation failed: ${document.getElementById("msig-error").textContent}`,
@@ -3080,7 +3164,7 @@
     const text = await blob.text();
     assert(state.downloadName === "bitcoin-recovery-sheet.txt", "Unexpected filename");
     assert(text.includes(versionHeader) && text.includes("Network: testnet"), "Export headers are missing");
-    assert(text.includes("Native SegWit (Purpose 69420h)") && text.includes("m/69420h/1h/0h"), "The recovery sheet omitted the custom purpose");
+    assert(text.includes("Native SegWit (Purpose 69420')") && text.includes("m/69420'/1'/0'"), "The recovery sheet omitted the custom purpose");
     assert(text.includes("PRIVATE RECOVERY MATERIAL OMITTED"), "Omission notice is missing");
     assert(!text.includes("YOUR SEED PHRASE") && !text.includes("MASTER SEED HEX") && !text.includes("BIP32 ROOT TPRV"), "Watch-only export leaked private data");
 

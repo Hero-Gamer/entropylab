@@ -554,7 +554,7 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   assert.match(app, /privateKey\?"key":"pass",privateKey\?"private-keyboard-toggle":"passphrase-keyboard-toggle"/);
   assert.match(app, /hodlRenderPassphraseKeyboard\(\);return/);
   assert.match(template, /id="passphrase-field"[\s\S]*id="passphrase-keyboard-toggle-host" hidden[\s\S]*id="passphrase-highlight"[\s\S]*<input id="pass"/);
-  assert.match(template, /id="master-fingerprint-preview"[\s\S]*id="passphrase-keyboard-host" hidden[\s\S]*id="key-settings"/);
+  assert.match(template, /id="passphrase-field"[\s\S]*id="passphrase-keyboard-host" hidden[\s\S]*id="master-fingerprint-preview"[\s\S]*id="key-settings"/);
   assert.match(app, /button\.disabled=constrained\?!hodlPassphraseBip39CanEnterCharacter\(input,button\.dataset\.seedKey\):!1/);
   assert.match(app, /function hodlBindSeedKeyboardDelete\(getInput,button,applyDelete=hodlApplySeedKeyboardKey\)/);
   assert.match(appWhitespace, /setTimeout\(\(\)=>\{holdTimer=null;repeated=true;remove\(\);if\(!button\.disabled\)repeatTimer=setInterval\(remove,69\)\},420\)/);
@@ -579,7 +579,7 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   assert.match(app, /function hodlFilterSeed\(e\)\{[^}]*hodlLooksExtendedKey\(value\)\?value:value\.toLowerCase\(\)/);
   assert.match(css, /\.seed-entry-tools\s*\{[^}]*align-items: stretch[^}]*margin-top: var\(--space-component\)/s);
   assert.match(css, /\.passphrase-keyboard-tools \{[^}]*display: flex[^}]*margin-top: var\(--space-control\)/s);
-  assert.match(css, /\.passphrase-keyboard-tools \{[^}]*display: flex[^}]*align-items: stretch[^}]*gap: var\(--space-control\)/s);
+  assert.match(css, /\.passphrase-keyboard-tools \{[^}]*display: flex[^}]*align-items: flex-start[^}]*gap: var\(--space-control\)/s);
   assert.match(css, /\.dice-input-shell\.passphrase-input-shell input \{[^}]*position: relative[^}]*margin-top: 0[^}]*background: transparent[^}]*color: transparent/s);
   assert.match(css, /\.passphrase-bip39-options \{[^}]*flex: 1 1 auto[^}]*gap: var\(--space-control\)/s);
   assert.match(css, /\.passphrase-bip39-toggle, \.passphrase-autocomplete-toggle \{[^}]*width: 100%[^}]*margin-top: 0/s);
@@ -772,7 +772,7 @@ test("multisig separates script type from purpose and keeps the Legacy BIP87 sho
     assert.match(markup, /id="msig-legacy-account-toggle" hidden/);
     assert.match(markup, /id="msig-legacy-bip87" type="checkbox"/);
     assert.match(markup, />Use standardized BIP87 accounts</);
-    assert.match(markup, /m\/87h\/coinh\/accounth/);
+    assert.match(markup, /m\/87'\/coin'\/account'/);
   }
   assert.match(css, /\.msig-legacy-account-toggle\[hidden\] \{ display: none !important; \}/);
   assert.match(appSource, /if \(toggle\) toggle\.hidden = kind === "p2tr"/);
@@ -1623,7 +1623,7 @@ test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
     assert.match(markup, /<div class="row psbt-actions psbted-actions">/);
   }
   assert.match(css, /\.psbted-actions \{ align-items: flex-end; \}/);
-  assert.match(css, /\.psbted-actions \.btn \{ min-height: 0; padding: 6px 10px; \}/);
+  assert.match(css, /\.psbted-actions \.btn, \.psbted-actions \.custom-select-button \{ min-height: 36px; padding: 6px 10px; border-radius: 8px; \}/);
   assert.match(appSource, /import \{ initPsbtEditor \} from "\.\/psbt-editor\.js"/);
   // The editor reads the header picker's network through the passed getter.
   assert.match(appSource, /initPsbtEditor\(\{ networkDefault: \(\) => hodlNetworkDefault \}\)/);
@@ -1832,12 +1832,19 @@ test("fixed inner tabs reserve the height of their longest introduction", () => 
 });
 
 test("BIP-85 stays available as a workspace without a duplicate Key Station action", () => {
+  // BIP-85 has its own tab, so the shortcut that used to sit beside Derive Key
+  // is gone; the row is Derive, progress, Save to Journal, Clear.
   for (const markup of [template, appSource]) {
-    assert.match(markup, /id="go"[^>]*>Derive Key<\/button>[\s\S]*?id="journal-open"[^>]*>Save to Journal<\/button>[\s\S]*?id="wipe"/);
+    assert.match(markup, /id="go"[^>]*>Derive Key<\/button>[\s\S]*?id="derive-progress"[\s\S]*?id="journal-open"[^>]*>Save to Journal<\/button>[\s\S]*?id="wipe"/);
     assert.doesNotMatch(markup, /id="bip85-open"|>Derive BIP-85 child<\/button>/);
   }
+  assert.doesNotMatch(appSource, /getElementById\("bip85-open"\)/);
   assert.match(appSource, /getElementById\("journal-open"\)/);
   assert.match(appSource, /\["calc", "workspace\.key", "workspace\.keyShort"\], \["vanity", "workspace\.vanity", "workspace\.vanityShort"\], \["bip85", "workspace\.bip85", "workspace\.bip85Short"\]/);
+  // The tab keeps its own way to adopt a key, so the removal must not have
+  // taken the underlying session-key path with it.
+  assert.match(appSource, /function hodlPickBip85SessionKey\(/);
+  assert.match(appSource, /hodlRefreshStationKeyPickers\(\)/);
 });
 
 test("Silent Payments sits between Multi Signature and PSBT / Nonce", () => {

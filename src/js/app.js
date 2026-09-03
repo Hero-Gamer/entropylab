@@ -652,8 +652,8 @@ hodlRootEl.innerHTML = `
         </div>
         <div class="station-key-source">
           <p class="label">Bring in a passphrase from Key Station</p>
-          <div class="session-key-picker" id="vanity-session-keys" role="group" aria-label="Key Station keys with a passphrase" hidden></div>
-          <p class="field-note">Choose a Key Station key to grind on its passphrase, or type a salt below. The salt is used verbatim \u2014 every candidate is the salt plus the counter characters, never a rehash of anything else.</p>
+          <div class="session-key-picker" id="vanity-session-keys" role="group" aria-label="Key Station keys" hidden></div>
+          <p class="field-note">Pick a Key Station key to grind on its passphrase \u2014 a key without one gets a passphrase on the Keys tab first \u2014 or type a salt below. The salt is used verbatim: every candidate is the salt plus the counter characters, never a rehash of anything else.</p>
           <label class="field">Salt (kept in page memory)
             <input id="vanity-salt" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Type a salt, or pick a Key Station key above" aria-describedby="vanity-salt-note">
             <span class="field-note" id="vanity-salt-note">No salt \u2014 candidates use the public counter mapping, and anyone grinding the same space finds the same keys.</span>
@@ -10278,7 +10278,11 @@ function hodlSnapshotKeySummary(state = hodlKeys[hodlActiveKey]) {
   state.createdPath = hodlKeySummaryPath(state);
 }
 function hodlFillKeyTabLifehash(image, fingerprint) {
-  if (!image || !fingerprint || typeof hodlLifeHash?.fromFingerprint !== "function") return;
+  // The LifeHash module is a later parser-inserted script, and the boot
+  // promise can settle between scripts (the footer waits for full load for
+  // the same reason): `hodlLifeHash?.` alone still throws on an undeclared
+  // identifier, so the plain typeof guard has to come first.
+  if (!image || !fingerprint || typeof hodlLifeHash === "undefined" || typeof hodlLifeHash.fromFingerprint !== "function") return;
   hodlLifeHash.fromFingerprint(fingerprint).then((url) => {
     if (!image.isConnected) return;
     image.src = url;
@@ -12113,13 +12117,14 @@ function hodlSyncWorkspaceOverflow() {
 // is never hashed or transformed first — so a found passphrase is the salt
 // followed by the counter characters and replays by hand.
 var hodlVanityGrinder = null, hodlVanityMatches = [], hodlVanityFound = 0, hodlVanityRunning = false, hodlVanityReveal = false, hodlVanityDisplayLimit = 100, hodlVanitySaltMode = "", hodlVanityResultSaltMode = "", hodlVanityResultSaltLabel = "", hodlVanitySaltSource = "";
-// The picker offers every Key Station tab that currently holds a passphrase —
-// including the scratch Station itself, which can hold one before any derive;
-// the grind only needs the passphrase text, never a derived result. The chip
-// identifies the key by its master fingerprint (or its tab name before the
-// first derive), same as the BIP-85 and Silent Payments pickers.
+// The picker lists every Key Station tab, like the BIP-85 and Silent
+// Payments pickers list theirs — a picker that vanishes reads as broken, so
+// keys without a passphrase stay listed and explain themselves when picked
+// (the grind extends a passphrase verbatim; a key without one has nothing to
+// extend). The chip identifies the key by its master fingerprint, or its tab
+// name before the first derive.
 function hodlVanitySourceKeys() {
-  return hodlKeys.filter((state) => String(state?.fields?.pass ?? "").length > 0);
+  return hodlKeys;
 }
 function hodlVanitySaltSourceLabel() {
   let state = hodlKeys.find((candidate) => "key:" + candidate.id === hodlVanitySaltSource);
@@ -12428,7 +12433,11 @@ function hodlInitVanity() {
   hodlVanitySyncSaltNote();
   hodlVanityEstimate();
   hodlVanitySyncControls();
-  hodlFillStationKeyPicker("vanity-session-keys", hodlVanitySaltSource, hodlPickVanitySessionKey, hodlVanitySourceKeys());
+  // No picker fill here: the chips carry LifeHash images, and the LifeHash
+  // module is a later classic script tag — the WASM-ready promise can settle
+  // between parser-inserted scripts, so boot must not touch it (the footer
+  // stamp waits for full load for the same reason). The picker fills on tab
+  // entry and on every station-key refresh instead.
 }
 function hodlInitWorkspace() {
   let box = hodlElement("#workspace");

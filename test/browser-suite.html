@@ -939,11 +939,21 @@
   });
 
   await test("the Vanity tab grinds a known prefix end to end and masks the passphrase", async () => {
-    // A Key Station passphrase is brought in through the same clickable chip
-    // picker BIP-85 and Silent Payments use, and it salts the grind verbatim.
-    input(document.getElementById("pass"), "correct horse battery staple");
+    // The chip picker lists the Key Station tabs even before any passphrase
+    // exists — a picker that vanishes reads as broken — and a passphraseless
+    // key explains itself when picked.
     document.querySelector('#workspace [data-workspace="vanity"]').click();
     await until(() => !document.getElementById("vanity-card").hidden, "Vanity tool to open");
+    await until(() => document.querySelector("#vanity-session-keys .session-key-option"), "a Key Station chip is listed even with no passphrase set");
+    document.querySelector("#vanity-session-keys .session-key-option").click();
+    await wait(0);
+    assert(document.getElementById("vanity-error").textContent.includes("no passphrase"), "picking a passphraseless key says what to do");
+    // A Key Station passphrase is brought in through the same clickable chip
+    // picker BIP-85 and Silent Payments use, and it salts the grind verbatim.
+    document.querySelector('#workspace [data-workspace="calc"]').click();
+    await until(() => !document.getElementById("key-manager").hidden, "key workspace");
+    input(document.getElementById("pass"), "correct horse battery staple");
+    document.querySelector('#workspace [data-workspace="vanity"]').click();
     await until(() => document.querySelector("#vanity-session-keys .session-key-option"), "the Key Station chip to appear for a key with a passphrase");
     const chip = document.querySelector("#vanity-session-keys .session-key-option");
     chip.click();

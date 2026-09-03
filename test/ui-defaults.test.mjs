@@ -1995,7 +1995,7 @@ test("the vanity grinder is a workspace tab that ships collapsed and never auto-
     // Entropy comes in through the same clickable Key Station picker the
     // BIP-85 and Silent Payments tabs use.
     assert.match(markup, /<p class="label">Bring in a passphrase from Key Station<\/p>/);
-    assert.match(markup, /<div class="session-key-picker" id="vanity-session-keys" role="group" aria-label="Key Station keys with a passphrase" hidden><\/div>/);
+    assert.match(markup, /<div class="session-key-picker" id="vanity-session-keys" role="group" aria-label="Key Station keys" hidden><\/div>/);
     assert.match(markup, /<input id="vanity-salt" autocomplete="off" spellcheck="false"[^>]*aria-describedby="vanity-salt-note">/);
     assert.match(markup, /<select id="vanity-script">[\s\S]*?<option value="p2wpkh" selected(?:="selected")?>[\s\S]*?<option value="p2tr">/);
     assert.match(markup, /<input id="vanity-prefix" autocomplete="off" spellcheck="false"[^>]*aria-describedby="vanity-prefix-help">/);
@@ -2040,8 +2040,21 @@ test("the vanity grinder is a workspace tab that ships collapsed and never auto-
   // passphrase verbatim — the grind extends the user's own text and never
   // rehashes it into something else first.
   assert.match(appSource, /hodlFillStationKeyPicker\("vanity-session-keys", hodlVanitySaltSource, hodlPickVanitySessionKey, hodlVanitySourceKeys\(\)\)/);
-  assert.match(appSource, /function hodlVanitySourceKeys\(\) \{\s*return hodlKeys\.filter\(\(state\) => String\(state\?\.fields\?\.pass \?\? ""\)\.length > 0\);/);
-  assert.match(appSource, /function hodlPickVanitySessionKey\(state\) \{[\s\S]*?let pass = String\(state\.fields\?\.pass \?\? ""\);[\s\S]*?field\.value = validateVanitySalt\(pass\);/);
+  // Every Key Station tab is listed — a picker that vanishes reads as broken;
+  // a passphraseless key explains itself when picked instead of never showing.
+  assert.match(appSource, /function hodlVanitySourceKeys\(\) \{\s*return hodlKeys;/);
+  assert.match(appSource, /function hodlPickVanitySessionKey\(state\) \{[\s\S]*?let pass = String\(state\.fields\?\.pass \?\? ""\);[\s\S]*?has no passphrase right now[\s\S]*?field\.value = validateVanitySalt\(pass\);/);
+  // The picker fills on tab entry and station-key refreshes, never at boot:
+  // the chips carry LifeHash images and the LifeHash module is a later
+  // parser-inserted script, which the WASM-ready promise can beat (the same
+  // hazard the footer's load-event wait documents).
+  const vanityInit = appSource.slice(appSource.indexOf("function hodlInitVanity()"), appSource.indexOf("function hodlInitWorkspace()"));
+  assert.doesNotMatch(vanityInit, /hodlFillStationKeyPicker\s*\(|hodlFillKeyTabLifehash\s*\(/);
+  assert.match(appSource, /else if \(id === "vanity"\) \{\s*\/\/ [^\n]*\n\s*hodlFillStationKeyPicker\("vanity-session-keys"/);
+  // The LifeHash image filler itself is boot-safe: `typeof undeclared?.prop`
+  // throws a ReferenceError, so the plain typeof guard must come first (a
+  // boot-time picker refresh would otherwise kill the page in Chromium).
+  assert.match(appSource, /function hodlFillKeyTabLifehash\(image, fingerprint\) \{[\s\S]*?if \(!image \|\| !fingerprint \|\| typeof hodlLifeHash === "undefined" \|\| typeof hodlLifeHash\.fromFingerprint !== "function"\) return;/);
   const vanityJs = read("src/js/vanity.js");
   assert.doesNotMatch(vanityJs, /vanitySessionSalt|JSON\.stringify|\\bsha256\\b/, "no salt derivation or rehashing in the vanity module");
   // Grinding is WASM-only: candidates are produced by the vanity_grind export

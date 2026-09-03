@@ -770,8 +770,9 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
 .download-mark { display: block; flex: 0 0 auto; }
 /* Header controls sit below the app's default 44px so the bar stays slim.
    Keep --site-header-height in step. */
-.header-button { min-height: 40px; font-size: 14px; }
-.download-controls > a { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.header-button, .journal-file-button { min-height: 40px; font-size: 14px; }
+.download-controls > a, .journal-file-button { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.journal-file-button .control-label { display: inline; }
 /* Centring puts the label's em box on the button's centre line, but a font's
    ascent leaves more room above the caps than its descent leaves below, so the
    glyphs land a pixel low next to a symmetric icon. This nudge is optical, not
@@ -794,14 +795,14 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
 }
 .theme-toggle svg { display: none; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .theme-toggle[data-theme-mode="dark"] .theme-icon-dark, .theme-toggle[data-theme-mode="light"] .theme-icon-light { display: block; }
-.btn:is(.download-html, .save-recovery-sheet, .save-wallet-dat) {
+.btn:is(.download-html, .save-recovery-sheet, .save-wallet-dat, .journal-download-action) {
   border-color: color-mix(in oklab, var(--ok) 65%, var(--border));
   background: color-mix(in oklab, var(--ok) 14%, var(--surface)); color: var(--ok);
 }
-.btn:is(.download-html, .save-recovery-sheet, .save-wallet-dat):hover {
+.btn:is(.download-html, .save-recovery-sheet, .save-wallet-dat, .journal-download-action):hover {
   background: color-mix(in oklab, var(--ok) 23%, var(--surface)); color: var(--fg);
 }
-.btn:is(.download-html, .save-recovery-sheet, .save-wallet-dat):focus-visible { outline: 2px solid var(--ok); outline-offset: 2px; }
+.btn:is(.download-html, .save-recovery-sheet, .save-wallet-dat, .journal-download-action):focus-visible { outline: 2px solid var(--ok); outline-offset: 2px; }
 .github-mark { flex: 0 0 auto; }
 .custom-select-native {
   position: absolute !important; width: 1px !important; height: 1px !important; min-height: 0 !important;
@@ -1022,6 +1023,19 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .tool-intro[hidden] { display: none; }
 .tool-intro h2 { margin: 5px 0 8px; }
 .tool-intro > .muted { max-width: 760px; margin: 0; }
+/* Tools with fixed inner tabs stack their introductions in one grid cell so
+   the tab strip starts below the longest copy at the current width. Hidden
+   introductions stay invisible, but still set that shared row height. */
+.tool-intro-stack { display: grid; }
+.tool-intro-stack[hidden] { display: none !important; }
+.tool-intro-stack > .tool-intro { grid-area: 1 / 1; visibility: hidden; }
+.tool-intro-stack > .tool-intro.active { visibility: visible; }
+/* A direct intro's 24px bottom margin collapses with .key-manager's 14px top
+   and .key-tab-strip's 12px top margins. The grid wrapper prevents that
+   collapse, so remove both trailing margins here and keep the same 24px
+   text-to-tabs gap for both layouts. */
+.tool-intro-stack + .key-manager { margin-top: 0; }
+.tool-intro-stack + .key-manager > .key-tab-strip { margin-top: 0; }
 .key-lab[hidden], .key-summary[hidden], .msig-lab[hidden], .bip85-bench[hidden] { display: none; }
 #calc-card.is-result-view #modes,
 #calc-card:not(.is-result-view) #out,
@@ -1173,21 +1187,90 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .journal-note {
   margin: 0 0 14px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2);
 }
-.journal-note-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
-.journal-note-at {
-  width: auto; flex: 1 1 auto; min-width: 0; min-height: 0; margin-top: 0; padding: 6px 10px;
-  letter-spacing: 0; font-size: 13px;
+.journal-page-tab-strip { margin-top: 0; margin-bottom: -1px; }
+.journal-page-tab.active, .journal-page-tab.key-tab-editing { background: var(--bg); border-bottom-color: var(--bg); }
+.journal-page-tab .journal-page-tab-short { display: none; }
+.journal-format-bar {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;
+  padding: 12px 0 0;
 }
-.journal-note-head .btn { flex: 0 0 auto; min-height: 0; padding: 6px 10px; }
-.journal-note-body { min-height: 88px; margin-top: 0; letter-spacing: 0; }
+.journal-format-control { min-width: 0; color: var(--muted); font-size: 12px; font-weight: 700; }
+.journal-format-control > span { display: block; margin-bottom: 5px; }
+.journal-format-control .custom-select { margin-top: 0; font-size: 13px; }
+.journal-format-control .custom-select-button { min-height: 44px; padding-block: 8px; }
+.journal-format-control .custom-select-value { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.journal-format-control .custom-select-value > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.journal-format-control .custom-select-option { display: flex; align-items: center; gap: 8px; }
+.journal-key-control { grid-column: 1 / -1; }
+.journal-key-option-lifehash { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 4px; image-rendering: pixelated; background: #fff; }
+.journal-notes-wrap {
+  --journal-font-family: var(--mono); --journal-font-size: 13px; --journal-line-height: 1.6;
+  position: relative; border-radius: 0 12px 12px 12px; background: var(--bg);
+}
+.journal-notes-wrap[data-font="sans"] { --journal-font-family: var(--sans); }
+.journal-notes-wrap[data-font="serif"] { --journal-font-family: Georgia, "Times New Roman", serif; }
+.journal-notes-wrap[data-size="small"] { --journal-font-size: 12px; }
+.journal-notes-wrap[data-size="large"] { --journal-font-size: 16px; }
+.journal-notes-wrap[data-spacing="compact"] { --journal-line-height: 1.35; }
+.journal-notes-wrap[data-spacing="spacious"] { --journal-line-height: 1.9; }
+.journal-notes-text {
+  position: relative; z-index: 1; min-height: 20rem; margin-top: 0; background: transparent;
+  border-top-left-radius: 0;
+  color: transparent; -webkit-text-fill-color: transparent; caret-color: var(--fg);
+  font-family: var(--journal-font-family); font-size: var(--journal-font-size); line-height: var(--journal-line-height); letter-spacing: 0;
+}
+.journal-notes-text::selection { background: var(--selection-accent); color: var(--selection-fg); -webkit-text-fill-color: var(--selection-fg); }
+.journal-notes-render {
+  position: absolute; z-index: 0; top: 1px; left: 1px; overflow: hidden; padding: 10px 12px;
+  border-radius: 0 12px 12px 12px; pointer-events: none;
+  color: var(--fg); font-family: var(--journal-font-family); font-size: var(--journal-font-size); line-height: var(--journal-line-height); letter-spacing: 0;
+  white-space: pre-wrap; overflow-wrap: break-word;
+}
+.journal-inline-key { color: var(--selection-accent); }
+.journal-inline-key-lifehash-slot { position: relative; color: transparent; }
+.journal-inline-key-lifehash {
+  position: absolute; left: 50%; top: 50%; width: 1.1em; height: 1.1em; border-radius: .18em;
+  background: #fff; image-rendering: pixelated; transform: translate(-50%, -50%);
+}
+.journal-inline-key-end { visibility: hidden; }
+.journal-notes-prompt {
+  position: absolute; z-index: 2; top: 1px; left: 1px; overflow: hidden; padding: 10px 12px; pointer-events: none;
+  color: transparent; font-family: var(--journal-font-family); font-size: var(--journal-font-size); line-height: var(--journal-line-height); letter-spacing: 0;
+  white-space: pre-wrap; overflow-wrap: break-word;
+}
+.journal-notes-prompt-text { color: var(--faint); }
+.journal-notes-prompt[hidden] { display: none; }
+.journal-notes-copy {
+  position: absolute; z-index: 3; top: 10px; right: 12px;
+  opacity: 0; pointer-events: none; transition: opacity .18s ease;
+}
+.journal-notes-copy.is-visible, .journal-notes-copy:hover, .journal-notes-copy:focus-visible { opacity: 1; pointer-events: auto; }
+.journal-notes-copy.is-copied, .journal-notes-copy.is-copied:not(:disabled):hover { color: var(--ok); }
+@media (prefers-reduced-motion: reduce) { .journal-notes-copy { transition: none; } }
+.journal-file-actions { margin-top: var(--space-component); }
+.journal-file-actions .journal-upload-action {
+  border-color: color-mix(in oklab, var(--blue) 65%, var(--border));
+  background: color-mix(in oklab, var(--blue) 14%, var(--surface)); color: var(--blue);
+}
+.journal-file-actions .journal-upload-action:hover { background: color-mix(in oklab, var(--blue) 23%, var(--surface)); color: var(--fg); }
+.journal-file-actions .journal-upload-action:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.journal-notes-status { margin: 8px 0 0; }
+.journal-notes-status:empty { display: none; }
+.journal-log-wrap { position: relative; margin: 0 0 14px; }
 .journal-log {
   font-family: var(--mono); font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
-  margin: 0 0 14px; padding: 12px; border: 1px solid var(--border); border-radius: 12px;
-  background: var(--surface-2); max-height: 420px; overflow: auto;
+  margin: 0; padding: 12px 44px 12px 12px; border: 1px solid var(--border); border-radius: 12px;
+  background: #000; max-height: 420px; overflow: auto;
 }
+:root[data-theme="light"] .journal-log { background: var(--surface-2); }
+.journal-log-copy { position: absolute; z-index: 1; top: 10px; right: 12px; }
+.journal-log-copy.is-copied, .journal-log-copy.is-copied:not(:disabled):hover { color: var(--ok); }
+.journal-log-actions #journal-log-clear { margin-inline-start: auto; }
 #journal-state-text { min-height: 280px; letter-spacing: 0; font-size: 13px; }
 .psbt-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 14px; }
 @media (min-width: 720px) {
+  .journal-format-bar { grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(120px, 1fr)); }
+  .journal-key-control { grid-column: auto; }
   .psbt-grid { grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr); }
   .psbt-grid > .field { display: flex; flex-direction: column; }
   .psbt-grid > .field > textarea { flex: 1; }
@@ -1875,6 +1958,8 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
      fitting more of it on screen matters more than the fuller wording. */
   .workspace-tab-full { display: none; }
   .workspace-tab-short { display: inline; }
+  .journal-page-tab.is-default .journal-page-tab-full { display: none; }
+  .journal-page-tab.is-default .journal-page-tab-short { display: inline-block; }
   /* Icon-only: square them off against the 40px theme toggle. */
   .download-controls .download-html { flex: 0 0 40px; width: 40px; padding: 0; justify-content: center; }
   /* The footer link loses its label with the rest, so it squares off against

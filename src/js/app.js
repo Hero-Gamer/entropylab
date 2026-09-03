@@ -38,13 +38,12 @@ import { t as hodlT, hodlInitLocale, hodlFillLocaleSelect, hodlGetLocale } from 
 import {
   METHOD_LABELS as hodlJournalMethodLabels,
   addEntry as hodlJournalAddEntry,
-  addNote as hodlJournalAddNote,
   appendLog as hodlJournalAppend,
   createDocument as hodlJournalCreateDocument,
   createJournal,
-  deleteNote as hodlJournalDeleteNote,
+  defaultJournalPageStyle as hodlJournalDefaultPageStyle,
   formatLog as hodlJournalFormatLog,
-  formatNotes as hodlJournalFormatNotes,
+  formatNotebook as hodlJournalFormatNotebook,
   formatStamp as hodlJournalStamp,
   openDocument as hodlJournalOpenDocument,
   removeEntry as hodlJournalRemoveEntry,
@@ -53,9 +52,14 @@ import {
   sealDocument as hodlJournalSealDocument,
   snapshotFromKeyState as hodlJournalKeySnapshot,
   snapshotSession as hodlJournalSnapshot,
-  updateNote as hodlJournalUpdateNote,
   wipeBytes as hodlJournalWipeBytes,
   wipeDocument as hodlJournalWipeDocument,
+  journalFromPlainText as hodlJournalFromPlainText,
+  journalKeyReferenceToken as hodlJournalKeyReferenceToken,
+  journalNotebookRuns as hodlJournalNotebookRuns,
+  normalizeJournalPageStyle as hodlNormalizeJournalPageStyle,
+  parseNotebook as hodlParseNotebook,
+  serializeNotebook as hodlSerializeNotebook,
   wipeJournal,
 } from "./journal.js";
 const hodlBip39Wordlist = Object.freeze(bip39English);
@@ -630,7 +634,6 @@ hodlRootEl.innerHTML = `
       <div class="row key-action-row current-item-actions">
         <button class="btn primary" id="go" disabled aria-disabled="true">Derive Key</button>
         <div class="derive-progress" id="derive-progress" role="progressbar" aria-label="Key derivation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete" hidden><span class="derive-progress-track"><span class="derive-progress-bar"></span></span><span class="derive-progress-label">0%</span></div>
-        <button class="btn secondary" id="bip85-open" type="button">Derive BIP-85 child</button>
         <button class="btn secondary" id="journal-open" type="button">Save to Journal</button>
         <button class="btn clear-current-action" id="wipe" type="button" disabled aria-disabled="true">Clear Current Key</button>
       </div>
@@ -994,16 +997,18 @@ hodlRootEl.innerHTML = `
       <div id="sp-out" aria-live="polite"></div>
       <p class="muted">Session keys remain in this page only and are never intentionally stored or sent. Memory clearing is best-effort because browsers may retain internal copies; close the page before reconnecting the computer.</p>
     </section>
-    <div class="tool-intro" id="psbt-tool-intro" hidden>
+    <div class="tool-intro-stack" id="psbt-tool-intros" hidden>
+    <div class="tool-intro active" id="psbt-tool-intro" aria-hidden="false">
         <div class="kicker">Inspect first. Sign elsewhere.</div>
         <h2>Read a PSBT or a signed transaction.</h2>
         <p class="muted tool-intro-note">Inspecting a PSBT v0 or a raw Bitcoin transaction does not require a private key. EntropyLab can show outputs, PSBT-provided input amounts and fees, signatures, and repeated ECDSA nonce values. Optional Jade anti-exfil transcripts (host nonce \u03C1 and signer opening R) are checked without a key. Finalized taproot witnesses and tap-leaf scripts are scanned for inscription envelopes (OP_FALSE OP_IF "ord"); this does not number sats or fetch content from the chain. Loading a matching key additionally labels which outputs belong to this wallet (change vs receive vs not yours) and checks whether supported signatures match plain RFC 6979 or Bitcoin Core-style low-r grinding; a mismatch alone is not evidence of a compromised signer.</p>
       </div>
-    <div class="tool-intro" id="psbted-tool-intro" hidden>
+    <div class="tool-intro" id="psbted-tool-intro" aria-hidden="true">
         <div class="kicker">Full-fidelity editor. Sign elsewhere.</div>
         <h2>Edit a PSBT, field by field.</h2>
         <p class="muted tool-intro-note">A BIP-174 editor in the spirit of bip174.org, backed by rust-bitcoin compiled to WebAssembly. Every key-value pair of the global, per-input and per-output maps is shown with a typed decode (BIP-174 and BIP-371 taproot fields) and stays editable as raw hex, and the unsigned transaction's version, locktime, input prevouts/sequences and output amounts/scripts get structured fields. Every edit rebuilds the file through rust-bitcoin as you type — the fields always show its decode of the current build — and the result follows live as base64, hex, a downloadable .psbt and a QR code (a single static code, or an animated ur:crypto-psbt sequence for larger files). A binary .psbt file as saved by Sparrow, Coldcard or another wallet uploads directly. PSBT v0 only; unknown and proprietary pairs round-trip untouched. Editing never signs anything.</p>
       </div>
+    </div>
     <section class="key-manager no-print" id="psbt-manager" hidden>
       <div class="key-tab-strip">
         <div class="key-tabs" id="psbt-tool-tabs" role="tablist" aria-label="PSBT stations">
@@ -1060,26 +1065,28 @@ hodlRootEl.innerHTML = `
       <div id="psbted-out" aria-live="polite"></div>
       <p class="muted">Fees and input amounts shown here are unverified PSBT claims; the editor does not check them against previous transactions or the blockchain. Nothing is signed or broadcast.</p>
     </section>
-    <div class="tool-intro" id="journal-tool-intro" hidden>
+    <div class="tool-intro-stack" id="journal-tool-intros" hidden>
+    <div class="tool-intro active" id="journal-tool-intro" aria-hidden="false">
         <div class="kicker">Your rolls, on paper you control.</div>
         <h2>Entropy Journal</h2>
         <p class="muted tool-intro-note journal-intro">An encrypted notebook of entropy you already produced \u2014 dice, coins, hex, brain-wallet text, or a seed. The file stays on your machine and opens with a password you choose. Encryption is a pure function of the password and the entries \u2014 nothing is generated for you. This is not a password manager and does not invent entropy.</p>
       </div>
-    <div class="tool-intro" id="journal-notes-tool-intro" hidden>
+    <div class="tool-intro" id="journal-notes-tool-intro" aria-hidden="true">
         <div class="kicker">Write it down. Stamp the clock. Download to keep it.</div>
         <h2>Notepad</h2>
         <p class="muted tool-intro-note">Freeform notes for this sitting, each stamped with this computer's date and time. Nothing is stored in the browser. Closing the page discards the notes unless you download them.</p>
       </div>
-    <div class="tool-intro" id="journal-state-tool-intro" hidden>
+    <div class="tool-intro" id="journal-state-tool-intro" aria-hidden="true">
         <div class="kicker">What this sitting derived.</div>
         <h2>Session state</h2>
         <p class="muted tool-intro-note">A text summary of every key, multisig, BIP-85 child, and calculator payload currently in this page. Capture replaces the text; you can edit it before downloading. Private recovery material is omitted unless you tick the box — the same rule as the recovery sheet.</p>
       </div>
-    <div class="tool-intro" id="journal-log-tool-intro" hidden>
+    <div class="tool-intro" id="journal-log-tool-intro" aria-hidden="true">
         <div class="kicker">A trace, not a memoir.</div>
         <h2>Session log</h2>
-        <p class="muted tool-intro-note">An append-only record of what this page did — tool switches, derives, captures, errors — so a later bug report has a clock and a fingerprint instead of a guess. Seed phrases, xprvs, and typed secrets are not written here. Last 400 events. This computer's clock.</p>
+        <p class="muted tool-intro-note">An append-only record of meaningful dashboard actions — tool and station changes, calculations, safe settings, copies, file actions, clears, and errors — so a later bug report has a clock and a fingerprint instead of a guess. Seed phrases, xprvs, note bodies, filenames, PSBT bytes, and typed secrets are not written here. Last 400 events. This computer's clock.</p>
       </div>
+    </div>
     <section class="key-manager no-print" id="journal-manager" hidden>
       <div class="key-tab-strip">
         <div class="key-tabs" id="journal-tool-tabs" role="tablist" aria-label="Journal stations">
@@ -1176,12 +1183,25 @@ hodlRootEl.innerHTML = `
       <p class="muted">The journal lives in this page until you save the encrypted file. Anyone with that file and the journal password can read every entry. Memory clearing is best-effort; close the page before reconnecting the computer.</p>
     </section>
       <section class="card no-print" id="journal-notes-card" role="tabpanel" hidden>
-      <p class="muted">Notes stay in this page only. Download them if they need to outlive this sitting.</p>
-      <div id="journal-notes"></div>
-      <div class="row psbt-actions">
-        <button class="btn primary" id="journal-note-add" type="button">Add note</button>
-        <button class="btn secondary" id="journal-notes-download" type="button">Download notes</button>
+      <div class="key-tab-strip journal-page-tab-strip"><div class="key-tabs" id="journal-page-tabs" role="tablist" aria-label="Notepad pages"></div><div class="add-item-control"><button class="add-key" id="add-journal-page" type="button" aria-label="Add notepad page" aria-describedby="add-journal-page-tooltip">+</button><span class="add-item-tooltip" id="add-journal-page-tooltip" role="tooltip">Add notepad page</span></div><div class="add-item-control"><button class="add-key remove-key" id="delete-journal-page" type="button" aria-label="Delete current notepad page" aria-describedby="delete-journal-page-tooltip" disabled>−</button><span class="add-item-tooltip" id="delete-journal-page-tooltip" role="tooltip">Delete this notepad page</span></div></div>
+      <div class="journal-notes-wrap" id="journal-page-panel" role="tabpanel" data-font="mono" data-size="medium" data-spacing="comfortable">
+        <div class="journal-notes-render" id="journal-notes-render" aria-hidden="true"></div>
+        <textarea class="journal-notes-text" id="journal-notes-text" aria-label="Session notes" aria-placeholder="Add new note" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+        <div class="journal-notes-prompt" id="journal-notes-prompt" aria-hidden="true"><span id="journal-notes-prompt-before"></span><span class="journal-notes-prompt-text" id="journal-notes-prompt-text">Add new note</span></div>
+        <button class="seed-phrase-copy journal-notes-copy" id="journal-notes-copy" type="button" aria-label="Copy notepad page" title="Copy notepad page" data-copy-label="Copy notepad page" data-copied-label="Notepad page copied" disabled><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect class="seed-copy-icon-clip" x="8" y="2" width="8" height="4" rx="1"/><path class="seed-copy-icon-board" d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button>
       </div>
+      <div class="journal-format-bar" role="group" aria-label="Notepad appearance and inserts">
+        <label class="journal-format-control journal-key-control"><span>Key</span><select id="journal-key-insert" aria-label="Insert a Key Station key"><option value="" selected data-custom-select-placeholder="true">Insert key</option><option value="" disabled>No derived keys yet</option></select></label>
+        <label class="journal-format-control"><span>Typeface</span><select id="journal-font"><option value="mono" selected>Mono</option><option value="sans">Sans</option><option value="serif">Serif</option></select></label>
+        <label class="journal-format-control"><span>Text size</span><select id="journal-size"><option value="small">Small</option><option value="medium" selected>Medium</option><option value="large">Large</option></select></label>
+        <label class="journal-format-control"><span>Spacing</span><select id="journal-spacing"><option value="compact">Compact</option><option value="comfortable" selected>Comfortable</option><option value="spacious">Spacious</option></select></label>
+      </div>
+      <div class="row psbt-actions journal-file-actions">
+        <button class="btn secondary journal-download-action journal-file-button" id="journal-notes-download" type="button" aria-label="Download notebook" title="Download notebook"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download</span></button>
+        <button class="btn secondary journal-upload-action journal-file-button" id="journal-notes-upload" type="button" aria-label="Upload notebook" title="Upload notebook"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 17V5M7 10l5-5 5 5M5 21h14"/></svg><span class="control-label">Upload</span></button>
+        <input id="journal-notes-file" type="file" accept=".json,.txt,application/json,text/plain" hidden>
+      </div>
+      <p class="muted journal-notes-status" id="journal-notes-status" role="status" aria-live="polite"></p>
     </section>
       <section class="card no-print" id="journal-state-card" role="tabpanel" hidden>
       <p class="muted">Capture walks the current stations and writes a snapshot you can edit. Recapture replaces the text.</p>
@@ -1189,20 +1209,20 @@ hodlRootEl.innerHTML = `
         <span><strong>Include private recovery material</strong>
         <span class="desc">Same rule as the recovery sheet. Off by default. The file is then a secret — treat the download like a seed backup.</span></span>
       </label>
-      <div class="row psbt-actions">
-        <button class="btn primary" id="journal-state-capture" type="button">Capture this session</button>
-        <button class="btn secondary" id="journal-state-download" type="button">Download snapshot</button>
-      </div>
       <label class="field">Session snapshot
         <textarea id="journal-state-text" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="Capture this session to fill this field. Edit freely afterward."></textarea>
       </label>
+      <div class="row psbt-actions">
+        <button class="btn primary" id="journal-state-capture" type="button">Capture this session</button>
+        <button class="btn secondary journal-download-action journal-file-button" id="journal-state-download" type="button" aria-label="Download session snapshot" title="Download session snapshot"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download</span></button>
+      </div>
     </section>
       <section class="card no-print" id="journal-log-card" role="tabpanel" hidden>
       <p class="muted">Download this with a bug report. It names tools and fingerprints, not seeds.</p>
-      <pre class="journal-log" id="journal-log-out" aria-live="polite">No events yet.</pre>
-      <div class="row psbt-actions">
-        <button class="btn primary" id="journal-log-download" type="button">Download log</button>
-        <button class="btn secondary" id="journal-log-clear" type="button">Clear log</button>
+      <div class="journal-log-wrap"><pre class="journal-log" id="journal-log-out" aria-live="polite">No events yet.</pre><button class="seed-phrase-copy journal-log-copy" id="journal-log-copy" type="button" aria-label="Copy session log" title="Copy session log" data-copy-label="Copy session log" data-copied-label="Session log copied"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect class="seed-copy-icon-clip" x="8" y="2" width="8" height="4" rx="1"/><path class="seed-copy-icon-board" d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button></div>
+      <div class="row psbt-actions journal-log-actions">
+        <button class="btn secondary journal-download-action journal-file-button" id="journal-log-download" type="button" aria-label="Download session log" title="Download session log"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download</span></button>
+        <button class="btn clear-current-action" id="journal-log-clear" type="button">Clear log</button>
       </div>
     </section>
     </div>
@@ -5460,7 +5480,7 @@ function hodlShowSeedPhraseCopied(button) {
   if (note) note.textContent = hodlT("common.copied");
   button.classList.add("is-copied");
   button.innerHTML = hodlCopiedIconMarkup();
-  button.setAttribute("aria-label", hodlT("seed.copied"));
+  button.setAttribute("aria-label", button.dataset.copiedLabel || hodlT("seed.copied"));
   button.title = hodlT("common.copied");
   clearTimeout(button.hodlCopiedTimer);
   button.hodlCopiedTimer = setTimeout(() => {
@@ -5468,8 +5488,9 @@ function hodlShowSeedPhraseCopied(button) {
     let phrase = button.dataset.phrase;
     button.classList.remove("is-copied");
     button.innerHTML = hodlClipboardIconMarkup();
-    button.setAttribute("aria-label", phrase ? hodlT("seed.copy") : hodlT("seed.copyUnavailable"));
-    button.title = phrase ? hodlT("seed.copy") : hodlT("seed.copyUnavailable");
+    let copyLabel = button.dataset.copyLabel || hodlT("seed.copy");
+    button.setAttribute("aria-label", phrase ? copyLabel : hodlT("seed.copyUnavailable"));
+    button.title = phrase ? copyLabel : hodlT("seed.copyUnavailable");
     if (note) note.textContent = "";
   }, 1600);
 }
@@ -9329,6 +9350,7 @@ function hodlSelectBip85(index) {
   hodlActiveBip85 = index;
   hodlRenderBip85Tabs();
   hodlSyncBip85View();
+  hodlJournalLog("station-select", hodlBip85Children[index].isLab ? "station" : "child", "bip85");
 }
 function hodlSelectBip85Bench() {
   let index = hodlBip85Children.findIndex((state) => state.isLab);
@@ -9353,6 +9375,7 @@ function hodlDeleteActiveBip85() {
   hodlActiveBip85 = Math.min(deletedIndex, hodlBip85Children.length - 1);
   hodlRenderBip85Tabs();
   hodlSyncBip85View();
+  hodlJournalLog("station-delete", "child", "bip85");
   document.getElementById("bip85-tabs")?.children[hodlActiveBip85]?.focus();
 }
 function hodlBip85TabKeydown(event, index) {
@@ -9389,6 +9412,7 @@ function hodlRunBip85() {
   } catch (exception) {
     wipeBip85Result(result);
     if (error) error.textContent = exception.message || String(exception);
+    hodlJournalLog("derive-error", "", "bip85");
   }
   hodlRefreshStationKeyPickers();
 }
@@ -9413,15 +9437,6 @@ function hodlInitBip85() {
     hodlRefreshStationKeyPickers();
   });
   go.onclick = hodlRunBip85;
-  // Entry point beside Derive Key (idea adopted from PR #150): jump to the
-  // BIP-85 tab with the active key loaded as parent. Errors land in the tab's
-  // own error line; secrets stay behind the existing reveal/wipe flow.
-  let open = document.getElementById("bip85-open");
-  if (open) open.onclick = () => {
-    hodlShowWorkspace("bip85");
-    hodlSelectBip85Bench();
-    hodlPickBip85SessionKey(hodlKeys[hodlActiveKey]);
-  };
   document.getElementById("bip85-wipe").onclick = () => {
     hodlBip85WipeParent();
     document.getElementById("bip85-key").value = "";
@@ -9448,12 +9463,15 @@ function hodlRunPsbt() {
     }
     document.getElementById("psbt-session").textContent = hodlPsbtSessionText();
     let bytes = hodlPsbtBytes(document.getElementById("psbt-text").value);
-    if (isPsbtMagic(bytes)) output.innerHTML = hodlRenderPsbt(hodlParsePsbt(bytes));
+    let kind = isPsbtMagic(bytes) ? "psbt" : "transaction";
+    if (kind === "psbt") output.innerHTML = hodlRenderPsbt(hodlParsePsbt(bytes));
     else output.innerHTML = hodlRenderRawTx(parseRawTx(bytes));
+    hodlJournalLog("inspect", kind, "psbt");
   } catch (exception) {
     hodlPsbtLast = null;
     if (!hodlPsbtErrorSpec) hodlSetPsbtError({ raw: exception instanceof Error ? exception.message : String(exception) });
     else hodlSetPsbtError(hodlPsbtErrorSpec);
+    hodlJournalLog("inspect-error", "", "psbt");
   }
 }
 
@@ -9720,8 +9738,10 @@ function hodlRunSp() {
     if (hodlSpMode === "send") hodlRenderSpSend();
     else if (hodlSpMode === "verify") hodlRenderSpVerify();
     else hodlRenderSpReceive();
+    hodlJournalLog("calculate", hodlSpMode, "sp");
   } catch (exception) {
     error.textContent = exception instanceof Error ? exception.message : String(exception);
+    hodlJournalLog("calculate-error", hodlSpMode, "sp");
   }
 }
 function hodlInitSp() {
@@ -10419,6 +10439,7 @@ function hodlWipeActiveKey() {
   let state = hodlKeys[hodlActiveKey];
   hodlKeys[hodlActiveKey] = state.isLab ? hodlNewLabState() : hodlNewKeyState(state.name, state.id, state.number);
   hodlRestoreKey();
+  hodlJournalLog("clear", `key-${state.number}`, "calc");
 }
 function hodlCaptureKey() {
   if (hodlActiveKey < 0 || !hodlKeys[hodlActiveKey]) return;
@@ -10828,7 +10849,11 @@ function hodlBeginKeyRename(index) {
   let finish = (commit, focus) => {
     if (!editor.isConnected) return;
     let name = input.value.trim().replace(/\s+/g, " ");
-    if (commit && name && !hodlKeyNameTaken(name, index)) state.name = name;
+    let renamed = commit && name && name !== previous && !hodlKeyNameTaken(name, index);
+    if (renamed) {
+      state.name = name;
+      hodlJournalLog("station-rename", `key-${state.number}`, "calc");
+    }
     let button = hodlCreateKeyTab(index);
     editor.replaceWith(button);
     if (focus) button.focus();
@@ -10880,6 +10905,7 @@ function hodlRenderKeyTabs() {
   hodlSyncKeyDeleteButton();
   hodlRefreshMsigSessionPickers();
   hodlRefreshStationKeyPickers();
+  hodlRefreshJournalKeyPicker();
 }
 function hodlSelectKey(index) {
   if (index === hodlActiveKey || !hodlKeys[index]) return;
@@ -10887,6 +10913,7 @@ function hodlSelectKey(index) {
   hodlActiveKey = index;
   hodlRenderKeyTabs();
   hodlRestoreKey();
+  hodlJournalLog("station-select", `key-${hodlKeys[index].number}`, "calc");
 }
 function hodlAddKey() {
   hodlSelectLab();
@@ -10906,6 +10933,7 @@ function hodlDeleteActiveKey() {
   } else hodlActiveKey = Math.min(deletedIndex, hodlKeys.length - 1);
   hodlRenderKeyTabs();
   hodlRestoreKey();
+  hodlJournalLog("station-delete", `key-${deletedState.number}`, "calc");
   (hodlActiveKey >= 0 ? hodlElement("#key-tabs").children[hodlActiveKey] : hodlElement("#add-key"))?.focus();
 }
 var hodlNextMsigId = 1, hodlNextMsigNumber = 1, hodlMsigs = [], hodlActiveMsig = -1;
@@ -11166,6 +11194,7 @@ function hodlWipeActiveMsig() {
   let state = hodlMsigs[hodlActiveMsig];
   hodlMsigs[hodlActiveMsig] = state.isLab ? hodlNewMsigLabState() : hodlNewMsigState(state.name, state.id, state.number);
   hodlRestoreMsig();
+  hodlJournalLog("clear", `multisig-${state.number}`, "msig");
 }
 function hodlMsigTabKeydown(event, index) {
   if (event.key === "F2") {
@@ -11244,7 +11273,11 @@ function hodlBeginMsigRename(index) {
   let finish = (commit, focus) => {
     if (!editor.isConnected) return;
     let name = input.value.trim().replace(/\s+/g, " ");
-    if (commit && name && !hodlMsigNameTaken(name, index)) state.name = name;
+    let renamed = commit && name && name !== previous && !hodlMsigNameTaken(name, index);
+    if (renamed) {
+      state.name = name;
+      hodlJournalLog("station-rename", `multisig-${state.number}`, "msig");
+    }
     let button = hodlCreateMsigTab(index);
     editor.replaceWith(button);
     if (focus) button.focus();
@@ -11291,6 +11324,7 @@ function hodlSelectMsig(index) {
   hodlActiveMsig = index;
   hodlRenderMsigTabs();
   hodlRestoreMsig();
+  hodlJournalLog("station-select", `multisig-${hodlMsigs[index].number}`, "msig");
 }
 function hodlAddMsig() {
   hodlSelectMsigLab();
@@ -11310,6 +11344,7 @@ function hodlDeleteActiveMsig() {
   } else hodlActiveMsig = Math.min(deletedIndex, hodlMsigs.length - 1);
   hodlRenderMsigTabs();
   hodlRestoreMsig();
+  hodlJournalLog("station-delete", `multisig-${deletedState.number}`, "msig");
   (hodlActiveMsig >= 0 ? hodlElement("#msig-tabs").children[hodlActiveMsig] : hodlElement("#add-msig"))?.focus();
 }
 function hodlShowWorkspace(id) {
@@ -11465,8 +11500,10 @@ var hodlWorkspaceTabs = [["calc", "workspace.key", "workspace.keyShort"], ["vani
 var hodlPsbtTool = "nonce";
 function hodlSyncPsbtTool() {
   let visible = hodlWorkspace === "psbt",
+      intros = document.getElementById("psbt-tool-intros"),
       manager = document.getElementById("psbt-manager"),
       tabs = document.getElementById("psbt-tool-tabs");
+  if (intros) intros.hidden = !visible;
   if (manager) manager.hidden = !visible;
   if (tabs) {
     tabs.querySelectorAll("[data-psbt-tool]").forEach((button) => {
@@ -11476,14 +11513,20 @@ function hodlSyncPsbtTool() {
       button.tabIndex = active ? 0 : -1;
     });
   }
-  document.getElementById("psbt-tool-intro").hidden = !visible || hodlPsbtTool !== "nonce";
+  let nonceIntro = document.getElementById("psbt-tool-intro"),
+      editorIntro = document.getElementById("psbted-tool-intro");
+  nonceIntro.classList.toggle("active", visible && hodlPsbtTool === "nonce");
+  nonceIntro.setAttribute("aria-hidden", String(!visible || hodlPsbtTool !== "nonce"));
   document.getElementById("psbt-card").hidden = !visible || hodlPsbtTool !== "nonce";
-  document.getElementById("psbted-tool-intro").hidden = !visible || hodlPsbtTool !== "editor";
+  editorIntro.classList.toggle("active", visible && hodlPsbtTool === "editor");
+  editorIntro.setAttribute("aria-hidden", String(!visible || hodlPsbtTool !== "editor"));
   document.getElementById("psbted-card").hidden = !visible || hodlPsbtTool !== "editor";
 }
 function hodlShowPsbtTool(id, focus = false) {
-  hodlPsbtTool = id === "editor" ? "editor" : "nonce";
+  let next = id === "editor" ? "editor" : "nonce", changed = next !== hodlPsbtTool;
+  hodlPsbtTool = next;
   hodlSyncPsbtTool();
+  if (changed) hodlJournalLog("tool-tab", hodlPsbtTool, "psbt");
   if (focus) document.querySelector(`#psbt-tool-tabs [data-psbt-tool="${hodlPsbtTool}"]`)?.focus();
 }
 function hodlInitPsbtToolTabs() {
@@ -11506,14 +11549,358 @@ function hodlInitPsbtToolTabs() {
 }
 var hodlJournal = createJournal();
 var hodlJournalTool = "book";
-function hodlJournalLog(action, detail = "") {
-  hodlJournalAppend(hodlJournal, { tool: hodlWorkspace, action, detail });
+function hodlJournalActivePage() {
+  return hodlJournal.pages[hodlJournal.activePage];
+}
+function hodlJournalRenderVisual(field = document.getElementById("journal-notes-text")) {
+  let render = document.getElementById("journal-notes-render");
+  if (!field || !render) return;
+  render.replaceChildren();
+  for (let run of hodlJournalNotebookRuns(field.value)) {
+    if (run.type === "text") {
+      render.appendChild(document.createTextNode(run.text));
+      continue;
+    }
+    let reference = document.createElement("span"), slot = document.createElement("span"), image = document.createElement("img"), end = document.createElement("span");
+    reference.className = "journal-inline-key";
+    let repeatedFingerprint = run.name.trim().toLowerCase() === run.fingerprint;
+    reference.title = repeatedFingerprint ? run.fingerprint : `${run.name} · ${run.fingerprint}`;
+    slot.className = "journal-inline-key-lifehash-slot";
+    slot.textContent = "◆◆";
+    image.className = "journal-inline-key-lifehash";
+    image.width = 22;
+    image.height = 22;
+    image.alt = "";
+    image.hidden = true;
+    slot.appendChild(image);
+    end.className = "journal-inline-key-end";
+    end.textContent = "◆";
+    reference.append(slot, document.createTextNode(repeatedFingerprint ? ` [${run.fingerprint}] ` : ` ${run.name} [${run.fingerprint}] `), end);
+    render.appendChild(reference);
+    hodlFillKeyTabLifehash(image, run.fingerprint);
+  }
+  hodlJournalSyncPendingPrompt(field);
+  hodlJournalSyncCopyButton(field);
+}
+function hodlJournalSyncCopyButton(field, button = document.getElementById("journal-notes-copy")) {
+  if (!field || !button) return;
+  let phrase = hodlJournalFormatNotebook(field.value), empty = phrase === "No notes.";
+  button.disabled = empty;
+  if (empty) delete button.dataset.phrase;
+  else button.dataset.phrase = phrase;
+}
+function hodlJournalRevealCopyButton(button, delay = 1100) {
+  if (!button) return;
+  clearTimeout(button.hodlJournalHideTimer);
+  button.classList.add("is-visible");
+  button.hodlJournalHideTimer = setTimeout(() => button.classList.remove("is-visible"), delay);
+}
+function hodlJournalActivePageStyle() {
+  let page = hodlJournalActivePage();
+  if (!page) return hodlJournalDefaultPageStyle();
+  page.style = hodlNormalizeJournalPageStyle(page.style);
+  return page.style;
+}
+function hodlJournalApplyPageStyle() {
+  let style = hodlJournalActivePageStyle(), wrap = document.getElementById("journal-page-panel");
+  if (wrap) {
+    wrap.dataset.font = style.font;
+    wrap.dataset.size = style.size;
+    wrap.dataset.spacing = style.spacing;
+  }
+  hodlSyncSelect(document.getElementById("journal-font"), style.font);
+  hodlSyncSelect(document.getElementById("journal-size"), style.size);
+  hodlSyncSelect(document.getElementById("journal-spacing"), style.spacing);
+  hodlJournalSyncPendingPrompt(document.getElementById("journal-notes-text"));
+}
+function hodlJournalSetPageStyle(property, value) {
+  let page = hodlJournalActivePage();
+  if (!page) return;
+  page.style = hodlNormalizeJournalPageStyle({ ...page.style, [property]: value });
+  hodlJournalApplyPageStyle();
+}
+function hodlJournalStoreNotesText(field) {
+  hodlJournal.notesText = field.value;
+  let page = hodlJournalActivePage();
+  if (page) page.notesText = field.value;
+  hodlJournalRenderVisual(field);
+}
+function hodlJournalNormalizePageName(name) {
+  return String(name || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+function hodlJournalPageNameTaken(name, index) {
+  let normalized = hodlJournalNormalizePageName(name);
+  return !!normalized && hodlJournal.pages.some((page, pageIndex) => pageIndex !== index && hodlJournalNormalizePageName(page.name) === normalized);
+}
+function hodlJournalDefaultPageName(number) {
+  let name = `Page ${number}`, suffix = 2;
+  while (hodlJournalPageNameTaken(name, -1)) {
+    name = `Page ${number} (${suffix})`;
+    suffix++;
+  }
+  return name;
+}
+function hodlCreateJournalPageTab(index) {
+  let page = hodlJournal.pages[index], active = index === hodlJournal.activePage, defaultName = `Page ${page.number}`,
+      button = document.createElement("button"), fullLabel = document.createElement("span"), shortLabel = document.createElement("span");
+  button.type = "button";
+  button.id = `journal-page-tab-${page.id}`;
+  button.className = "tab key-tab journal-page-tab" + (page.name === defaultName ? " is-default" : "") + (active ? " active" : "");
+  button.dataset.journalPage = String(index);
+  button.setAttribute("role", "tab");
+  button.setAttribute("aria-controls", "journal-page-panel");
+  button.setAttribute("aria-selected", String(active));
+  button.setAttribute("aria-label", page.name + (active ? ", selected. Activate or press F2 to rename." : ". Activate to select."));
+  button.title = active ? "Click again or press F2 to rename" : "Click to select";
+  button.tabIndex = active ? 0 : -1;
+  fullLabel.className = "key-tab-label journal-page-tab-full";
+  fullLabel.textContent = page.name;
+  shortLabel.className = "key-tab-label journal-page-tab-short";
+  shortLabel.textContent = page.name === defaultName ? `P${page.number}` : page.name;
+  button.append(fullLabel, shortLabel);
+  button.onclick = () => index === hodlJournal.activePage ? hodlBeginJournalPageRename(index) : hodlSelectJournalPage(index);
+  button.onkeydown = (event) => hodlJournalPageTabKeydown(event, index);
+  return button;
+}
+function hodlBeginJournalPageRename(index) {
+  if (index !== hodlJournal.activePage || !hodlJournal.pages[index]) return;
+  let box = document.getElementById("journal-page-tabs"), tab = box?.children[index];
+  if (!tab || tab.classList.contains("key-tab-editing")) return;
+  let page = hodlJournal.pages[index], editor = document.createElement("div"), input = document.createElement("input"), previous = page.name;
+  editor.id = `journal-page-tab-${page.id}`;
+  editor.className = "key-tab key-tab-editing journal-page-tab active";
+  editor.setAttribute("role", "tab");
+  editor.setAttribute("aria-selected", "true");
+  editor.setAttribute("aria-controls", "journal-page-panel");
+  input.type = "text";
+  input.className = "key-tab-name-input";
+  input.value = previous;
+  input.maxLength = 120;
+  input.setAttribute("aria-label", "Rename " + previous);
+  input.setAttribute("aria-controls", "journal-page-panel");
+  let finish = (commit, focus) => {
+    if (!editor.isConnected) return;
+    let name = input.value.trim().replace(/\s+/g, " ");
+    let renamed = commit && name && name !== previous && !hodlJournalPageNameTaken(name, index);
+    if (renamed) {
+      page.name = name;
+      hodlJournalLog("page-rename", `page-${page.number}`, "journal");
+    }
+    let button = hodlCreateJournalPageTab(index);
+    editor.replaceWith(button);
+    document.getElementById("journal-page-panel")?.setAttribute("aria-labelledby", button.id);
+    if (focus) button.focus();
+  };
+  input.oninput = () => hodlSizeKeyTabEditor(input);
+  input.onkeydown = (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      finish(true, true);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      finish(false, true);
+    }
+  };
+  input.onblur = () => finish(true, false);
+  editor.append(input);
+  tab.replaceWith(editor);
+  hodlSizeKeyTabEditor(input);
+  input.focus();
+  input.select();
+}
+function hodlJournalPageTabKeydown(event, index) {
+  if (event.key === "F2") {
+    event.preventDefault();
+    if (index === hodlJournal.activePage) hodlBeginJournalPageRename(index);
+    return;
+  }
+  let next = null, length = hodlJournal.pages.length;
+  if (event.key === "ArrowRight") next = (index + 1) % length;
+  else if (event.key === "ArrowLeft") next = (index - 1 + length) % length;
+  else if (event.key === "Home") next = 0;
+  else if (event.key === "End") next = length - 1;
+  if (next === null) return;
+  event.preventDefault();
+  hodlSelectJournalPage(next);
+  document.getElementById("journal-page-tabs")?.children[next]?.focus();
+}
+function hodlSyncJournalPageDeleteButton() {
+  let button = document.getElementById("delete-journal-page");
+  if (!button) return;
+  button.disabled = hodlJournal.pages.length <= 1;
+  button.setAttribute("aria-disabled", String(button.disabled));
+}
+function hodlRenderJournalPageTabs() {
+  let box = document.getElementById("journal-page-tabs"), panel = document.getElementById("journal-page-panel");
+  if (!box || !panel) return;
+  box.innerHTML = "";
+  panel.removeAttribute("aria-labelledby");
+  hodlJournal.pages.forEach((page, index) => {
+    let button = hodlCreateJournalPageTab(index);
+    box.appendChild(button);
+    if (index === hodlJournal.activePage) panel.setAttribute("aria-labelledby", button.id);
+  });
+  hodlRevealTab(box, hodlJournal.activePage);
+  hodlSyncJournalPageDeleteButton();
+}
+function hodlJournalRestorePage(field = document.getElementById("journal-notes-text")) {
+  if (!field) return;
+  let page = hodlJournalActivePage();
+  hodlJournal.notesText = page?.notesText || "";
+  field.value = hodlJournal.notesText;
+  hodlJournalApplyPageStyle();
+  hodlJournalRenderVisual(field);
+  hodlJournalFinishPendingNote(field);
+  let lines = field.value.split("\n"), pending = lines.findIndex((line) => hodlJournalNoteStampPattern.test(line) && !line.replace(hodlJournalNoteStampPattern, "").trim());
+  if (!field.value) hodlJournalResetPendingNote(field, "Add new note");
+  else if (pending >= 0) {
+    field.dataset.pendingNote = "Add new note";
+    field.dataset.pendingNoteMode = "line";
+    field.dataset.pendingNoteLine = String(pending);
+    hodlJournalRefreshPendingNote(field);
+  } else field.setSelectionRange(field.value.length, field.value.length);
+}
+function hodlSelectJournalPage(index) {
+  if (index === hodlJournal.activePage || !hodlJournal.pages[index]) return;
+  let field = document.getElementById("journal-notes-text");
+  if (field) hodlJournalStoreNotesText(field);
+  hodlJournal.activePage = index;
+  hodlRenderJournalPageTabs();
+  hodlJournalRestorePage(field);
+  hodlJournalLog("page-select", `page-${hodlJournal.pages[index].number}`, "journal");
+}
+function hodlAddJournalPage() {
+  let field = document.getElementById("journal-notes-text");
+  if (field) hodlJournalStoreNotesText(field);
+  let style = { ...hodlJournalActivePageStyle() };
+  let number = hodlJournal.nextPageNumber++;
+  hodlJournal.pages.push({ id: hodlJournal.nextPageId++, number, name: hodlJournalDefaultPageName(number), notesText: "", style });
+  hodlJournal.activePage = hodlJournal.pages.length - 1;
+  hodlRenderJournalPageTabs();
+  hodlJournalRestorePage(field);
+  hodlJournalLog("page-add", `page-${number}`, "journal");
+  document.getElementById("journal-page-tabs")?.children[hodlJournal.activePage]?.focus();
+}
+function hodlDeleteActiveJournalPage() {
+  if (hodlJournal.pages.length <= 1) {
+    hodlSyncJournalPageDeleteButton();
+    return;
+  }
+  let field = document.getElementById("journal-notes-text"), deletedIndex = hodlJournal.activePage, deletedNumber = hodlJournal.pages[deletedIndex].number;
+  if (field) hodlJournalStoreNotesText(field);
+  hodlJournal.pages.splice(deletedIndex, 1);
+  hodlJournal.nextPageNumber = hodlJournal.pages.reduce((latest, page) => Math.max(latest, page.number), 0) + 1;
+  hodlJournal.activePage = Math.min(deletedIndex, hodlJournal.pages.length - 1);
+  hodlRenderJournalPageTabs();
+  hodlJournalRestorePage(field);
+  hodlJournalLog("page-delete", `page-${deletedNumber}`, "journal");
+  document.getElementById("journal-page-tabs")?.children[hodlJournal.activePage]?.focus();
+}
+function hodlJournalLog(action, detail = "", tool = hodlWorkspace) {
+  hodlJournalAppend(hodlJournal, { tool, action, detail });
   if (hodlWorkspace === "journal" && hodlJournalTool === "log") hodlRenderJournalLog();
+}
+var hodlJournalAuditedClicks = {
+  "key-edit-inputs": ["calc", "edit-input", "current-key"],
+  "bip85-wipe": ["bip85", "clear", "parent-session"],
+  "bip85-copy": ["bip85", "copy", "derived-child"],
+  "msig-edit-inputs": ["msig", "edit-input", "current-multisig"],
+  "msig-descriptor-import": ["msig", "import", "descriptor"],
+  "sp-wipe": ["sp", "clear", "session"],
+  "psbt-use-calc": ["psbt", "use-session-key", "active-key"],
+  "psbt-wipe": ["psbt", "clear", "session"],
+  "psbted-load": ["psbt", "load", "editor-text"],
+  "psbted-upload": ["psbt", "upload", "psbt-file"],
+  "psbted-wipe": ["psbt", "clear", "editor"],
+  "psbted-copy-b64": ["psbt", "copy", "edited-psbt-base64"],
+  "psbted-copy-hex": ["psbt", "copy", "edited-psbt-hex"],
+  "psbted-download": ["psbt", "download", "edited-psbt"],
+  "psbted-reload": ["psbt", "load", "edited-psbt"],
+  "journal-notes-copy": ["journal", "copy", "notepad-page"],
+  "journal-notes-download": ["journal", "download", "notebook"],
+  "journal-notes-upload": ["journal", "upload", "notebook"],
+  "journal-state-download": ["journal", "download", "session-state"],
+  "journal-log-copy": ["journal", "copy", "session-log"],
+  "journal-log-download": ["journal", "download", "session-log"],
+  "beta-warning-dismiss": ["app", "dismiss", "beta-warning"],
+};
+var hodlJournalActionAuditReady = false, hodlJournalSuppressSettingAudit = false;
+function hodlJournalControlTool(control) {
+  let id = control?.id || "";
+  if (id.startsWith("journal-")) return "journal";
+  if (id.startsWith("psbt-") || id.startsWith("psbted-")) return "psbt";
+  if (id.startsWith("bip85-")) return "bip85";
+  if (id.startsWith("msig-")) return "msig";
+  if (id.startsWith("sp-")) return "sp";
+  if (control?.closest?.("#journal-manager, #journal-notes-card, #journal-state-card, #journal-log-card")) return "journal";
+  if (control?.closest?.("#psbt-manager, #psbt-card, #psbted-card")) return "psbt";
+  if (control?.closest?.("#bip85-manager, #bip85-card")) return "bip85";
+  if (control?.closest?.("#msig-manager, #msig-card")) return "msig";
+  if (control?.closest?.("#sp-manager, #sp-card")) return "sp";
+  if (control?.closest?.("#key-manager, #calc-card")) return "calc";
+  return "app";
+}
+function hodlJournalAuditedClick(control) {
+  let mapped = hodlJournalAuditedClicks[control.id];
+  if (mapped) return mapped;
+  if (control.id === "save") return [hodlJournalControlTool(control), "download", "recovery-sheet"];
+  if (control.id === "download-wallet-dat") return [hodlJournalControlTool(control), "download", "wallet-dat"];
+  if (control.matches('a[download="entropylab.html"]')) return ["app", "download", "application"];
+  if (control.matches("[data-copy-seed-phrase]")) return ["calc", "copy", "seed-phrase"];
+  if (control.matches("[data-sp-mode]")) return ["sp", "mode", control.dataset.spMode];
+  if (control.matches("[data-sp-copy]")) return ["sp", "copy", "result"];
+  if (control.matches(".session-key-option, .msig-session-key")) return [hodlJournalControlTool(control), "use-session-key", "key-station"];
+  if (control.matches("[data-msig-move]")) return ["msig", "reorder", control.dataset.msigMove === "-1" ? "up" : "down"];
+  if (control.matches(".msig-key-reuse-apply")) return ["msig", "apply", "cosigner-path"];
+  if (control.matches(".msig-key-reuse-clear")) return ["msig", "clear", "cosigner-path"];
+  if (control.matches("[data-tx-add]")) return ["psbt", "editor-add", control.dataset.txAdd];
+  if (control.matches("[data-txin-del]")) return ["psbt", "editor-delete", "input"];
+  if (control.matches("[data-txout-del]")) return ["psbt", "editor-delete", "output"];
+  if (control.matches("[data-build-apply]")) return ["psbt", "editor-set", "output-script"];
+  if (control.matches("[data-add]")) return ["psbt", "editor-add", `${control.dataset.add.split(":")[0]}-pair`];
+  if (control.matches(".psbted-del[data-kind]")) return ["psbt", "editor-delete", `${control.dataset.kind}-pair`];
+  if (control.matches("[data-viz]")) return ["psbt", "editor-view", control.dataset.viz.split(":")[0]];
+  if (control.matches(".account-tab")) return ["calc", "result-tab", control.dataset.account || "script"];
+  return null;
+}
+function hodlJournalSettingDetail(control) {
+  let name = control.id || control.name || control.dataset.buildMode || control.dataset.addType || (control.hasAttribute("data-wallet-dat-birthday") ? "wallet-birthday" : "");
+  if (!name) return "";
+  if (control.type === "radio" && !control.checked) return "";
+  let value = control.type === "checkbox" ? control.checked ? "on" : "off" : String(control.value ?? "").slice(0, 80);
+  return `${name}=${value}`;
+}
+function hodlInitJournalActionAudit() {
+  if (hodlJournalActionAuditReady) return;
+  hodlJournalActionAuditReady = true;
+  document.addEventListener("click", (event) => {
+    let control = event.target.closest?.("button, a");
+    if (!control || control.disabled || control.dataset.journalSilent === "true") return;
+    let audited = hodlJournalAuditedClick(control);
+    if (audited) hodlJournalLog(audited[1], audited[2], audited[0]);
+  }, true);
+  document.addEventListener("change", (event) => {
+    if (hodlJournalSuppressSettingAudit) return;
+    let control = event.target;
+    if (!(control instanceof HTMLSelectElement || control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement)) return;
+    if (control.id === "journal-key-insert" || control.type === "file") return;
+    if (control instanceof HTMLTextAreaElement) {
+      if (control.id === "journal-state-text") hodlJournalLog("edit", "session-state", "journal");
+      else if (control.closest("#psbted-card")) hodlJournalLog("editor-edit", "field", "psbt");
+      return;
+    }
+    let safeTextIds = new Set(["purpose", "network", "account", "branch-start", "address-start", "derivation-path", "msig-account"]);
+    if (control.type && !["checkbox", "radio", "number", "range"].includes(control.type) && !safeTextIds.has(control.id) && !(control instanceof HTMLSelectElement)) return;
+    let detail = hodlJournalSettingDetail(control);
+    if (detail) hodlJournalLog("setting", detail, hodlJournalControlTool(control));
+  }, true);
 }
 function hodlSyncJournalTool() {
   let visible = hodlWorkspace === "journal",
+      intros = document.getElementById("journal-tool-intros"),
       manager = document.getElementById("journal-manager"),
       tabs = document.getElementById("journal-tool-tabs");
+  if (intros) intros.hidden = !visible;
   if (manager) manager.hidden = !visible;
   if (tabs) {
     tabs.querySelectorAll("[data-journal-tool]").forEach((button) => {
@@ -11523,13 +11910,14 @@ function hodlSyncJournalTool() {
       button.tabIndex = active ? 0 : -1;
     });
   }
-  document.getElementById("journal-tool-intro").hidden = !visible || hodlJournalTool !== "book";
+  for (let id of ["book", "notes", "state", "log"]) {
+    let intro = document.getElementById(id === "book" ? "journal-tool-intro" : `journal-${id}-tool-intro`), active = visible && hodlJournalTool === id;
+    intro.classList.toggle("active", active);
+    intro.setAttribute("aria-hidden", String(!active));
+  }
   document.getElementById("journal-card").hidden = !visible || hodlJournalTool !== "book";
-  document.getElementById("journal-notes-tool-intro").hidden = !visible || hodlJournalTool !== "notes";
   document.getElementById("journal-notes-card").hidden = !visible || hodlJournalTool !== "notes";
-  document.getElementById("journal-state-tool-intro").hidden = !visible || hodlJournalTool !== "state";
   document.getElementById("journal-state-card").hidden = !visible || hodlJournalTool !== "state";
-  document.getElementById("journal-log-tool-intro").hidden = !visible || hodlJournalTool !== "log";
   document.getElementById("journal-log-card").hidden = !visible || hodlJournalTool !== "log";
   if (visible && hodlJournalTool === "book") {
     hodlJournalFillWallets();
@@ -11543,9 +11931,93 @@ function hodlSyncJournalTool() {
   if (visible && hodlJournalTool === "log") hodlRenderJournalLog();
 }
 function hodlShowJournalTool(id, focus = false) {
-  hodlJournalTool = ["book", "notes", "state", "log"].includes(id) ? id : "book";
+  let next = ["book", "notes", "state", "log"].includes(id) ? id : "book", changed = next !== hodlJournalTool;
+  hodlJournalTool = next;
   hodlSyncJournalTool();
+  if (changed) hodlJournalLog("tool-tab", hodlJournalTool, "journal");
   if (focus) document.querySelector(`#journal-tool-tabs [data-journal-tool="${hodlJournalTool}"]`)?.focus();
+}
+function hodlRefreshJournalKeyPicker() {
+  let select = document.getElementById("journal-key-insert");
+  if (!select) return;
+  let placeholder = document.createElement("option"), keys = (hodlKeys || []).filter((state) => !state.isLab && /^[0-9a-f]{8}$/i.test(state.result?.masterFingerprint || ""));
+  placeholder.value = "";
+  placeholder.textContent = "Insert key";
+  placeholder.selected = true;
+  placeholder.dataset.customSelectPlaceholder = "true";
+  select.replaceChildren(placeholder);
+  if (!keys.length) {
+    let empty = document.createElement("option");
+    empty.value = "";
+    empty.textContent = "No derived keys yet";
+    empty.disabled = true;
+    select.appendChild(empty);
+  } else keys.forEach((state) => {
+    let option = document.createElement("option"), fingerprint = state.result.masterFingerprint.toLowerCase();
+    option.value = String(state.id);
+    let keyName = state.name || `Key ${state.number}`;
+    option.textContent = keyName.trim().toLowerCase() === fingerprint ? fingerprint : `${keyName} · ${fingerprint}`;
+    option.dataset.keyName = keyName;
+    option.dataset.fingerprint = fingerprint;
+    select.appendChild(option);
+  });
+  select.entropylabOptionIcon = (value) => {
+    let option = [...select.options].find((item) => item.value === value && item.dataset.fingerprint);
+    if (!option) return null;
+    let image = document.createElement("img");
+    image.className = "journal-key-option-lifehash";
+    image.width = 22;
+    image.height = 22;
+    image.alt = "";
+    image.hidden = true;
+    hodlFillKeyTabLifehash(image, option.dataset.fingerprint);
+    return image;
+  };
+  select.value = "";
+  select.dispatchEvent(new Event("entropylab:sync-select"));
+}
+function hodlJournalInsertKey(select, field) {
+  let option = select?.selectedOptions?.[0], fingerprint = option?.dataset.fingerprint;
+  if (!field || !fingerprint) return;
+  let token = hodlJournalKeyReferenceToken(option.dataset.keyName, fingerprint), start = field.selectionStart, end = field.selectionEnd;
+  let prefix = start > 0 && !/\s$/.test(field.value.slice(0, start)) ? " " : "";
+  let suffix = end < field.value.length && !/^\s/.test(field.value.slice(end)) ? " " : "";
+  field.setRangeText(prefix + token + suffix, start, end, "end");
+  field.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: token }));
+  select.value = "";
+  select.dispatchEvent(new Event("entropylab:sync-select"));
+  field.focus({ preventScroll: true });
+  hodlJournalLog("key-insert", fingerprint.toLowerCase(), "journal");
+}
+function hodlJournalSetStatus(message, isError = false) {
+  let status = document.getElementById("journal-notes-status");
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle("err", isError);
+}
+async function hodlJournalImportFile(file) {
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) {
+    hodlJournalLog("notebook-import-error", "too-large", "journal");
+    hodlJournalSetStatus("That notebook is larger than the 2 MiB import limit.", true);
+    return;
+  }
+  try {
+    let text = await file.text();
+    let imported = /\.txt$/i.test(file.name) ? hodlJournalFromPlainText(text) : hodlParseNotebook(text);
+    hodlJournal.pages = imported.pages;
+    hodlJournal.activePage = imported.activePage;
+    hodlJournal.nextPageId = imported.nextPageId;
+    hodlJournal.nextPageNumber = imported.nextPageNumber;
+    hodlJournal.notesText = imported.notesText;
+    hodlRenderJournalPageTabs();
+    hodlJournalRestorePage(document.getElementById("journal-notes-text"));
+    hodlJournalLog("notebook-import", `${imported.pages.length} page${imported.pages.length === 1 ? "" : "s"}`);
+    hodlJournalSetStatus(`Imported ${imported.pages.length} page${imported.pages.length === 1 ? "" : "s"} from ${file.name}.`);
+  } catch (error) {
+    hodlJournalLog("notebook-import-error", "invalid-file", "journal");
+    hodlJournalSetStatus(error?.message || "The notebook could not be imported.", true);
+  }
 }
 function hodlInitJournalToolTabs() {
   let buttons = [...document.querySelectorAll("#journal-tool-tabs [data-journal-tool]")];
@@ -11564,14 +12036,57 @@ function hodlInitJournalToolTabs() {
   });
   hodlInitTabDrag(document.getElementById("journal-tool-tabs"));
   hodlJournalAppend(hodlJournal, { tool: "app", action: "boot" });
-  let add = document.getElementById("journal-note-add");
-  if (add) add.onclick = () => {
-    hodlJournalAddNote(hodlJournal, { text: "" });
-    hodlJournalLog("note-add");
-    hodlRenderJournalNotes();
-  };
+  hodlInitJournalActionAudit();
+  let notesText = document.getElementById("journal-notes-text");
+  let notesCopy = document.getElementById("journal-notes-copy");
+  if (notesText) {
+    hodlRenderJournalPageTabs();
+    hodlJournalRestorePage(notesText);
+    setInterval(() => hodlJournalRefreshPendingNote(notesText), 1e3);
+    notesText.addEventListener("input", (event) => hodlJournalUpdateNotesText(notesText, event));
+    notesText.addEventListener("keydown", (event) => hodlJournalNotesKeydown(event, notesText));
+    notesText.addEventListener("scroll", () => hodlJournalSyncPendingPrompt(notesText));
+    notesText.addEventListener("click", () => hodlJournalNotesClick(notesText));
+    notesText.addEventListener("mousemove", () => hodlJournalRevealCopyButton(notesCopy));
+    if (typeof ResizeObserver === "function") new ResizeObserver(() => hodlJournalSyncPendingPrompt(notesText)).observe(notesText);
+  }
+  if (notesCopy) {
+    notesCopy.onclick = () => {
+      hodlJournalSyncCopyButton(notesText, notesCopy);
+      if (notesCopy.disabled) return;
+      hodlCopySeedPhraseButton(notesCopy);
+      hodlJournalRevealCopyButton(notesCopy, 1900);
+    };
+    notesCopy.onfocus = () => {
+      clearTimeout(notesCopy.hodlJournalHideTimer);
+      notesCopy.classList.add("is-visible");
+    };
+    notesCopy.onblur = () => notesCopy.classList.remove("is-visible");
+  }
+  hodlInitTabDrag(document.getElementById("journal-page-tabs"));
+  let addPage = document.getElementById("add-journal-page");
+  if (addPage) addPage.onclick = hodlAddJournalPage;
+  let deletePage = document.getElementById("delete-journal-page");
+  if (deletePage) deletePage.onclick = hodlDeleteActiveJournalPage;
+  hodlRefreshJournalKeyPicker();
+  let keyInsert = document.getElementById("journal-key-insert");
+  if (keyInsert) keyInsert.onchange = () => hodlJournalInsertKey(keyInsert, notesText);
+  for (let [id, property] of [["journal-font", "font"], ["journal-size", "size"], ["journal-spacing", "spacing"]]) {
+    let select = document.getElementById(id);
+    if (select) select.onchange = () => hodlJournalSetPageStyle(property, select.value);
+  }
   let notesDownload = document.getElementById("journal-notes-download");
-  if (notesDownload) notesDownload.onclick = () => hodlJournalDownload("entropylab-notes.txt", hodlJournalFormatNotes(hodlJournal.notes));
+  if (notesDownload) notesDownload.onclick = () => {
+    if (notesText) hodlJournalStoreNotesText(notesText);
+    hodlJournalDownload("entropylab-notebook.json", hodlSerializeNotebook(hodlJournal), "application/json;charset=utf-8");
+    hodlJournalSetStatus("Downloaded a reloadable notebook.");
+  };
+  let notesFile = document.getElementById("journal-notes-file"), notesUpload = document.getElementById("journal-notes-upload");
+  if (notesUpload && notesFile) notesUpload.onclick = () => notesFile.click();
+  if (notesFile) notesFile.onchange = async () => {
+    await hodlJournalImportFile(notesFile.files?.[0]);
+    notesFile.value = "";
+  };
   let capture = document.getElementById("journal-state-capture");
   if (capture) capture.onclick = () => hodlJournalCaptureSession();
   let stateDownload = document.getElementById("journal-state-download");
@@ -11585,57 +12100,233 @@ function hodlInitJournalToolTabs() {
   });
   let logDownload = document.getElementById("journal-log-download");
   if (logDownload) logDownload.onclick = () => hodlJournalDownload("entropylab-session-log.txt", hodlJournalFormatLog(hodlJournal.log));
+  let logOut = document.getElementById("journal-log-out"), logCopy = document.getElementById("journal-log-copy");
+  if (logOut && logCopy) logCopy.onclick = () => {
+    logCopy.dataset.phrase = logOut.textContent || "";
+    hodlCopySeedPhraseButton(logCopy);
+  };
   let logClear = document.getElementById("journal-log-clear");
   if (logClear) logClear.onclick = () => {
     hodlJournal.log.length = 0;
-    hodlRenderJournalLog();
+    hodlJournalLog("clear", "session-log", "journal");
   };
   hodlSyncJournalTool();
 }
-function hodlJournalDownload(filename, text) {
-  let blob = new Blob([text], { type: "text/plain" }), url = URL.createObjectURL(blob), link = document.createElement("a");
+function hodlJournalDownload(filename, text, type = "text/plain;charset=utf-8") {
+  let blob = new Blob([text], { type }), url = URL.createObjectURL(blob), link = document.createElement("a");
   link.href = url;
   link.download = filename;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1e3);
 }
 function hodlRenderJournalNotes() {
-  let box = document.getElementById("journal-notes");
-  if (!box) return;
-  if (!hodlJournal.notes.length) {
-    box.innerHTML = `<p class="muted">No notes yet.</p>`;
+  let field = document.getElementById("journal-notes-text");
+  if (!field) return;
+  hodlRenderJournalPageTabs();
+  hodlJournalApplyPageStyle();
+  if (!hodlJournal.notesText) {
+    if (!field.dataset.pendingNote) hodlJournalResetPendingNote(field, "Add new note");
     return;
   }
-  box.replaceChildren(...hodlJournal.notes.map((note) => {
-    let article = document.createElement("article");
-    article.className = "journal-note";
-    article.dataset.id = String(note.id);
-    let head = document.createElement("div");
-    head.className = "journal-note-head";
-    let time = document.createElement("input");
-    time.className = "journal-note-at";
-    time.value = note.at;
-    time.setAttribute("aria-label", "Note time");
-    time.addEventListener("input", () => hodlJournalUpdateNote(hodlJournal, note.id, { at: time.value }));
-    let remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "btn secondary";
-    remove.textContent = "Delete";
-    remove.onclick = () => {
-      hodlJournalDeleteNote(hodlJournal, note.id);
-      hodlJournalLog("note-delete");
-      hodlRenderJournalNotes();
-    };
-    head.append(time, remove);
-    let body = document.createElement("textarea");
-    body.className = "journal-note-body";
-    body.value = note.text;
-    body.placeholder = "Write a note";
-    body.spellcheck = false;
-    body.addEventListener("input", () => hodlJournalUpdateNote(hodlJournal, note.id, { text: body.value }));
-    article.append(head, body);
-    return article;
-  }));
+  if (field.value !== hodlJournal.notesText) field.value = hodlJournal.notesText;
+  hodlJournalRenderVisual(field);
+  if (field.dataset.pendingNote) hodlJournalRenderPendingPrompt(field);
+}
+var hodlJournalNoteStampPattern = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}  /;
+function hodlJournalLineIndexAt(value, offset) {
+  return value.slice(0, offset).split("\n").length - 1;
+}
+function hodlJournalLineStartAt(value, index) {
+  return value.split("\n").slice(0, index).reduce((start, line) => start + line.length + 1, 0);
+}
+function hodlJournalPendingLineIndex(field) {
+  let index = Number(field.dataset.pendingNoteLine);
+  return field.dataset.pendingNoteMode === "line" && Number.isInteger(index) && index >= 0 && index < field.value.split("\n").length ? index : -1;
+}
+function hodlJournalPendingLineStart(field) {
+  let index = hodlJournalPendingLineIndex(field);
+  return index < 0 ? -1 : hodlJournalLineStartAt(field.value, index);
+}
+function hodlJournalSyncPendingPrompt(field) {
+  if (!field) return;
+  let render = document.getElementById("journal-notes-render"), prompt = document.getElementById("journal-notes-prompt");
+  if (render) {
+    render.style.width = `${field.clientWidth}px`;
+    render.style.height = `${field.clientHeight}px`;
+    render.scrollTop = field.scrollTop;
+    render.scrollLeft = field.scrollLeft;
+  }
+  if (!prompt || prompt.hidden) return;
+  prompt.style.width = `${field.clientWidth}px`;
+  prompt.style.height = `${field.clientHeight}px`;
+  prompt.scrollTop = field.scrollTop;
+  prompt.scrollLeft = field.scrollLeft;
+}
+function hodlJournalRenderPendingPrompt(field) {
+  let prompt = document.getElementById("journal-notes-prompt"), before = document.getElementById("journal-notes-prompt-before"), text = document.getElementById("journal-notes-prompt-text");
+  if (!prompt || !before || !text) return;
+  let lineStart = hodlJournalPendingLineStart(field), lineEnd = field.value.indexOf("\n", lineStart);
+  if (lineStart < 0) return;
+  before.textContent = field.value.slice(0, lineEnd < 0 ? field.value.length : lineEnd);
+  text.textContent = field.dataset.pendingNote;
+  field.setAttribute("aria-placeholder", field.dataset.pendingNote);
+  prompt.hidden = false;
+  hodlJournalSyncPendingPrompt(field);
+}
+function hodlJournalFinishPendingNote(field) {
+  delete field.dataset.pendingNote;
+  delete field.dataset.pendingNoteMode;
+  delete field.dataset.pendingNoteLine;
+  let prompt = document.getElementById("journal-notes-prompt");
+  if (prompt) prompt.hidden = true;
+}
+function hodlJournalRefreshPendingNote(field) {
+  let index = hodlJournalPendingLineIndex(field);
+  if (index < 0) return;
+  let lines = field.value.split("\n"), stamp = `${hodlJournalStamp()}  `;
+  lines[index] = stamp;
+  field.value = lines.join("\n");
+  let caret = hodlJournalLineStartAt(field.value, index) + stamp.length;
+  field.setSelectionRange(caret, caret);
+  hodlJournalStoreNotesText(field);
+  hodlJournalRenderPendingPrompt(field);
+}
+function hodlJournalResetPendingNote(field, label, lineIndex = field.value.split("\n").length - 1) {
+  let lines = field.value.split("\n");
+  lineIndex = Math.max(0, Math.min(lineIndex, lines.length - 1));
+  lines[lineIndex] = "";
+  field.value = lines.join("\n");
+  field.dataset.pendingNote = label;
+  field.dataset.pendingNoteMode = "line";
+  field.dataset.pendingNoteLine = String(lineIndex);
+  hodlJournalRefreshPendingNote(field);
+}
+function hodlJournalDeletePendingLine(field) {
+  let index = hodlJournalPendingLineIndex(field);
+  if (index <= 0) return false;
+  let lines = field.value.split("\n"), stamp = lines[index];
+  if (!lines[index - 1].trim()) {
+    lines[index - 1] = stamp;
+    lines.splice(index, 1);
+    field.dataset.pendingNoteLine = String(index - 1);
+  } else {
+    lines.splice(index, 1);
+    hodlJournalFinishPendingNote(field);
+  }
+  field.value = lines.join("\n");
+  let caretLine = field.dataset.pendingNote ? index - 1 : Math.min(index - 1, lines.length - 1);
+  let caret = hodlJournalLineStartAt(field.value, caretLine) + lines[caretLine].length;
+  field.setSelectionRange(caret, caret);
+  hodlJournalStoreNotesText(field);
+  if (field.dataset.pendingNote) hodlJournalRenderPendingPrompt(field);
+  return true;
+}
+function hodlJournalNotesClick(field) {
+  let start = field.selectionStart, end = field.selectionEnd;
+  if (start !== end) return;
+  let lines = field.value.split("\n"), clicked = hodlJournalLineIndexAt(field.value, start);
+  let pending = hodlJournalPendingLineIndex(field);
+  if (clicked === pending) {
+    let caret = hodlJournalLineStartAt(field.value, pending) + lines[pending].length;
+    field.setSelectionRange(caret, caret);
+    return;
+  }
+  if (lines[clicked].trim()) {
+    if (pending >= 0) {
+      let removedLength = lines[pending].length;
+      lines[pending] = "";
+      field.value = lines.join("\n");
+      if (pending < clicked) {
+        start -= removedLength;
+        end -= removedLength;
+      }
+      hodlJournalFinishPendingNote(field);
+      field.setSelectionRange(start, end);
+      hodlJournalStoreNotesText(field);
+    }
+    return;
+  }
+  let stamp = pending >= 0 ? lines[pending] : `${hodlJournalStamp()}  `;
+  if (pending >= 0) lines[pending] = "";
+  lines[clicked] = stamp;
+  field.value = lines.join("\n");
+  field.dataset.pendingNote = "Add new note";
+  field.dataset.pendingNoteMode = "line";
+  field.dataset.pendingNoteLine = String(clicked);
+  let caret = hodlJournalLineStartAt(field.value, clicked) + stamp.length;
+  field.setSelectionRange(caret, caret);
+  hodlJournalStoreNotesText(field);
+  hodlJournalRenderPendingPrompt(field);
+}
+function hodlJournalNoteCount(text) {
+  return String(text).split("\n").filter((line) => hodlJournalNoteStampPattern.test(line) && line.replace(hodlJournalNoteStampPattern, "").trim()).length;
+}
+function hodlJournalUpdateNotesText(field, event) {
+  let previousCount = hodlJournalNoteCount(hodlJournal.notesText), start = field.selectionStart, end = field.selectionEnd;
+  let cursor = 0, stamp = `${hodlJournalStamp()}  `, addedBeforeStart = 0, addedBeforeEnd = 0;
+  let lines = field.value.split("\n").map((line) => {
+    let lineStart = cursor, shouldStamp = line.trim().length > 0 && !hodlJournalNoteStampPattern.test(line);
+    cursor += line.length + 1;
+    if (!shouldStamp) return line;
+    if (lineStart <= start) addedBeforeStart += stamp.length;
+    if (lineStart <= end) addedBeforeEnd += stamp.length;
+    return stamp + line;
+  });
+  let value = lines.join("\n");
+  if (value !== field.value) {
+    field.value = value;
+    field.setSelectionRange(start + addedBeforeStart, end + addedBeforeEnd);
+  }
+  let deleting = event?.inputType?.startsWith("delete");
+  let pending = hodlJournalPendingLineIndex(field);
+  let active = deleting ? hodlJournalLineIndexAt(field.value, field.selectionStart) : pending >= 0 ? pending : hodlJournalLineIndexAt(field.value, field.selectionStart);
+  let lineStart = hodlJournalLineStartAt(field.value, active), lineEnd = field.value.indexOf("\n", lineStart);
+  let line = field.value.slice(lineStart, lineEnd < 0 ? field.value.length : lineEnd);
+  let emptyStampedLine = hodlJournalNoteStampPattern.test(line) && !line.replace(hodlJournalNoteStampPattern, "").trim();
+  if (!field.value) hodlJournalResetPendingNote(field, "Add new note");
+  else if (emptyStampedLine || deleting && !line.trim()) {
+    hodlJournalResetPendingNote(field, "Add new note", active);
+  } else hodlJournalFinishPendingNote(field);
+  hodlJournalStoreNotesText(field);
+  let nextCount = hodlJournalNoteCount(field.value);
+  for (let count = previousCount; count < nextCount; count++) hodlJournalLog("note-add", "", "journal");
+  for (let count = nextCount; count < previousCount; count++) hodlJournalLog("note-delete", "", "journal");
+}
+function hodlJournalNotesKeydown(event, field) {
+  let pendingIndex = hodlJournalPendingLineIndex(field), pendingStart = hodlJournalPendingLineStart(field);
+  if (pendingStart >= 0 && hodlJournalLineIndexAt(field.value, field.selectionStart) === pendingIndex) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      let lines = field.value.split("\n");
+      lines[pendingIndex] = "";
+      lines.splice(pendingIndex + 1, 0, "");
+      field.value = lines.join("\n");
+      hodlJournalResetPendingNote(field, "Add new note", pendingIndex + 1);
+      return;
+    }
+    if (event.key === "Backspace" || event.key === "Delete") {
+      event.preventDefault();
+      hodlJournalDeletePendingLine(field);
+      return;
+    }
+  }
+  if (event.key !== "Enter" || event.altKey || event.ctrlKey || event.metaKey) return;
+  let start = field.selectionStart, end = field.selectionEnd, value = field.value;
+  let currentLine = hodlJournalLineIndexAt(value, start);
+  let lineStart = value.lastIndexOf("\n", start - 1) + 1, nextBreak = value.indexOf("\n", end);
+  let lineEnd = nextBreak < 0 ? value.length : nextBreak, line = value.slice(lineStart, lineEnd);
+  if (!line.trim()) return;
+  event.preventDefault();
+  let hasSuffix = value.slice(end, lineEnd).length > 0;
+  let stamp = `${hodlJournalStamp()}  `;
+  field.setRangeText(`\n${stamp}`, start, end, "end");
+  if (!hasSuffix) {
+    field.dataset.pendingNote = "Add new note";
+    field.dataset.pendingNoteMode = "line";
+    field.dataset.pendingNoteLine = String(currentLine + 1);
+    hodlJournalRenderPendingPrompt(field);
+  }
+  hodlJournalStoreNotesText(field);
 }
 function hodlRenderJournalLog() {
   let out = document.getElementById("journal-log-out");
@@ -12127,8 +12818,14 @@ function hodlJournalWipeMem() {
   if (field) field.value = "";
   let privateBox = document.getElementById("journal-state-private");
   if (privateBox) privateBox.checked = false;
-  let notes = document.getElementById("journal-notes");
-  if (notes) notes.innerHTML = "";
+  let notes = document.getElementById("journal-notes-text");
+  if (notes) {
+    notes.value = "";
+    hodlJournalResetPendingNote(notes, "Add new note");
+  }
+  hodlRenderJournalPageTabs();
+  hodlJournalApplyPageStyle();
+  hodlJournalSetStatus("");
   let log = document.getElementById("journal-log-out");
   if (log) log.textContent = "No events yet.";
 }
@@ -12966,7 +13663,12 @@ function hodlApplyNetworkDefault(network) {
     let hardened = document.getElementById("network-harden")?.checked !== false;
     coinType.value = `${hodlDefaultCoinType()}${hardened ? "'" : ""}`;
     coinType.dispatchEvent(new Event("input", { bubbles: true }));
-    coinType.dispatchEvent(new Event("change", { bubbles: true }));
+    hodlJournalSuppressSettingAudit = true;
+    try {
+      coinType.dispatchEvent(new Event("change", { bubbles: true }));
+    } finally {
+      hodlJournalSuppressSettingAudit = false;
+    }
   }
   let msigCoinType = document.getElementById("msig-network");
   if (msigCoinType) {
@@ -12977,7 +13679,12 @@ function hodlApplyNetworkDefault(network) {
     let select = document.getElementById(id);
     if (!select) continue;
     hodlSyncSelect(select, hodlNetworkDefault);
-    select.dispatchEvent(new Event("change", { bubbles: true }));
+    hodlJournalSuppressSettingAudit = true;
+    try {
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    } finally {
+      hodlJournalSuppressSettingAudit = false;
+    }
   }
 }
 var hodlNetworkPickerRender = null;
@@ -13025,6 +13732,7 @@ function hodlInitNetworkPicker() {
   });
   options.forEach((option) => option.addEventListener("click", () => {
     hodlApplyNetworkDefault(option.dataset.network);
+    hodlJournalLog("network", hodlNetworkChoice, "app");
     render();
     close();
     button.focus({ preventScroll: true });
@@ -13045,6 +13753,7 @@ function hodlInitTheme() {
     } catch (e) {
     }
     hodlApplyTheme(mode);
+    hodlJournalLog("theme", mode, "app");
   };
   // Until the toggle is used the system still leads, so a mid-session change
   // to its setting follows along without pinning a choice the user never made.
@@ -13143,7 +13852,12 @@ function hodlInitSecretFieldAutoClear() {
     // The PSBT editor holds the loaded document in module state; its own wipe
     // button drops it. Last, so a failure there cannot skip the clears above.
     let psbtEditorWipe = document.getElementById("psbted-wipe");
-    if (psbtEditorWipe) try { psbtEditorWipe.click(); } catch {}
+    if (psbtEditorWipe) try {
+      psbtEditorWipe.dataset.journalSilent = "true";
+      psbtEditorWipe.click();
+    } catch {} finally {
+      delete psbtEditorWipe.dataset.journalSilent;
+    }
   };
   addEventListener("pagehide", clearSecretFields);
   addEventListener("pageshow", (event) => {

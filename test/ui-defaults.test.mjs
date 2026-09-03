@@ -1361,8 +1361,9 @@ test("the site header is fixed, carries the logo, and holds the version, downloa
   assert.match(css, /\.wrap \{ max-width: 1000px; margin: 0 auto; padding: calc\(var\(--site-header-height\) \+ 20px\) 16px 0; \}/);
   assert.match(css, /@media print \{[\s\S]*?\.wrap \{ padding-top: 20px; \}/);
   assert.match(css, /html \{[^}]*scroll-padding-top: calc\(var\(--site-header-height\) \+ 12px\)/);
-  // Every header control is one height, and the bar is sized to match it.
-  assert.match(css, /\.header-button \{ min-height: 40px; font-size: 14px; \}/);
+  // Every header control is one height, and Journal file actions deliberately
+  // reuse that same compact sizing.
+  assert.match(css, /\.header-button, \.journal-file-button \{ min-height: 40px; font-size: 14px; \}/);
   assert.match(css, /--site-header-height: 52px;/);
   // enhanced-inputs.js swaps the language select for a custom listbox; the
   // generated control keeps the bar's 40px chrome and sans face instead of
@@ -1454,7 +1455,7 @@ test("narrow screens keep the fixed header on one row by hiding control labels",
     assert.match(css, /\.download-mark \{ display: block; flex: 0 0 auto; \}/);
     assert.doesNotMatch(css, /@media \(max-width: 719px\) \{[\s\S]*?\.download-mark \{/);
     // One rule owns the icon-to-label gap in each row, so they cannot drift.
-    assert.match(css, /\.download-controls > a \{ display: inline-flex; align-items: center; gap: 6px;/);
+    assert.match(css, /\.download-controls > a, \.journal-file-button \{ display: inline-flex; align-items: center; gap: 6px;/);
     assert.match(css, /\.page-footer-links > a \{ display: inline-flex; align-items: center; gap: 6px;/);
     assert.doesNotMatch(css, /\.download-controls \.github-repo-link/);
     // Centring the label's em box leaves its caps a pixel below the icon's
@@ -1580,6 +1581,7 @@ test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
   assert.match(appSource, /\["psbt", "workspace\.psbt", "workspace\.psbtShort"\]/);
   assert.doesNotMatch(appSource, /\["psbted", "workspace\.psbted", "workspace\.psbtedShort"\]/);
   for (const markup of [template, appSource]) {
+    assert.match(markup, /<div class="tool-intro-stack" id="psbt-tool-intros" hidden>[\s\S]*?id="psbt-tool-intro"[\s\S]*?id="psbted-tool-intro"[\s\S]*?<section class="key-manager no-print" id="psbt-manager" hidden>/);
     assert.match(markup, /<section class="key-manager no-print" id="psbt-manager" hidden>/);
     assert.match(markup, /<div class="key-tab-strip">\s*<div class="key-tabs" id="psbt-tool-tabs" role="tablist" aria-label="PSBT stations">/);
     assert.match(markup, /class="tab key-tab is-lab active"[^>]*data-psbt-tool="nonce"/);
@@ -1589,6 +1591,7 @@ test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
   assert.match(appSource, /data-psbt-tool="nonce"[^>]*data-i18n="workspace\.psbtNonce">PSBT \/ Nonce/);
   assert.match(appSource, /data-psbt-tool="editor"[^>]*data-i18n="workspace\.psbted">PSBT Editor/);
   assert.match(appSource, /getElementById\("psbt-manager"\)/);
+  assert.match(appSource, /getElementById\("psbt-tool-intros"\)/);
   assert.match(appSource, /function hodlShowPsbtTool\(id, focus = false\)/);
   assert.match(appSource, /hodlInitTabDrag\(document\.getElementById\("psbt-tool-tabs"\)\)/);
   assert.match(appSource, /getElementById\("psbted-card"\)\.hidden = !visible \|\| hodlPsbtTool !== "editor"/);
@@ -1620,10 +1623,17 @@ test("Journal is the last workspace tab and holds the encrypted notebook, notepa
   assert.match(appSource, /function hodlShowJournalTool\(id, focus = false\)/);
   assert.match(appSource, /hodlInitTabDrag\(document\.getElementById\("journal-tool-tabs"\)\)/);
   assert.match(appSource, /hodlInitJournalNotebook\(\)/);
+  assert.match(appSource, /function hodlJournalNotesClick\(field\)/);
+  assert.match(appSource, /notesText\.addEventListener\("click", \(\) => hodlJournalNotesClick\(notesText\)\)/);
+  assert.match(appSource, /function hodlRefreshJournalKeyPicker\(\)/);
+  assert.match(appSource, /function hodlJournalInsertKey\(select, field\)/);
+  assert.match(appSource, /function hodlJournalImportFile\(file\)/);
+  assert.match(appSource, /hodlSerializeNotebook\(hodlJournal\)/);
   assert.match(appSource, /hodlJournalWipeMem\(\)/);
   assert.match(appSource, /function hodlInitSecretFieldAutoClear\(\) \{[\s\S]*hodlJournalWipeMem\(\)/);
   assert.match(appSource, /function hodlJournalWipeMem\(\) \{[\s\S]*hodlJournalWipeNotebook\(\)/);
   for (const markup of [template, appSource]) {
+    assert.match(markup, /<div class="tool-intro-stack" id="journal-tool-intros" hidden>[\s\S]*?id="journal-notes-tool-intro"[\s\S]*?id="journal-state-tool-intro"[\s\S]*?id="journal-log-tool-intro"[\s\S]*?<section class="key-manager no-print" id="journal-manager" hidden>/);
     assert.match(markup, /<section class="key-manager no-print" id="journal-manager" hidden>/);
     assert.match(markup, /<div class="key-tabs" id="journal-tool-tabs" role="tablist" aria-label="Journal stations">/);
     assert.match(markup, /data-journal-tool="book"/);
@@ -1643,11 +1653,29 @@ test("Journal is the last workspace tab and holds the encrypted notebook, notepa
     assert.match(markup, /id="journal-notes-card"/);
     assert.match(markup, /id="journal-state-card"/);
     assert.match(markup, /id="journal-log-card"/);
-    assert.match(markup, /id="journal-note-add"/);
+    assert.match(markup, /<div class="key-tab-strip journal-page-tab-strip"><div class="key-tabs" id="journal-page-tabs" role="tablist" aria-label="Notepad pages"><\/div>/);
+    assert.match(markup, /id="add-journal-page"[^>]*aria-label="Add notepad page"/);
+    assert.match(markup, /id="delete-journal-page"[^>]*aria-label="Delete current notepad page"[^>]*disabled/);
+    assert.match(markup, /class="journal-format-bar" role="group" aria-label="Notepad appearance and inserts"/);
+    assert.match(markup, /id="journal-key-insert"[^>]*aria-label="Insert a Key Station key"/);
+    assert.match(markup, /id="journal-font"[\s\S]*?id="journal-size"[\s\S]*?id="journal-spacing"/);
+    assert.match(markup, /<div class="journal-notes-wrap" id="journal-page-panel" role="tabpanel"[^>]*>\s*<div class="journal-notes-render" id="journal-notes-render" aria-hidden="true"><\/div>\s*<textarea class="journal-notes-text" id="journal-notes-text"[^>]*aria-placeholder="Add new note"[^>]*><\/textarea>\s*<div class="journal-notes-prompt" id="journal-notes-prompt" aria-hidden="true"><span id="journal-notes-prompt-before"><\/span><span class="journal-notes-prompt-text" id="journal-notes-prompt-text">Add new note<\/span><\/div>/);
+    assert.match(markup, /class="seed-phrase-copy journal-notes-copy" id="journal-notes-copy"[^>]*aria-label="Copy notepad page"[^>]*disabled><svg[^>]*><rect class="seed-copy-icon-clip"[^>]*\/><path class="seed-copy-icon-board"[^>]*\/><\/svg><\/button>/);
+    assert(markup.indexOf('id="journal-page-tabs"') < markup.indexOf('id="journal-page-panel"') && markup.indexOf('id="journal-page-panel"') < markup.indexOf('class="journal-format-bar"'), "page tabs should join the editor before the controls below it");
+    assert.match(markup, /class="btn secondary journal-download-action journal-file-button" id="journal-notes-download"[^>]*aria-label="Download notebook"[^>]*><svg class="download-mark"[\s\S]*?<span class="control-label">Download<\/span><\/button>/);
+    assert.match(markup, /class="btn secondary journal-upload-action journal-file-button" id="journal-notes-upload"[^>]*aria-label="Upload notebook"[^>]*><svg class="download-mark"[\s\S]*?<path d="M12 17V5M7 10l5-5 5 5M5 21h14"\/>[\s\S]*?<span class="control-label">Upload<\/span><\/button>/);
+    assert.match(markup, /id="journal-notes-file"[^>]*accept="\.json,\.txt,application\/json,text\/plain"/);
+    assert.doesNotMatch(markup, /id="journal-notes-download-text"|Download plain-text notes/);
+    assert.doesNotMatch(markup, /id="journal-note-add"|>Add note</);
     assert.match(markup, /id="journal-state-capture"/);
     assert.match(markup, /id="journal-state-text"/);
     assert.match(markup, /id="journal-state-private"/);
-    assert.match(markup, /id="journal-log-out"/);
+    assert(markup.indexOf('id="journal-state-text"') < markup.indexOf('id="journal-state-capture"'), "Session state actions should follow the editable snapshot");
+    assert.match(markup, /class="btn secondary journal-download-action journal-file-button" id="journal-state-download"[^>]*aria-label="Download session snapshot"[^>]*>[\s\S]*?<span class="control-label">Download<\/span><\/button>/);
+    assert.match(markup, /<div class="journal-log-wrap"><pre class="journal-log" id="journal-log-out"[^>]*>No events yet\.<\/pre><button class="seed-phrase-copy journal-log-copy" id="journal-log-copy"[^>]*aria-label="Copy session log"[^>]*><svg[^>]*><rect class="seed-copy-icon-clip"[^>]*\/><path class="seed-copy-icon-board"[^>]*\/><\/svg><\/button><\/div>/);
+    assert.match(markup, /class="btn secondary journal-download-action journal-file-button" id="journal-log-download"[^>]*aria-label="Download session log"[^>]*>[\s\S]*?<span class="control-label">Download<\/span><\/button>/);
+    assert.match(markup, /class="btn clear-current-action" id="journal-log-clear"[^>]*>Clear log<\/button>/);
+    assert.match(markup, /class="row psbt-actions journal-log-actions"/);
   }
   assert.match(appSource, /data-journal-tool="book"[^>]*data-i18n="workspace\.journal">Journal/);
   assert.match(appSource, /data-journal-tool="notes"[^>]*data-i18n="workspace\.journalNotes">Notepad/);
@@ -1659,6 +1687,52 @@ test("Journal is the last workspace tab and holds the encrypted notebook, notepa
   assert.match(css, /#journal-log-card\[hidden\]/);
   assert.match(css, /#journal-locked-panel\[hidden\]/);
   assert.match(css, /#journal-card:not\(\[hidden\]\), #journal-notes-card:not\(\[hidden\]\), #journal-state-card:not\(\[hidden\]\), #journal-log-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
+  assert.match(css, /\.journal-notes-wrap \{[^}]*--journal-font-family:[^}]*position: relative;/s);
+  assert.match(css, /\.journal-page-tab-strip \{ margin-top: 0; margin-bottom: -1px; \}/);
+  assert.match(css, /\.journal-page-tab \.journal-page-tab-short \{ display: none; \}/);
+  assert.match(css, /\.journal-page-tab\.is-default \.journal-page-tab-full \{ display: none; \}/);
+  assert.match(css, /\.journal-page-tab\.is-default \.journal-page-tab-short \{ display: inline-block; \}/);
+  assert.match(css, /\.journal-format-bar \{[^}]*grid-template-columns: repeat\(2,[^}]*padding: 12px 0 0;/);
+  assert.match(css, /\.journal-key-control \{ grid-column: 1 \/ -1; \}/);
+  assert.match(css, /\.journal-notes-text \{[^}]*min-height: 20rem;[^}]*color: transparent;[^}]*caret-color: var\(--fg\);/s);
+  assert.match(css, /\.journal-notes-text \{[^}]*border-top-left-radius: 0;/s);
+  assert.match(css, /\.journal-notes-render \{[^}]*pointer-events: none;[^}]*white-space: pre-wrap;/s);
+  assert.match(css, /\.journal-inline-key-lifehash \{[^}]*width: 1\.1em; height: 1\.1em;/s);
+  assert.match(css, /\.journal-notes-prompt \{[^}]*color: transparent;[^}]*white-space: pre-wrap;/s);
+  assert.match(css, /\.journal-notes-prompt-text \{ color: var\(--faint\); \}/);
+  assert.match(css, /\.journal-notes-copy \{[^}]*position: absolute;[^}]*top: 10px; right: 12px;[^}]*opacity: 0; pointer-events: none; transition: opacity \.18s ease;/s);
+  assert.match(css, /\.journal-notes-copy\.is-visible, \.journal-notes-copy:hover, \.journal-notes-copy:focus-visible \{ opacity: 1; pointer-events: auto; \}/);
+  assert.match(css, /\.journal-notes-copy\.is-copied, \.journal-notes-copy\.is-copied:not\(:disabled\):hover \{ color: var\(--ok\); \}/);
+  assert.match(appSource, /notesText\.addEventListener\("mousemove", \(\) => hodlJournalRevealCopyButton\(notesCopy\)\)/);
+  assert.match(appSource, /hodlJournalFormatNotebook\(field\.value\)[\s\S]*?button\.dataset\.phrase = phrase/);
+  assert.match(appSource, /hodlCopySeedPhraseButton\(notesCopy\);[\s\S]*?hodlJournalRevealCopyButton\(notesCopy, 1900\)/);
+  assert.match(css, /\.btn:is\(\.download-html, \.save-recovery-sheet, \.save-wallet-dat, \.journal-download-action\) \{[^}]*var\(--ok\)/s);
+  assert.match(css, /\.header-button, \.journal-file-button \{ min-height: 40px; font-size: 14px; \}/);
+  assert.match(css, /\.download-controls > a, \.journal-file-button \{ display: inline-flex; align-items: center; gap: 6px; text-decoration: none; \}/);
+  assert.match(css, /\.journal-file-button \.control-label \{ display: inline; \}/);
+  assert.match(css, /\.journal-file-actions \.journal-upload-action \{[^}]*var\(--blue\)/s);
+  assert.match(css, /\.journal-notes-status:empty \{ display: none; \}/);
+  assert.match(css, /\.journal-log-wrap \{ position: relative; margin: 0 0 14px; \}/);
+  assert.match(css, /\.journal-log \{[^}]*padding: 12px 44px 12px 12px;[^}]*background: #000;/s);
+  assert.match(css, /:root\[data-theme="light"\] \.journal-log \{ background: var\(--surface-2\); \}/);
+  assert.match(css, /\.journal-log-copy \{ position: absolute; z-index: 1; top: 10px; right: 12px; \}/);
+  assert.match(css, /\.journal-log-actions #journal-log-clear \{ margin-inline-start: auto; \}/);
+  assert.match(appSource, /logCopy\.dataset\.phrase = logOut\.textContent \|\| "";\s*hodlCopySeedPhraseButton\(logCopy\)/);
+  assert.match(appSource, /"journal-notes-download": \["journal", "download", "notebook"\]/);
+  assert.match(appSource, /"journal-state-download": \["journal", "download", "session-state"\]/);
+  assert.match(appSource, /"journal-log-download": \["journal", "download", "session-log"\]/);
+  assert.match(appSource, /"journal-notes-upload": \["journal", "upload", "notebook"\]/);
+  assert.match(appSource, /"journal-notes-copy": \["journal", "copy", "notepad-page"\]/);
+  assert.match(appSource, /"journal-log-copy": \["journal", "copy", "session-log"\]/);
+  assert.match(appSource, /function hodlInitJournalActionAudit\(\)[\s\S]*document\.addEventListener\("click",[\s\S]*document\.addEventListener\("change",/);
+  assert.match(appSource, /control\.id === "journal-key-insert" \|\| control\.type === "file"/);
+  assert.match(appSource, /control\.id === "journal-state-text"\) hodlJournalLog\("edit", "session-state", "journal"\)/);
+  assert.match(appSource, /hodlJournalLog\("inspect", kind, "psbt"\)[\s\S]*hodlJournalLog\("inspect-error", "", "psbt"\)/);
+  assert.match(appSource, /hodlJournalLog\("calculate", hodlSpMode, "sp"\)[\s\S]*hodlJournalLog\("calculate-error", hodlSpMode, "sp"\)/);
+  assert.match(appSource, /hodlJournalLog\("derive-error", "", "bip85"\)/);
+  assert.match(appSource, /hodlJournalLog\("note-delete", "", "journal"\)/);
+  assert.match(appSource, /hodlJournal\.log\.length = 0;\s*hodlJournalLog\("clear", "session-log", "journal"\)/);
+  assert.match(css, /#journal-notes-card:not\(\[hidden\]\), #journal-state-card:not\(\[hidden\]\), #journal-log-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
   assert.equal(en["workspace.journal"], "Journal");
   assert.equal(en["workspace.journalNotes"], "Notepad");
   assert.equal(en["workspace.journalState"], "Session state");
@@ -1668,14 +1742,24 @@ test("Journal is the last workspace tab and holds the encrypted notebook, notepa
   assert.doesNotMatch(init, /hodlJournalCreate\(\);/);
 });
 
-test("BIP-85 entry point sits beside Derive Key and opens the BIP-85 tab", () => {
+test("fixed inner tabs reserve the height of their longest introduction", () => {
+  assert.match(css, /\.tool-intro-stack \{ display: grid; \}/);
+  assert.match(css, /\.tool-intro-stack\[hidden\] \{ display: none !important; \}/);
+  assert.match(css, /\.tool-intro-stack > \.tool-intro \{ grid-area: 1 \/ 1; visibility: hidden; \}/);
+  assert.match(css, /\.tool-intro-stack > \.tool-intro\.active \{ visibility: visible; \}/);
+  assert.match(css, /\.tool-intro-stack \+ \.key-manager \{ margin-top: 0; \}/);
+  assert.match(css, /\.tool-intro-stack \+ \.key-manager > \.key-tab-strip \{ margin-top: 0; \}/);
+  assert.match(appSource, /if \(intros\) intros\.hidden = !visible;/);
+  assert.match(appSource, /intro\.classList\.toggle\("active", active\);\s*intro\.setAttribute\("aria-hidden", String\(!active\)\);/);
+});
+
+test("BIP-85 stays available as a workspace without a duplicate Key Station action", () => {
   for (const markup of [template, appSource]) {
-    assert.match(markup, /id="go"[^>]*>Derive Key<\/button>[\s\S]*?id="bip85-open"[^>]*>Derive BIP-85 child<\/button>[\s\S]*?id="journal-open"[^>]*>Save to Journal<\/button>[\s\S]*?id="wipe"/);
+    assert.match(markup, /id="go"[^>]*>Derive Key<\/button>[\s\S]*?id="journal-open"[^>]*>Save to Journal<\/button>[\s\S]*?id="wipe"/);
+    assert.doesNotMatch(markup, /id="bip85-open"|>Derive BIP-85 child<\/button>/);
   }
-  assert.match(appSource, /getElementById\("bip85-open"\)/);
   assert.match(appSource, /getElementById\("journal-open"\)/);
-  assert.match(appSource, /open\.onclick = \(\) => \{\s*hodlShowWorkspace\("bip85"\)/);
-  assert.match(appSource, /open\.onclick[\s\S]*?hodlPickBip85SessionKey\(hodlKeys\[hodlActiveKey\]\)/);
+  assert.match(appSource, /\["calc", "workspace\.key", "workspace\.keyShort"\], \["vanity", "workspace\.vanity", "workspace\.vanityShort"\], \["bip85", "workspace\.bip85", "workspace\.bip85Short"\]/);
 });
 
 test("Silent Payments sits between Multi Signature and PSBT / Nonce", () => {

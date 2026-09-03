@@ -4,6 +4,15 @@
 import { hex as hexCoder } from "./coders.js";
 
 export const JOURNAL_LOG_LIMIT = 400;
+export const NOTEBOOK_FORMAT = "entropylab-notebook";
+export const NOTEBOOK_VERSION = 1;
+export const NOTEBOOK_MAX_PAGES = 100;
+export const NOTEBOOK_MAX_TEXT_LENGTH = 1024 * 1024;
+
+const JOURNAL_FONTS = new Set(["mono", "sans", "serif"]);
+const JOURNAL_SIZES = new Set(["small", "medium", "large"]);
+const JOURNAL_SPACINGS = new Set(["compact", "comfortable", "spacious"]);
+const KEY_REFERENCE_PATTERN = /◆◆ (?:([^\n◆]*?) )?\[([0-9a-fA-F]{8})\] ◆/g;
 
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -14,34 +23,142 @@ export function formatStamp(date = new Date()) {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
 }
 
+export function defaultJournalPageStyle() {
+  return { font: "mono", size: "medium", spacing: "comfortable" };
+}
+
+export function normalizeJournalPageStyle(style) {
+  return {
+    font: JOURNAL_FONTS.has(style?.font) ? style.font : "mono",
+    size: JOURNAL_SIZES.has(style?.size) ? style.size : "medium",
+    spacing: JOURNAL_SPACINGS.has(style?.spacing) ? style.spacing : "comfortable",
+  };
+}
+
+export function journalKeyReferenceToken(name, fingerprint) {
+  let cleanName = String(name || "Key").replace(/[\r\n]+/g, " ").replace(/◆/g, "◇").replace(/\s+/g, " ").trim().slice(0, 120) || "Key";
+  let cleanFingerprint = String(fingerprint || "").trim().toLowerCase();
+  if (!/^[0-9a-f]{8}$/.test(cleanFingerprint)) throw new Error("A key reference needs an 8-character hexadecimal fingerprint.");
+  if (cleanName.toLowerCase() === cleanFingerprint) return `◆◆ [${cleanFingerprint}] ◆`;
+  return `◆◆ ${cleanName} [${cleanFingerprint}] ◆`;
+}
+
+export function journalNotebookRuns(text) {
+  let source = String(text ?? ""), runs = [], cursor = 0;
+  for (let match of source.matchAll(KEY_REFERENCE_PATTERN)) {
+    if (match.index > cursor) runs.push({ type: "text", text: source.slice(cursor, match.index) });
+    runs.push({ type: "key", name: match[1] || match[2].toLowerCase(), fingerprint: match[2].toLowerCase() });
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < source.length || !runs.length) runs.push({ type: "text", text: source.slice(cursor) });
+  return runs;
+}
+
+export function journalTextFromRuns(runs) {
+  if (!Array.isArray(runs)) throw new Error("A notebook page must contain a content list.");
+  let text = "";
+  for (let run of runs) {
+    if (run?.type === "text" && typeof run.text === "string") text += run.text;
+    else if (run?.type === "key") text += journalKeyReferenceToken(run.name, run.fingerprint);
+    else throw new Error("The notebook contains an unsupported content item.");
+    if (text.length > NOTEBOOK_MAX_TEXT_LENGTH) throw new Error("A notebook page is too large to import.");
+  }
+  return text;
+}
+
 export function createJournal() {
-  return { nextId: 1, notes: [], log: [], stateText: "" };
+  return {
+    notesText: "",
+    pages: [{ id: 1, number: 1, name: "Page 1", notesText: "", style: defaultJournalPageStyle() }],
+    activePage: 0,
+    nextPageId: 2,
+    nextPageNumber: 2,
+    log: [],
+    stateText: "",
+  };
 }
 
-export function addNote(journal, { at, text } = {}, now = new Date()) {
-  let note = { id: journal.nextId++, at: at || formatStamp(now), text: String(text ?? "") };
-  journal.notes.push(note);
-  return note;
+export function formatNotebook(text) {
+  let cleaned = String(text ?? "").replace(KEY_REFERENCE_PATTERN, (_match, name, fingerprint) => {
+    let cleanFingerprint = fingerprint.toLowerCase();
+    return !name || name.trim().toLowerCase() === cleanFingerprint
+      ? `[Key: ${cleanFingerprint}]`
+      : `[Key: ${name} · ${cleanFingerprint}]`;
+  }).split("\n")
+    .filter((line) => !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}  (?:Add new note)?$/.test(line))
+    .join("\n")
+    .trimEnd();
+  return cleaned || "No notes.";
 }
 
-export function updateNote(journal, id, patch) {
-  let note = journal.notes.find((entry) => entry.id === id);
-  if (!note) return null;
-  if (patch && Object.prototype.hasOwnProperty.call(patch, "at")) note.at = String(patch.at ?? "");
-  if (patch && Object.prototype.hasOwnProperty.call(patch, "text")) note.text = String(patch.text ?? "");
-  return note;
+export function serializeNotebook(journal) {
+  let pages = journal?.pages?.length ? journal.pages : createJournal().pages;
+  let document = {
+    format: NOTEBOOK_FORMAT,
+    version: NOTEBOOK_VERSION,
+    activePage: Math.max(0, Math.min(Number(journal?.activePage) || 0, pages.length - 1)),
+    pages: pages.map((page, index) => ({
+      number: Number.isSafeInteger(page.number) && page.number > 0 ? page.number : index + 1,
+      name: String(page.name || `Page ${index + 1}`).slice(0, 120),
+      style: normalizeJournalPageStyle(page.style),
+      content: journalNotebookRuns(page.notesText),
+    })),
+  };
+  return JSON.stringify(document, null, 2) + "\n";
 }
 
-export function deleteNote(journal, id) {
-  let index = journal.notes.findIndex((entry) => entry.id === id);
-  if (index < 0) return false;
-  journal.notes.splice(index, 1);
-  return true;
+export function parseNotebook(text) {
+  let document;
+  try {
+    document = JSON.parse(String(text ?? ""));
+  } catch {
+    throw new Error("This is not valid notebook JSON.");
+  }
+  if (!document || document.format !== NOTEBOOK_FORMAT || document.version !== NOTEBOOK_VERSION) {
+    throw new Error("This file is not a supported EntropyLab notebook.");
+  }
+  if (!Array.isArray(document.pages) || !document.pages.length || document.pages.length > NOTEBOOK_MAX_PAGES) {
+    throw new Error(`A notebook must contain between 1 and ${NOTEBOOK_MAX_PAGES} pages.`);
+  }
+  let usedNumbers = new Set(), pages = document.pages.map((page, index) => {
+    let preferred = Number.isSafeInteger(page?.number) && page.number > 0 ? page.number : index + 1;
+    while (usedNumbers.has(preferred)) preferred++;
+    usedNumbers.add(preferred);
+    let fallbackName = `Page ${preferred}`;
+    let name = typeof page?.name === "string" ? page.name.trim().replace(/\s+/g, " ").slice(0, 120) : "";
+    return {
+      id: index + 1,
+      number: preferred,
+      name: name || fallbackName,
+      notesText: journalTextFromRuns(page?.content),
+      style: normalizeJournalPageStyle(page?.style),
+    };
+  });
+  let activePage = Number.isSafeInteger(document.activePage) ? document.activePage : 0;
+  activePage = Math.max(0, Math.min(activePage, pages.length - 1));
+  return {
+    notesText: pages[activePage].notesText,
+    pages,
+    activePage,
+    nextPageId: pages.length + 1,
+    nextPageNumber: pages.reduce((latest, page) => Math.max(latest, page.number), 0) + 1,
+    log: [],
+    stateText: "",
+  };
 }
 
-export function formatNotes(notes) {
-  if (!notes.length) return "No notes.";
-  return notes.map((note, i) => `Note ${i + 1}\nWritten: ${note.at || "(no time)"}\n${note.text || ""}`.trimEnd()).join("\n\n---\n\n");
+export function journalFromPlainText(text) {
+  let journal = createJournal(), value = String(text ?? "");
+  if (value.length > NOTEBOOK_MAX_TEXT_LENGTH) throw new Error("The notes file is too large to import.");
+  journal.notesText = value;
+  journal.pages[0].notesText = value;
+  return journal;
+}
+
+export function formatNotebookPages(pages) {
+  if (!pages?.length) return "No notes.";
+  if (pages.length === 1) return formatNotebook(pages[0].notesText);
+  return pages.map((page) => `${page.name || `Page ${page.number}`}\n${formatNotebook(page.notesText)}`).join("\n\n");
 }
 
 export function appendLog(journal, { at, tool, action, detail } = {}, now = new Date()) {
@@ -105,14 +222,13 @@ export function snapshotSession(session) {
 }
 
 export function wipeJournal(journal) {
-  journal.notes.forEach((note) => {
-    note.text = "";
-    note.at = "";
-  });
-  journal.notes.length = 0;
+  journal.notesText = "";
+  journal.pages = [{ id: 1, number: 1, name: "Page 1", notesText: "", style: defaultJournalPageStyle() }];
+  journal.activePage = 0;
+  journal.nextPageId = 2;
+  journal.nextPageNumber = 2;
   journal.log.length = 0;
   journal.stateText = "";
-  journal.nextId = 1;
   return journal;
 }
 //

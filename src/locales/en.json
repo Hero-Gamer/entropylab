@@ -1,1 +1,6 @@
-{"locale.label": "Language"}
+{
+  "locale.label": "Language",
+  "header.download": "Download",
+  "workspace.scriptpubkey": "ScriptPubKey",
+  "workspace.scriptpubkeyShort": "Script"
+}

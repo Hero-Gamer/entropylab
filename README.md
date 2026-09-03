@@ -32,19 +32,28 @@ Official website: [entropylab.online](https://entropylab.online)
   A custom mode accepts an arbitrary-depth BIP32 account path, keeps Bitcoin
   network selection explicit, and appends the selected branch and address
   ranges. Typing `h` or `'` after a preset index enables its Harden control.
-- Supports numeric coin-type and account indexes for single-signature and
-  multisignature derivation. Purpose, coin type, and account indexes are
-  hardened by default; the starting address index is unhardened by default.
-  Each can be changed independently. Coin type 0 uses Bitcoin Mainnet, coin
-  type 1 uses Bitcoin Testnet, and custom indexes retain Mainnet address
-  serialization. Hardened address children require private key material and
-  therefore cannot be derived from multisig co-signer xpubs.
-  PSBT address rendering separately supports Mainnet and Testnet.
+ - Supports numeric coin-type and account indexes for single-signature and
+   multisignature derivation. Purpose, coin type, and account indexes are
+   hardened by default; the starting address index is unhardened by default.
+   Each can be changed independently. Coin type 0 uses Bitcoin Mainnet, coin
+   type 1 uses Bitcoin Testnet, and custom indexes retain Mainnet address
+   serialization. Hardened address children require private key material and
+   therefore cannot be derived from multisig co-signer xpubs.
+   A network picker in the header (the Bitcoin-orange coin next to the network
+   name) shows the network every tool is set to and switches it — address
+   formats, extended key versions, WIF prefixes, and coin-type defaults all
+   follow, and each menu entry spells out the checks its choice implies. The
+   PSBT tools read the picker's choice directly and have no network control of
+   their own. Nothing connects anywhere: the choice only picks formats, and a
+   tool's own advanced fields can still override it. Every load starts on
+   Mainnet again.
 - Derives watch-only multisignature wallets from extended public keys without
   requiring private keys. Multisig script type and purpose are separate as
   well; conventional script choices restore their standard purpose, while
   pasted co-signer origins auto-detect and must agree with the selected path
-  indexes and hardening choices.
+  indexes and hardening choices. Addresses are derived from the exported
+  output descriptor itself by rust-miniscript (in the WASM crate), so the two
+  cannot drift.
 - Inspects PSBT v0 transactions, reports PSBT-provided amounts and fees, checks
   for repeated ECDSA nonces from the same public key — including signatures
   carried by finalized scriptSig/witness fields, which are decoded and analyzed
@@ -54,7 +63,11 @@ Official website: [entropylab.online](https://entropylab.online)
   Every input's declared sighash policy and each signature's appended sighash
   byte are decoded without a key; anything other than exact SIGHASH_ALL is a
   blocking warning. Finalized signatures that cannot be decoded or associated
-  with a key block any clean nonce verdict.
+  with a key block any clean nonce verdict. The report gives each check a
+  completed, problem, or incomplete state and gives an overall incomplete
+  result whenever required data or support is missing. “Completed” describes
+  only that check against the data in the file; it is not a claim that the
+  transaction is safe or that PSBT-provided data is true.
 - Accepts a fully signed raw Bitcoin transaction (hex or base64) in the same
   inspector: outputs, extracted ECDSA nonces, and inscription-envelope hints.
   Fee and RFC 6979 cannot be checked without previous outputs.
@@ -81,8 +94,12 @@ Official website: [entropylab.online](https://entropylab.online)
   characters (a whole previous transaction, a large script) collapse to a
   truncated preview with a length label; clicking the cell opens the full
   text in an editor window, where values stay editable. Re-serialization is
-  validated by rust-bitcoin before the edited PSBT is shown. The editor never
-  signs anything.
+  validated by rust-bitcoin before the edited PSBT is shown. A second PSBT can
+  be pasted for a semantic comparison against the editor's: the underlying
+  transaction, the signing state, and the PSBT metadata are diffed separately
+  on the decoded contents, so reordered map serialization is not reported as
+  a change. The comparison reports differences only; it does not judge
+  whether a change is safe. The editor never signs anything.
 - Derives BIP-85 child entropy from the active key's BIP32 root (or a pasted
   root xprv): English BIP-39 mnemonics (12–24 words), HD-seed WIF, XPRV, HEX,
   and Base64/Base85 passwords. Same parent, application, and index always
@@ -93,6 +110,84 @@ Official website: [entropylab.online](https://entropylab.online)
   root xprv, including labeled codes, BIP-392 `spscan` / `spspend` descriptors,
   sender taproot outputs from pasted vin JSON, and receiver verification of
   pasted x-only outputs. This is a calculator: it does not scan the chain.
+- Grinds vanity addresses for a Key Station key (Vanity tab), picked through
+  the same chip picker as BIP-85 and Silent Payments. Two methods: the
+  **passphrase grind** extends the key's BIP39 passphrase with base-62
+  odometer counter characters, the **derivation grind** keeps the passphrase
+  and steps through BIP32 account indexes. Every candidate is derived the
+  standard way (PBKDF2 seed, BIP32 path — the key's own purpose, account,
+  branch, and address index) in a dedicated WebAssembly module, one Web Worker
+  per CPU core, and its mainnet address of the selected type (legacy, nested
+  SegWit, native SegWit, Taproot, or a BIP-352 Silent Payment code) is checked
+  against the chosen prefix. A short timing sample on tab entry (fixed
+  published constants, never the session's keys) turns the odds into an
+  expected time to a match, and **Stop on first find** halts the grind at the
+  first hit. Same key and counter always reproduce the same
+  address, so nothing is invented; **Update key** writes a found passphrase or
+  account index back to the key and re-derives it, so the Keys tab, its
+  exports, and the Journal show the vanity wallet. Found passphrases stay in
+  page memory, are masked until revealed, and are wiped with the session.
+- A session **Journal** (last workspace tab) holds an encrypted **Entropy
+  Journal** notebook, a notepad stamped with this computer's date and time,
+  a live summary of everything derived in this sitting, and a debug log
+  of tool switches and derives (fingerprints, not seeds). Its introduction
+  remains above the Journal controls. Notepad, Session state, and Session log
+  stay visible but disabled until the user creates a journal with a valid
+  password or successfully opens an existing journal; the create/open gate
+  then disappears and the Journal starts on Notepad. The create form reports
+  password length and confirmation matches live without exposing what was
+  typed. Journal-wide **Download journal** and **Clear journal** actions stay
+  below the introduction once a journal is unlocked; clearing wipes the
+  encrypted entries, notepad, session snapshot, and log from page memory and
+  returns to the create/open gate. The notebook keeps
+  entropy the user already produced — dice, coins, hex, brain-wallet text, or
+  a seed — under AES-256-GCM; the key is PBKDF2-SHA-256 (600,000 rounds) of a
+  password the user chooses, with the salt derived from the password itself
+  and the IV HMAC-SHA-256 of the plaintext, so the file is a pure function of
+  password and entries and no CSPRNG is ever called. One JSON file the user
+  downloads and loads back. Nothing is stored in the browser; download a file
+  to keep it. Closing the page discards the sitting. The notebook is a
+  calculator companion, not a password manager: it only stores material the
+  user generated themselves.
+  The Journal also includes a paged notepad. Pages use
+  the Key Station's numbered naming convention, can be added or removed with
+  the +/− controls, and can be renamed by activating the selected page again
+  or pressing F2. Default names such as `Page 1` shorten to `P1` in narrow
+  windows. A responsive control row below the editor sets each page's
+  typeface, text size, and line spacing. Its key picker lists the currently
+  derived Key Station keys with their LifeHashes; choosing one inserts a
+  public inline reference with a line-height LifeHash and master fingerprint.
+  Downloads in all three Journal tabs use the unlocked journal password by
+  default. Their matching checkboxes stay synchronized, so one change applies
+  to Notepad, Session state, and Session log; unchecking exports the original
+  plain JSON or text. Notepad can upload either its plain notebook JSON or its
+  password-encrypted export while that journal is unlocked.
+  Each page opens
+  with a live local timestamp and freezes it when note text is entered. Delete
+  the note back to its timestamp to return to the live new-note prompt. Press
+  Enter after a note to open the next live timestamp and prompt. Press Enter on
+  that empty prompt to leave an unstamped blank line and move a fresh live
+  prompt to the line below. Delete at the empty prompt moves it back through
+  those blank lines; once it reaches a completed note, the empty timestamp and
+  prompt disappear and the caret returns to that note's end. Clicking any blank
+  line moves an untouched live note there, or inserts a new live note there if
+  the last note is already written; dragging across blank lines only selects
+  them. Deleting a selected bottom section opens a live prompt on the blank line
+  left at the caret. Clicking a written note cancels an untouched pending note
+  and keeps the caret where clicked. Moving the pointer over the editor briefly
+  reveals its clipboard button at the right edge; the same control is reachable
+  from the keyboard and copies the active page as readable text. **Download notebook** writes versioned
+  UTF-8 JSON containing page names, styles, and structured text/key runs; it
+  stores only the key's display name and public fingerprint, then regenerates
+  the LifeHash locally when that file is uploaded in a later session. Older
+  `.txt` notes can also be uploaded as a single page. The Journal also holds
+  a read-only summary that updates as the sitting changes and a debug log of
+  meaningful dashboard actions: tool and station changes, calculations and
+  failures, safe setting changes, copies, imports, downloads, clears, and PSBT
+  structural edits. The log records public fingerprints where useful, but never
+  secret-field values, filenames, note bodies, PSBT bytes, or individual entry
+  keystrokes. It can be copied from its output field or downloaded. Nothing is stored in the
+  browser; download a file to keep it. Closing the page discards the sitting.
 - Runs a quick barrage of startup sanity checks on the host browser (secure
   context, CSPRNG, BigInt, UTF-8 encoding, NFKD, and WebAssembly). If any
   check fails, the page is replaced with a failure report listing the failed
@@ -129,7 +224,7 @@ Official website: [entropylab.online](https://entropylab.online)
 
 Download the self-contained `entropylab.html` from the
 [official website](https://entropylab.online) or the
-[releases page](https://github.com/w-s-bitcoin/entropylab/releases), transfer it to a trusted
+[releases page](https://github.com/OogaBoogaX/entropylab/releases), transfer it to a trusted
 computer, disconnect that computer from all networks, and open the file in a
 modern browser. For sensitive wallet material, use a dedicated air-gapped
 machine and verify important addresses and descriptors with an independent
@@ -160,20 +255,42 @@ file is still self-contained and never registers the hosted service worker.
 ### Verifying the download
 
 Every merge to `rock` publishes a `SHA256SUMS.txt` checksum manifest for
-`entropylab.html` (committed next to it in this repository) and a
-[GitHub artifact attestation](https://github.com/w-s-bitcoin/entropylab/attestations)
+`entropylab.html` (committed next to it in this repository), a matching
+`CID.txt` (CIDv1 raw sha2-256 of those same bytes), and a
+[GitHub artifact attestation](https://github.com/OogaBoogaX/entropylab/attestations)
 for the exact bytes built by CI. After downloading, verify both:
 
 ```sh
 sha256sum -c SHA256SUMS.txt
-gh attestation verify entropylab.html -R w-s-bitcoin/entropylab
+gh attestation verify entropylab.html -R OogaBoogaX/entropylab
 ```
+
+The CID is a self-describing name for the SHA-256, not a second hash. The
+calculator never talks to IPFS. To store or fetch the file on a **local**
+node without GitHub or `entropylab.online` DNS:
+
+```sh
+ipfs block put --cid-codec=raw --allow-big-block entropylab.html   # pin the bytes you already verified
+ipfs get -o entropylab.html "$(cut -d' ' -f1 CID.txt)"             # retrieve by CID
+sha256sum -c SHA256SUMS.txt
+```
+
+`ipfs add` (UnixFS chunking) produces a different CID; that is expected.
+Public gateways may refuse a multi-megabyte raw block — a local node is the
+intended path. Never open a gateway URL as the wallet origin. Do not put
+seeds or other private material on IPFS.
 
 The attestation is keyless (Sigstore) and bound to this repository's release
 workflow, so it authenticates the artifact independently of the hosting
 account. The checksum manifest alone only detects accidental corruption —
-always pair it with the attestation or with your own rebuild from source,
-which is byte-for-byte reproducible.
+always pair it with the attestation or reproduce the build from reviewed
+source. For a given Git revision, `npm run build` deterministically assembles
+`entropylab.html` from committed inputs, including the committed WASM modules;
+the revision to check out is stamped in the generated file. Rebuilding those
+modules from their Rust/C sources (`npm run build:wasm`) is separate, and its
+output is not currently asserted to be byte-identical across machines. CI
+still rebuilds the modules from source and runs the WASM binding tests against
+the fresh build (see [Building from source](#building-from-source)).
 
 An online version is available at [entropylab.online](https://entropylab.online)
 for convenient access. Do not enter seed phrases, private keys, or other secret
@@ -251,10 +368,13 @@ EntropyLab's cryptography — secp256k1 curve operations (public-key
 derivation, ECDSA signing and verification in PSBT inspection, curve point
 math), hashes (SHA-256, SHA-512, RIPEMD-160, HMAC-SHA-512,
 PBKDF2-HMAC-SHA-512), BIP32 extended-key derivation, BIP39 mnemonics,
-Base58Check and bech32m encoding, and address/script construction
+Base58Check and bech32m encoding, output descriptor evaluation
+(BIP380-386; taproot `sortedmulti_a` is layered on top), and
+address/script construction
 (p2pkh/p2sh/p2wpkh/p2tr, bare and taproot multisig) — runs on rust-bitcoin's
 `secp256k1` crate (libsecp256k1 v0.4.1 vendored by secp256k1-sys 0.10.1),
-`bitcoin`, `bitcoin_hashes`, `base58ck`, `bech32`, and `bip39`, compiled to
+`bitcoin`, `bitcoin_hashes`, `base58ck`, `bech32`, `bip39`, and
+`miniscript`, compiled to
 WebAssembly from the pinned Rust crate in `entropylab-wasm/` (exact crate
 versions in `entropylab-wasm/Cargo.lock`, toolchain pinned by
 `rust-toolchain.toml`) via the facades in `src/js/secp256k1.js`,
@@ -303,8 +423,9 @@ To remove generated files, run `npm run clean`.
 ├── scripts/
 │   ├── build.mjs           Locked-dependency esbuild and HTML assembly
 │   ├── build-wasm.mjs      crypto WASM rebuild (npm run build:wasm)
+│   ├── cid.mjs             CIDv1 raw sha2-256 name for the release HTML
 │   └── verify-site.mjs     Site artifact verification (npm run verify)
-├── entropylab-wasm/        Pinned Rust crate: libsecp256k1 + bitcoin_hashes -> WebAssembly bindings
+├── entropylab-wasm/        Pinned Rust crate: rust-bitcoin + rust-miniscript -> WebAssembly bindings
 ├── test/
 │   ├── browser-instrumentation.html  In-page browser test hooks
 │   ├── browser-suite.html            In-page browser test suite
@@ -322,6 +443,7 @@ To remove generated files, run `npm run clean`.
 │   ├── css/styles.css      Application styles
 │   └── js/
 │       ├── app.js          Application logic and explicit package imports
+│       ├── journal.js      Encrypted entropy notebook, session notepad, snapshot, and debug log
 │       ├── secp256k1.js    Curve facade over the WASM module (noble-shaped API)
 │       ├── entropylab-wasm.js Shared WASM module loader
 │       ├── entropylab-wasm-b64.js Generated WASM artifact (committed; build:wasm)
@@ -330,7 +452,7 @@ To remove generated files, run `npm run clean`.
 │       ├── bip39.js          BIP39 mnemonic facade over the WASM module (scure-shaped API)
 │       ├── bip39-english.js  Canonical 2048-word English list (UI data)
 │       ├── base58.js         Base58Check facade over the WASM module
-│       ├── addresses.js      Script/address facade over the WASM module
+│       ├── addresses.js      Script/address/descriptor facade over the WASM module
 │       ├── bech32.js         bech32m facade over the WASM module (BIP352)
 │       ├── coders.js         hex/base64 byte coders (no cryptography)
 │       ├── sqlite-writer.js Minimal SQLite database file writer

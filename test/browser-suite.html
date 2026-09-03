@@ -987,6 +987,25 @@
     input(document.getElementById("vanity-count"), "62");
     input(document.getElementById("vanity-workers"), "1");
     assert(document.getElementById("vanity-estimate").textContent.includes("1 in 1,024"), "the estimate line prices two free bech32 characters");
+    // The device sample taken on tab entry turns the odds into a time.
+    await until(() => /expect a match roughly every/.test(document.getElementById("vanity-estimate").textContent), "the estimate to be timed from the device sample", 60000);
+    assert(/on 1 worker,/.test(document.getElementById("vanity-estimate").textContent), "the estimate scales by the worker count");
+    // Stop on first find is a toggle: counter 0 matches inside the first
+    // (small) chunk, so the run stops there instead of grinding all 62.
+    const first = document.getElementById("vanity-first");
+    first.click();
+    await wait(0);
+    assert(first.getAttribute("aria-pressed") === "true" && first.textContent.includes("on"), "the toggle shows it is switched on");
+    document.getElementById("vanity-go").click();
+    await until(() => document.getElementById("vanity-status").textContent.includes("Stopped at first match"), "the grind to stop at the first match", 60000);
+    assert(document.querySelectorAll("#vanity-out table tbody tr").length === 1, "exactly one match is listed");
+    assert(/1 match\b/.test(document.getElementById("vanity-status").textContent), "the status counts the single match");
+    first.click();
+    await wait(0);
+    assert(first.getAttribute("aria-pressed") === "false", "the toggle switches off again");
+    document.getElementById("vanity-wipe").click();
+    await until(() => !document.querySelector("#vanity-out table"), "Clear results to drop the table");
+    input(document.getElementById("vanity-start"), "0");
     document.getElementById("vanity-go").click();
     await until(() => document.querySelector("#vanity-out table tbody tr"), "a match row to render", 60000);
     await until(() => document.getElementById("vanity-status").textContent.includes("Range complete"), "the range to complete", 60000);

@@ -38,7 +38,9 @@ var saltPtr = 0;
 var keyPtr = 0;
 var pathPtr = 0;
 var outPtr = 0;
-var CHUNK = 4096;
+var STEP_MS = 120;
+var MIN_CHUNK = 8;
+var MAX_CHUNK = 8192;
 var RECORD_CAP = 8192;
 var RECORD_LEN = 106;
 var PAYLOAD_LEN = 66;
@@ -111,6 +113,11 @@ function grind(msg) {
   var total = BigInt(msg.count);
   var cursor = BigInt(msg.start);
   var done = BigInt(0);
+  // Chunks adapt to the device: the first is small so progress shows within
+  // a fraction of a second even for the PBKDF2-heavy passphrase grind, then
+  // each step is resized to take about STEP_MS so the bar moves smoothly and
+  // a queued "stop" lands promptly.
+  var chunkSize = mode === 1 ? 512 : 16;
   stopRequested = false;
   var step = function () {
     if (done >= total || stopRequested) {
@@ -118,12 +125,15 @@ function grind(msg) {
       return;
     }
     var remaining = total - done;
-    var chunk = remaining > BigInt(CHUNK) ? CHUNK : Number(remaining);
+    var chunk = remaining > BigInt(chunkSize) ? chunkSize : Number(remaining);
+    var startedAt = Date.now();
     var status = wasm.vanity_grind(mode, keyPtr, keyBytes.length, saltPtr, saltBytes.length, pathPtr, path.length, counterSlot, prefixPtr, prefixBytes.length, passLen, cursor, BigInt(chunk), outPtr, OUT_CAP, msg.script || 0);
     if (status === -1) {
       postMessage({ type: "error", message: "vanity_grind rejected its arguments" });
       return;
     }
+    var elapsed = Math.max(1, Date.now() - startedAt);
+    chunkSize = Math.max(MIN_CHUNK, Math.min(MAX_CHUNK, Math.round(chunk * STEP_MS / elapsed)));
     var drained = drain(passLen);
     done += drained.processed;
     cursor += drained.processed;

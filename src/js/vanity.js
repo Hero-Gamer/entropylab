@@ -363,3 +363,67 @@ export class VanityGrinder {
     this.running = false;
   }
 }
+
+// A short timing sample of each grind on this device, so the tab can turn
+// "1 in N candidates" into a time. The inputs are fixed published constants
+// (the BIP39 test-vector mnemonic, an all-ones private key with an all-twos
+// chain code) — never the session's keys — and the sample's matches are
+// discarded. One worker, three small grinds in sequence; resolves with
+// candidates per second per worker for each method.
+export const VANITY_BENCHMARK_SAMPLES = Object.freeze({
+  passphrase: { mode: 0, count: 24n, script: 2, path: [84 + VANITY_HARDENED, VANITY_HARDENED, VANITY_HARDENED, 0, 0], counterSlot: 0xffffffff, passLen: 8 },
+  derivation: { mode: 1, count: 1200n, script: 2, path: [VANITY_HARDENED, 0, 0], counterSlot: 0, passLen: 0 },
+  sp: { mode: 1, count: 600n, script: 4, path: [VANITY_HARDENED], counterSlot: 0, passLen: 0 },
+});
+const BENCHMARK_MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+const BENCHMARK_NODE = Uint8Array.from({ length: 64 }, (_, i) => (i < 32 ? 1 : 2));
+
+export function vanityBenchmark(spawn = spawnBlobWorker) {
+  return new Promise((resolve, reject) => {
+    let spawned;
+    try {
+      spawned = spawn();
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    const { worker, url } = spawned;
+    const names = Object.keys(VANITY_BENCHMARK_SAMPLES);
+    const rates = {};
+    let index = 0;
+    let startedAt = 0;
+    const finish = (error) => {
+      worker.terminate();
+      if (url) URL.revokeObjectURL(url);
+      if (error) reject(error);
+      else resolve(rates);
+    };
+    const next = () => {
+      const name = names[index];
+      if (!name) {
+        finish();
+        return;
+      }
+      const sample = VANITY_BENCHMARK_SAMPLES[name];
+      startedAt = performance.now();
+      worker.postMessage({ type: "grind", mode: sample.mode, key: sample.mode === 1 ? BENCHMARK_NODE.slice() : encoder.encode(BENCHMARK_MNEMONIC), salt: new Uint8Array(0), path: sample.path, counterSlot: sample.counterSlot, prefix: "bc1qqqqqqqqqqqq", passLen: sample.passLen, start: 0n, count: sample.count, script: sample.script });
+    };
+    worker.onmessage = (event) => {
+      const msg = event.data;
+      if (!msg || typeof msg !== "object") return;
+      if (msg.type === "ready") next();
+      else if (msg.type === "done") {
+        const elapsed = Math.max(1, performance.now() - startedAt) / 1000;
+        rates[names[index]] = Number(msg.done) / elapsed;
+        index += 1;
+        next();
+      } else if (msg.type === "error") finish(new Error(msg.message || "Vanity benchmark failed."));
+    };
+    worker.onerror = (event) => {
+      event.preventDefault?.();
+      finish(new Error(event.message || "Vanity benchmark worker failed to start."));
+    };
+    const copy = wasmBytes.slice().buffer;
+    worker.postMessage({ type: "init", wasm: copy }, [copy]);
+  });
+}

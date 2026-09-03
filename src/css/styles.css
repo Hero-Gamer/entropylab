@@ -1215,6 +1215,12 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .vanity-source label.field { margin-top: var(--space-control); }
 .vanity-source-from { color: var(--muted); font-weight: 400; }
 .vanity-source #vanity-pass { color: var(--fg); background: var(--bg); cursor: text; }
+/* The stop-on-first-find toggle reads as switched on, not merely hovered. */
+#vanity-first.is-pressed {
+  border-color: var(--selection-accent); color: var(--fg);
+  background: color-mix(in oklab, var(--selection-accent) 16%, var(--surface-2));
+  box-shadow: inset 0 0 0 1px var(--selection-accent);
+}
 .vanity-apply-cell { white-space: nowrap; }
 .vanity-apply { min-height: 36px; padding: 4px 12px; font-size: 13px; }
 .vanity-saved { display: inline-flex; align-items: center; gap: 6px; color: var(--ok-bright); font-size: 13px; font-weight: 600; white-space: nowrap; }

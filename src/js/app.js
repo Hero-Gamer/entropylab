@@ -33,7 +33,7 @@ import { wordlist as bip39English } from "./bip39-english.js";
 import { initPsbtEditor } from "./psbt-editor.js";
 import { renderSVG as hodlUqrRenderSvg } from "uqr";
 import { BIP39_LANGUAGE_ENGLISH, BIP85_APPS, bip85Path, deriveApplication, parseChildIndex, wipeBip85Result, wipeBytes as hodlWipeBytes } from "./bip85.js";
-import { VANITY_HARDENED, VANITY_MAX_INDEX, VANITY_METHODS, VANITY_SCRIPTS, VanityGrinder, estimateVanityWork, validateVanityIndexRange, validateVanityMnemonic, validateVanityPassphrase, validateVanityPrefix, validateVanityRange, vanityPathIndexes, vanityPathString } from "./vanity.js";
+import { VANITY_HARDENED, VANITY_MAX_INDEX, VANITY_METHODS, VANITY_SCRIPTS, VanityGrinder, estimateVanityWork, validateVanityIndexRange, validateVanityMnemonic, validateVanityPassphrase, validateVanityPrefix, validateVanityRange, vanityBenchmark, vanityPathIndexes, vanityPathString } from "./vanity.js";
 import { t as hodlT, hodlInitLocale, hodlFillLocaleSelect, hodlGetLocale } from "./i18n.js";
 import {
   METHOD_LABELS as hodlJournalMethodLabels,
@@ -718,6 +718,7 @@ hodlRootEl.innerHTML = `
           <button class="btn primary" id="vanity-go" type="button">Start grinding</button>
           <div class="derive-progress" id="vanity-progress" role="progressbar" aria-label="Vanity grinding progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete" hidden><span class="derive-progress-track"><span class="derive-progress-bar"></span></span><span class="derive-progress-label">0%</span></div>
           <button class="btn secondary" id="vanity-stop" type="button" disabled>Stop</button>
+          <button class="btn secondary" id="vanity-first" type="button" aria-pressed="false" title="Stop grinding as soon as the first match is found">Stop on first find</button>
           <button class="btn clear-current-action" id="vanity-wipe" type="button" disabled aria-disabled="true">Clear results</button>
         </div>
         <p class="muted" id="vanity-status" aria-live="polite">Idle. No range has been ground this session.</p>
@@ -11355,6 +11356,7 @@ function hodlShowWorkspace(id) {
     // Keys may have been derived, renamed, or re-passphrased since the picker last filled.
     hodlFillStationKeyPicker("vanity-session-keys", hodlVanitySource, hodlPickVanitySessionKey, hodlVanitySourceKeys());
     hodlVanitySyncSource();
+    hodlVanityStartBenchmark();
   }
   if (hodlWorkspaceScrollFrame) cancelAnimationFrame(hodlWorkspaceScrollFrame);
   window.scrollTo(preservedLeft, preservedTop);
@@ -12153,7 +12155,7 @@ function hodlSyncWorkspaceOverflow() {
 // or an account index of a wallet the user already holds, and Update key
 // writes it back to that key through the same Edit input → Derive path the
 // Keys tab uses by hand.
-var hodlVanityGrinder = null, hodlVanityMatches = [], hodlVanityFound = 0, hodlVanityRunning = false, hodlVanityReveal = false, hodlVanityDisplayLimit = 100, hodlVanitySource = "", hodlVanityRun = null, hodlVanityApplying = false;
+var hodlVanityGrinder = null, hodlVanityMatches = [], hodlVanityFound = 0, hodlVanityRunning = false, hodlVanityReveal = false, hodlVanityDisplayLimit = 100, hodlVanitySource = "", hodlVanityRun = null, hodlVanityApplying = false, hodlVanityStopFirst = false, hodlVanityBench = null, hodlVanityBenchPending = false, hodlVanityLiveRate = 0;
 // Only derived HD-root keys are listed — the same set the BIP-85 and Silent
 // Payments pickers offer. The Key Station lab tab is a work surface, not a
 // key, so it never appears as a chip.
@@ -12268,15 +12270,59 @@ function hodlVanitySyncMethod() {
   }
   hodlVanityEstimate();
 }
+// A short timing sample on tab entry — fixed published constants, never the
+// session's keys — measures this device so the estimate can say how long a
+// match should take. It runs once per session and only when no grind is on.
+function hodlVanityStartBenchmark() {
+  if (hodlVanityBench || hodlVanityBenchPending || hodlVanityRunning) return;
+  hodlVanityBenchPending = true;
+  hodlVanityEstimate();
+  vanityBenchmark().then((rates) => {
+    hodlVanityBench = rates;
+  }).catch(() => {
+    hodlVanityBench = null;
+  }).finally(() => {
+    hodlVanityBenchPending = false;
+    hodlVanityEstimate();
+  });
+}
+function hodlVanityFormatDuration(seconds) {
+  if (!Number.isFinite(seconds)) return "";
+  if (seconds < 1) return "under a second";
+  if (seconds < 90) return `${Math.round(seconds)} second${Math.round(seconds) === 1 ? "" : "s"}`;
+  let minutes = seconds / 60;
+  if (minutes < 90) return `${Math.round(minutes)} minutes`;
+  let hours = minutes / 60;
+  if (hours < 48) return `${Math.round(hours)} hours`;
+  let days = hours / 24;
+  if (days < 730) return `${Math.round(days)} days`;
+  return `${Math.round(days / 365).toLocaleString("en-US")} years`;
+}
+// Candidates per second for the current method and address type: the live
+// rate while a grind runs, otherwise the benchmark scaled by the worker count.
+function hodlVanityExpectedRate() {
+  if (hodlVanityRunning && hodlVanityLiveRate > 0) return hodlVanityLiveRate;
+  if (!hodlVanityBench) return 0;
+  let method = hodlVanityMethod(), sample = method === "derivation" ? (hodlVanityScriptId() === "sp" ? "sp" : "derivation") : "passphrase";
+  let workers = Math.max(1, Math.min(64, Number(document.getElementById("vanity-workers")?.value) || 1));
+  return (hodlVanityBench[sample] || 0) * workers;
+}
 function hodlVanityEstimate() {
   let estimateEl = document.getElementById("vanity-estimate"), input = document.getElementById("vanity-prefix"), scriptId = hodlVanityScriptId(), method = hodlVanityMethod();
   if (!estimateEl || !input) return;
   try {
-    let prefix = validateVanityPrefix(input.value, scriptId);
-    estimateEl.textContent = `Prefix “${prefix}” matches about 1 in ${hodlVanityFormatCount(estimateVanityWork(prefix, scriptId))} ${hodlVanityScript().label} candidates on average. ${method === "derivation" ? "Derivation grind: each candidate is a few BIP32 child steps — expect thousands of candidates per second per worker." : "Passphrase grind: each candidate is a full BIP39 seed stretch — expect several hundred candidates per second per worker."}`;
+    let prefix = validateVanityPrefix(input.value, scriptId), work = estimateVanityWork(prefix, scriptId), rate = hodlVanityExpectedRate();
+    let timing = rate > 0
+      ? `At about ${hodlVanityFormatCount(Math.round(rate))} candidates/s${hodlVanityRunning ? "" : ` on ${Math.max(1, Math.min(64, Number(document.getElementById("vanity-workers")?.value) || 1))} worker${Number(document.getElementById("vanity-workers")?.value) === 1 ? "" : "s"}`}, expect a match roughly every ${hodlVanityFormatDuration(Number(work) / rate)}.`
+      : hodlVanityBenchPending ? "Measuring this device…" : method === "derivation" ? "Derivation grind: each candidate is a few BIP32 child steps." : "Passphrase grind: each candidate is a full BIP39 seed stretch.";
+    estimateEl.textContent = `Prefix “${prefix}” matches about 1 in ${hodlVanityFormatCount(work)} ${hodlVanityScript().label} candidates on average. ${timing}`;
   } catch {
     estimateEl.textContent = "";
   }
+}
+function hodlVanityToggleStopFirst() {
+  hodlVanityStopFirst = !hodlVanityStopFirst;
+  hodlVanitySyncControls();
 }
 // Turns the key's Keys-tab settings into the grind plan: the concrete
 // derivation path (the key's own purpose, coin type, account, branch, and
@@ -12441,6 +12487,12 @@ function hodlVanitySyncControls() {
     go.title = source ? "" : "Pick a Key Station key first";
   }
   if (stop) stop.disabled = !hodlVanityRunning;
+  let first = document.getElementById("vanity-first");
+  if (first) {
+    first.setAttribute("aria-pressed", String(hodlVanityStopFirst));
+    first.classList.toggle("is-pressed", hodlVanityStopFirst);
+    first.textContent = hodlVanityStopFirst ? "Stop on first find: on" : "Stop on first find";
+  }
   let dirty = hodlVanityFound > 0 && !hodlVanityRunning && !hodlVanityApplying;
   if (wipe) {
     wipe.disabled = !dirty;
@@ -12459,6 +12511,7 @@ function hodlVanityCancel() {
   let wasRunning = hodlVanityRunning;
   if (hodlVanityGrinder) hodlVanityGrinder.cancel();
   hodlVanityRunning = false;
+  hodlVanityLiveRate = 0;
   if (wasRunning) hodlVanitySetStatus("Stopped.");
   hodlVanitySyncControls();
 }
@@ -12515,6 +12568,11 @@ function hodlRunVanity() {
         if (label) label.textContent = `${percent.toFixed(1)}%`;
       }
       hodlVanitySetStatus(`${hodlVanityFormatCount(done)} / ${hodlVanityFormatCount(total)} candidates · ${hodlVanityFormatCount(Math.round(rate))}/s · ${hodlVanityFound} match${hodlVanityFound === 1 ? "" : "es"}`);
+      // The live rate is the best estimate while the grind runs.
+      if (rate > 0 && Math.abs(rate - hodlVanityLiveRate) / rate > 0.05) {
+        hodlVanityLiveRate = rate;
+        hodlVanityEstimate();
+      }
     },
     onMatch: (match) => {
       hodlVanityFound += 1;
@@ -12522,16 +12580,19 @@ function hodlRunVanity() {
         hodlVanityMatches.push(match);
         hodlRenderVanityOut();
       }
+      if (hodlVanityStopFirst && hodlVanityRunning) hodlVanityStop();
     },
     onDone: ({ done, stopped }) => {
       hodlVanityRunning = false;
+      hodlVanityLiveRate = 0;
       // The next run resumes where this range ended; the start field is the
       // durable record of what has been ground.
       let nextStart = inputs.start + done;
       let startField = document.getElementById(inputs.method === "derivation" ? "vanity-account-start" : "vanity-start");
       if (startField) startField.value = nextStart.toString();
-      hodlVanitySetStatus(`${stopped ? "Stopped" : "Range complete"}: ${hodlVanityFormatCount(done)} candidates, ${hodlVanityFound} match${hodlVanityFound === 1 ? "" : "es"}. Next ${inputs.method === "derivation" ? "account" : "counter"}: ${nextStart.toString()}.`);
+      hodlVanitySetStatus(`${stopped ? (hodlVanityStopFirst && hodlVanityFound > 0 ? "Stopped at first match" : "Stopped") : "Range complete"}: ${hodlVanityFormatCount(done)} candidates, ${hodlVanityFound} match${hodlVanityFound === 1 ? "" : "es"}. Next ${inputs.method === "derivation" ? "account" : "counter"}: ${nextStart.toString()}.`);
       hodlVanitySyncControls();
+      hodlVanityEstimate();
     },
     onError: (message) => {
       if (error) error.textContent = message;
@@ -12612,7 +12673,9 @@ function hodlInitVanity() {
   if (workersField && navigator.hardwareConcurrency) workersField.value = String(Math.max(1, Math.min(64, navigator.hardwareConcurrency)));
   go.onclick = hodlRunVanity;
   document.getElementById("vanity-stop").onclick = hodlVanityStop;
+  document.getElementById("vanity-first").onclick = hodlVanityToggleStopFirst;
   document.getElementById("vanity-wipe").onclick = () => hodlVanityClearResults();
+  workersField?.addEventListener("input", hodlVanityEstimate);
   let prefix = document.getElementById("vanity-prefix");
   prefix.addEventListener("input", () => {
     hodlApplyFilteredInput(prefix, (value) => hodlFilterVanityPrefix(value));

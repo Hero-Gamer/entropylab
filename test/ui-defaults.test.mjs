@@ -2113,3 +2113,32 @@ test("the private recovery section lists the BIP39 passphrase beside the seed ph
   // the entropy and seed hex; absent when no passphrase is in use.
   assert.match(appSource, /hodlSeedPhraseField\(`Your seed phrase[^\n]*\n[^\n]*\n[^\n]*\n\s*if \(wallet\.mnemonic && wallet\.passphraseUsed && wallet\.passphrase\) privateFields\.push\(hodlPrivateFieldHtml\("BIP39 passphrase", wallet\.passphrase\)\);\n\s*if \(wallet\.entropyHex\)/);
 });
+
+test("the vanity estimate is timed from a device sample, and Stop on first find halts the grind at the first match", () => {
+  for (const markup of [template, appSource]) {
+    assert.match(markup, /<button class="btn secondary" id="vanity-stop" type="button" disabled>Stop<\/button>\s*<button class="btn secondary" id="vanity-first" type="button" aria-pressed="false"[^>]*>Stop on first find<\/button>/);
+  }
+  const vanityController = appSource.slice(appSource.indexOf("// ── Vanity grinder"), appSource.indexOf("function hodlInitWorkspace()"));
+  // The sample runs on tab entry, once per session, never while a grind is
+  // on, and never at boot (the tab-entry branch is the only caller).
+  assert.match(appSource, /else if \(id === "vanity"\) \{[^}]*hodlVanitySyncSource\(\);\s*hodlVanityStartBenchmark\(\);\s*\}/);
+  assert.match(vanityController, /function hodlVanityStartBenchmark\(\) \{\s*if \(hodlVanityBench \|\| hodlVanityBenchPending \|\| hodlVanityRunning\) return;/);
+  assert.equal(appSource.split("hodlVanityStartBenchmark()").length, 3, "one definition, one call site");
+  const vanityInit = appSource.slice(appSource.indexOf("function hodlInitVanity()"), appSource.indexOf("function hodlInitWorkspace()"));
+  assert.doesNotMatch(vanityInit, /vanityBenchmark|hodlVanityStartBenchmark/);
+  // The estimate uses the live rate while grinding, otherwise the sample
+  // scaled by the worker count, and speaks in time.
+  assert.match(vanityController, /function hodlVanityExpectedRate\(\) \{\s*if \(hodlVanityRunning && hodlVanityLiveRate > 0\) return hodlVanityLiveRate;/);
+  assert.match(vanityController, /expect a match roughly every \$\{hodlVanityFormatDuration\(Number\(work\) \/ rate\)\}/);
+  assert.match(vanityController, /"Measuring this device…"/);
+  // Stop on first find is a toggle that asks the pool to stop as the first
+  // match lands, and the status says so.
+  assert.match(vanityController, /if \(hodlVanityStopFirst && hodlVanityRunning\) hodlVanityStop\(\);/);
+  assert.match(vanityController, /"Stopped at first match"/);
+  assert.match(vanityController, /document\.getElementById\("vanity-first"\)\.onclick = hodlVanityToggleStopFirst;/);
+  // Worker chunks adapt to the device so the bar moves smoothly from the start.
+  const worker = read("src/js/vanity-worker.js");
+  assert.match(worker, /var STEP_MS = 120;/);
+  assert.match(worker, /var chunkSize = mode === 1 \? 512 : 16;/);
+  assert.match(worker, /chunkSize = Math\.max\(MIN_CHUNK, Math\.min\(MAX_CHUNK, Math\.round\(chunk \* STEP_MS \/ elapsed\)\)\);/);
+});

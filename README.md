@@ -110,7 +110,10 @@ Official website: [entropylab.online](https://entropylab.online)
   branch, and address index) in a dedicated WebAssembly module, one Web Worker
   per CPU core, and its mainnet address of the selected type (legacy, nested
   SegWit, native SegWit, Taproot, or a BIP-352 Silent Payment code) is checked
-  against the chosen prefix. Same key and counter always reproduce the same
+  against the chosen prefix. A short timing sample on tab entry (fixed
+  published constants, never the session's keys) turns the odds into an
+  expected time to a match, and **Stop on first find** halts the grind at the
+  first hit. Same key and counter always reproduce the same
   address, so nothing is invented; **Update key** writes a found passphrase or
   account index back to the key and re-derives it, so the Keys tab, its
   exports, and the Journal show the vanity wallet. Found passphrases stay in

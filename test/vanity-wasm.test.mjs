@@ -25,6 +25,7 @@ import { VANITY_WASM_B64 } from "../src/js/vanity-wasm-b64.js";
 import { VANITY_WORKER_SOURCE } from "../src/js/vanity-worker.js";
 import {
   VANITY_ALPHABET,
+  VANITY_BENCHMARK_SAMPLES,
   VANITY_HARDENED,
   VANITY_MAX_INDEX,
   VANITY_MAX_MNEMONIC_LEN,
@@ -38,6 +39,7 @@ import {
   validateVanityPassphrase,
   validateVanityPrefix,
   validateVanityRange,
+  vanityBenchmark,
   vanityAddressFromRecord,
   vanityBuckets,
   vanityPathIndexes,
@@ -605,4 +607,41 @@ test("VanityGrinder pool runs the passphrase grind and reports the full candidat
     assert.ok(match.passphrase.startsWith(PASSPHRASE));
     assert.equal(match.address, expectedAddress(match.passphrase, "p2pkh", "m/44'/0'/0'/0/0"));
   }
+});
+
+test("worker source: chunks adapt so progress arrives early and often", async () => {
+  // The passphrase grind is PBKDF2-heavy, so the first chunk is tiny and the
+  // rest are sized to a fraction of a second each: a 200-candidate range must
+  // report progress several times rather than once at the end.
+  const worker = await initWorker();
+  try {
+    const events = [];
+    worker.onmessage = (event) => events.push(event.data);
+    worker.postMessage({ type: "grind", mode: 0, key: encoder.encode(MNEMONIC), salt: encoder.encode(PASSPHRASE), path: [84 + H, H, H, 0, 0], counterSlot: NO_SLOT, prefix: "bc1qzzzzzzzz", passLen: 2, start: 0n, count: 200n, script: 2 });
+    const done = await awaitDone(events);
+    assert.equal(done.type, "done");
+    assert.equal(done.done, 200n);
+    const progress = events.filter((message) => message.type === "progress");
+    assert.ok(progress.length >= 3, `progress reported ${progress.length} times`);
+    assert.ok(progress[0].done <= 16n, `the first chunk is small (${progress[0].done})`);
+    assert.equal(progress.at(-1).done, 200n);
+  } finally {
+    await worker.terminate();
+  }
+});
+
+test("vanityBenchmark samples every method on fixed constants and reports candidates per second", async () => {
+  assert.deepEqual(Object.keys(VANITY_BENCHMARK_SAMPLES), ["passphrase", "derivation", "sp"]);
+  const rates = await vanityBenchmark(nodeSpawn);
+  for (const name of Object.keys(VANITY_BENCHMARK_SAMPLES)) {
+    assert.ok(Number.isFinite(rates[name]) && rates[name] > 0, `${name} rate is positive (${rates[name]})`);
+  }
+  // Stretching a seed per candidate is far slower than three child steps.
+  assert.ok(rates.passphrase < rates.derivation, "the passphrase grind is the slow one");
+  // The sample never touches session material: the constants live in the
+  // module, not in the caller's arguments.
+  const vanityJs = readFileSync(join(root, "src/js/vanity.js"), "utf8");
+  assert.match(vanityJs, /const BENCHMARK_MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";/);
+  assert.match(vanityJs, /const BENCHMARK_NODE = Uint8Array\.from\(\{ length: 64 \}, \(_, i\) => \(i < 32 \? 1 : 2\)\);/);
+  assert.match(vanityJs, /export function vanityBenchmark\(spawn = spawnBlobWorker\) \{/);
 });

@@ -76,6 +76,13 @@ material. Its security posture rests on the following model:
   indexer, and cannot detect payments on its own.
 - Inscription envelope detection is a parser of witness/tap-leaf scripts. It
   does not render inscription media, assign sat numbers, or contact an indexer.
+- PSBT analysis is explicitly bounded. EntropyLab does not independently fetch
+  or verify previous outputs, its output-ownership search covers only the
+  displayed account/address range and supported script types, RFC 6979 replay
+  needs a matching session key plus a supported SegWit v0 digest, and
+  Taproot/Schnorr nonces are not analyzed. The report marks these cases
+  incomplete; a completed individual check is not a security conclusion for
+  the transaction.
 - OP_RETURN detection is a parser of output scripts. It does not create
   data-carrier outputs, assign protocol meaning, or contact an indexer.
 - The published `CID.txt` is CIDv1 (raw, sha2-256) of the release
@@ -87,9 +94,11 @@ material. Its security posture rests on the following model:
 - The session Journal (notepad, session snapshot, session log) lives only in
   this page's memory. It is never written to `localStorage`, IndexedDB, or the
   network. Closing or hiding the page discards it with the other secret
-  fields. Downloaded notes or snapshots are files the user chose to keep. The
-  log records tool names, timestamps, and fingerprints — not seed phrases,
-  xprvs, or typed secrets.
+  fields. Downloads from all three tabs reuse the unlocked Entropy Journal
+  keys and are password-encrypted by default; the synchronized checkbox can
+  explicitly switch them back to plain JSON or text. The log records tool
+  names, timestamps, and fingerprints — not seed phrases, xprvs, or typed
+  secrets.
 - The Entropy Journal notebook is an encrypted notebook of entropy the user
   already produced, not a password manager and not a key generator. The
   AES-256-GCM key is PBKDF2-SHA-256 (600,000 rounds) of a password the user
@@ -115,6 +124,18 @@ material. Its security posture rests on the following model:
   as a Bitcoin Core private key, and it is not a backup of a Core hdseed or
   address key. The private-key brain-wallet mode remains a separate scalar
   path.
+- The vanity grinder (Vanity tab) is deterministic and works only on a Key
+  Station key: a counter either extends that key's BIP39 passphrase (base-62
+  odometer characters) or selects its BIP32 account index, and every
+  candidate is derived the standard way (PBKDF2 seed, BIP32 path), so it
+  invents no entropy and every result is a setting of a wallet the user
+  already holds. A found passphrase is still a BIP39 passphrase: the words
+  alone no longer recover the wallet, and the tab says so before Update key
+  writes it back to the key. The key's seed words (passphrase grind) or the
+  parent node above the account (derivation grind) are handed to the page's
+  own Web Workers and wiped with the run. Found passphrases live only in page
+  memory, are masked until revealed, and are dropped by the same
+  pagehide/bfcache clearing as every other secret.
 - BIP-85 children are a deterministic transformation of the parent BIP32 root,
   not newly generated entropy. A BIP-39 passphrase, when present, is part of
   that root (the same rule COLDCARD uses). Anyone who has the parent seed,

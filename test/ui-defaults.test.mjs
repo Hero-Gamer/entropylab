@@ -1673,7 +1673,7 @@ test("Journal gates its three tools behind the encrypted notebook", () => {
     assert.match(markup, /id="journal-font"[\s\S]*?id="journal-size"[\s\S]*?id="journal-spacing"/);
     assert.match(markup, /<div class="journal-notes-wrap" id="journal-page-panel" role="tabpanel"[^>]*>\s*<div class="journal-notes-render" id="journal-notes-render" aria-hidden="true"><\/div>\s*<textarea class="journal-notes-text" id="journal-notes-text"[^>]*aria-placeholder="Add new note"[^>]*><\/textarea>\s*<div class="journal-notes-prompt" id="journal-notes-prompt" aria-hidden="true"><span id="journal-notes-prompt-before"><\/span><span class="journal-notes-prompt-text" id="journal-notes-prompt-text">Add new note<\/span><\/div>/);
     assert.match(markup, /class="seed-phrase-copy journal-notes-copy" id="journal-notes-copy"[^>]*aria-label="Copy notepad page"[^>]*disabled><svg[^>]*><rect class="seed-copy-icon-clip"[^>]*\/><path class="seed-copy-icon-board"[^>]*\/><\/svg><\/button>/);
-    assert(markup.indexOf('id="journal-page-tabs"') < markup.indexOf('id="journal-page-panel"') && markup.indexOf('id="journal-page-panel"') < markup.indexOf('class="journal-format-bar"'), "page tabs should join the editor before the controls below it");
+    assert(markup.indexOf('class="journal-format-bar"') < markup.indexOf('id="journal-page-tabs"') && markup.indexOf('id="journal-page-tabs"') < markup.indexOf('id="journal-page-panel"'), "notepad controls should precede the page tabs while the tabs stay joined to the editor");
     assert.match(markup, /class="btn secondary journal-download-action journal-file-button" id="journal-notes-download"[^>]*aria-label="Download notepad"[^>]*><svg class="download-mark"[\s\S]*?<span class="control-label">Download notepad<\/span><\/button>/);
     assert.match(markup, /class="btn secondary journal-upload-action journal-file-button" id="journal-notes-upload"[^>]*aria-label="Upload notebook"[^>]*><svg class="download-mark"[\s\S]*?<path d="M12 17V5M7 10l5-5 5 5M5 21h14"\/>[\s\S]*?<span class="control-label">Upload<\/span><\/button>/);
     assert.equal([...markup.matchAll(/class="journal-encrypt-download"/g)].length, 3, "each Journal tab should carry the shared encryption choice");
@@ -1718,7 +1718,7 @@ test("Journal gates its three tools behind the encrypted notebook", () => {
   assert.match(css, /\.journal-page-tab \.journal-page-tab-short \{ display: none; \}/);
   assert.match(css, /\.journal-page-tab\.is-default \.journal-page-tab-full \{ display: none; \}/);
   assert.match(css, /\.journal-page-tab\.is-default \.journal-page-tab-short \{ display: inline-block; \}/);
-  assert.match(css, /\.journal-format-bar \{[^}]*grid-template-columns: repeat\(2,[^}]*padding: 12px 0 0;/);
+  assert.match(css, /\.journal-format-bar \{[^}]*grid-template-columns: repeat\(2,[^}]*padding: 0 0 12px;/);
   assert.match(css, /\.journal-key-control \{ grid-column: 1 \/ -1; \}/);
   assert.match(css, /\.journal-notes-text \{[^}]*min-height: 20rem;[^}]*color: transparent;[^}]*caret-color: var\(--fg\);/s);
   assert.match(css, /\.journal-notes-text \{[^}]*border-top-left-radius: 0;/s);

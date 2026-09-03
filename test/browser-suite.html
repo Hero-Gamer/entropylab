@@ -1235,7 +1235,9 @@
     equal(getComputedStyle(notesCopy).pointerEvents, "auto", "the revealed notepad copy button should be clickable");
     await until(() => !notesCopy.classList.contains("is-visible"), "the idle notepad copy button to begin fading out");
     await until(() => Number.parseFloat(getComputedStyle(notesCopy).opacity) < 0.05, "the idle notepad copy button to finish fading out");
-    assert(notesWrap.compareDocumentPosition(document.querySelector(".journal-format-bar")) & Node.DOCUMENT_POSITION_FOLLOWING, "the notepad controls should follow the editor");
+    const formatBar = document.querySelector(".journal-format-bar");
+    assert(formatBar.compareDocumentPosition(document.getElementById("journal-page-tabs")) & Node.DOCUMENT_POSITION_FOLLOWING, "the notepad controls should precede the page tabs");
+    assert(document.getElementById("journal-page-tabs").compareDocumentPosition(notesWrap) & Node.DOCUMENT_POSITION_FOLLOWING, "the page tabs should remain joined directly above the editor");
     equal(getComputedStyle(journalStatus).display, "none", "an empty notepad status should not leave a large chin below the file buttons");
     assert(journalCard.getBoundingClientRect().bottom - journalActions.getBoundingClientRect().bottom <= 24, "the notepad file buttons should finish close to the card edge while there is no status message");
     const journalDownloadLabels = {

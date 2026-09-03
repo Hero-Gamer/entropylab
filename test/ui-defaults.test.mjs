@@ -2142,3 +2142,19 @@ test("the vanity estimate is timed from a device sample, and Stop on first find 
   assert.match(worker, /var chunkSize = mode === 1 \? 512 : 16;/);
   assert.match(worker, /chunkSize = Math\.max\(MIN_CHUNK, Math\.min\(MAX_CHUNK, Math\.round\(chunk \* STEP_MS \/ elapsed\)\)\);/);
 });
+
+test("Update key carries the fingerprint and LifeHash with it: rows show the resulting key, images never paint a stale fingerprint, loaded tools reload", () => {
+  const vanityController = appSource.slice(appSource.indexOf("// ── Vanity grinder"), appSource.indexOf("function hodlInitWorkspace()"));
+  // A passphrase-grind row is its own seed, so its fingerprint is computed
+  // from the key's words once and rendered with a LifeHash; an account row
+  // keeps the key's fingerprint.
+  assert.match(vanityController, /function hodlVanityMatchFingerprint\(match, run\) \{[\s\S]*?if \(run\.method !== "passphrase"\) return \(match\.fingerprint = run\.sourceLabel\);[\s\S]*?hodlMnemonicToSeed\(mnemonic, match\.passphrase\)[\s\S]*?hodlFingerprintHex\(root\.fingerprint\)/);
+  assert.match(vanityController, /<th scope="col">Key after update<\/th>/);
+  assert.match(vanityController, /box\.querySelectorAll\("img\[data-vanity-lifehash\]"\)\.forEach\(\(image\) => hodlFillKeyTabLifehash\(image, image\.dataset\.vanityLifehash\)\);/);
+  // The shared LifeHash filler tags the image with the fingerprint it was
+  // asked for and lets only the latest request paint.
+  assert.match(appSource, /image\.dataset\.fingerprint = fingerprint;\s*hodlLifeHash\.fromFingerprint\(fingerprint\)\.then\(\(url\) => \{\s*if \(!image\.isConnected \|\| image\.dataset\.fingerprint !== fingerprint\) return;/);
+  // Tools holding the old seed reload it, and the status names the change.
+  assert.match(vanityController, /if \(hodlSpSource === "key:" \+ updated\.id\) hodlPickSpSessionKey\(updated\);\s*if \(hodlBip85Source === "key:" \+ updated\.id\) hodlPickBip85SessionKey\(updated\);/);
+  assert.match(vanityController, /its master fingerprint and LifeHash changed from \$\{run\.sourceLabel\} to \$\{match\.savedTo\}/);
+});

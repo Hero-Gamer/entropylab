@@ -1222,6 +1222,8 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   box-shadow: inset 0 0 0 1px var(--selection-accent);
 }
 .vanity-apply-cell { white-space: nowrap; }
+.vanity-key { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+.vanity-key code { font-family: var(--mono); }
 .vanity-apply { min-height: 36px; padding: 4px 12px; font-size: 13px; }
 .vanity-saved { display: inline-flex; align-items: center; gap: 6px; color: var(--ok-bright); font-size: 13px; font-weight: 600; white-space: nowrap; }
 .vanity-saved svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }

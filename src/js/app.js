@@ -10319,8 +10319,12 @@ function hodlFillKeyTabLifehash(image, fingerprint) {
   // the same reason): `hodlLifeHash?.` alone still throws on an undeclared
   // identifier, so the plain typeof guard has to come first.
   if (!image || !fingerprint || typeof hodlLifeHash === "undefined" || typeof hodlLifeHash.fromFingerprint !== "function") return;
+  // The render is asynchronous; when the same image is refilled for a new
+  // fingerprint before the old one lands (Update key re-fingerprints a key),
+  // only the latest request may paint.
+  image.dataset.fingerprint = fingerprint;
   hodlLifeHash.fromFingerprint(fingerprint).then((url) => {
-    if (!image.isConnected) return;
+    if (!image.isConnected || image.dataset.fingerprint !== fingerprint) return;
     image.src = url;
     image.hidden = false;
   });
@@ -12429,6 +12433,29 @@ function hodlCopyVanityValue(button, value, label) {
   if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(value).then(done).catch(fallback);
   else fallback();
 }
+// The master fingerprint the key will carry once a match is applied: a new
+// passphrase is a new seed, so each passphrase-grind row is its own
+// fingerprint (computed once from the key's words); an account change keeps
+// the key's fingerprint. Rendered with its LifeHash so the row shows the
+// identity Update key will leave behind.
+function hodlVanityMatchFingerprint(match, run) {
+  if (match.fingerprint) return match.fingerprint;
+  if (run.method !== "passphrase") return (match.fingerprint = run.sourceLabel);
+  let state = hodlKeys.find((candidate) => candidate.id === run.sourceId), mnemonic = state?.result?.mnemonic;
+  if (!mnemonic) return "";
+  let seed = hodlMnemonicToSeed(mnemonic, match.passphrase), root = null;
+  try {
+    root = hodlHDKey.fromMasterSeed(seed);
+    return (match.fingerprint = hodlFingerprintHex(root.fingerprint));
+  } finally {
+    seed.fill(0);
+    root?.wipePrivateData();
+  }
+}
+function hodlVanityKeyMarkup(fingerprint) {
+  if (!fingerprint) return "";
+  return `<span class="vanity-key"><img class="key-tab-lifehash" width="22" height="22" alt="" hidden data-vanity-lifehash="${hodlEscapeHtml(fingerprint)}"><code>${hodlEscapeHtml(fingerprint)}</code></span>`;
+}
 function hodlRenderVanityOut() {
   let box = document.getElementById("vanity-out");
   if (!box) return;
@@ -12438,6 +12465,7 @@ function hodlRenderVanityOut() {
   }
   let run = hodlVanityRun, derivation = run.method === "derivation", meta = VANITY_SCRIPTS[run.script] ?? VANITY_SCRIPTS.p2wpkh, label = hodlEscapeHtml(run.sourceLabel);
   let copyMarkup = (attribute, index, title) => `<button type="button" class="seed-phrase-copy" ${attribute}="${index}" aria-label="${title}" title="${title}">${hodlClipboardIconMarkup()}</button><span class="vanity-copied muted" aria-live="polite"></span>`;
+  let keyCell = (match) => `<td class="vanity-key-cell">${hodlVanityKeyMarkup(hodlVanityMatchFingerprint(match, run))}</td>`;
   let applyMarkup = (match, index) => match.savedTo
     ? `<span class="vanity-saved" role="status">${hodlCopiedIconMarkup()}Saved to key ${hodlEscapeHtml(match.savedTo)}</span>`
     : `<button type="button" class="btn secondary vanity-apply" data-vanity-apply="${index}" ${hodlVanityApplying ? "disabled" : ""} title="Write this ${derivation ? "account index" : "passphrase"} to key ${label} and re-derive it">${hodlVanityApplying ? "Updating…" : "Update key"}</button>`;
@@ -12446,12 +12474,12 @@ function hodlRenderVanityOut() {
   let rows = hodlVanityMatches.map((match, index) => {
     let address = `<td><span class="vanity-secret"><span class="mono">${hodlEscapeHtml(match.address)}</span>${copyMarkup("data-vanity-copy-address", index, "Copy address")}</span></td>`;
     if (derivation) {
-      return `<tr><th scope="row">${index + 1}</th><td class="mono">${match.index}${run.accountHardened ? "'" : ""}</td><td class="mono">${hodlEscapeHtml(hodlDisplayDerivationPath(match.path))}</td>${address}<td class="vanity-apply-cell">${applyMarkup(match, index)}</td></tr>`;
+      return `<tr><th scope="row">${index + 1}</th><td class="mono">${match.index}${run.accountHardened ? "'" : ""}</td><td class="mono">${hodlEscapeHtml(hodlDisplayDerivationPath(match.path))}</td>${address}${keyCell(match)}<td class="vanity-apply-cell">${applyMarkup(match, index)}</td></tr>`;
     }
     let secret = hodlVanityReveal
       ? `<span class="mono">${hodlEscapeHtml(match.passphrase)}</span>`
       : `<span class="mono" aria-hidden="true">${hodlEscapeHtml("•".repeat(12))}</span><span class="sr-only">Passphrase hidden — tick Show passphrases to reveal</span>`;
-    return `<tr><th scope="row">${index + 1}</th><td class="mono">${match.counter.toString()}</td><td><span class="vanity-secret">${secret}${copyMarkup("data-vanity-copy", index, "Copy passphrase")}</span></td>${address}<td class="vanity-apply-cell">${applyMarkup(match, index)}</td></tr>`;
+    return `<tr><th scope="row">${index + 1}</th><td class="mono">${match.counter.toString()}</td><td><span class="vanity-secret">${secret}${copyMarkup("data-vanity-copy", index, "Copy passphrase")}</span></td>${address}${keyCell(match)}<td class="vanity-apply-cell">${applyMarkup(match, index)}</td></tr>`;
   }).join("");
   let overflow = hodlVanityFound > hodlVanityMatches.length ? `<p class="muted">Only the first ${hodlVanityMatches.length} matches are listed; ${hodlVanityFormatCount(hodlVanityFound)} found in total.</p>` : "";
   let where = meta.code === 4
@@ -12467,14 +12495,16 @@ function hodlRenderVanityOut() {
         </label>
       </div>`;
   let head = derivation
-    ? `<th scope="col">#</th><th scope="col">Account</th><th scope="col">Path</th><th scope="col">Address</th><th scope="col"><span class="sr-only">Update key</span></th>`
-    : `<th scope="col">#</th><th scope="col">Counter</th><th scope="col">Passphrase (keep it secret)</th><th scope="col">Address</th><th scope="col"><span class="sr-only">Update key</span></th>`;
+    ? `<th scope="col">#</th><th scope="col">Account</th><th scope="col">Path</th><th scope="col">Address</th><th scope="col">Key</th><th scope="col"><span class="sr-only">Update key</span></th>`
+    : `<th scope="col">#</th><th scope="col">Counter</th><th scope="col">Passphrase (keep it secret)</th><th scope="col">Address</th><th scope="col">Key after update</th><th scope="col"><span class="sr-only">Update key</span></th>`;
   box.innerHTML = `<section class="wallet-data-section wallet-private-section" aria-labelledby="vanity-matches-heading">
       <div class="wallet-data-section-head"><h3 id="vanity-matches-heading">Matching ${derivation ? "accounts" : "passphrases"}</h3>
       <p class="muted" id="vanity-matches-description">${description}</p></div>
       ${reveal}
       <div class="wallet-address-table"><div class="wallet-table wallet-table-public" role="region" tabindex="0" aria-label="Matching vanity addresses table"><table aria-rowcount="${hodlVanityMatches.length + 1}"><caption class="sr-only">Matching vanity addresses</caption><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div></div>
       ${overflow}</section>`;
+  // LifeHash images render asynchronously from the fingerprint in the cell.
+  box.querySelectorAll("img[data-vanity-lifehash]").forEach((image) => hodlFillKeyTabLifehash(image, image.dataset.vanityLifehash));
 }
 function hodlVanitySyncControls() {
   let go = document.getElementById("vanity-go"), stop = document.getElementById("vanity-stop"), wipe = document.getElementById("vanity-wipe"), progress = document.getElementById("vanity-progress");
@@ -12647,8 +12677,13 @@ async function hodlVanityApplyMatch(index) {
         hodlActiveKey = target > fresh ? target - 1 : target;
       }
     }
-    match.savedTo = hodlVanityKeyLabel(hodlKeys[hodlActiveKey]);
-    hodlVanitySetStatus(`Saved to key ${match.savedTo}: ${match.index !== null ? `account ${match.index}` : "the new passphrase"} is now on the key. Open the Keys tab to review and export it.`);
+    let updated = hodlKeys[hodlActiveKey];
+    match.savedTo = hodlVanityKeyLabel(updated);
+    // A tool that had this key loaded is holding the old seed: reload it so
+    // its chip, fingerprint, and LifeHash follow the key.
+    if (hodlSpSource === "key:" + updated.id) hodlPickSpSessionKey(updated);
+    if (hodlBip85Source === "key:" + updated.id) hodlPickBip85SessionKey(updated);
+    hodlVanitySetStatus(`Saved to key ${match.savedTo}: ${match.index !== null ? `account ${match.index}` : "the new passphrase"} is now on the key${run.sourceLabel !== match.savedTo ? ` — its master fingerprint and LifeHash changed from ${run.sourceLabel} to ${match.savedTo}` : ""}. Open the Keys tab to review and export it.`);
   } catch (exception) {
     if (error) error.textContent = exception.message || String(exception);
   } finally {

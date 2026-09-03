@@ -1631,7 +1631,7 @@ test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
   assert.match(css, /#psbt-card:not\(\[hidden\]\), #psbted-card:not\(\[hidden\]\), #vanity-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
 });
 
-test("Journal gates its three tools behind the encrypted notebook", () => {
+test("Journal gates its four tools behind the encrypted notebook", () => {
   assert.match(appSource, /\["psbt", "workspace\.psbt", "workspace\.psbtShort"\], \["journal", "workspace\.journal", "workspace\.journalShort"\]\];/);
   assert.match(appSource, /import \{[\s\S]*wipeJournal,[\s\S]*\} from "\.\/journal\.js"/);
   assert.match(appSource, /import \{[\s\S]*sealDocument as hodlJournalSealDocument,[\s\S]*\} from "\.\/journal\.js"/);
@@ -1657,8 +1657,10 @@ test("Journal gates its three tools behind the encrypted notebook", () => {
     assert.match(markup, /<div class="key-tabs" id="journal-tool-tabs" role="tablist" aria-label="Journal stations">/);
     assert.doesNotMatch(markup, /id="journal-book-tab"|data-journal-tool="book"/);
     assert.match(markup, /id="journal-notes-tab"[^>]*aria-disabled="true"[^>]*data-journal-tool="notes"[^>]*disabled/);
+    assert.match(markup, /id="journal-keymanager-tab"[^>]*aria-disabled="true"[^>]*data-journal-tool="keymanager"[^>]*disabled/);
     assert.match(markup, /id="journal-state-tab"[^>]*aria-disabled="true"[^>]*data-journal-tool="state"[^>]*disabled/);
     assert.match(markup, /id="journal-log-tab"[^>]*aria-disabled="true"[^>]*data-journal-tool="log"[^>]*disabled/);
+    assert(markup.indexOf('id="journal-notes-tab"') < markup.indexOf('id="journal-keymanager-tab"') && markup.indexOf('id="journal-keymanager-tab"') < markup.indexOf('id="journal-state-tab"'), "Key manager should follow Notepad in the Journal tab strip");
     assert.match(markup, /id="journal-card" role="region" aria-label="Encrypted Journal"/);
     assert.match(markup, /id="journal-create"/);
     assert.match(markup, /id="journal-unlock"/);
@@ -1675,9 +1677,11 @@ test("Journal gates its three tools behind the encrypted notebook", () => {
     assert.match(markup, /does not invent entropy/);
     assert.match(markup, /The journal lives in this page until you save the encrypted file/);
     assert.match(markup, /id="journal-notes-card"/);
+    assert.match(markup, /id="journal-keymanager-card"/);
     assert.match(markup, /id="journal-state-card"/);
     assert.match(markup, /id="journal-log-card"/);
     assert.match(markup, /id="journal-notes-card"[^>]*>[\s\S]*?id="journal-notes-tool-intro"[\s\S]*?<h2>Notepad<\/h2>[\s\S]*?id="journal-page-tabs"/);
+    assert.match(markup, /id="journal-keymanager-card"[^>]*>[\s\S]*?id="journal-keymanager-tool-intro"[\s\S]*?<h2>Key manager<\/h2>[\s\S]*?id="journal-keymanager-tabs"/);
     assert.match(markup, /id="journal-state-card"[^>]*>[\s\S]*?id="journal-state-tool-intro"[\s\S]*?<h2>Session state<\/h2>[\s\S]*?id="journal-state-text"/);
     assert.match(markup, /id="journal-log-card"[^>]*>[\s\S]*?id="journal-log-tool-intro"[\s\S]*?<h2>Session log<\/h2>[\s\S]*?id="journal-log-out"/);
     assert.match(markup, /<div class="key-tab-strip journal-page-tab-strip"><div class="key-tabs" id="journal-page-tabs" role="tablist" aria-label="Notepad pages"><\/div>/);
@@ -1691,6 +1695,9 @@ test("Journal gates its three tools behind the encrypted notebook", () => {
     assert(markup.indexOf('class="journal-format-bar"') < markup.indexOf('id="journal-page-tabs"') && markup.indexOf('id="journal-page-tabs"') < markup.indexOf('id="journal-page-panel"'), "notepad controls should precede the page tabs while the tabs stay joined to the editor");
     assert.match(markup, /class="btn secondary journal-download-action journal-file-button" id="journal-notes-download"[^>]*aria-label="Download notepad"[^>]*><svg class="download-mark"[\s\S]*?<span class="control-label">Download notepad<\/span><\/button>/);
     assert.match(markup, /class="btn secondary journal-upload-action journal-file-button" id="journal-notes-upload"[^>]*aria-label="Upload notebook"[^>]*><svg class="download-mark"[\s\S]*?<path d="M12 17V5M7 10l5-5 5 5M5 21h14"\/>[\s\S]*?<span class="control-label">Upload<\/span><\/button>/);
+    assert.match(markup, /class="btn secondary journal-download-action journal-file-button" id="journal-keymanager-download"[^>]*aria-label="Download managed keys"[^>]*>[\s\S]*?<span class="control-label">Download keys<\/span><\/button>/);
+    assert.match(markup, /class="btn secondary journal-upload-action journal-file-button" id="journal-keymanager-upload"[^>]*aria-label="Upload managed keys"[^>]*>[\s\S]*?<span class="control-label">Upload<\/span><\/button>/);
+    assert.match(markup, /id="journal-keymanager-file"[^>]*accept="\.elkeys,\.json,application\/json"/);
     assert.equal([...markup.matchAll(/class="journal-encrypt-download"/g)].length, 3, "each Journal tab should carry the shared encryption choice");
     assert.match(markup, /id="journal-notes-encrypt" type="checkbox" checked><span>Use journal password to encrypt<\/span>/);
     assert.match(markup, /id="journal-state-encrypt" type="checkbox" checked><span>Use journal password to encrypt<\/span>/);
@@ -1709,10 +1716,12 @@ test("Journal gates its three tools behind the encrypted notebook", () => {
     assert.match(markup, /class="row psbt-actions journal-log-actions"/);
   }
   assert.match(appSource, /data-journal-tool="notes"[^>]*data-i18n="workspace\.journalNotes"[^>]*>Notepad/);
+  assert.match(appSource, /data-journal-tool="keymanager"[^>]*data-i18n="workspace\.journalKeyManager"[^>]*>Key manager/);
   assert.match(appSource, /data-journal-tool="state"[^>]*data-i18n="workspace\.journalState"[^>]*>Session state/);
   assert.match(appSource, /data-journal-tool="log"[^>]*data-i18n="workspace\.journalLog"[^>]*>Session log/);
   assert.match(css, /#journal-card\[hidden\]/);
   assert.match(css, /#journal-notes-card\[hidden\]/);
+  assert.match(css, /#journal-keymanager-card\[hidden\]/);
   assert.match(css, /#journal-state-card\[hidden\]/);
   assert.match(css, /#journal-log-card\[hidden\]/);
   assert.match(css, /#journal-locked-panel\[hidden\]/);
@@ -1726,7 +1735,7 @@ test("Journal gates its three tools behind the encrypted notebook", () => {
   assert.match(css, /\.journal-section-intro > \.muted \{ max-width: 760px; margin: 0; \}/);
   assert.match(css, /\.journal-global-actions \{[^}]*margin-top: var\(--space-component\);/);
   assert.match(css, /#journal-tool-tabs \.key-tab:disabled,[\s\S]*opacity: \.52; cursor: not-allowed;/);
-  assert.match(css, /#journal-card:not\(\[hidden\]\), #journal-notes-card:not\(\[hidden\]\), #journal-state-card:not\(\[hidden\]\), #journal-log-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
+  assert.match(css, /#journal-card:not\(\[hidden\]\), #journal-notes-card:not\(\[hidden\]\), #journal-keymanager-card:not\(\[hidden\]\), #journal-state-card:not\(\[hidden\]\), #journal-log-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
   assert.match(css, /\.journal-notes-wrap \{[^}]*--journal-font-family:[^}]*position: relative;/s);
   assert.match(css, /\.journal-page-tab-strip \{ margin-top: 0; margin-bottom: -1px; \}/);
   assert.match(css, /\.key-tab\.journal-page-tab\.active,[^}]*background: var\(--bg\); border-bottom-color: var\(--bg\);/);
@@ -1766,10 +1775,14 @@ test("Journal gates its three tools behind the encrypted notebook", () => {
   assert.match(appSource, /"journal-state-download": \["journal", "download", "session-state"\]/);
   assert.match(appSource, /"journal-log-download": \["journal", "download", "session-log"\]/);
   assert.match(appSource, /"journal-notes-upload": \["journal", "upload", "notebook"\]/);
+  assert.match(appSource, /"journal-keymanager-download": \["journal", "download", "key-manager"\]/);
+  assert.match(appSource, /"journal-keymanager-upload": \["journal", "upload", "key-manager"\]/);
   assert.match(appSource, /"journal-notes-copy": \["journal", "copy", "notepad-page"\]/);
   assert.match(appSource, /"journal-log-copy": \["journal", "copy", "session-log"\]/);
   assert.match(appSource, /function hodlJournalSyncEncryptDownloads\(source\) \{[\s\S]*checkbox\.checked = hodlJournalEncryptDownloads/);
   assert.match(appSource, /function hodlJournalDownloadContent\(kind, filename, text,[\s\S]*hodlJournalSealExport\(kind, text, hodlJournalKeys\)/);
+  assert.match(appSource, /\["book", "notes", "keymanager", "state", "log"\]\.includes\(id\)/);
+  assert.match(appSource, /journal-keymanager-card"\)\.hidden = !visible \|\| !unlocked \|\| hodlJournalTool !== "keymanager"/);
   assert.doesNotMatch(appSource, /Downloaded a .*reloadable notebook/);
   assert.match(appSource, /outer\?\.entropylabJournalExport[\s\S]*hodlJournalOpenExport\(outer, hodlJournalKeys\)/);
   assert.match(appSource, /document\.getElementById\("journal-global-download"\)\?\.addEventListener\("click", hodlJournalSaveFile\)/);
@@ -1786,9 +1799,10 @@ test("Journal gates its three tools behind the encrypted notebook", () => {
   assert.match(appSource, /hodlJournalLog\("derive-error", "", "bip85"\)/);
   assert.match(appSource, /hodlJournalLog\("note-delete", "", "journal"\)/);
   assert.match(appSource, /hodlJournal\.log\.length = 0;\s*hodlJournalLog\("clear", "session-log", "journal"\)/);
-  assert.match(css, /#journal-notes-card:not\(\[hidden\]\), #journal-state-card:not\(\[hidden\]\), #journal-log-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
+  assert.match(css, /#journal-notes-card:not\(\[hidden\]\), #journal-keymanager-card:not\(\[hidden\]\), #journal-state-card:not\(\[hidden\]\), #journal-log-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
   assert.equal(en["workspace.journal"], "Journal");
   assert.equal(en["workspace.journalNotes"], "Notepad");
+  assert.equal(en["workspace.journalKeyManager"], "Key manager");
   assert.equal(en["workspace.journalState"], "Session state");
   assert.equal(en["workspace.journalLog"], "Session log");
   assert.match(appSource, /PASSWORD_MIN_LENGTH as hodlJournalPasswordMinLength/);
@@ -1920,7 +1934,7 @@ test("the workspace switcher keeps every tool on screen as a tab strip", () => {
   // Every tool panel lives inside it, and the closing Sources card does not.
   for (const markup of [template, appSource]) {
     const panel = markup.slice(markup.indexOf('<div class="workspace-panel"'), markup.indexOf('class="card muted sources"'));
-    for (const id of ["calc-card", "bip85-card", "msig-card", "sp-card", "psbt-card", "journal-card", "journal-notes-card", "journal-state-card", "journal-log-card"]) {
+    for (const id of ["calc-card", "bip85-card", "msig-card", "sp-card", "psbt-card", "journal-card", "journal-notes-card", "journal-keymanager-card", "journal-state-card", "journal-log-card"]) {
       assert.ok(panel.includes(`id="${id}"`), `${id} must sit inside the workspace panel`);
     }
     assert.ok(panel.includes('<div id="out">'), "the results region must sit inside the workspace panel");

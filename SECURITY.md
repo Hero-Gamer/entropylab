@@ -99,6 +99,12 @@ material. Its security posture rests on the following model:
   explicitly switch them back to plain JSON or text. The log records tool
   names, timestamps, and fingerprints — not seed phrases, xprvs, or typed
   secrets.
+- Key Manager lives behind the same unlocked Journal gate. Its `.elkeys`
+  exports reuse the Journal's deterministic export encryption and password;
+  the Key Manager does not generate a salt, nonce, password, or key material.
+  Imported private material remains in page memory and is not loaded into Key
+  Station until the user explicitly chooses it. Locking or clearing the
+  Journal drops pending and ignored Key Manager entries on a best-effort basis.
 - The Entropy Journal notebook is an encrypted notebook of entropy the user
   already produced, not a password manager and not a key generator. The
   AES-256-GCM key is PBKDF2-SHA-256 (600,000 rounds) of a password the user

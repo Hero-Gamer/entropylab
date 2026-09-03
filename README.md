@@ -129,9 +129,9 @@ Official website: [entropylab.online](https://entropylab.online)
   page memory, are masked until revealed, and are wiped with the session.
 - A session **Journal** (last workspace tab) holds an encrypted **Entropy
   Journal** notebook, a notepad stamped with this computer's date and time,
-  a live summary of everything derived in this sitting, and a debug log
+  an encrypted Key Manager, a live summary of everything derived in this sitting, and a debug log
   of tool switches and derives (fingerprints, not seeds). Its introduction
-  remains above the Journal controls. Notepad, Session state, and Session log
+  remains above the Journal controls. Notepad, Key manager, Session state, and Session log
   stay visible but disabled until the user creates a journal with a valid
   password or successfully opens an existing journal; the create/open gate
   then disappears and the Journal starts on Notepad. The create form reports
@@ -149,6 +149,12 @@ Official website: [entropylab.online](https://entropylab.online)
   to keep it. Closing the page discards the sitting. The notebook is a
   calculator companion, not a password manager: it only stores material the
   user generated themselves.
+  The **Key manager** tab packages selected derived Key Station keys and
+  ignored-key metadata into an encrypted `.elkeys` file. It reuses the
+  unlocked Journal password keys, so it adds no password prompt, random salt,
+  or random nonce. Imported keys remain in Key Manager until the user chooses
+  **Use in Key Station**; deleting a Key Station tab while a Journal is open
+  likewise removes it from the station without discarding it from Key Manager.
   The Journal also includes a paged notepad. Pages use
   the Key Station's numbered naming convention, can be added or removed with
   the +/− controls, and can be renamed by activating the selected page again
@@ -157,7 +163,7 @@ Official website: [entropylab.online](https://entropylab.online)
   typeface, text size, and line spacing. Its key picker lists the currently
   derived Key Station keys with their LifeHashes; choosing one inserts a
   public inline reference with a line-height LifeHash and master fingerprint.
-  Downloads in all three Journal tabs use the unlocked journal password by
+  Notepad, Session state, and Session log downloads use the unlocked journal password by
   default. Their matching checkboxes stay synchronized, so one change applies
   to Notepad, Session state, and Session log; unchecking exports the original
   plain JSON or text. Notepad can upload either its plain notebook JSON or its

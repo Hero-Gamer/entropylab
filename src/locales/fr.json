@@ -53,6 +53,7 @@
   "workspace.journal": "Journal",
   "workspace.journalShort": "Journal",
   "workspace.journalNotes": "Bloc-notes",
+  "workspace.journalKeyManager": "Gestionnaire de clés",
   "workspace.journalState": "État de session",
   "workspace.journalLog": "Journal de session",
   "keys.heading": "Clés",

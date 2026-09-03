@@ -53,6 +53,7 @@
   "workspace.journal": "Diario",
   "workspace.journalShort": "Diario",
   "workspace.journalNotes": "Bloc de notas",
+  "workspace.journalKeyManager": "Gestor de claves",
   "workspace.journalState": "Estado de sesión",
   "workspace.journalLog": "Registro de sesión",
   "keys.heading": "Claves",

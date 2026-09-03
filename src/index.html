@@ -653,6 +653,7 @@ words, pick one of the checksum words.</span></span>
       <div class="key-tab-strip">
         <div class="key-tabs" id="journal-tool-tabs" role="tablist" aria-label="Journal stations">
           <button class="tab key-tab is-lab" id="journal-notes-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-notes-card" aria-disabled="true" data-journal-tool="notes" disabled>Notepad</button>
+          <button class="tab key-tab is-lab" id="journal-keymanager-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-keymanager-card" aria-disabled="true" data-journal-tool="keymanager" disabled>Key manager</button>
           <button class="tab key-tab is-lab" id="journal-state-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-state-card" aria-disabled="true" data-journal-tool="state" disabled>Session state</button>
           <button class="tab key-tab is-lab" id="journal-log-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-log-card" aria-disabled="true" data-journal-tool="log" disabled>Session log</button>
         </div>
@@ -769,6 +770,25 @@ words, pick one of the checksum words.</span></span>
         <input id="journal-notes-file" type="file" accept=".json,.txt,application/json,text/plain" hidden>
       </div>
       <p class="muted journal-notes-status" id="journal-notes-status" role="status" aria-live="polite"></p>
+    </section>
+      <section class="card no-print" id="journal-keymanager-card" role="tabpanel" hidden>
+      <div class="journal-section-intro" id="journal-keymanager-tool-intro">
+        <div class="kicker">Keys on paper you control.</div>
+        <h2>Key manager</h2>
+        <p class="muted tool-intro-note">Collect derived Key Station keys in one encrypted <code>.elkeys</code> file. Imported keys stay here until you explicitly load one into Key Station. The file uses this Journal's password and never leaves your machine.</p>
+      </div>
+      <div class="key-tab-strip journal-keymanager-tab-strip"><div class="key-tabs" id="journal-keymanager-tabs" role="tablist" aria-label="Managed keys"></div></div>
+      <div class="journal-keymanager-panel" id="journal-keymanager-panel"></div>
+      <section class="journal-keymanager-ignored" id="journal-keymanager-ignored" hidden>
+        <h3>Ignored keys</h3>
+        <div class="journal-keymanager-ignored-list" id="journal-keymanager-ignored-list"></div>
+      </section>
+      <div class="row psbt-actions journal-file-actions journal-keymanager-file-actions">
+        <div class="journal-download-options"><button class="btn secondary journal-download-action journal-file-button" id="journal-keymanager-download" type="button" aria-label="Download managed keys" title="Download managed keys"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download keys</span></button><span class="journal-keymanager-encryption-note">Encrypted with the Journal password</span></div>
+        <button class="btn secondary journal-upload-action journal-file-button" id="journal-keymanager-upload" type="button" aria-label="Upload managed keys" title="Upload managed keys"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 17V5M7 10l5-5 5 5M5 21h14"/></svg><span class="control-label">Upload</span></button>
+        <input id="journal-keymanager-file" type="file" accept=".elkeys,.json,application/json" hidden>
+      </div>
+      <p class="muted journal-keymanager-status" id="journal-keymanager-status" role="status" aria-live="polite"></p>
     </section>
       <section class="card no-print" id="journal-state-card" role="tabpanel" hidden>
       <div class="journal-section-intro" id="journal-state-tool-intro">

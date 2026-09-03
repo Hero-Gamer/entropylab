@@ -53,6 +53,7 @@
   "workspace.journal": "Journal",
   "workspace.journalShort": "Journal",
   "workspace.journalNotes": "Notepad",
+  "workspace.journalKeyManager": "Key manager",
   "workspace.journalState": "Session state",
   "workspace.journalLog": "Session log",
   "keys.heading": "Keys",

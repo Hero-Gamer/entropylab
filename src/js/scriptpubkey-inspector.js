@@ -53,7 +53,7 @@ const classifyBareMultisig = (script) => {
   if (offset >= script.length - 1 || script[offset] < 0x51 || script[offset] > 0x60) return false;
   const n = script[offset] - 0x50;
   const keyCount = (offset - 1) / 34;
-  return Number.isInteger(keyCount) && keyCount === n && keyCount >= m && script[offset + 1] === 0xae && offset + 2 === script.length;
+  return Number.isInteger(keyCount) && keyCount === n && m <= n && n > 0 && n <= 16 && offset + 2 === script.length;
 };
 
 export const classifyScript = (script) => {
@@ -98,47 +98,42 @@ export const inspectScriptPubKey = (input, network = "mainnet") => {
 const decodeSilentPayment = (text) => {
   const raw = String(text ?? "").trim();
   if (!/^t?sp1/i.test(raw)) return null;
+  const decoded = bech32mDecode(raw.toLowerCase());
+  if (!decoded || !["sp", "tsp"].includes(decoded.prefix) || decoded.words[0] !== 0) return { valid: false };
   try {
-    const decoded = bech32mDecode(raw);
-    if (!decoded || (decoded.prefix !== "sp" && decoded.prefix !== "tsp")) return null;
-    const data = fromWords(decoded.words);
-    if (data.length < 66) return { state: "invalid-silent-payment", label: "Silent payment address is truncated or malformed" };
-    return { state: "silent-payment", label: "Silent payment address (BIP352) — not comparable by scriptPubKey bytes" };
+    return { valid: fromWords(decoded.words.slice(1)).length === 66 };
   } catch {
-    return { state: "invalid-silent-payment", label: "Silent payment address could not be decoded" };
+    return { valid: false };
   }
 };
 
-const bytesEqual = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
-
-export const inspectAddress = (addressInput, network = "mainnet") => {
-  const text = String(addressInput ?? "").trim();
-  if (!text) return { state: "empty", label: "Address is empty", scriptHex: null };
+export const inspectAddress = (input, network = "mainnet") => {
+  const text = String(input ?? "").trim();
+  if (!text) return { state: "empty" };
   const silent = decodeSilentPayment(text);
-  if (silent) return silent;
+  if (silent) return silent.valid ? { state: "silent-payment", address: text.toLowerCase() } : { state: "invalid-silent-payment", address: text };
   try {
-    const derived = descriptorDerive(`addr(${text})`, network);
-    if (derived && derived.script) {
-      const type = derived.type || "address";
-      return {
-        state: "recognized",
-        type,
-        label: type,
-        scriptHex: bytesToHex(derived.script),
-        address: text,
-      };
-    }
+    const derived = descriptorDerive(`addr(${text})`, 0, network);
+    const classification = classifyScript(hexToBytes(derived.scriptHex));
+    return { state: "recognized", address: text, scriptHex: derived.scriptHex, type: classification.type, label: classification.label };
   } catch {
-    // fall through
+    return { state: "invalid", address: text };
   }
-  return { state: "invalid", label: "Address could not be converted to a scriptPubKey on this network", scriptHex: null };
+};
+
+const bytesEqual = (a, b) => {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
 };
 
 export const compareAddressAndScript = (addressInput, scriptInput, network = "mainnet") => {
   const address = inspectAddress(addressInput, network);
-  const script = inspectScriptPubKey(scriptInput, network);
-  const comparableAddress = address.state === "recognized" && address.scriptHex;
-  const comparableScript = script.type !== "invalid" && script.scriptHex;
+  const hasScriptInput = String(scriptInput ?? "").trim().length > 0;
+  const script = hasScriptInput ? inspectScriptPubKey(scriptInput, network) : null;
+  const comparableAddress = address.state === "recognized";
+  const comparableScript = script && script.type !== "invalid";
   return {
     address,
     script,
@@ -150,14 +145,7 @@ export const compareAddressAndScript = (addressInput, scriptInput, network = "ma
   };
 };
 
-const escapeHtml = (value) => {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-};
+const escapeHtml = (value) => String(value ?? "").replace(/[&<>\"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[char]);
 
 const STYLE = `
 .scriptpubkey-inspector-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
@@ -213,6 +201,7 @@ const makeInspector = () => {
     <div class="scriptpubkey-inspector-output" id="scriptpubkey-inspector-output" aria-live="polite"></div>
   `;
 
+  // Place after the PSBT manager block so it sits with other workspace panels.
   if (anchor.id === "psbt-manager") {
     const journalIntro = document.getElementById("journal-tool-intro") || document.getElementById("journal-manager");
     if (journalIntro) {
@@ -235,34 +224,39 @@ const makeInspector = () => {
 
   const addressInput = panel.querySelector("#scriptpubkey-inspector-address");
   const scriptInput = panel.querySelector("#scriptpubkey-inspector-script");
-  const networkSelect = panel.querySelector("#scriptpubkey-inspector-network");
+  const networkInput = panel.querySelector("#scriptpubkey-inspector-network");
   const output = panel.querySelector("#scriptpubkey-inspector-output");
 
   const render = () => {
-    const network = networkSelect.value === "testnet" ? "testnet" : "mainnet";
-    const result = compareAddressAndScript(addressInput.value, scriptInput.value, network);
+    const result = compareAddressAndScript(addressInput.value, scriptInput.value, networkInput.value);
     const rows = [];
-    if (result.address.state !== "empty") {
+    if (result.address.state === "recognized") {
       rows.push(`<div class="scriptpubkey-inspector-row"><strong>Address type</strong><span>${escapeHtml(result.address.label)}</span></div>`);
-      if (result.address.scriptHex) rows.push(`<div class="scriptpubkey-inspector-row"><strong>Address → scriptPubKey</strong><span class="scriptpubkey-inspector-value">${escapeHtml(result.address.scriptHex)}</span></div>`);
+      rows.push(`<div class="scriptpubkey-inspector-row"><strong>Address → scriptPubKey</strong><span class="scriptpubkey-inspector-value">${escapeHtml(result.address.scriptHex)}</span></div>`);
+    } else if (result.address.state === "silent-payment") {
+      rows.push(`<div class="scriptpubkey-inspector-row"><strong>Address</strong><span>Valid Silent Payment address; it does not directly represent one fixed scriptPubKey.</span></div>`);
+    } else if (result.address.state === "invalid-silent-payment") {
+      rows.push(`<div class="scriptpubkey-inspector-row"><strong>Address</strong><span>Invalid Silent Payment address.</span></div>`);
+    } else if (result.address.state !== "empty") {
+      rows.push(`<div class="scriptpubkey-inspector-row"><strong>Address</strong><span>Invalid or not valid on the selected network.</span></div>`);
     }
-    if (result.script.type !== "invalid" || scriptInput.value.trim()) {
+    if (result.script) {
       rows.push(`<div class="scriptpubkey-inspector-row"><strong>Script type</strong><span>${escapeHtml(result.script.label)}</span></div>`);
       if (result.script.type === "invalid") rows.push(`<div class="scriptpubkey-inspector-row"><strong>Script input</strong><span>${escapeHtml(result.script.label)}</span></div>`);
       else if (result.script.address) rows.push(`<div class="scriptpubkey-inspector-row"><strong>scriptPubKey → address</strong><span class="scriptpubkey-inspector-value">${escapeHtml(result.script.address)}</span></div>`);
-      if (result.script.scriptHex) rows.push(`<div class="scriptpubkey-inspector-row"><strong>scriptPubKey hex</strong><span class="scriptpubkey-inspector-value">${escapeHtml(result.script.scriptHex)}</span></div>`);
     }
     let status = "";
-    if (result.state === "match") status = `<div class="scriptpubkey-inspector-status" data-state="match">Match — both inputs resolve to the same scriptPubKey bytes.</div>`;
-    else if (result.state === "mismatch") status = `<div class="scriptpubkey-inspector-status">Mismatch — the address and scriptPubKey do not share the same script bytes.</div>`;
-    else if (result.state === "silent-payment" || result.state === "invalid-silent-payment") status = `<div class="scriptpubkey-inspector-status">${escapeHtml(result.address.label)}. Silent payments are not compared by scriptPubKey bytes.</div>`;
-    else if (result.state === "incomplete") status = `<div class="scriptpubkey-inspector-status">Provide both an address and a scriptPubKey hex to compare.</div>`;
+    if (result.state === "match") status = `<div class="scriptpubkey-inspector-status" data-state="match">✓ Address and supplied scriptPubKey match.</div>`;
+    else if (result.state === "mismatch") status = `<div class="scriptpubkey-inspector-status">Address and supplied scriptPubKey do not match.</div>`;
+    else if (result.state === "silent-payment") status = `<div class="scriptpubkey-inspector-status">Silent Payment address: output derivation is outside this inspector.</div>`;
+    else if (result.state === "invalid-silent-payment") status = `<div class="scriptpubkey-inspector-status">Invalid Silent Payment address.</div>`;
+    else if (result.script?.type === "invalid") status = `<div class="scriptpubkey-inspector-status">Invalid scriptPubKey input.</div>`;
+    else if (result.script && !result.script.address) status = `<div class="scriptpubkey-inspector-status">The supplied script is valid as hex but has no standard address representation in this inspector.</div>`;
     output.innerHTML = rows.join("") + status;
   };
 
-  addressInput.addEventListener("input", render);
-  scriptInput.addEventListener("input", render);
-  networkSelect.addEventListener("change", render);
+  [addressInput, scriptInput, networkInput].forEach((input) => input.addEventListener("input", render));
+  networkInput.addEventListener("change", render);
 };
 
 if (typeof document !== "undefined") {

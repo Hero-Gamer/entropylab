@@ -9979,6 +9979,12 @@ function hodlPsbtAnalysisSummary(checks) {
   }).join("");
   return "<section class='psbt-analysis-summary' aria-label='PSBT security analysis status'><p class='label'>PSBT security analysis</p><p class='" + overallClass + "'><strong>" + overall + "</strong></p><ul>" + rows + "</ul><p class='muted'>Completed means only that the named check ran on the information available here. It does not prove that the PSBT claims are true or that the transaction is safe to sign.</p></section>";
 }
+function hodlPsbtNonceCheck(reused, possible, nonceIncomplete) {
+  if (reused.length) return { label: "Nonce analysis", state: "problem", detail: "A repeated ECDSA nonce was detected; see the blocking warning below." };
+  if (possible.length) return { label: "Nonce analysis", state: "incomplete", detail: "A possible repeated ECDSA nonce for the same public key could not be confirmed from this file; see the warning below and verify the signatures independently." };
+  if (nonceIncomplete) return { label: "Nonce analysis", state: "incomplete", detail: "Coverage is partial: unreadable signatures, fewer than two comparable ECDSA signatures, missing key/digest data, unsupported scripts, or Taproot/Schnorr signatures prevented one or more nonce checks." };
+  return { label: "Nonce analysis", state: "complete", detail: "All ECDSA signatures in this PSBT had comparable nonce values; no repeated r was found for the same key within this file." };
+}
 function hodlRenderPsbt(psbt) {
   // The inspector follows the header network picker (mainnet/testnet); there
   // is no per-tool network control.
@@ -10186,7 +10192,7 @@ function hodlRenderPsbt(psbt) {
       detail: policyProblems
         ? "At least one malformed, unsafe, or conflicting policy was found; see the blocking warning below."
         : policyIncomplete
-          ? "Some finalized or Taproot signature policy bytes could not be evaluated by this check."
+          ? "Some finalized, Taproot, or undecodable signature data could not be evaluated by this check."
           : "Every policy declaration and readable ECDSA signature suffix available to this report commits to all displayed outputs.",
     },
     {
@@ -10196,15 +10202,7 @@ function hodlRenderPsbt(psbt) {
         ? "Compared with the loaded session key only within accounts 0–2, 50 receive and 50 change addresses, and four supported script types; outputs outside that range remain unclassified."
         : "No session key was loaded, so output ownership and change derivation were not checked.",
     },
-    {
-      label: "Nonce analysis",
-      state: reused.length ? "problem" : nonceIncomplete ? "incomplete" : "complete",
-      detail: reused.length
-        ? "A repeated ECDSA nonce was detected; see the blocking warning below."
-        : nonceIncomplete
-          ? "Coverage is partial: unreadable signatures, fewer than two comparable ECDSA signatures, missing key/digest data, unsupported scripts, or Taproot/Schnorr signatures prevented one or more nonce checks."
-          : "All ECDSA signatures in this PSBT had comparable nonce values; no repeated r was found for the same key within this file.",
-    },
+    hodlPsbtNonceCheck(reused, possible, nonceIncomplete),
     {
       label: "Taproot inscription scan",
       state: inscriptionScanIncomplete ? "incomplete" : "complete",

@@ -56,13 +56,29 @@ test("a problem outranks incomplete coverage without hiding either state", () =>
 });
 
 test("the report maps each implemented incomplete-analysis condition", () => {
-  const render = loadSlice("hodlRenderPsbt");
+  const render = loadSlice("hodlRenderPsbt") + loadSlice("hodlPsbtNonceCheck");
   for (const limitation of [
     "not checked against previous transactions or the blockchain",
     "No session key was loaded",
     "outputs outside that range remain unclassified",
-    "finalized or Taproot signature policy bytes could not be evaluated",
+    "finalized, Taproot, or undecodable signature data could not be evaluated",
     "unreadable signatures, fewer than two comparable ECDSA signatures, missing key/digest data, unsupported scripts, or Taproot/Schnorr signatures",
     "Tap-leaf or finalized-witness data could not be fully decoded",
   ]) assert.ok(render.includes(limitation), limitation);
+});
+
+const hodlPsbtNonceCheck = new Function(
+  `${loadSlice("hodlPsbtNonceCheck")}; return hodlPsbtNonceCheck;`,
+)();
+const sig = { length: 1 };
+
+test("nonce status never claims no repeated r while a repeat is suspected", () => {
+  assert.equal(hodlPsbtNonceCheck([sig], [], false).state, "problem");
+  const suspected = hodlPsbtNonceCheck([], [sig], false);
+  assert.equal(suspected.state, "incomplete");
+  assert.match(suspected.detail, /possible repeated ECDSA nonce/);
+  assert.equal(hodlPsbtNonceCheck([], [], true).state, "incomplete");
+  const clean = hodlPsbtNonceCheck([], [], false);
+  assert.equal(clean.state, "complete");
+  assert.match(clean.detail, /no repeated r was found/);
 });

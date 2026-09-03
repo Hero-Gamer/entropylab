@@ -120,7 +120,7 @@ Official website: [entropylab.online](https://entropylab.online)
   page memory, are masked until revealed, and are wiped with the session.
 - A session **Journal** (last workspace tab) holds an encrypted **Entropy
   Journal** notebook, a notepad stamped with this computer's date and time,
-  an editable summary of everything derived in this sitting, and a debug log
+  a live summary of everything derived in this sitting, and a debug log
   of tool switches and derives (fingerprints, not seeds). Its introduction
   remains above the Journal controls. Notepad, Session state, and Session log
   stay visible but disabled until the user creates a journal with a valid
@@ -172,7 +172,7 @@ Official website: [entropylab.online](https://entropylab.online)
   stores only the key's display name and public fingerprint, then regenerates
   the LifeHash locally when that file is uploaded in a later session. Older
   `.txt` notes can also be uploaded as a single page. The Journal also holds
-  an editable summary of everything derived in this sitting and a debug log of
+  a read-only summary that updates as the sitting changes and a debug log of
   meaningful dashboard actions: tool and station changes, calculations and
   failures, safe setting changes, copies, imports, downloads, clears, and PSBT
   structural edits. The log records public fingerprints where useful, but never

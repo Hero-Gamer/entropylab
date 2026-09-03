@@ -1199,7 +1199,7 @@
     await until(() => [...document.querySelectorAll("#key-tabs .key-tab")].every((tab) => !tab.textContent.includes("c55401c7")), "the derived key to be deleted");
     input(document.getElementById("pass"), "");
   });
-  await test("Journal notepad stamps notes, session state captures, and the log omits secrets", async () => {
+  await test("Journal notepad stamps notes, session state stays live, and the log omits secrets", async () => {
     document.querySelector('#workspace [data-workspace="journal"]').click();
     // Earlier tests can leave Journal on Session state or Session log; pick
     // Notepad explicitly so this case does not depend on that leftover.
@@ -1476,12 +1476,19 @@
     document.querySelector('#journal-tool-tabs [data-journal-tool="state"]').click();
     await until(() => !document.getElementById("journal-state-card").hidden, "session state");
     const stateText = document.getElementById("journal-state-text");
-    const stateCapture = document.getElementById("journal-state-capture");
-    assert(stateText.closest(".field").compareDocumentPosition(stateCapture.parentElement) & Node.DOCUMENT_POSITION_FOLLOWING, "Session state actions should sit below the snapshot field");
-    stateCapture.click();
+    assert(stateText.readOnly && stateText.getAttribute("aria-readonly") === "true", "the live session snapshot should be read-only");
+    assert(!document.getElementById("journal-state-capture"), "the live session snapshot should not need a Capture button");
+    await until(() => stateText.value.includes("ENTROPYLAB SESSION STATE"), "the live session snapshot to populate");
     const snap = stateText.value;
-    assert(/ENTROPYLAB SESSION STATE/.test(snap), "capture should write a snapshot");
+    assert(/ENTROPYLAB SESSION STATE/.test(snap), "opening Session state should show the current snapshot");
     assert(!/kitchen table dice/.test(snap), "notes are not the session snapshot");
+    const includePrivate = document.getElementById("journal-state-private");
+    includePrivate.checked = true;
+    includePrivate.dispatchEvent(new Event("change", { bubbles: true }));
+    await until(() => stateText.value.includes("Private material: INCLUDED"), "the live snapshot to include private material");
+    includePrivate.checked = false;
+    includePrivate.dispatchEvent(new Event("change", { bubbles: true }));
+    await until(() => stateText.value.includes("Private material: omitted"), "the live snapshot to omit private material again");
     state.lastBlob = null;
     state.downloadName = "";
     document.getElementById("journal-state-download").click();
@@ -1493,7 +1500,8 @@
     const log = logOut.textContent;
     assert(/note-add/.test(log), "log should record the new note");
     assert(/note-delete/.test(log), "log should record note deletion without storing its text");
-    assert(/capture/.test(log), "log should record the snapshot");
+    assert(/journal\tsetting  journal-state-private=on/.test(log), "log should record the live snapshot privacy choice");
+    assert(!/journal\tcapture/.test(log), "the live snapshot should not add obsolete capture events");
     assert(/journal\tdownload  notebook/.test(log), "log should record notebook downloads");
     assert(/journal\tupload  notebook/.test(log), "log should record use of the notebook upload control");
     assert(/journal\tdownload  session-state/.test(log), "log should record session-state downloads");
@@ -1559,8 +1567,7 @@
     await until(() => !document.getElementById("journal-manager").hidden, "Journal audit workspace");
     document.getElementById("journal-state-tab").click();
     const stateText = document.getElementById("journal-state-text");
-    stateText.value = "private session-state sentinel";
-    stateText.dispatchEvent(new Event("change", { bubbles: true }));
+    await until(() => stateText.value.includes("ENTROPYLAB SESSION STATE"), "automatic session-state refresh");
     document.getElementById("journal-log-tab").click();
     const auditLog = document.getElementById("journal-log-out").textContent;
     assert(/app\ttheme  (?:light|dark)/.test(auditLog), "theme changes should be logged");
@@ -1571,8 +1578,7 @@
     assert(/psbt\ttool-tab  editor/.test(auditLog) && /psbt\ttool-tab  nonce/.test(auditLog), "PSBT internal tab changes should be logged");
     assert(/psbt\tclear  editor/.test(auditLog) && /psbt\tclear  session/.test(auditLog), "both PSBT clear actions should be logged");
     assert(/psbt\tinspect-error/.test(auditLog), "PSBT inspection failures should be logged");
-    assert(/journal\tedit  session-state/.test(auditLog), "session-state edits should be logged without their contents");
-    assert(!/secret audit sentinel|private session-state sentinel/.test(auditLog), "secret and freeform field contents must never enter the log");
+    assert(!/secret audit sentinel/.test(auditLog), "secret field contents must never enter the log");
     document.getElementById("journal-log-clear").click();
     document.querySelector('#workspace [data-workspace="calc"]').click();
     await until(() => !document.getElementById("key-manager").hidden, "key workspace after the audit");

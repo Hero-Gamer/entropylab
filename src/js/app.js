@@ -1202,18 +1202,17 @@ hodlRootEl.innerHTML = `
       <div class="journal-section-intro" id="journal-state-tool-intro">
         <div class="kicker">What this sitting derived.</div>
         <h2>Session state</h2>
-        <p class="muted tool-intro-note">A text summary of every key, multisig, BIP-85 child, and calculator payload currently in this page. Capture replaces the text; you can edit it before downloading. Private recovery material is omitted unless you tick the box — the same rule as the recovery sheet.</p>
+        <p class="muted tool-intro-note">A live text summary of every key, multisig, BIP-85 child, and calculator payload currently in this page. It updates as the session changes. Private recovery material is omitted unless you tick the box — the same rule as the recovery sheet.</p>
       </div>
-      <p class="muted">Capture walks the current stations and writes a snapshot you can edit. Recapture replaces the text.</p>
+      <p class="muted">This snapshot follows the current stations automatically.</p>
       <label class="choice"><input type="checkbox" id="journal-state-private">
         <span><strong>Include private recovery material</strong>
         <span class="desc">Same rule as the recovery sheet. Off by default. The file is then a secret — treat the download like a seed backup.</span></span>
       </label>
       <label class="field">Session snapshot
-        <textarea id="journal-state-text" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="Capture this session to fill this field. Edit freely afterward."></textarea>
+        <textarea id="journal-state-text" spellcheck="false" autocomplete="off" autocapitalize="off" readonly aria-readonly="true"></textarea>
       </label>
       <div class="row psbt-actions">
-        <button class="btn primary" id="journal-state-capture" type="button">Capture this session</button>
         <div class="journal-download-options"><button class="btn secondary journal-download-action journal-file-button" id="journal-state-download" type="button" aria-label="Download session snapshot" title="Download session snapshot"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download</span></button><label class="journal-encrypt-option"><input class="journal-encrypt-download" id="journal-state-encrypt" type="checkbox" checked><span>Use journal password to encrypt</span></label></div>
       </div>
     </section>
@@ -11555,6 +11554,7 @@ function hodlInitPsbtToolTabs() {
 var hodlJournal = createJournal();
 var hodlJournalTool = "book";
 var hodlJournalEncryptDownloads = true;
+var hodlJournalStateRefreshQueued = false;
 function hodlJournalActivePage() {
   return hodlJournal.pages[hodlJournal.activePage];
 }
@@ -11804,6 +11804,7 @@ function hodlDeleteActiveJournalPage() {
 }
 function hodlJournalLog(action, detail = "", tool = hodlWorkspace) {
   hodlJournalAppend(hodlJournal, { tool, action, detail });
+  hodlScheduleJournalStateRefresh();
   if (hodlWorkspace === "journal" && hodlJournalTool === "log") hodlRenderJournalLog();
 }
 var hodlJournalAuditedClicks = {
@@ -11891,8 +11892,7 @@ function hodlInitJournalActionAudit() {
     if (!(control instanceof HTMLSelectElement || control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement)) return;
     if (control.id === "journal-key-insert" || control.type === "file") return;
     if (control instanceof HTMLTextAreaElement) {
-      if (control.id === "journal-state-text") hodlJournalLog("edit", "session-state", "journal");
-      else if (control.closest("#psbted-card")) hodlJournalLog("editor-edit", "field", "psbt");
+      if (control.closest("#psbted-card")) hodlJournalLog("editor-edit", "field", "psbt");
       return;
     }
     let safeTextIds = new Set(["purpose", "network", "account", "branch-start", "address-start", "derivation-path", "msig-account"]);
@@ -11928,10 +11928,7 @@ function hodlSyncJournalTool() {
     hodlJournalShowWork();
   }
   if (visible && hodlJournalTool === "notes") hodlRenderJournalNotes();
-  if (visible && hodlJournalTool === "state") {
-    let field = document.getElementById("journal-state-text");
-    if (field && field.value !== hodlJournal.stateText) field.value = hodlJournal.stateText;
-  }
+  if (visible && hodlJournalTool === "state") hodlJournalRefreshSessionState();
   if (visible && hodlJournalTool === "log") hodlRenderJournalLog();
 }
 function hodlShowJournalTool(id, focus = false) {
@@ -12120,17 +12117,11 @@ function hodlInitJournalToolTabs() {
     await hodlJournalImportFile(notesFile.files?.[0]);
     notesFile.value = "";
   };
-  let capture = document.getElementById("journal-state-capture");
-  if (capture) capture.onclick = () => hodlJournalCaptureSession();
   let stateDownload = document.getElementById("journal-state-download");
   if (stateDownload) stateDownload.onclick = async () => {
-    let text = document.getElementById("journal-state-text")?.value || hodlJournal.stateText;
-    await hodlJournalDownloadContent("session-state", "entropylab-session.txt", text);
+    hodlJournalRefreshSessionState();
+    await hodlJournalDownloadContent("session-state", "entropylab-session.txt", hodlJournal.stateText);
   };
-  let stateText = document.getElementById("journal-state-text");
-  if (stateText) stateText.addEventListener("input", () => {
-    hodlJournal.stateText = stateText.value;
-  });
   let logDownload = document.getElementById("journal-log-download");
   if (logDownload) logDownload.onclick = () => hodlJournalDownloadContent("session-log", "entropylab-session-log.txt", hodlJournalFormatLog(hodlJournal.log));
   let logOut = document.getElementById("journal-log-out"), logCopy = document.getElementById("journal-log-copy");
@@ -12365,7 +12356,7 @@ function hodlRenderJournalLog() {
   let out = document.getElementById("journal-log-out");
   if (out) out.textContent = hodlJournalFormatLog(hodlJournal.log);
 }
-function hodlJournalCaptureSession() {
+function hodlJournalRefreshSessionState() {
   let includePrivate = Boolean(document.getElementById("journal-state-private")?.checked);
   let build = document.querySelector(".page-footer-build");
   let commit = document.getElementById("page-footer-lifehash")?.dataset.commit || "";
@@ -12413,7 +12404,14 @@ function hodlJournalCaptureSession() {
   hodlJournal.stateText = text;
   let field = document.getElementById("journal-state-text");
   if (field) field.value = text;
-  hodlJournalLog("capture", includePrivate ? "private" : "public");
+}
+function hodlScheduleJournalStateRefresh() {
+  if (hodlJournalStateRefreshQueued) return;
+  hodlJournalStateRefreshQueued = true;
+  queueMicrotask(() => {
+    hodlJournalStateRefreshQueued = false;
+    if (hodlJournalUnlocked()) hodlJournalRefreshSessionState();
+  });
 }
 // The encrypted entropy notebook gates the Journal tools and keeps its
 // document and Web Crypto keys apart from the session notepad.

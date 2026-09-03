@@ -148,6 +148,7 @@ test("a public snapshot names fingerprints and omits secrets unless asked", () =
     sp: { derived: false },
     psbt: { loaded: false },
   });
+  assert.match(publicText, /Updated: 2026-09-02 10:00:00/);
   assert.match(publicText, /fingerprint a1b2c3d4/);
   assert.doesNotMatch(publicText, /abandon abandon abandon/);
   let privateText = snapshotSession({

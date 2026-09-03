@@ -1683,10 +1683,10 @@ test("Journal gates its three tools behind the encrypted notebook", () => {
     assert.match(markup, /id="journal-notes-file"[^>]*accept="\.json,\.txt,application\/json,text\/plain"/);
     assert.doesNotMatch(markup, /id="journal-notes-download-text"|Download plain-text notes/);
     assert.doesNotMatch(markup, /id="journal-note-add"|>Add note</);
-    assert.match(markup, /id="journal-state-capture"/);
-    assert.match(markup, /id="journal-state-text"/);
+    assert.doesNotMatch(markup, /id="journal-state-capture"|Capture this session/);
+    assert.match(markup, /id="journal-state-text"[^>]*readonly aria-readonly="true"/);
     assert.match(markup, /id="journal-state-private"/);
-    assert(markup.indexOf('id="journal-state-text"') < markup.indexOf('id="journal-state-capture"'), "Session state actions should follow the editable snapshot");
+    assert(markup.indexOf('id="journal-state-text"') < markup.indexOf('id="journal-state-download"'), "Session state download should follow the live snapshot");
     assert.match(markup, /class="btn secondary journal-download-action journal-file-button" id="journal-state-download"[^>]*aria-label="Download session snapshot"[^>]*>[\s\S]*?<span class="control-label">Download<\/span><\/button>/);
     assert.match(markup, /<div class="journal-log-wrap"><pre class="journal-log" id="journal-log-out"[^>]*>No events yet\.<\/pre><button class="seed-phrase-copy journal-log-copy" id="journal-log-copy"[^>]*aria-label="Copy session log"[^>]*><svg[^>]*><rect class="seed-copy-icon-clip"[^>]*\/><path class="seed-copy-icon-board"[^>]*\/><\/svg><\/button><\/div>/);
     assert.match(markup, /class="btn secondary journal-download-action journal-file-button" id="journal-log-download"[^>]*aria-label="Download session log"[^>]*>[\s\S]*?<span class="control-label">Download<\/span><\/button>/);
@@ -1760,7 +1760,11 @@ test("Journal gates its three tools behind the encrypted notebook", () => {
   assert.match(appSource, /document\.getElementById\("journal-global-clear"\)\?\.addEventListener\("click", hodlJournalWipeMem\)/);
   assert.match(appSource, /function hodlInitJournalActionAudit\(\)[\s\S]*document\.addEventListener\("click",[\s\S]*document\.addEventListener\("change",/);
   assert.match(appSource, /control\.id === "journal-key-insert" \|\| control\.type === "file"/);
-  assert.match(appSource, /control\.id === "journal-state-text"\) hodlJournalLog\("edit", "session-state", "journal"\)/);
+  assert.match(appSource, /function hodlJournalRefreshSessionState\(\)/);
+  assert.match(appSource, /function hodlScheduleJournalStateRefresh\(\) \{[\s\S]*queueMicrotask\([\s\S]*hodlJournalRefreshSessionState\(\)/);
+  assert.match(appSource, /function hodlJournalLog\([\s\S]*?hodlScheduleJournalStateRefresh\(\)/);
+  assert.match(appSource, /hodlJournalTool === "state"\) hodlJournalRefreshSessionState\(\)/);
+  assert.doesNotMatch(appSource, /hodlJournalLog\("capture"|hodlJournalCaptureSession/);
   assert.match(appSource, /hodlJournalLog\("inspect", kind, "psbt"\)[\s\S]*hodlJournalLog\("inspect-error", "", "psbt"\)/);
   assert.match(appSource, /hodlJournalLog\("calculate", hodlSpMode, "sp"\)[\s\S]*hodlJournalLog\("calculate-error", hodlSpMode, "sp"\)/);
   assert.match(appSource, /hodlJournalLog\("derive-error", "", "bip85"\)/);

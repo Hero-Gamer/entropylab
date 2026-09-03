@@ -183,7 +183,7 @@ export function formatLog(events) {
 export function snapshotSession(session) {
   let lines = [
     "ENTROPYLAB SESSION STATE",
-    `Captured: ${session.capturedAt || ""}`,
+    `Updated: ${session.capturedAt || ""}`,
     `Build: ${session.version || "unknown"}${session.commit ? ` · ${session.commit}` : ""}`,
     `Private material: ${session.includePrivate ? "INCLUDED" : "omitted"}`,
     "",

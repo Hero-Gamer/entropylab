@@ -1,13 +1,1 @@
-{
-  "locale.label": "Language",
-  "header.download": "Download",
-  "header.downloadAria": "Download EntropyLab",
-  "header.githubAria": "View the EntropyLab GitHub repository in a new tab",
-  "header.latest": "(Latest)",
-  "network.online": "Online",
-  "network.offline": "Offline",
-  "network.onlineAria": "Network status: online",
-  "network.offlineAria": "Network status: offline",
-  "workspace.scriptpubkey": "ScriptPubKey",
-  "workspace.scriptpubkeyShort": "Script"
-}
+PLACEHOLDER

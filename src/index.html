@@ -633,54 +633,41 @@ words, pick one of the checksum words.</span></span>
       <div id="psbted-out" aria-live="polite"></div>
       <p class="muted">Fees and input amounts shown here are unverified PSBT claims; the editor does not check them against previous transactions or the blockchain. Nothing is signed or broadcast.</p>
     </section>
-    <div class="tool-intro-stack" id="journal-tool-intros" hidden>
-    <div class="tool-intro active" id="journal-tool-intro" aria-hidden="false">
+    <div class="tool-intro" id="journal-tool-intro" hidden>
         <div class="kicker">Your rolls, on paper you control.</div>
         <h2>Entropy Journal</h2>
         <p class="muted tool-intro-note journal-intro">An encrypted notebook of entropy you already produced — dice, coins, hex, brain-wallet text, or a seed. The file stays on your machine and opens with a password you choose. Encryption is a pure function of the password and the entries — nothing is generated for you. This is not a password manager and does not invent entropy.</p>
+        <div class="row journal-global-actions">
+          <button class="btn secondary journal-download-action" id="journal-global-download" type="button" disabled aria-disabled="true"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span>Download journal</span></button>
+          <button class="btn clear-current-action" id="journal-global-clear" type="button" disabled aria-disabled="true">Clear journal</button>
+        </div>
       </div>
-    <div class="tool-intro" id="journal-notes-tool-intro" aria-hidden="true">
-        <div class="kicker">Write it down. Stamp the clock. Download to keep it.</div>
-        <h2>Notepad</h2>
-        <p class="muted tool-intro-note">Freeform notes for this sitting, each stamped with this computer's date and time. Nothing is stored in the browser. Closing the page discards the notes unless you download them.</p>
-      </div>
-    <div class="tool-intro" id="journal-state-tool-intro" aria-hidden="true">
-        <div class="kicker">What this sitting derived.</div>
-        <h2>Session state</h2>
-        <p class="muted tool-intro-note">A text summary of every key, multisig, BIP-85 child, and calculator payload currently in this page. Capture replaces the text; you can edit it before downloading. Private recovery material is omitted unless you tick the box — the same rule as the recovery sheet.</p>
-      </div>
-    <div class="tool-intro" id="journal-log-tool-intro" aria-hidden="true">
-        <div class="kicker">A trace, not a memoir.</div>
-        <h2>Session log</h2>
-        <p class="muted tool-intro-note">An append-only record of meaningful dashboard actions — tool and station changes, calculations, safe settings, copies, file actions, clears, and errors — so a later bug report has a clock and a fingerprint instead of a guess. Seed phrases, xprvs, note bodies, filenames, PSBT bytes, and typed secrets are not written here. Last 400 events. This computer's clock.</p>
-      </div>
-    </div>
     <section class="key-manager no-print" id="journal-manager" hidden>
       <div class="key-tab-strip">
         <div class="key-tabs" id="journal-tool-tabs" role="tablist" aria-label="Journal stations">
-          <button class="tab key-tab is-lab active" id="journal-book-tab" type="button" role="tab" aria-selected="true" aria-controls="journal-card" data-journal-tool="book">Journal</button>
-          <button class="tab key-tab is-lab" id="journal-notes-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-notes-card" data-journal-tool="notes">Notepad</button>
-          <button class="tab key-tab is-lab" id="journal-state-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-state-card" data-journal-tool="state">Session state</button>
-          <button class="tab key-tab is-lab" id="journal-log-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-log-card" data-journal-tool="log">Session log</button>
+          <button class="tab key-tab is-lab" id="journal-notes-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-notes-card" aria-disabled="true" data-journal-tool="notes" disabled>Notepad</button>
+          <button class="tab key-tab is-lab" id="journal-state-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-state-card" aria-disabled="true" data-journal-tool="state" disabled>Session state</button>
+          <button class="tab key-tab is-lab" id="journal-log-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-log-card" aria-disabled="true" data-journal-tool="log" disabled>Session log</button>
         </div>
       </div>
     </section>
-      <section class="card no-print" id="journal-card" role="tabpanel" hidden>
+      <section class="card no-print" id="journal-card" role="region" aria-label="Encrypted Journal" hidden>
       <div id="journal-locked-panel">
         <div class="row segmented-control" id="journal-gate-modes" role="group" aria-label="Journal start">
           <button type="button" class="tab active" data-journal-gate="create" aria-pressed="true">Create</button>
           <button type="button" class="tab" data-journal-gate="open" aria-pressed="false">Open file</button>
         </div>
         <div id="journal-create-panel">
-          <label class="field">Password for the journal
-            <input id="journal-create-password" type="password" placeholder="At least 12 characters" autocomplete="new-password">
-            <span class="field-note">A long passphrase you can picture beats a short clever one. There is no recovery: lose the password and the file stays sealed.</span>
+          <label class="field"><span class="journal-password-label"><span>Password for the journal</span><span class="journal-password-validation" id="journal-create-password-status" role="status" aria-live="polite" hidden></span></span>
+            <input id="journal-create-password" type="password" placeholder="At least 12 characters" autocomplete="new-password" aria-describedby="journal-create-password-note journal-create-password-status">
+            <span class="field-note" id="journal-create-password-note">A long passphrase you can picture beats a short clever one. There is no recovery: lose the password and the file stays sealed.</span>
           </label>
-          <label class="field">Confirm the password
-            <input id="journal-create-confirm" type="password" placeholder="Enter the same password again" autocomplete="new-password">
+          <label class="field"><span class="journal-password-label"><span>Confirm the password</span><span class="journal-password-validation" id="journal-create-confirm-status" role="status" aria-live="polite" hidden></span></span>
+            <input id="journal-create-confirm" type="password" placeholder="Enter the same password again" autocomplete="new-password" aria-describedby="journal-create-confirm-status">
           </label>
-          <div class="row bip85-actions">
+          <div class="row bip85-actions journal-create-actions">
             <button class="btn primary" id="journal-create" type="button">Create journal</button>
+            <span class="journal-create-ready" id="journal-create-ready" hidden><span class="journal-create-ready-arrow" aria-hidden="true">←</span> Ready to create journal</span>
           </div>
         </div>
         <div id="journal-open-panel" hidden>
@@ -751,12 +738,10 @@ words, pick one of the checksum words.</span></span>
       <p class="muted">The journal lives in this page until you save the encrypted file. Anyone with that file and the journal password can read every entry. Memory clearing is best-effort; close the page before reconnecting the computer.</p>
     </section>
       <section class="card no-print" id="journal-notes-card" role="tabpanel" hidden>
-      <div class="key-tab-strip journal-page-tab-strip"><div class="key-tabs" id="journal-page-tabs" role="tablist" aria-label="Notepad pages"></div><div class="add-item-control"><button class="add-key" id="add-journal-page" type="button" aria-label="Add notepad page" aria-describedby="add-journal-page-tooltip">+</button><span class="add-item-tooltip" id="add-journal-page-tooltip" role="tooltip">Add notepad page</span></div><div class="add-item-control"><button class="add-key remove-key" id="delete-journal-page" type="button" aria-label="Delete current notepad page" aria-describedby="delete-journal-page-tooltip" disabled>−</button><span class="add-item-tooltip" id="delete-journal-page-tooltip" role="tooltip">Delete this notepad page</span></div></div>
-      <div class="journal-notes-wrap" id="journal-page-panel" role="tabpanel" data-font="mono" data-size="medium" data-spacing="comfortable">
-        <div class="journal-notes-render" id="journal-notes-render" aria-hidden="true"></div>
-        <textarea class="journal-notes-text" id="journal-notes-text" aria-label="Session notes" aria-placeholder="Add new note" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
-        <div class="journal-notes-prompt" id="journal-notes-prompt" aria-hidden="true"><span id="journal-notes-prompt-before"></span><span class="journal-notes-prompt-text" id="journal-notes-prompt-text">Add new note</span></div>
-        <button class="seed-phrase-copy journal-notes-copy" id="journal-notes-copy" type="button" aria-label="Copy notepad page" title="Copy notepad page" data-copy-label="Copy notepad page" data-copied-label="Notepad page copied" disabled><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect class="seed-copy-icon-clip" x="8" y="2" width="8" height="4" rx="1"/><path class="seed-copy-icon-board" d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button>
+      <div class="journal-section-intro" id="journal-notes-tool-intro">
+        <div class="kicker">Write it down. Stamp the clock. Download to keep it.</div>
+        <h2>Notepad</h2>
+        <p class="muted tool-intro-note">Freeform notes for this sitting, each stamped with this computer's date and time. Nothing is stored in the browser. Closing the page discards the notes unless you download them.</p>
       </div>
       <div class="journal-format-bar" role="group" aria-label="Notepad appearance and inserts">
         <label class="journal-format-control journal-key-control"><span>Key</span><select id="journal-key-insert" aria-label="Insert a Key Station key"><option value="" selected data-custom-select-placeholder="true">Insert key</option><option value="" disabled>No derived keys yet</option></select></label>
@@ -764,32 +749,48 @@ words, pick one of the checksum words.</span></span>
         <label class="journal-format-control"><span>Text size</span><select id="journal-size"><option value="small">Small</option><option value="medium" selected>Medium</option><option value="large">Large</option></select></label>
         <label class="journal-format-control"><span>Spacing</span><select id="journal-spacing"><option value="compact">Compact</option><option value="comfortable" selected>Comfortable</option><option value="spacious">Spacious</option></select></label>
       </div>
+      <div class="key-tab-strip journal-page-tab-strip"><div class="key-tabs" id="journal-page-tabs" role="tablist" aria-label="Notepad pages"></div><div class="add-item-control"><button class="add-key" id="add-journal-page" type="button" aria-label="Add notepad page" aria-describedby="add-journal-page-tooltip">+</button><span class="add-item-tooltip" id="add-journal-page-tooltip" role="tooltip">Add notepad page</span></div><div class="add-item-control"><button class="add-key remove-key" id="delete-journal-page" type="button" aria-label="Delete current notepad page" aria-describedby="delete-journal-page-tooltip" disabled>−</button><span class="add-item-tooltip" id="delete-journal-page-tooltip" role="tooltip">Delete this notepad page</span></div></div>
+      <div class="journal-notes-wrap" id="journal-page-panel" role="tabpanel" data-font="mono" data-size="medium" data-spacing="comfortable">
+        <div class="journal-notes-render" id="journal-notes-render" aria-hidden="true"></div>
+        <textarea class="journal-notes-text" id="journal-notes-text" aria-label="Session notes" aria-placeholder="Add new note" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+        <div class="journal-notes-prompt" id="journal-notes-prompt" aria-hidden="true"><span id="journal-notes-prompt-before"></span><span class="journal-notes-prompt-text" id="journal-notes-prompt-text">Add new note</span></div>
+        <button class="seed-phrase-copy journal-notes-copy" id="journal-notes-copy" type="button" aria-label="Copy notepad page" title="Copy notepad page" data-copy-label="Copy notepad page" data-copied-label="Notepad page copied" disabled><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect class="seed-copy-icon-clip" x="8" y="2" width="8" height="4" rx="1"/><path class="seed-copy-icon-board" d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button>
+      </div>
       <div class="row psbt-actions journal-file-actions">
-        <button class="btn secondary journal-download-action journal-file-button" id="journal-notes-download" type="button" aria-label="Download notebook" title="Download notebook"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download</span></button>
+        <div class="journal-download-options"><button class="btn secondary journal-download-action journal-file-button" id="journal-notes-download" type="button" aria-label="Download notepad" title="Download notepad"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download notepad</span></button><label class="journal-encrypt-option"><input class="journal-encrypt-download" id="journal-notes-encrypt" type="checkbox" checked><span>Use journal password to encrypt</span></label></div>
         <button class="btn secondary journal-upload-action journal-file-button" id="journal-notes-upload" type="button" aria-label="Upload notebook" title="Upload notebook"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 17V5M7 10l5-5 5 5M5 21h14"/></svg><span class="control-label">Upload</span></button>
         <input id="journal-notes-file" type="file" accept=".json,.txt,application/json,text/plain" hidden>
       </div>
       <p class="muted journal-notes-status" id="journal-notes-status" role="status" aria-live="polite"></p>
     </section>
       <section class="card no-print" id="journal-state-card" role="tabpanel" hidden>
-      <p class="muted">Capture walks the current stations and writes a snapshot you can edit. Recapture replaces the text.</p>
+      <div class="journal-section-intro" id="journal-state-tool-intro">
+        <div class="kicker">What this sitting derived.</div>
+        <h2>Session state</h2>
+        <p class="muted tool-intro-note">A live text summary of every key, multisig, BIP-85 child, and calculator payload currently in this page. It updates as the session changes. Private recovery material is omitted unless you tick the box — the same rule as the recovery sheet.</p>
+      </div>
+      <p class="muted">This snapshot follows the current stations automatically.</p>
       <label class="choice"><input type="checkbox" id="journal-state-private">
         <span><strong>Include private recovery material</strong>
         <span class="desc">Same rule as the recovery sheet. Off by default. The file is then a secret — treat the download like a seed backup.</span></span>
       </label>
       <label class="field">Session snapshot
-        <textarea id="journal-state-text" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="Capture this session to fill this field. Edit freely afterward."></textarea>
+        <textarea id="journal-state-text" spellcheck="false" autocomplete="off" autocapitalize="off" readonly aria-readonly="true"></textarea>
       </label>
       <div class="row psbt-actions">
-        <button class="btn primary" id="journal-state-capture" type="button">Capture this session</button>
-        <button class="btn secondary journal-download-action journal-file-button" id="journal-state-download" type="button" aria-label="Download session snapshot" title="Download session snapshot"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download</span></button>
+        <div class="journal-download-options"><button class="btn secondary journal-download-action journal-file-button" id="journal-state-download" type="button" aria-label="Download session state" title="Download session state"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download session state</span></button><label class="journal-encrypt-option"><input class="journal-encrypt-download" id="journal-state-encrypt" type="checkbox" checked><span>Use journal password to encrypt</span></label></div>
       </div>
     </section>
       <section class="card no-print" id="journal-log-card" role="tabpanel" hidden>
+      <div class="journal-section-intro" id="journal-log-tool-intro">
+        <div class="kicker">A trace, not a memoir.</div>
+        <h2>Session log</h2>
+        <p class="muted tool-intro-note">An append-only record of meaningful dashboard actions — tool and station changes, calculations, safe settings, copies, file actions, clears, and errors — so a later bug report has a clock and a fingerprint instead of a guess. Seed phrases, xprvs, note bodies, filenames, PSBT bytes, and typed secrets are not written here. Last 400 events. This computer's clock.</p>
+      </div>
       <p class="muted">Download this with a bug report. It names tools and fingerprints, not seeds.</p>
       <div class="journal-log-wrap"><pre class="journal-log" id="journal-log-out" aria-live="polite">No events yet.</pre><button class="seed-phrase-copy journal-log-copy" id="journal-log-copy" type="button" aria-label="Copy session log" title="Copy session log" data-copy-label="Copy session log" data-copied-label="Session log copied"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect class="seed-copy-icon-clip" x="8" y="2" width="8" height="4" rx="1"/><path class="seed-copy-icon-board" d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button></div>
       <div class="row psbt-actions journal-log-actions">
-        <button class="btn secondary journal-download-action journal-file-button" id="journal-log-download" type="button" aria-label="Download session log" title="Download session log"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download</span></button>
+        <div class="journal-download-options"><button class="btn secondary journal-download-action journal-file-button" id="journal-log-download" type="button" aria-label="Download session log" title="Download session log"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download session log</span></button><label class="journal-encrypt-option"><input class="journal-encrypt-download" id="journal-log-encrypt" type="checkbox" checked><span>Use journal password to encrypt</span></label></div>
         <button class="btn clear-current-action" id="journal-log-clear" type="button">Clear log</button>
       </div>
     </section>

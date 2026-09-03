@@ -183,7 +183,7 @@ export function formatLog(events) {
 export function snapshotSession(session) {
   let lines = [
     "ENTROPYLAB SESSION STATE",
-    `Captured: ${session.capturedAt || ""}`,
+    `Updated: ${session.capturedAt || ""}`,
     `Build: ${session.version || "unknown"}${session.commit ? ` · ${session.commit}` : ""}`,
     `Private material: ${session.includePrivate ? "INCLUDED" : "omitted"}`,
     "",
@@ -239,6 +239,7 @@ export function wipeJournal(journal) {
 // under a second derived key (a synthetic IV), so the same password and the
 // same entries always produce the same file.
 export const JOURNAL_VERSION = 2;
+export const JOURNAL_EXPORT_VERSION = 1;
 export const JOURNAL_KDF = "PBKDF2-SHA-256";
 export const JOURNAL_CIPHER = "AES-256-GCM";
 export const JOURNAL_ITERATIONS = 600_000; // OWASP 2023 floor for PBKDF2-HMAC-SHA-256
@@ -248,6 +249,7 @@ export const JOURNAL_SALT_PREFIX = "entropylab-journal-salt-v1:";
 export const IV_BYTES = 12;
 export const PASSWORD_MIN_LENGTH = 12;
 export const METHODS = Object.freeze(["dice", "coin", "hex", "brain", "seed", "cards"]);
+const JOURNAL_EXPORT_KINDS = new Set(["notebook", "session-state", "session-log"]);
 export const METHOD_LABELS = Object.freeze({
   dice: "Dice rolls",
   coin: "Coin flips",
@@ -503,14 +505,10 @@ function parseDocument(plain) {
 // derived key. The same password and entries produce the same file; two
 // different plaintexts share an IV only on an HMAC collision. No randomness
 // is generated, matching the rest of EntropyLab.
-export async function sealDocument(doc, keys) {
+async function sealPlainText(plainText, keys) {
   if (!keys?.encKey || !keys?.ivKey) throw new Error("Unlock the journal before saving.");
   const subtle = requireSubtle();
-  const plain = encoder.encode(JSON.stringify({
-    version: JOURNAL_VERSION,
-    nextId: doc.nextId,
-    entries: doc.entries,
-  }));
+  const plain = encoder.encode(plainText);
   try {
     const tag = new Uint8Array(await subtle.sign("HMAC", keys.ivKey, plain));
     try {
@@ -522,6 +520,60 @@ export async function sealDocument(doc, keys) {
     }
   } finally {
     wipeBytes(plain);
+  }
+}
+
+export async function sealDocument(doc, keys) {
+  return sealPlainText(JSON.stringify({
+    version: JOURNAL_VERSION,
+    nextId: doc.nextId,
+    entries: doc.entries,
+  }), keys);
+}
+
+export async function sealExport(kind, content, keys) {
+  if (!JOURNAL_EXPORT_KINDS.has(kind)) throw new Error("That Journal export type is not supported.");
+  const file = await sealPlainText(JSON.stringify({
+    entropylabJournalExport: JOURNAL_EXPORT_VERSION,
+    kind,
+    content: String(content ?? ""),
+  }), keys);
+  return { ...file, entropylabJournalExport: JOURNAL_EXPORT_VERSION };
+}
+
+export async function openExport(file, keys) {
+  let outer;
+  try {
+    outer = typeof file === "string" ? JSON.parse(file) : file;
+  } catch {
+    throw new Error("That encrypted export is not valid JSON.");
+  }
+  if (!outer || outer.entropylabJournalExport !== JOURNAL_EXPORT_VERSION) throw new Error("That file is not an encrypted Journal export.");
+  if (!keys?.encKey || !keys?.ivKey) throw new Error("Open or create the journal before importing an encrypted export.");
+  const parsed = parseFile(outer);
+  if (parsed.iterations !== keys.iterations) throw new Error("That encrypted export uses a different journal password.");
+  const subtle = requireSubtle();
+  let plainBytes;
+  try {
+    plainBytes = new Uint8Array(await subtle.decrypt({ name: "AES-GCM", iv: parsed.iv }, keys.encKey, parsed.ciphertext));
+  } catch {
+    throw new Error("That encrypted export uses a different journal password, or the file is damaged.");
+  }
+  try {
+    let payload;
+    try {
+      payload = JSON.parse(decoder.decode(plainBytes));
+    } catch {
+      throw new Error("The encrypted Journal export is corrupt.");
+    }
+    if (!payload || payload.entropylabJournalExport !== JOURNAL_EXPORT_VERSION || !JOURNAL_EXPORT_KINDS.has(payload.kind) || typeof payload.content !== "string") {
+      throw new Error("The encrypted Journal export is corrupt.");
+    }
+    return { kind: payload.kind, content: payload.content };
+  } finally {
+    wipeBytes(plainBytes);
+    wipeBytes(parsed.iv);
+    wipeBytes(parsed.ciphertext);
   }
 }
 

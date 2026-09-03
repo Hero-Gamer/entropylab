@@ -37,6 +37,7 @@ import { VANITY_HARDENED, VANITY_MAX_INDEX, VANITY_METHODS, VANITY_SCRIPTS, Vani
 import { t as hodlT, hodlInitLocale, hodlFillLocaleSelect, hodlGetLocale } from "./i18n.js";
 import {
   METHOD_LABELS as hodlJournalMethodLabels,
+  PASSWORD_MIN_LENGTH as hodlJournalPasswordMinLength,
   addEntry as hodlJournalAddEntry,
   appendLog as hodlJournalAppend,
   createDocument as hodlJournalCreateDocument,
@@ -46,10 +47,12 @@ import {
   formatNotebook as hodlJournalFormatNotebook,
   formatStamp as hodlJournalStamp,
   openDocument as hodlJournalOpenDocument,
+  openExport as hodlJournalOpenExport,
   removeEntry as hodlJournalRemoveEntry,
   replaceEntry as hodlJournalReplaceEntry,
   searchEntries as hodlJournalSearch,
   sealDocument as hodlJournalSealDocument,
+  sealExport as hodlJournalSealExport,
   snapshotFromKeyState as hodlJournalKeySnapshot,
   snapshotSession as hodlJournalSnapshot,
   wipeBytes as hodlJournalWipeBytes,
@@ -1065,54 +1068,41 @@ hodlRootEl.innerHTML = `
       <div id="psbted-out" aria-live="polite"></div>
       <p class="muted">Fees and input amounts shown here are unverified PSBT claims; the editor does not check them against previous transactions or the blockchain. Nothing is signed or broadcast.</p>
     </section>
-    <div class="tool-intro-stack" id="journal-tool-intros" hidden>
-    <div class="tool-intro active" id="journal-tool-intro" aria-hidden="false">
+    <div class="tool-intro" id="journal-tool-intro" hidden>
         <div class="kicker">Your rolls, on paper you control.</div>
         <h2>Entropy Journal</h2>
         <p class="muted tool-intro-note journal-intro">An encrypted notebook of entropy you already produced \u2014 dice, coins, hex, brain-wallet text, or a seed. The file stays on your machine and opens with a password you choose. Encryption is a pure function of the password and the entries \u2014 nothing is generated for you. This is not a password manager and does not invent entropy.</p>
+        <div class="row journal-global-actions">
+          <button class="btn secondary journal-download-action" id="journal-global-download" type="button" disabled aria-disabled="true"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span>Download journal</span></button>
+          <button class="btn clear-current-action" id="journal-global-clear" type="button" disabled aria-disabled="true">Clear journal</button>
+        </div>
       </div>
-    <div class="tool-intro" id="journal-notes-tool-intro" aria-hidden="true">
-        <div class="kicker">Write it down. Stamp the clock. Download to keep it.</div>
-        <h2>Notepad</h2>
-        <p class="muted tool-intro-note">Freeform notes for this sitting, each stamped with this computer's date and time. Nothing is stored in the browser. Closing the page discards the notes unless you download them.</p>
-      </div>
-    <div class="tool-intro" id="journal-state-tool-intro" aria-hidden="true">
-        <div class="kicker">What this sitting derived.</div>
-        <h2>Session state</h2>
-        <p class="muted tool-intro-note">A text summary of every key, multisig, BIP-85 child, and calculator payload currently in this page. Capture replaces the text; you can edit it before downloading. Private recovery material is omitted unless you tick the box — the same rule as the recovery sheet.</p>
-      </div>
-    <div class="tool-intro" id="journal-log-tool-intro" aria-hidden="true">
-        <div class="kicker">A trace, not a memoir.</div>
-        <h2>Session log</h2>
-        <p class="muted tool-intro-note">An append-only record of meaningful dashboard actions — tool and station changes, calculations, safe settings, copies, file actions, clears, and errors — so a later bug report has a clock and a fingerprint instead of a guess. Seed phrases, xprvs, note bodies, filenames, PSBT bytes, and typed secrets are not written here. Last 400 events. This computer's clock.</p>
-      </div>
-    </div>
     <section class="key-manager no-print" id="journal-manager" hidden>
       <div class="key-tab-strip">
         <div class="key-tabs" id="journal-tool-tabs" role="tablist" aria-label="Journal stations">
-          <button class="tab key-tab is-lab active" id="journal-book-tab" type="button" role="tab" aria-selected="true" aria-controls="journal-card" data-journal-tool="book" data-i18n="workspace.journal">Journal</button>
-          <button class="tab key-tab is-lab" id="journal-notes-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-notes-card" data-journal-tool="notes" data-i18n="workspace.journalNotes">Notepad</button>
-          <button class="tab key-tab is-lab" id="journal-state-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-state-card" data-journal-tool="state" data-i18n="workspace.journalState">Session state</button>
-          <button class="tab key-tab is-lab" id="journal-log-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-log-card" data-journal-tool="log" data-i18n="workspace.journalLog">Session log</button>
+          <button class="tab key-tab is-lab" id="journal-notes-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-notes-card" aria-disabled="true" data-journal-tool="notes" data-i18n="workspace.journalNotes" disabled>Notepad</button>
+          <button class="tab key-tab is-lab" id="journal-state-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-state-card" aria-disabled="true" data-journal-tool="state" data-i18n="workspace.journalState" disabled>Session state</button>
+          <button class="tab key-tab is-lab" id="journal-log-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-log-card" aria-disabled="true" data-journal-tool="log" data-i18n="workspace.journalLog" disabled>Session log</button>
         </div>
       </div>
     </section>
-      <section class="card no-print" id="journal-card" role="tabpanel" hidden>
+      <section class="card no-print" id="journal-card" role="region" aria-label="Encrypted Journal" hidden>
       <div id="journal-locked-panel">
         <div class="row segmented-control" id="journal-gate-modes" role="group" aria-label="Journal start">
           <button type="button" class="tab active" data-journal-gate="create" aria-pressed="true">Create</button>
           <button type="button" class="tab" data-journal-gate="open" aria-pressed="false">Open file</button>
         </div>
         <div id="journal-create-panel">
-          <label class="field">Password for the journal
-            <input id="journal-create-password" type="password" placeholder="At least 12 characters" autocomplete="new-password">
-            <span class="field-note">A long passphrase you can picture beats a short clever one. There is no recovery: lose the password and the file stays sealed.</span>
+          <label class="field"><span class="journal-password-label"><span>Password for the journal</span><span class="journal-password-validation" id="journal-create-password-status" role="status" aria-live="polite" hidden></span></span>
+            <input id="journal-create-password" type="password" placeholder="At least 12 characters" autocomplete="new-password" aria-describedby="journal-create-password-note journal-create-password-status">
+            <span class="field-note" id="journal-create-password-note">A long passphrase you can picture beats a short clever one. There is no recovery: lose the password and the file stays sealed.</span>
           </label>
-          <label class="field">Confirm the password
-            <input id="journal-create-confirm" type="password" placeholder="Enter the same password again" autocomplete="new-password">
+          <label class="field"><span class="journal-password-label"><span>Confirm the password</span><span class="journal-password-validation" id="journal-create-confirm-status" role="status" aria-live="polite" hidden></span></span>
+            <input id="journal-create-confirm" type="password" placeholder="Enter the same password again" autocomplete="new-password" aria-describedby="journal-create-confirm-status">
           </label>
-          <div class="row bip85-actions">
+          <div class="row bip85-actions journal-create-actions">
             <button class="btn primary" id="journal-create" type="button">Create journal</button>
+            <span class="journal-create-ready" id="journal-create-ready" hidden><span class="journal-create-ready-arrow" aria-hidden="true">←</span> Ready to create journal</span>
           </div>
         </div>
         <div id="journal-open-panel" hidden>
@@ -1183,12 +1173,10 @@ hodlRootEl.innerHTML = `
       <p class="muted">The journal lives in this page until you save the encrypted file. Anyone with that file and the journal password can read every entry. Memory clearing is best-effort; close the page before reconnecting the computer.</p>
     </section>
       <section class="card no-print" id="journal-notes-card" role="tabpanel" hidden>
-      <div class="key-tab-strip journal-page-tab-strip"><div class="key-tabs" id="journal-page-tabs" role="tablist" aria-label="Notepad pages"></div><div class="add-item-control"><button class="add-key" id="add-journal-page" type="button" aria-label="Add notepad page" aria-describedby="add-journal-page-tooltip">+</button><span class="add-item-tooltip" id="add-journal-page-tooltip" role="tooltip">Add notepad page</span></div><div class="add-item-control"><button class="add-key remove-key" id="delete-journal-page" type="button" aria-label="Delete current notepad page" aria-describedby="delete-journal-page-tooltip" disabled>−</button><span class="add-item-tooltip" id="delete-journal-page-tooltip" role="tooltip">Delete this notepad page</span></div></div>
-      <div class="journal-notes-wrap" id="journal-page-panel" role="tabpanel" data-font="mono" data-size="medium" data-spacing="comfortable">
-        <div class="journal-notes-render" id="journal-notes-render" aria-hidden="true"></div>
-        <textarea class="journal-notes-text" id="journal-notes-text" aria-label="Session notes" aria-placeholder="Add new note" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
-        <div class="journal-notes-prompt" id="journal-notes-prompt" aria-hidden="true"><span id="journal-notes-prompt-before"></span><span class="journal-notes-prompt-text" id="journal-notes-prompt-text">Add new note</span></div>
-        <button class="seed-phrase-copy journal-notes-copy" id="journal-notes-copy" type="button" aria-label="Copy notepad page" title="Copy notepad page" data-copy-label="Copy notepad page" data-copied-label="Notepad page copied" disabled><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect class="seed-copy-icon-clip" x="8" y="2" width="8" height="4" rx="1"/><path class="seed-copy-icon-board" d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button>
+      <div class="journal-section-intro" id="journal-notes-tool-intro">
+        <div class="kicker">Write it down. Stamp the clock. Download to keep it.</div>
+        <h2>Notepad</h2>
+        <p class="muted tool-intro-note">Freeform notes for this sitting, each stamped with this computer's date and time. Nothing is stored in the browser. Closing the page discards the notes unless you download them.</p>
       </div>
       <div class="journal-format-bar" role="group" aria-label="Notepad appearance and inserts">
         <label class="journal-format-control journal-key-control"><span>Key</span><select id="journal-key-insert" aria-label="Insert a Key Station key"><option value="" selected data-custom-select-placeholder="true">Insert key</option><option value="" disabled>No derived keys yet</option></select></label>
@@ -1196,32 +1184,48 @@ hodlRootEl.innerHTML = `
         <label class="journal-format-control"><span>Text size</span><select id="journal-size"><option value="small">Small</option><option value="medium" selected>Medium</option><option value="large">Large</option></select></label>
         <label class="journal-format-control"><span>Spacing</span><select id="journal-spacing"><option value="compact">Compact</option><option value="comfortable" selected>Comfortable</option><option value="spacious">Spacious</option></select></label>
       </div>
+      <div class="key-tab-strip journal-page-tab-strip"><div class="key-tabs" id="journal-page-tabs" role="tablist" aria-label="Notepad pages"></div><div class="add-item-control"><button class="add-key" id="add-journal-page" type="button" aria-label="Add notepad page" aria-describedby="add-journal-page-tooltip">+</button><span class="add-item-tooltip" id="add-journal-page-tooltip" role="tooltip">Add notepad page</span></div><div class="add-item-control"><button class="add-key remove-key" id="delete-journal-page" type="button" aria-label="Delete current notepad page" aria-describedby="delete-journal-page-tooltip" disabled>−</button><span class="add-item-tooltip" id="delete-journal-page-tooltip" role="tooltip">Delete this notepad page</span></div></div>
+      <div class="journal-notes-wrap" id="journal-page-panel" role="tabpanel" data-font="mono" data-size="medium" data-spacing="comfortable">
+        <div class="journal-notes-render" id="journal-notes-render" aria-hidden="true"></div>
+        <textarea class="journal-notes-text" id="journal-notes-text" aria-label="Session notes" aria-placeholder="Add new note" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+        <div class="journal-notes-prompt" id="journal-notes-prompt" aria-hidden="true"><span id="journal-notes-prompt-before"></span><span class="journal-notes-prompt-text" id="journal-notes-prompt-text">Add new note</span></div>
+        <button class="seed-phrase-copy journal-notes-copy" id="journal-notes-copy" type="button" aria-label="Copy notepad page" title="Copy notepad page" data-copy-label="Copy notepad page" data-copied-label="Notepad page copied" disabled><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect class="seed-copy-icon-clip" x="8" y="2" width="8" height="4" rx="1"/><path class="seed-copy-icon-board" d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button>
+      </div>
       <div class="row psbt-actions journal-file-actions">
-        <button class="btn secondary journal-download-action journal-file-button" id="journal-notes-download" type="button" aria-label="Download notebook" title="Download notebook"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download</span></button>
+        <div class="journal-download-options"><button class="btn secondary journal-download-action journal-file-button" id="journal-notes-download" type="button" aria-label="Download notepad" title="Download notepad"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download notepad</span></button><label class="journal-encrypt-option"><input class="journal-encrypt-download" id="journal-notes-encrypt" type="checkbox" checked><span>Use journal password to encrypt</span></label></div>
         <button class="btn secondary journal-upload-action journal-file-button" id="journal-notes-upload" type="button" aria-label="Upload notebook" title="Upload notebook"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 17V5M7 10l5-5 5 5M5 21h14"/></svg><span class="control-label">Upload</span></button>
         <input id="journal-notes-file" type="file" accept=".json,.txt,application/json,text/plain" hidden>
       </div>
       <p class="muted journal-notes-status" id="journal-notes-status" role="status" aria-live="polite"></p>
     </section>
       <section class="card no-print" id="journal-state-card" role="tabpanel" hidden>
-      <p class="muted">Capture walks the current stations and writes a snapshot you can edit. Recapture replaces the text.</p>
+      <div class="journal-section-intro" id="journal-state-tool-intro">
+        <div class="kicker">What this sitting derived.</div>
+        <h2>Session state</h2>
+        <p class="muted tool-intro-note">A live text summary of every key, multisig, BIP-85 child, and calculator payload currently in this page. It updates as the session changes. Private recovery material is omitted unless you tick the box — the same rule as the recovery sheet.</p>
+      </div>
+      <p class="muted">This snapshot follows the current stations automatically.</p>
       <label class="choice"><input type="checkbox" id="journal-state-private">
         <span><strong>Include private recovery material</strong>
         <span class="desc">Same rule as the recovery sheet. Off by default. The file is then a secret — treat the download like a seed backup.</span></span>
       </label>
       <label class="field">Session snapshot
-        <textarea id="journal-state-text" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="Capture this session to fill this field. Edit freely afterward."></textarea>
+        <textarea id="journal-state-text" spellcheck="false" autocomplete="off" autocapitalize="off" readonly aria-readonly="true"></textarea>
       </label>
       <div class="row psbt-actions">
-        <button class="btn primary" id="journal-state-capture" type="button">Capture this session</button>
-        <button class="btn secondary journal-download-action journal-file-button" id="journal-state-download" type="button" aria-label="Download session snapshot" title="Download session snapshot"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download</span></button>
+        <div class="journal-download-options"><button class="btn secondary journal-download-action journal-file-button" id="journal-state-download" type="button" aria-label="Download session state" title="Download session state"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download session state</span></button><label class="journal-encrypt-option"><input class="journal-encrypt-download" id="journal-state-encrypt" type="checkbox" checked><span>Use journal password to encrypt</span></label></div>
       </div>
     </section>
       <section class="card no-print" id="journal-log-card" role="tabpanel" hidden>
+      <div class="journal-section-intro" id="journal-log-tool-intro">
+        <div class="kicker">A trace, not a memoir.</div>
+        <h2>Session log</h2>
+        <p class="muted tool-intro-note">An append-only record of meaningful dashboard actions — tool and station changes, calculations, safe settings, copies, file actions, clears, and errors — so a later bug report has a clock and a fingerprint instead of a guess. Seed phrases, xprvs, note bodies, filenames, PSBT bytes, and typed secrets are not written here. Last 400 events. This computer's clock.</p>
+      </div>
       <p class="muted">Download this with a bug report. It names tools and fingerprints, not seeds.</p>
       <div class="journal-log-wrap"><pre class="journal-log" id="journal-log-out" aria-live="polite">No events yet.</pre><button class="seed-phrase-copy journal-log-copy" id="journal-log-copy" type="button" aria-label="Copy session log" title="Copy session log" data-copy-label="Copy session log" data-copied-label="Session log copied"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect class="seed-copy-icon-clip" x="8" y="2" width="8" height="4" rx="1"/><path class="seed-copy-icon-board" d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button></div>
       <div class="row psbt-actions journal-log-actions">
-        <button class="btn secondary journal-download-action journal-file-button" id="journal-log-download" type="button" aria-label="Download session log" title="Download session log"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download</span></button>
+        <div class="journal-download-options"><button class="btn secondary journal-download-action journal-file-button" id="journal-log-download" type="button" aria-label="Download session log" title="Download session log"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download session log</span></button><label class="journal-encrypt-option"><input class="journal-encrypt-download" id="journal-log-encrypt" type="checkbox" checked><span>Use journal password to encrypt</span></label></div>
         <button class="btn clear-current-action" id="journal-log-clear" type="button">Clear log</button>
       </div>
     </section>
@@ -11549,6 +11553,8 @@ function hodlInitPsbtToolTabs() {
 }
 var hodlJournal = createJournal();
 var hodlJournalTool = "book";
+var hodlJournalEncryptDownloads = true;
+var hodlJournalStateRefreshQueued = false;
 function hodlJournalActivePage() {
   return hodlJournal.pages[hodlJournal.activePage];
 }
@@ -11798,6 +11804,7 @@ function hodlDeleteActiveJournalPage() {
 }
 function hodlJournalLog(action, detail = "", tool = hodlWorkspace) {
   hodlJournalAppend(hodlJournal, { tool, action, detail });
+  hodlScheduleJournalStateRefresh();
   if (hodlWorkspace === "journal" && hodlJournalTool === "log") hodlRenderJournalLog();
 }
 var hodlJournalAuditedClicks = {
@@ -11885,8 +11892,7 @@ function hodlInitJournalActionAudit() {
     if (!(control instanceof HTMLSelectElement || control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement)) return;
     if (control.id === "journal-key-insert" || control.type === "file") return;
     if (control instanceof HTMLTextAreaElement) {
-      if (control.id === "journal-state-text") hodlJournalLog("edit", "session-state", "journal");
-      else if (control.closest("#psbted-card")) hodlJournalLog("editor-edit", "field", "psbt");
+      if (control.closest("#psbted-card")) hodlJournalLog("editor-edit", "field", "psbt");
       return;
     }
     let safeTextIds = new Set(["purpose", "network", "account", "branch-start", "address-start", "derivation-path", "msig-account"]);
@@ -11897,41 +11903,38 @@ function hodlInitJournalActionAudit() {
 }
 function hodlSyncJournalTool() {
   let visible = hodlWorkspace === "journal",
-      intros = document.getElementById("journal-tool-intros"),
+      intro = document.getElementById("journal-tool-intro"),
       manager = document.getElementById("journal-manager"),
-      tabs = document.getElementById("journal-tool-tabs");
-  if (intros) intros.hidden = !visible;
+      tabs = document.getElementById("journal-tool-tabs"),
+      unlocked = hodlJournalUnlocked();
+  if (intro) intro.hidden = !visible;
   if (manager) manager.hidden = !visible;
   if (tabs) {
     tabs.querySelectorAll("[data-journal-tool]").forEach((button) => {
-      let active = button.dataset.journalTool === hodlJournalTool;
+      let active = unlocked && button.dataset.journalTool === hodlJournalTool;
+      button.disabled = !unlocked;
       button.classList.toggle("active", active);
       button.setAttribute("aria-selected", String(active));
-      button.tabIndex = active ? 0 : -1;
+      button.setAttribute("aria-disabled", String(!unlocked));
+      button.tabIndex = unlocked && active ? 0 : -1;
     });
   }
-  for (let id of ["book", "notes", "state", "log"]) {
-    let intro = document.getElementById(id === "book" ? "journal-tool-intro" : `journal-${id}-tool-intro`), active = visible && hodlJournalTool === id;
-    intro.classList.toggle("active", active);
-    intro.setAttribute("aria-hidden", String(!active));
-  }
   document.getElementById("journal-card").hidden = !visible || hodlJournalTool !== "book";
-  document.getElementById("journal-notes-card").hidden = !visible || hodlJournalTool !== "notes";
-  document.getElementById("journal-state-card").hidden = !visible || hodlJournalTool !== "state";
-  document.getElementById("journal-log-card").hidden = !visible || hodlJournalTool !== "log";
+  document.getElementById("journal-notes-card").hidden = !visible || !unlocked || hodlJournalTool !== "notes";
+  document.getElementById("journal-state-card").hidden = !visible || !unlocked || hodlJournalTool !== "state";
+  document.getElementById("journal-log-card").hidden = !visible || !unlocked || hodlJournalTool !== "log";
   if (visible && hodlJournalTool === "book") {
     hodlJournalFillWallets();
     hodlJournalShowWork();
   }
   if (visible && hodlJournalTool === "notes") hodlRenderJournalNotes();
-  if (visible && hodlJournalTool === "state") {
-    let field = document.getElementById("journal-state-text");
-    if (field && field.value !== hodlJournal.stateText) field.value = hodlJournal.stateText;
-  }
+  if (visible && hodlJournalTool === "state") hodlJournalRefreshSessionState();
   if (visible && hodlJournalTool === "log") hodlRenderJournalLog();
 }
 function hodlShowJournalTool(id, focus = false) {
-  let next = ["book", "notes", "state", "log"].includes(id) ? id : "book", changed = next !== hodlJournalTool;
+  let next = ["book", "notes", "state", "log"].includes(id) ? id : "book";
+  if (next !== "book" && !hodlJournalUnlocked()) return;
+  let changed = next !== hodlJournalTool;
   hodlJournalTool = next;
   hodlSyncJournalTool();
   if (changed) hodlJournalLog("tool-tab", hodlJournalTool, "journal");
@@ -11995,6 +11998,21 @@ function hodlJournalSetStatus(message, isError = false) {
   status.textContent = message;
   status.classList.toggle("err", isError);
 }
+function hodlJournalSyncEncryptDownloads(source) {
+  if (source) hodlJournalEncryptDownloads = source.checked;
+  document.querySelectorAll(".journal-encrypt-download").forEach((checkbox) => {
+    checkbox.checked = hodlJournalEncryptDownloads;
+  });
+}
+async function hodlJournalDownloadContent(kind, filename, text, type = "text/plain;charset=utf-8") {
+  if (!hodlJournalEncryptDownloads) {
+    hodlJournalDownload(filename, text, type);
+    return;
+  }
+  let file = await hodlJournalSealExport(kind, text, hodlJournalKeys);
+  let encryptedName = filename.replace(/\.[^.]+$/, "") + ".encrypted.json";
+  hodlJournalDownload(encryptedName, JSON.stringify(file, null, 2) + "\n", "application/json;charset=utf-8");
+}
 async function hodlJournalImportFile(file) {
   if (!file) return;
   if (file.size > 2 * 1024 * 1024) {
@@ -12003,8 +12021,16 @@ async function hodlJournalImportFile(file) {
     return;
   }
   try {
-    let text = await file.text();
-    let imported = /\.txt$/i.test(file.name) ? hodlJournalFromPlainText(text) : hodlParseNotebook(text);
+    let text = await file.text(), encryptedNotebook = false;
+    let outer;
+    try { outer = JSON.parse(text); } catch { outer = null; }
+    if (outer?.entropylabJournalExport) {
+      let decrypted = await hodlJournalOpenExport(outer, hodlJournalKeys);
+      if (decrypted.kind !== "notebook") throw new Error("That encrypted file is not a notepad export.");
+      text = decrypted.content;
+      encryptedNotebook = true;
+    }
+    let imported = !encryptedNotebook && /\.txt$/i.test(file.name) ? hodlJournalFromPlainText(text) : hodlParseNotebook(text);
     hodlJournal.pages = imported.pages;
     hodlJournal.activePage = imported.activePage;
     hodlJournal.nextPageId = imported.nextPageId;
@@ -12075,11 +12101,14 @@ function hodlInitJournalToolTabs() {
     let select = document.getElementById(id);
     if (select) select.onchange = () => hodlJournalSetPageStyle(property, select.value);
   }
+  document.querySelectorAll(".journal-encrypt-download").forEach((checkbox) => {
+    checkbox.addEventListener("change", () => hodlJournalSyncEncryptDownloads(checkbox));
+  });
+  hodlJournalSyncEncryptDownloads();
   let notesDownload = document.getElementById("journal-notes-download");
-  if (notesDownload) notesDownload.onclick = () => {
+  if (notesDownload) notesDownload.onclick = async () => {
     if (notesText) hodlJournalStoreNotesText(notesText);
-    hodlJournalDownload("entropylab-notebook.json", hodlSerializeNotebook(hodlJournal), "application/json;charset=utf-8");
-    hodlJournalSetStatus("Downloaded a reloadable notebook.");
+    await hodlJournalDownloadContent("notebook", "entropylab-notebook.json", hodlSerializeNotebook(hodlJournal), "application/json;charset=utf-8");
   };
   let notesFile = document.getElementById("journal-notes-file"), notesUpload = document.getElementById("journal-notes-upload");
   if (notesUpload && notesFile) notesUpload.onclick = () => notesFile.click();
@@ -12087,19 +12116,13 @@ function hodlInitJournalToolTabs() {
     await hodlJournalImportFile(notesFile.files?.[0]);
     notesFile.value = "";
   };
-  let capture = document.getElementById("journal-state-capture");
-  if (capture) capture.onclick = () => hodlJournalCaptureSession();
   let stateDownload = document.getElementById("journal-state-download");
-  if (stateDownload) stateDownload.onclick = () => {
-    let text = document.getElementById("journal-state-text")?.value || hodlJournal.stateText;
-    hodlJournalDownload("entropylab-session.txt", text);
+  if (stateDownload) stateDownload.onclick = async () => {
+    hodlJournalRefreshSessionState();
+    await hodlJournalDownloadContent("session-state", "entropylab-session.txt", hodlJournal.stateText);
   };
-  let stateText = document.getElementById("journal-state-text");
-  if (stateText) stateText.addEventListener("input", () => {
-    hodlJournal.stateText = stateText.value;
-  });
   let logDownload = document.getElementById("journal-log-download");
-  if (logDownload) logDownload.onclick = () => hodlJournalDownload("entropylab-session-log.txt", hodlJournalFormatLog(hodlJournal.log));
+  if (logDownload) logDownload.onclick = () => hodlJournalDownloadContent("session-log", "entropylab-session-log.txt", hodlJournalFormatLog(hodlJournal.log));
   let logOut = document.getElementById("journal-log-out"), logCopy = document.getElementById("journal-log-copy");
   if (logOut && logCopy) logCopy.onclick = () => {
     logCopy.dataset.phrase = logOut.textContent || "";
@@ -12332,7 +12355,7 @@ function hodlRenderJournalLog() {
   let out = document.getElementById("journal-log-out");
   if (out) out.textContent = hodlJournalFormatLog(hodlJournal.log);
 }
-function hodlJournalCaptureSession() {
+function hodlJournalRefreshSessionState() {
   let includePrivate = Boolean(document.getElementById("journal-state-private")?.checked);
   let build = document.querySelector(".page-footer-build");
   let commit = document.getElementById("page-footer-lifehash")?.dataset.commit || "";
@@ -12380,10 +12403,17 @@ function hodlJournalCaptureSession() {
   hodlJournal.stateText = text;
   let field = document.getElementById("journal-state-text");
   if (field) field.value = text;
-  hodlJournalLog("capture", includePrivate ? "private" : "public");
 }
-// The encrypted entropy notebook (the Journal station's first tab) keeps its
-// document and Web Crypto keys apart from the session notepad above.
+function hodlScheduleJournalStateRefresh() {
+  if (hodlJournalStateRefreshQueued) return;
+  hodlJournalStateRefreshQueued = true;
+  queueMicrotask(() => {
+    hodlJournalStateRefreshQueued = false;
+    if (hodlJournalUnlocked()) hodlJournalRefreshSessionState();
+  });
+}
+// The encrypted entropy notebook gates the Journal tools and keeps its
+// document and Web Crypto keys apart from the session notepad.
 var hodlJournalKeys = null, hodlJournalDoc = null, hodlJournalFileText = "", hodlJournalDirty = false, hodlJournalGate = "create", hodlJournalReveal = false, hodlJournalEditingId = null, hodlJournalDeleteArmed = false;
 function hodlJournalError(message) {
   let error = document.getElementById("journal-error");
@@ -12442,6 +12472,39 @@ function hodlJournalClearFields() {
   if (view) view.innerHTML = "";
   if (error) error.textContent = "";
 }
+function hodlJournalSetPasswordValidation(input, status, valid, message) {
+  if (!input || !status) return;
+  status.hidden = !message;
+  status.textContent = message;
+  status.classList.toggle("is-valid", Boolean(message && valid));
+  status.classList.toggle("is-invalid", Boolean(message && !valid));
+  input.setAttribute("aria-invalid", String(Boolean(message && !valid)));
+}
+function hodlSyncJournalCreatePasswordValidation() {
+  let password = document.getElementById("journal-create-password"),
+      confirm = document.getElementById("journal-create-confirm"),
+      passwordStatus = document.getElementById("journal-create-password-status"),
+      confirmStatus = document.getElementById("journal-create-confirm-status"),
+      ready = document.getElementById("journal-create-ready");
+  if (!password || !confirm) return;
+  let passwordValue = password.value,
+      passwordLongEnough = Array.from(passwordValue).length >= hodlJournalPasswordMinLength;
+  hodlJournalSetPasswordValidation(
+    password,
+    passwordStatus,
+    passwordLongEnough,
+    !passwordValue ? "" : passwordLongEnough ? "\u2713 Password is long enough" : "Password has too few characters",
+  );
+  let confirmValue = confirm.value,
+      passwordsMatch = confirmValue === passwordValue;
+  hodlJournalSetPasswordValidation(
+    confirm,
+    confirmStatus,
+    passwordsMatch,
+    !confirmValue ? "" : passwordsMatch ? "\u2713 Passwords match" : "Passwords do not match",
+  );
+  if (ready) ready.hidden = !(passwordLongEnough && confirmValue && passwordsMatch);
+}
 function hodlJournalSetGate(mode) {
   hodlJournalGate = mode === "open" ? "open" : "create";
   document.querySelectorAll("#journal-gate-modes [data-journal-gate]").forEach((button) => {
@@ -12452,6 +12515,7 @@ function hodlJournalSetGate(mode) {
   let create = document.getElementById("journal-create-panel"), open = document.getElementById("journal-open-panel");
   if (create) create.hidden = hodlJournalGate !== "create";
   if (open) open.hidden = hodlJournalGate !== "open";
+  hodlSyncJournalCreatePasswordValidation();
 }
 function hodlJournalUnlocked() {
   return Boolean(hodlJournalKeys && hodlJournalDoc);
@@ -12512,8 +12576,15 @@ function hodlJournalFillWallets(selected) {
 }
 function hodlJournalShowWork() {
   let locked = document.getElementById("journal-locked-panel"), work = document.getElementById("journal-work-panel");
-  if (locked) locked.hidden = hodlJournalUnlocked();
-  if (work) work.hidden = !hodlJournalUnlocked();
+  let unlocked = hodlJournalUnlocked();
+  if (locked) locked.hidden = unlocked;
+  if (work) work.hidden = !unlocked;
+  for (let id of ["journal-global-download", "journal-global-clear"]) {
+    let button = document.getElementById(id);
+    if (!button) continue;
+    button.disabled = !unlocked;
+    button.setAttribute("aria-disabled", String(!unlocked));
+  }
   let note = document.getElementById("journal-status-note");
   if (note) note.textContent = hodlJournalNoteText();
   hodlJournalFillLifehash(document.getElementById("journal-lifehash"), hodlJournalKeys?.verify);
@@ -12676,6 +12747,7 @@ async function hodlJournalCreate() {
     document.getElementById("journal-create-confirm").value = "";
     hodlJournalHideEditor();
     hodlJournalShowWork();
+    hodlShowJournalTool("notes");
     hodlJournalLog("journal-create");
   } catch (exception) {
     hodlJournalError(exception.message || String(exception));
@@ -12695,6 +12767,7 @@ async function hodlJournalUnlock() {
     hodlJournalFileText = "";
     hodlJournalHideEditor();
     hodlJournalShowWork();
+    hodlShowJournalTool("notes");
     hodlJournalLog("journal-unlock", `${opened.doc.entries.length} entries`);
   } catch (exception) {
     hodlJournalError(exception.message || String(exception));
@@ -12758,12 +12831,17 @@ function hodlJournalLock() {
   hodlJournalClearFields();
   hodlJournalHideEditor();
   hodlJournalSetGate("create");
+  hodlJournalTool = "book";
   hodlJournalShowWork();
+  hodlSyncJournalTool();
   hodlJournalLog("journal-lock");
   document.getElementById("journal-status-note").textContent = "Journal locked. Password and entries were cleared (best effort).";
 }
 function hodlInitJournalNotebook() {
   if (!document.getElementById("journal-create")) return;
+  for (let id of ["journal-create-password", "journal-create-confirm"]) {
+    document.getElementById(id)?.addEventListener("input", hodlSyncJournalCreatePasswordValidation);
+  }
   document.querySelectorAll("#journal-gate-modes [data-journal-gate]").forEach((button) => {
     button.onclick = () => hodlJournalSetGate(button.dataset.journalGate);
   });
@@ -12780,6 +12858,8 @@ function hodlInitJournalNotebook() {
   });
   document.getElementById("journal-save")?.addEventListener("click", hodlJournalSaveFile);
   document.getElementById("journal-lock")?.addEventListener("click", hodlJournalLock);
+  document.getElementById("journal-global-download")?.addEventListener("click", hodlJournalSaveFile);
+  document.getElementById("journal-global-clear")?.addEventListener("click", hodlJournalWipeMem);
   document.getElementById("journal-commit")?.addEventListener("click", hodlJournalCommit);
   document.getElementById("journal-use-calc")?.addEventListener("click", hodlJournalUseActiveKey);
   document.getElementById("journal-cancel")?.addEventListener("click", () => {
@@ -12813,7 +12893,11 @@ function hodlJournalWipeMem() {
   hodlJournalClearFields();
   hodlJournalHideEditor();
   hodlJournalSetGate("create");
+  hodlJournalTool = "book";
+  hodlJournalEncryptDownloads = true;
+  hodlJournalSyncEncryptDownloads();
   hodlJournalShowWork();
+  hodlSyncJournalTool();
   let field = document.getElementById("journal-state-text");
   if (field) field.value = "";
   let privateBox = document.getElementById("journal-state-private");

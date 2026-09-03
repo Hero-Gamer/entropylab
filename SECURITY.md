@@ -87,9 +87,11 @@ material. Its security posture rests on the following model:
 - The session Journal (notepad, session snapshot, session log) lives only in
   this page's memory. It is never written to `localStorage`, IndexedDB, or the
   network. Closing or hiding the page discards it with the other secret
-  fields. Downloaded notes or snapshots are files the user chose to keep. The
-  log records tool names, timestamps, and fingerprints — not seed phrases,
-  xprvs, or typed secrets.
+  fields. Downloads from all three tabs reuse the unlocked Entropy Journal
+  keys and are password-encrypted by default; the synchronized checkbox can
+  explicitly switch them back to plain JSON or text. The log records tool
+  names, timestamps, and fingerprints — not seed phrases, xprvs, or typed
+  secrets.
 - The Entropy Journal notebook is an encrypted notebook of entropy the user
   already produced, not a password manager and not a key generator. The
   AES-256-GCM key is PBKDF2-SHA-256 (600,000 rounds) of a password the user

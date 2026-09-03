@@ -120,8 +120,17 @@ Official website: [entropylab.online](https://entropylab.online)
   page memory, are masked until revealed, and are wiped with the session.
 - A session **Journal** (last workspace tab) holds an encrypted **Entropy
   Journal** notebook, a notepad stamped with this computer's date and time,
-  an editable summary of everything derived in this sitting, and a debug log
-  of tool switches and derives (fingerprints, not seeds). The notebook keeps
+  a live summary of everything derived in this sitting, and a debug log
+  of tool switches and derives (fingerprints, not seeds). Its introduction
+  remains above the Journal controls. Notepad, Session state, and Session log
+  stay visible but disabled until the user creates a journal with a valid
+  password or successfully opens an existing journal; the create/open gate
+  then disappears and the Journal starts on Notepad. The create form reports
+  password length and confirmation matches live without exposing what was
+  typed. Journal-wide **Download journal** and **Clear journal** actions stay
+  below the introduction once a journal is unlocked; clearing wipes the
+  encrypted entries, notepad, session snapshot, and log from page memory and
+  returns to the create/open gate. The notebook keeps
   entropy the user already produced — dice, coins, hex, brain-wallet text, or
   a seed — under AES-256-GCM; the key is PBKDF2-SHA-256 (600,000 rounds) of a
   password the user chooses, with the salt derived from the password itself
@@ -139,6 +148,11 @@ Official website: [entropylab.online](https://entropylab.online)
   typeface, text size, and line spacing. Its key picker lists the currently
   derived Key Station keys with their LifeHashes; choosing one inserts a
   public inline reference with a line-height LifeHash and master fingerprint.
+  Downloads in all three Journal tabs use the unlocked journal password by
+  default. Their matching checkboxes stay synchronized, so one change applies
+  to Notepad, Session state, and Session log; unchecking exports the original
+  plain JSON or text. Notepad can upload either its plain notebook JSON or its
+  password-encrypted export while that journal is unlocked.
   Each page opens
   with a live local timestamp and freezes it when note text is entered. Delete
   the note back to its timestamp to return to the live new-note prompt. Press
@@ -158,7 +172,7 @@ Official website: [entropylab.online](https://entropylab.online)
   stores only the key's display name and public fingerprint, then regenerates
   the LifeHash locally when that file is uploaded in a later session. Older
   `.txt` notes can also be uploaded as a single page. The Journal also holds
-  an editable summary of everything derived in this sitting and a debug log of
+  a read-only summary that updates as the sitting changes and a debug log of
   meaningful dashboard actions: tool and station changes, calculations and
   failures, safe setting changes, copies, imports, downloads, clears, and PSBT
   structural edits. The log records public fingerprints where useful, but never

@@ -13191,8 +13191,10 @@ function hodlJournalPrivateValue(value) {
 function hodlJournalOpenView(id) {
   let entry = hodlJournalDoc?.entries.find((item) => item.id === id);
   if (!entry) return;
+  // Only a different entry re-masks the seed: the reveal toggle re-renders
+  // this same view, and resetting here would undo it before the paint.
+  if (hodlJournalEditingId !== id) hodlJournalReveal = false;
   hodlJournalEditingId = id;
-  hodlJournalReveal = false;
   hodlJournalDeleteArmed = false;
   document.getElementById("journal-editor").hidden = true;
   document.getElementById("journal-list").hidden = true;

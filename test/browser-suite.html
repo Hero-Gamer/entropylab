@@ -1041,6 +1041,135 @@
     }
   });
 
+  await test("the Journal stores entries and notes to files and loads them back", async () => {
+    const journalPassword = "load store drill password";
+    const entryLabel = "store-load drill entry";
+    const entryInput = "aa11bb22cc33dd44";
+    const entryPhrase = "legal winner thank year wave sausage worth useful legal winner thank yellow";
+    const entryNotes = "kept in the garage";
+    const noteLine = "store-load drill note 7f3a";
+    const legacyNote = "legacy plain text note 9z";
+    const notesStatus = document.getElementById("journal-notes-status");
+    const setFiles = (field, file) => {
+      Object.defineProperty(field, "files", { configurable: true, value: [file] });
+      field.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    const captureDownload = async (filename, description, action) => {
+      state.downloadName = "";
+      state.lastBlob = null;
+      action();
+      const blob = await until(() => state.downloadName === filename && state.lastBlob, description);
+      return blob.text();
+    };
+    try {
+      // Start from the create/open gate, whatever earlier tests left behind.
+      document.querySelector('#workspace [data-workspace="journal"]').click();
+      await until(() => !document.getElementById("journal-manager").hidden, "Journal tool for the store/load drill");
+      if (!document.getElementById("journal-work-panel").hidden) {
+        document.getElementById("journal-global-clear").click();
+        await until(() => document.getElementById("journal-global-download").disabled, "Journal wiped before the drill");
+      }
+      assert(!document.getElementById("journal-locked-panel").hidden && document.getElementById("journal-work-panel").hidden, "A wiped Journal should stand at its gate");
+
+      // Create a journal and store one entry through the editor.
+      input(document.getElementById("journal-create-password"), journalPassword);
+      input(document.getElementById("journal-create-confirm"), journalPassword);
+      document.getElementById("journal-create").click();
+      await until(() => !document.getElementById("journal-global-download").disabled, "Journal unlocked after creation");
+      // The entry book has no tab of its own: "Save to Journal" is the way in.
+      document.getElementById("journal-open").click();
+      await until(() => !document.getElementById("journal-card").hidden && !document.getElementById("journal-editor").hidden, "entry editor to open");
+      document.getElementById("journal-method").value = "hex";
+      input(document.getElementById("journal-input"), entryInput);
+      input(document.getElementById("journal-phrase"), entryPhrase);
+      input(document.getElementById("journal-label"), entryLabel);
+      input(document.getElementById("journal-entry-notes"), entryNotes);
+      document.getElementById("journal-commit").click();
+      await until(() => [...document.querySelectorAll("#journal-list .journal-item-label")].some((el) => el.textContent === entryLabel), "committed entry in the list");
+      assert(document.getElementById("journal-editor").hidden, "Committing should close the editor");
+      assert([...document.querySelectorAll("#journal-list .journal-item-meta")].some((el) => el.textContent.startsWith("Hex · ")), "The entry should list its method and date");
+
+      // Store: the Save file button downloads the sealed journal.
+      const journalText = await captureDownload("entropylab-journal.json", "journal file download", () => document.getElementById("journal-save").click());
+      const envelope = JSON.parse(journalText);
+      equal(envelope.kdf, "PBKDF2-SHA-256", "The stored file should name its key derivation");
+      equal(envelope.cipher, "AES-256-GCM", "The stored file should name its cipher");
+      assert(!journalText.includes(entryLabel) && !journalText.includes(entryInput) && !journalText.includes(entryPhrase), "The stored file must not carry plaintext");
+      assert(document.getElementById("journal-status-note").textContent.includes("1 entry"), "The status should count the stored entry");
+
+      // Load: lock, then open the file back — wrong password first.
+      document.getElementById("journal-lock").click();
+      await until(() => document.getElementById("journal-global-download").disabled, "Journal locked");
+      assert(document.getElementById("journal-work-panel").hidden, "Locking should hide the work panel");
+      assert(!document.querySelector("#journal-list .journal-item"), "Locking should clear the visible entries");
+      document.querySelector('#journal-gate-modes [data-journal-gate="open"]').click();
+      setFiles(document.getElementById("journal-file"), new File([journalText], "entropylab-journal.json", { type: "application/json" }));
+      input(document.getElementById("journal-open-password"), "a long enough but wrong password");
+      await wait(250); // the change handler reads the file asynchronously
+      document.getElementById("journal-unlock").click();
+      await until(() => document.getElementById("journal-error").textContent.includes("Wrong password"), "wrong-password error on open");
+      assert(document.getElementById("journal-work-panel").hidden, "A wrong password must not open the work panel");
+      input(document.getElementById("journal-open-password"), journalPassword);
+      document.getElementById("journal-unlock").click();
+      await until(() => !document.getElementById("journal-global-download").disabled, "Journal unlocked from the stored file");
+
+      // The stored entry survived: listed, viewable, and revealed on demand.
+      document.getElementById("journal-open").click();
+      await until(() => !document.getElementById("journal-editor").hidden, "editor over the loaded journal");
+      document.getElementById("journal-cancel").click();
+      const restoredItem = await until(() => [...document.querySelectorAll("#journal-list .journal-item")].find((el) => el.querySelector(".journal-item-label")?.textContent === entryLabel), "stored entry listed after load");
+      restoredItem.click();
+      await until(() => !document.getElementById("journal-view").hidden, "stored entry view");
+      assert(document.getElementById("journal-view").textContent.includes(entryInput), "The stored input survived the load");
+      assert(document.getElementById("journal-view").textContent.includes(entryNotes), "The stored notes survived the load");
+      assert(!document.getElementById("journal-view").textContent.includes(entryPhrase), "The stored seed stays masked until revealed");
+      const reveal = document.getElementById("journal-reveal");
+      reveal.checked = true;
+      reveal.dispatchEvent(new Event("change", { bubbles: true }));
+      await until(() => document.getElementById("journal-view").textContent.includes(entryPhrase), "stored seed revealed after load");
+
+      // The notepad stores encrypted by default and loads back through upload.
+      document.querySelector('#journal-tool-tabs [data-journal-tool="notes"]').click();
+      await until(() => !document.getElementById("journal-notes-card").hidden, "Notepad for the store/load drill");
+      const notesField = document.getElementById("journal-notes-text");
+      input(notesField, noteLine);
+      await until(() => notesField.value.includes(noteLine), "the typed note");
+      const notesFile = await captureDownload("entropylab-notebook.encrypted.json", "encrypted notepad download", () => document.getElementById("journal-notes-download").click());
+      assert(!notesFile.includes(noteLine), "The encrypted notepad download must not carry the note");
+      equal(JSON.parse(notesFile).entropylabJournalExport, 1, "The notepad download should be a Journal export envelope");
+      input(notesField, "");
+      await until(() => !notesField.value.includes(noteLine), "the notepad cleared");
+      setFiles(document.getElementById("journal-notes-file"), new File([notesFile], "entropylab-notebook.encrypted.json", { type: "application/json" }));
+      // The status line is live-region reused across imports: only trust a
+      // message that names the file just uploaded.
+      await until(() => notesField.value.includes(noteLine) || notesStatus.textContent.includes("entropylab-notebook.encrypted.json"), "encrypted notepad upload");
+      assert(notesField.value.includes(noteLine), `The stored notepad did not load back: ${notesStatus.textContent}`);
+      // A plain-text .txt upload still imports as a single legacy page.
+      setFiles(document.getElementById("journal-notes-file"), new File([legacyNote], "notes.txt", { type: "text/plain" }));
+      await until(() => notesField.value.includes(legacyNote) || notesStatus.textContent.includes("notes.txt"), "plain-text notepad upload");
+      assert(notesField.value.includes(legacyNote), `The plain-text notes did not load: ${notesStatus.textContent}`);
+    } finally {
+      // Later cases inherit an unlocked, empty journal with a pristine
+      // notepad: wipe, then create a fresh one, whatever happened above.
+      try {
+        document.querySelector('#workspace [data-workspace="journal"]').click();
+        await until(() => !document.getElementById("journal-manager").hidden, "Journal tool for the cleanup");
+        if (!document.getElementById("journal-work-panel").hidden) {
+          document.getElementById("journal-global-clear").click();
+          await until(() => document.getElementById("journal-global-download").disabled, "Journal wiped after the drill");
+        }
+        input(document.getElementById("journal-create-password"), journalPassword);
+        input(document.getElementById("journal-create-confirm"), journalPassword);
+        document.getElementById("journal-create").click();
+        await until(() => !document.getElementById("journal-global-download").disabled, "fresh Journal after the drill");
+      } finally {
+        document.querySelector('#journal-tool-tabs [data-journal-tool="notes"]').click();
+        document.querySelector('#workspace [data-workspace="calc"]').click();
+        await until(() => !document.getElementById("key-manager").hidden, "key workspace after the drill");
+      }
+    }
+  });
+
   await test("the Vanity tab grinds a Key Station key's passphrase and account index, and Update key writes the match back", async () => {
     // Without a derived key there is nothing to grind: no chips, a note that
     // says so, and a disabled Start button. The Key Station lab tab is never

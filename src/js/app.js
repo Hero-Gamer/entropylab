@@ -1254,7 +1254,7 @@ hodlRootEl.innerHTML = `
   </div>
 `;
 if (/^(www\.)?entropylab\.online$/i.test(location.hostname)) document.getElementById("online-warning")?.removeAttribute("hidden");
-var hodlKeyModes = ["dice", "cards", "hex", "seed", "key"], hodlKeyModeLabels = { dice: "Dice rolls", cards: "Cards", hex: "Number bases", seed: "Seed phrase", key: "Private key" }, hodlBrainLabAck = { scalar: false, hd: false }, hodlCardRanks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K"], hodlDirectCardRanks = ["A", "2", "3", "4", "5", "6", "7", "8"], hodlCardSuits = [{ code: "S", symbol: "♠", label: "Spades", red: false }, { code: "H", symbol: "♥", label: "Hearts", red: true }, { code: "C", symbol: "♣", label: "Clubs", red: false }, { code: "D", symbol: "♦", label: "Diamonds", red: true }], hodlCardSuit = "", hodlCardRank = "", hodlCardMethod = "hashed", hodlSeedMethod = "words", hodlSeedZeroIndexed = false, hodlCardColemanSymbols = false, hodlKeyMode = "dice", hodlDiceMethod = "coldcard", hodlTargetWordCount = 24, hodlEntropyFormat = "hex", hodlDiceCoinPositions = [], hodlPickedLastWord = "", hodlWalletResult = null, hodlRevealPrivate = false, hodlWalletDatBirthday = "genesis", hodlModesEl = hodlElement("#modes"), hodlFormEl = hodlElement("#form"), hodlOutEl = hodlElement("#out");
+var hodlKeyModes = ["dice", "cards", "hex", "seed", "key"], hodlBrainLabAck = { scalar: false, hd: false }, hodlCardRanks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K"], hodlDirectCardRanks = ["A", "2", "3", "4", "5", "6", "7", "8"], hodlCardSuits = [{ code: "S", symbol: "♠", label: "Spades", red: false }, { code: "H", symbol: "♥", label: "Hearts", red: true }, { code: "C", symbol: "♣", label: "Clubs", red: false }, { code: "D", symbol: "♦", label: "Diamonds", red: true }], hodlCardSuit = "", hodlCardRank = "", hodlCardMethod = "hashed", hodlSeedMethod = "words", hodlSeedZeroIndexed = false, hodlCardColemanSymbols = false, hodlKeyMode = "dice", hodlDiceMethod = "coldcard", hodlTargetWordCount = 24, hodlEntropyFormat = "hex", hodlDiceCoinPositions = [], hodlPickedLastWord = "", hodlWalletResult = null, hodlRevealPrivate = false, hodlWalletDatBirthday = "genesis", hodlModesEl = hodlElement("#modes"), hodlFormEl = hodlElement("#form"), hodlOutEl = hodlElement("#out");
 var hodlManualCalculationsOpen = false;
 function hodlCreateKeyMethodIcon(mode) {
   let ns = "http://www.w3.org/2000/svg", span = document.createElement("span"), svg = document.createElementNS(ns, "svg");
@@ -5281,9 +5281,15 @@ function hodlGlobalSyncSourceBits(targetWords = hodlTargetWordCount) {
     }
     if (hodlKeyMode === "key") {
       let kind = hodlNormalizePrivateKeyKind(document.querySelector('input[name="kk"]:checked')?.value, String(value));
-      // A brain wallet is only as strong as the text; the other formats carry a
-      // full-length key.
-      return kind === "brain" ? hodlGlobalSyncUnknownBits : 256;
+      // A brain wallet is only as strong as the text.
+      if (kind === "brain") return hodlGlobalSyncUnknownBits;
+      // A minikey is a SHA-256 hash too: its strength is bounded by its 21- or
+      // 29-character base58 payload (58^n), not by the 256-bit digest.
+      if (kind === "minikey") {
+        let payload = String(value).trim().length - 1;
+        return payload > 0 ? payload * Math.log2(58) : null;
+      }
+      return 256;
     }
   } catch {
   }
@@ -6460,7 +6466,9 @@ function hodlBindKeyFields() {
     }));
     let ack = document.getElementById("brain-lab-ack");
     if (ack) ack.onchange = () => {
-      hodlBrainLabAck[hodlBrainWalletOutput()] = ack.checked;
+      let output = hodlBrainWalletOutput();
+      hodlBrainLabAck[output] = ack.checked;
+      if (!ack.checked) hodlRetractBrainWalletResults(output);
       hodlInvalidateLiveKeyResult();
       refreshBrain();
     };
@@ -6699,6 +6707,16 @@ function hodlInvalidateLiveKeyResult() {
   hodlStopDerivation("key");
   hodlResetDerivationProgress("key");
 }
+// Revoking the acknowledgement retracts every wallet it authorised. Committed
+// key tabs re-render their stored result without asking again, so the material
+// has to leave those slots too, not just the lab that produced it.
+function hodlRetractBrainWalletResults(output) {
+  for (let state of hodlKeys) {
+    if (state?.result?.brainWalletOutput !== output) continue;
+    state.result = null;
+    state.reveal = false;
+  }
+}
 function hodlInitMasterFingerprintPreview() {
   let panel = document.getElementById("calc-card"), pass = document.getElementById("pass");
   if (!panel || !pass) return;
@@ -6836,6 +6854,9 @@ async function hodlCalculateKey(progress) {
         hodlWalletResult = hodlSingleKeyWallet(value, network, kind, trimBrainWallet);
         progress.step();
       }
+      // Mark brain-derived results so a revoked acknowledgement can retract
+      // them from every key slot, not just the lab that produced them.
+      if (kind === "brain") hodlWalletResult.brainWalletOutput = hodlBrainWalletOutput();
     }
     if (hodlWalletResult?.network !== network) throw hodlError("error.networkMismatch", { have: hodlWalletResult.network, want: network });
     hodlRevealPrivate = false;
@@ -10362,6 +10383,9 @@ function hodlCloneDerivedKey(source, existing) {
     globalSync: source.globalSync,
     globalSyncSource: source.globalSyncSource,
     globalSyncBitCount: source.globalSyncBitCount,
+    // The entropy verdict must travel with the sync it describes, or a cloned
+    // key falls back to reporting its digest length as counted entropy.
+    globalSyncSourceBits: source.globalSyncSourceBits,
     seedAutocomplete: source.seedAutocomplete,
     passphraseBip39Words: source.passphraseBip39Words,
     brainWalletOutput: source.brainWalletOutput,

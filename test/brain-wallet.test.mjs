@@ -122,7 +122,7 @@ test("the brain-wallet HD output has no silent fingerprint or mnemonic preview p
   assert.match(en["error.brainAck"], /Acknowledge the lab warning before deriving/);
   // Each output is acknowledged on its own, so one does not unlock the other.
   assert.match(app, /hodlBrainLabAck = \{ scalar: false, hd: false \}/);
-  assert.match(app, /hodlBrainLabAck\[hodlBrainWalletOutput\(\)\] = ack\.checked/);
+  assert.match(app, /hodlBrainLabAck\[output\] = ack\.checked/);
   assert.doesNotMatch(loadSlice("hodlBrainLabEntropy"), /localStorage/);
 });
 
@@ -135,7 +135,7 @@ test("a derived brain wallet does not outlive its acknowledgement or its output 
   // from the other one is a wrong address waiting to be copied.
   const ack = app.slice(app.indexOf('let ack = document.getElementById("brain-lab-ack");'));
   const handler = ack.slice(0, ack.indexOf("};") + 2);
-  assert.match(handler, /hodlBrainLabAck\[hodlBrainWalletOutput\(\)\] = ack\.checked;\s*hodlInvalidateLiveKeyResult\(\);/);
+  assert.match(handler, /hodlBrainLabAck\[output\] = ack\.checked;\s*if \(!ack\.checked\) hodlRetractBrainWalletResults\(output\);\s*hodlInvalidateLiveKeyResult\(\);/);
 
   const radios = app.slice(app.indexOf(`document.querySelectorAll('input[name="bo"]')`));
   const bound = radios.slice(0, radios.indexOf("}));") + 4);
@@ -149,4 +149,15 @@ test("a derived brain wallet does not outlive its acknowledgement or its output 
   assert.match(invalidate, /hodlWalletResult = null/);
   assert.match(invalidate, /hodlRevealPrivate = false/);
   assert.match(invalidate, /hodlOutEl\.innerHTML = ""/);
+
+  // A revoked acknowledgement has to reach committed key tabs too: they
+  // re-render their stored result without asking again, so every brain-derived
+  // result carries a marker and revoking sweeps it from every slot.
+  const derive = loadSlice("hodlCalculateKey");
+  assert.match(derive, /if \(kind === "brain"\) hodlWalletResult\.brainWalletOutput = hodlBrainWalletOutput\(\);/);
+  const retract = loadSlice("hodlRetractBrainWalletResults");
+  assert.match(retract, /for \(let state of hodlKeys\)/);
+  assert.match(retract, /state\?\.result\?\.brainWalletOutput !== output/);
+  assert.match(retract, /state\.result = null/);
+  assert.match(retract, /state\.reveal = false/);
 });

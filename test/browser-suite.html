@@ -2031,6 +2031,37 @@
     document.querySelector('input[name="bo"][value="hd"]').click();
     await wait(0);
     assert(!document.getElementById("out").textContent.trim(), "Switching brain-wallet output left the other output's result on screen");
+
+    // Revoking has to reach committed key tabs too: they re-render their stored
+    // result without asking again. Park one brain wallet in its tab, derive a
+    // second from the Key Station, and revoke from there — the parked tab must
+    // lose its recovery material as well.
+    document.getElementById("key-tab-lab").click();
+    await chooseMode("Private key");
+    document.querySelector('input[name="kk"][value="brain"]').click();
+    if (!ackBox().checked) ackBox().click();
+    input(await until(() => document.getElementById("key"), "brain-wallet input for the parked run"), "correct horse battery staple");
+    (await until(() => !document.getElementById("go").disabled && document.getElementById("go"), "brain-wallet derive button for the parked run")).click();
+    await until(() => document.getElementById("out").textContent.trim(), "parked brain wallet");
+    const parkedTabId = document.getElementById("calc-card").getAttribute("aria-labelledby");
+    document.getElementById("reveal")?.click();
+    await until(secretShowing, "parked brain-wallet recovery material");
+
+    document.getElementById("key-tab-lab").click();
+    await chooseMode("Private key");
+    document.querySelector('input[name="kk"][value="brain"]').click();
+    input(await until(() => document.getElementById("key"), "brain-wallet input for the second tab"), "a different brain wallet text");
+    (await until(() => !document.getElementById("go").disabled && document.getElementById("go"), "brain-wallet derive button for the second tab")).click();
+    await until(() => document.getElementById("out").textContent.trim(), "second tab's brain wallet");
+    ackBox().click();
+    await wait(0);
+    assert(!ackBox().checked, "The acknowledgement did not clear for the second tab");
+    assert(!document.getElementById("out").textContent.trim(), "Revoking the acknowledgement left the second tab's wallet on screen");
+    document.getElementById(parkedTabId).click();
+    await wait(0);
+    assert(!document.getElementById("out").textContent.trim(), "Revoking the acknowledgement left the parked tab's wallet restorable");
+    assert(!secretShowing(), "Recovery material survived the revoked acknowledgement in the parked tab");
+
     input(document.getElementById("key") || brainInput, "");
     document.querySelector('input[name="bo"][value="scalar"]').click();
     if (ackBox()?.checked) ackBox().click();

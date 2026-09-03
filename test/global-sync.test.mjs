@@ -103,7 +103,7 @@ test("a brain wallet reports unknown strength instead of a green tick", () => {
   // distinct from the null that means "this method's published count IS its
   // entropy" — number bases and typed seeds rely on that null to read healthy.
   const source = loadSlice("hodlGlobalSyncSourceBits");
-  assert.match(source, /kind === "brain" \? hodlGlobalSyncUnknownBits : 256/);
+  assert.match(source, /if \(kind === "brain"\) return hodlGlobalSyncUnknownBits;/);
   assert.doesNotMatch(source, /kind === "brain" \? null/);
   assert.match(app, /const hodlGlobalSyncUnknownBits = "unknown"/);
 
@@ -114,4 +114,27 @@ test("a brain wallet reports unknown strength instead of a green tick", () => {
   assert.match(markup, /syncShort = Boolean\(syncBits\) && !syncUnknown && effectiveBits < hodlGlobalSyncMinimumBits\(\)/);
   assert.match(markup, /syncShort \|\| syncUnknown \?/);
   assert.match(markup, /entropy unknown/);
+});
+
+test("a minikey reports its payload keyspace, not its 256-bit digest", () => {
+  // A minikey is SHA-256(text) exactly like a brain wallet, format-constrained
+  // to S plus 21 or 29 base58 characters, so the accepted 22-character form
+  // tops out near 123 bits — under the feature's own 128-bit floor. Reporting
+  // 256 for it would be the digest-length misreport the badge exists to catch.
+  const source = loadSlice("hodlGlobalSyncSourceBits");
+  assert.match(source, /if \(kind === "minikey"\) \{\s*let payload = String\(value\)\.trim\(\)\.length - 1;\s*return payload > 0 \? payload \* Math\.log2\(58\) : null;/);
+  // The remaining private-key formats carry a full-length key.
+  assert.match(source, /return 256;/);
+  // 21 payload characters must land under the floor, 29 above it.
+  assert.ok(Math.floor(21 * Math.log2(58)) < 128);
+  assert.ok(Math.floor(29 * Math.log2(58)) >= 128);
+});
+
+test("cloning a derived key keeps the synced entropy verdict", () => {
+  // The badge reads globalSyncSourceBits; a clone that drops it falls back to
+  // reporting the published digest length as counted entropy, so the
+  // shortfall and unknown cautions would vanish on every commit or edit.
+  const clone = loadSlice("hodlCloneDerivedKey");
+  assert.match(clone, /globalSyncBitCount: source\.globalSyncBitCount,/);
+  assert.match(clone, /globalSyncSourceBits: source\.globalSyncSourceBits,/);
 });

@@ -117,11 +117,6 @@ export const inspectAddress = (addressInput, network = "mainnet") => {
   const silent = decodeSilentPayment(text);
   if (silent) return silent;
   try {
-    // Prefer descriptorDerive when the input looks like a descriptor fragment;
-    // otherwise treat it as a plain address and recover the script.
-    const script = addressFromScript ? null : null;
-    // Use the existing WASM-backed path via descriptorDerive for addresses that
-    // the module can turn into a scriptPubKey.
     const derived = descriptorDerive(`addr(${text})`, network);
     if (derived && derived.script) {
       return {
@@ -134,17 +129,9 @@ export const inspectAddress = (addressInput, network = "mainnet") => {
   } catch {
     // fall through
   }
-  try {
-    // Fallback: many callers already hold a classified script from inspectScriptPubKey
-    // when comparing; for standalone address entry we rely on addr() above.
-  } catch {
-    // ignore
-  }
   return { state: "invalid", label: "Address could not be converted to a scriptPubKey on this network", scriptHex: null };
 };
 
-// Simplified path used by the UI: both sides are inspected independently, then
-// compared by script bytes when both sides yield a comparable scriptHex.
 export const compareAddressAndScript = (addressInput, scriptInput, network = "mainnet") => {
   const address = inspectAddress(addressInput, network);
   const script = inspectScriptPubKey(scriptInput, network);
@@ -161,7 +148,7 @@ export const compareAddressAndScript = (addressInput, scriptInput, network = "ma
   };
 };
 
-const escapeHtml = (value) => String(value ?? "").replace(/[&<>\"']/g, (char) => ({ "&": "&", "<": "<", ">": ">", "\"": """, "'": "&#39;" })[char]);
+const escapeHtml = (value) => String(value ?? "").replace(/[&<>\"']/g, (char) => ({ "&": "&" + "amp;", "<": "&" + "lt;", ">": "&" + "gt;", "\"": "&" + "quot;", "'": "&#39;" })[char]);
 
 const STYLE = `
 .scriptpubkey-inspector-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
@@ -217,7 +204,6 @@ const makeInspector = () => {
     <div class="scriptpubkey-inspector-output" id="scriptpubkey-inspector-output" aria-live="polite"></div>
   `;
 
-  // Place after the PSBT manager block so it sits with other workspace panels.
   if (anchor.id === "psbt-manager") {
     const journalIntro = document.getElementById("journal-tool-intro") || document.getElementById("journal-manager");
     if (journalIntro) {

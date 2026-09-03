@@ -1238,11 +1238,16 @@
     assert(notesWrap.compareDocumentPosition(document.querySelector(".journal-format-bar")) & Node.DOCUMENT_POSITION_FOLLOWING, "the notepad controls should follow the editor");
     equal(getComputedStyle(journalStatus).display, "none", "an empty notepad status should not leave a large chin below the file buttons");
     assert(journalCard.getBoundingClientRect().bottom - journalActions.getBoundingClientRect().bottom <= 24, "the notepad file buttons should finish close to the card edge while there is no status message");
-    for (const id of ["journal-notes-download", "journal-state-download", "journal-log-download"]) {
+    const journalDownloadLabels = {
+      "journal-notes-download": "Download notepad",
+      "journal-state-download": "Download session state",
+      "journal-log-download": "Download session log",
+    };
+    for (const [id, label] of Object.entries(journalDownloadLabels)) {
       const downloadButton = document.getElementById(id);
       const downloadStyle = getComputedStyle(downloadButton);
       for (const property of ["backgroundColor", "color", "borderTopColor", "minHeight", "fontSize", "borderRadius", "paddingLeft", "paddingRight"]) equal(downloadStyle[property], headerDownloadStyle[property], `${id} should use the header download button's ${property}`);
-      equal(downloadButton.textContent.trim(), "Download", `${id} should use the concise header download label`);
+      equal(downloadButton.textContent.trim(), label, `${id} should identify its downloaded Journal content`);
       equal(downloadButton.querySelector(".download-mark path")?.getAttribute("d"), "M12 3v12M7 11l5 5 5-5M5 21h14", `${id} should use the header download icon`);
     }
     const journalGlobalDownload = document.getElementById("journal-global-download");

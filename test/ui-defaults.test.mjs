@@ -2102,3 +2102,14 @@ test("the vanity grinder is a workspace tab that ships collapsed and never auto-
     assert.doesNotMatch(read(path), /Math\.random|getRandomValues|rand::|getrandom/, `${path} must never invent entropy`);
   }
 });
+
+test("the private recovery section lists the BIP39 passphrase beside the seed phrase", () => {
+  // The HD result carries the passphrase text (not just a flag) so the row
+  // can render; imported roots and single keys carry an empty one.
+  assert.match(appSource, /passphraseUsed: source\.passphraseUsed,\s*passphrase: source\.passphrase \?\? "",/);
+  assert.match(appSource, /\{ mnemonic, passphraseUsed: passphrase\.length > 0, passphrase, entropyHex, seedHex,/);
+  assert.match(appSource, /\{ mnemonic: null, passphraseUsed: false, passphrase: "", entropyHex: null,/);
+  // Rendered right after the words, through the same masked private field as
+  // the entropy and seed hex; absent when no passphrase is in use.
+  assert.match(appSource, /hodlSeedPhraseField\(`Your seed phrase[^\n]*\n[^\n]*\n[^\n]*\n\s*if \(wallet\.mnemonic && wallet\.passphraseUsed && wallet\.passphrase\) privateFields\.push\(hodlPrivateFieldHtml\("BIP39 passphrase", wallet\.passphrase\)\);\n\s*if \(wallet\.entropyHex\)/);
+});

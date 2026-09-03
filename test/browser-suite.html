@@ -1012,6 +1012,11 @@
     await until(() => !document.getElementById("key-manager").hidden, "key workspace");
     equal(document.getElementById("pass").value, "correct horse battery staplea", "the Keys tab carries the new passphrase");
     assert(document.getElementById("out").textContent.includes("bc1qylthc2drk6x5q0czdljal99vqwed9tja80z06d"), "the Keys tab derives the vanity address");
+    // The private recovery section lists the passphrase under the words it
+    // belongs to, masked until revealed like the rest.
+    const passphraseField = [...document.querySelectorAll("#out .private-field")].find((field) => field.textContent.includes("BIP39 passphrase"));
+    assert(passphraseField, "the private recovery material lists the BIP39 passphrase beside the seed phrase");
+    assert(!passphraseField.textContent.includes("correct horse battery staplea"), "the passphrase is masked until revealed");
     // Derivation grind: with the passphrase fixed, account 3' of this key is
     // bc1qf5q2vkxyuccj242qk4xny2e50aq736a2xgdjf7 at m/84'/0'/3'/0/0.
     document.querySelector('#workspace [data-workspace="vanity"]').click();

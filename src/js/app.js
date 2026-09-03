@@ -1540,6 +1540,7 @@ function hodlRootWalletResult(root, network, source, accountIndex, masterFingerp
     coinType,
     mnemonic: source.mnemonic,
     passphraseUsed: source.passphraseUsed,
+    passphrase: source.passphrase ?? "",
     entropyHex: source.entropyHex,
     seedHex: source.seedHex,
     rootXprv: hodlSerializeExtendedKey(root.privateKey ? root.privateExtendedKey : null, network, "x", true),
@@ -1607,7 +1608,7 @@ async function hodlMnemonicWalletWithProgress(value, passphrase, network, count,
   let entropyHex = source?.entropyHex ?? hodlHex.encode(hodlMnemonicToEntropy(mnemonic, hodlBip39Wordlist)), warnings = [...source?.warnings ?? []];
   if (passphrase.length > 0) warnings.push("A passphrase is in use. The same words without this passphrase are a different wallet. Do not store the passphrase with the words.");
   try {
-    return await hodlRootWalletWithProgress(root, network, count, { mnemonic, passphraseUsed: passphrase.length > 0, entropyHex, seedHex, notes: source?.notes ?? [], warnings }, accountIndex, addressStart, tracker, purposeIndex, coinType, hardening, branchStart, branchRange, derivationPlan);
+    return await hodlRootWalletWithProgress(root, network, count, { mnemonic, passphraseUsed: passphrase.length > 0, passphrase, entropyHex, seedHex, notes: source?.notes ?? [], warnings }, accountIndex, addressStart, tracker, purposeIndex, coinType, hardening, branchStart, branchRange, derivationPlan);
   } finally {
     root.wipePrivateData(); // the result keeps its extended-key strings, not the root
   }
@@ -1628,7 +1629,7 @@ async function hodlImportedWalletWithProgress(value, network, count, accountInde
     if (!parsed.isPrivate && (derivationPlan ? derivationPlan.hasHardenedPrefix || hardening.branch || hardening.address : Object.values(hardening).some(Boolean))) throw hodlError("error.import.rootXpubPaths");
     if (parsed.family !== "x") throw hodlError("error.import.rootFamily");
     try {
-      return await hodlRootWalletWithProgress(node, network, count, { mnemonic: null, passphraseUsed: false, entropyHex: null, seedHex: null, notes, warnings: [] }, accountIndex, addressStart, tracker, purposeIndex, coinType, hardening, branchStart, branchRange, derivationPlan);
+      return await hodlRootWalletWithProgress(node, network, count, { mnemonic: null, passphraseUsed: false, passphrase: "", entropyHex: null, seedHex: null, notes, warnings: [] }, accountIndex, addressStart, tracker, purposeIndex, coinType, hardening, branchStart, branchRange, derivationPlan);
     } finally {
       node.wipePrivateData(); // the imported root is dead once the result strings exist
     }
@@ -1644,6 +1645,7 @@ async function hodlImportedWalletWithProgress(value, network, count, accountInde
     network,
     mnemonic: null,
     passphraseUsed: false,
+    passphrase: "",
     entropyHex: null,
     seedHex: null,
     rootXprv: null,
@@ -2077,6 +2079,9 @@ function hodlSingleWalletData(wallet) {
 function hodlHdWalletData(wallet) {
   let privateFields = [];
   if (wallet.mnemonic) privateFields.push(hodlSeedPhraseField(`Your seed phrase \xB7 ${wallet.mnemonic.trim().split(/\s+/).length} words`, wallet.mnemonic), hodlSeedQrExport(wallet.mnemonic, { passphraseUsed: wallet.passphraseUsed, entropyHex: wallet.entropyHex }));
+  // The passphrase sits right under the words it belongs to: without it the
+  // words recover a different wallet, so it is recovery material too.
+  if (wallet.mnemonic && wallet.passphraseUsed && wallet.passphrase) privateFields.push(hodlPrivateFieldHtml("BIP39 passphrase", wallet.passphrase));
   if (wallet.entropyHex) privateFields.push(hodlPrivateFieldHtml("BIP39 entropy hex", wallet.entropyHex));
   if (wallet.seedHex) privateFields.push(hodlPrivateFieldHtml("Master seed hex", wallet.seedHex));
   if (wallet.rootXprv) privateFields.push(hodlPrivateFieldHtml(`Root ${wallet.rootPrivateLabel || hodlExtendedKeyVersions[wallet.network].x.prvName}`, wallet.rootXprv));

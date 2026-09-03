@@ -12109,7 +12109,6 @@ function hodlInitJournalToolTabs() {
   if (notesDownload) notesDownload.onclick = async () => {
     if (notesText) hodlJournalStoreNotesText(notesText);
     await hodlJournalDownloadContent("notebook", "entropylab-notebook.json", hodlSerializeNotebook(hodlJournal), "application/json;charset=utf-8");
-    hodlJournalSetStatus(`Downloaded a ${hodlJournalEncryptDownloads ? "password-encrypted " : ""}reloadable notebook.`);
   };
   let notesFile = document.getElementById("journal-notes-file"), notesUpload = document.getElementById("journal-notes-upload");
   if (notesUpload && notesFile) notesUpload.onclick = () => notesFile.click();

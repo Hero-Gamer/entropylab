@@ -63,7 +63,11 @@ Official website: [entropylab.online](https://entropylab.online)
   Every input's declared sighash policy and each signature's appended sighash
   byte are decoded without a key; anything other than exact SIGHASH_ALL is a
   blocking warning. Finalized signatures that cannot be decoded or associated
-  with a key block any clean nonce verdict.
+  with a key block any clean nonce verdict. The report gives each check a
+  completed, problem, or incomplete state and gives an overall incomplete
+  result whenever required data or support is missing. “Completed” describes
+  only that check against the data in the file; it is not a claim that the
+  transaction is safe or that PSBT-provided data is true.
 - Accepts a fully signed raw Bitcoin transaction (hex or base64) in the same
   inspector: outputs, extracted ECDSA nonces, and inscription-envelope hints.
   Fee and RFC 6979 cannot be checked without previous outputs.

@@ -893,13 +893,13 @@
         document.querySelector("#bip85-manager > .key-tab-strip"),
       );
       // End jumps to the last tool. Journal begins at its create/open gate while
-      // keeping the three destination tabs visible but unavailable.
+      // keeping the four destination tabs visible but unavailable.
       tabs[2].dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
       await until(() => !document.getElementById("journal-card").hidden, "End to reach the Journal tool");
       assert(document.activeElement === tabs[6], "End should move focus to the last tab");
       const journalTabs = [...document.querySelectorAll("#journal-tool-tabs [data-journal-tool]")];
-      equal(journalTabs.length, 3, "Journal should expose exactly three internal tabs");
-      equal(journalTabs.map((tab) => tab.textContent.trim()).join("|"), "Notepad|Session state|Session log");
+      equal(journalTabs.length, 4, "Journal should expose exactly four internal tabs");
+      equal(journalTabs.map((tab) => tab.textContent.trim()).join("|"), "Notepad|Key manager|Session state|Session log");
       const journalManager = document.getElementById("journal-manager");
       assert(journalManager && !journalManager.hidden, "Journal station tabs should be visible inside the Journal tool");
       const journalIntro = document.getElementById("journal-tool-intro");
@@ -982,20 +982,30 @@
       assert(!document.getElementById("journal-notes-card").hidden, `Opening the encrypted Journal failed: ${document.getElementById("journal-error").textContent}`);
       assert(document.getElementById("journal-card").hidden, "The create/open gate should disappear after opening a journal");
       assert(!journalIntro.hidden, "Entropy Journal introduction should remain visible after opening a journal");
-      journalTabs.forEach((tab) => assert(!tab.disabled, "Opening a journal should enable its three tabs"));
+      journalTabs.forEach((tab) => assert(!tab.disabled, "Opening a journal should enable its four tabs"));
       assert(journalTabs[0].classList.contains("active"), "An opened journal should start on Notepad");
       equal(getComputedStyle(document.getElementById("journal-notes-card")).borderTopLeftRadius, "0px", "The active Notepad card should join its folder tab");
       journalTabs[0].focus();
       journalTabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
-      await until(() => !document.getElementById("journal-state-card").hidden, "ArrowRight to open Session state");
-      equal(documentTop(journalManager), journalManagerTop, "Session state moved the Journal tab strip");
+      await until(() => !document.getElementById("journal-keymanager-card").hidden, "ArrowRight to open Key manager");
+      equal(documentTop(journalManager), journalManagerTop, "Key manager moved the Journal tab strip");
       assert(document.activeElement === journalTabs[1], "Focus should follow the Journal subtab arrow key");
+      const keyManagerCard = document.getElementById("journal-keymanager-card");
+      const keyManagerDownload = document.getElementById("journal-keymanager-download");
+      const keyManagerUpload = document.getElementById("journal-keymanager-upload");
+      const keyManagerDownloadReference = getComputedStyle(document.querySelector(".download-controls .download-html"));
+      assert(keyManagerCard.querySelector("#journal-keymanager-tool-intro h2").textContent === "Key manager", "Key manager should use an in-card Journal heading");
+      for (const property of ["backgroundColor", "color", "borderTopColor"]) equal(getComputedStyle(keyManagerDownload)[property], keyManagerDownloadReference[property], `Key Manager download should use the header download button's ${property}`);
+      equal(keyManagerUpload.querySelector(".download-mark path")?.getAttribute("d"), "M12 17V5M7 10l5-5 5 5M5 21h14", "Key Manager upload should use the shared upward-arrow icon");
+      assert(keyManagerUpload.getBoundingClientRect().left > keyManagerDownload.getBoundingClientRect().right, "Key Manager upload should sit at the right edge of the action row");
       journalTabs[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      await until(() => !document.getElementById("journal-state-card").hidden, "ArrowRight to open Session state");
+      journalTabs[2].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
       await until(() => !document.getElementById("journal-log-card").hidden, "ArrowRight to open Session log");
-      journalTabs[2].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+      journalTabs[3].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
       equal(documentTop(journalManager), journalManagerTop, "Session log moved the Journal tab strip");
       await until(() => !document.getElementById("journal-state-card").hidden, "ArrowLeft to open Session state");
-      assert(document.activeElement === journalTabs[1], "Focus should return to Session state");
+      assert(document.activeElement === journalTabs[2], "Focus should return to Session state");
       // PSBT stays a workspace of its own, with station tabs inside it.
       document.querySelector('#workspace [data-workspace="psbt"]').click();
       await until(() => !document.getElementById("psbt-card").hidden, "PSBT tool");
@@ -1239,6 +1249,7 @@
     assert(journalCard.getBoundingClientRect().bottom - journalActions.getBoundingClientRect().bottom <= 24, "the notepad file buttons should finish close to the card edge while there is no status message");
     const journalDownloadLabels = {
       "journal-notes-download": "Download notepad",
+      "journal-keymanager-download": "Download keys",
       "journal-state-download": "Download session state",
       "journal-log-download": "Download session log",
     };

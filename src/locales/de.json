@@ -53,6 +53,7 @@
   "workspace.journal": "Journal",
   "workspace.journalShort": "Journal",
   "workspace.journalNotes": "Notizblock",
+  "workspace.journalKeyManager": "Schlüsselverwaltung",
   "workspace.journalState": "Sitzungsstatus",
   "workspace.journalLog": "Sitzungsprotokoll",
   "keys.heading": "Schlüssel",

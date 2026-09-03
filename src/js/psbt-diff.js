@@ -1,12 +1,15 @@
-// Pure semantic comparison of two rust-bitcoin PSBT inspection documents.
+// Pure semantic comparison of two rust-bitcoin PSBT inspection documents
+// (the output of psbtInspectDoc in psbt-wasm.js).
 //
 // The comparison deliberately works on decoded structure rather than raw PSBT
 // bytes. PSBT map ordering is not a semantic difference, while transaction
 // fields, PSBT key/value pairs, and signing material are reported separately.
+// Both documents should come from the same decoder so field types line up
+// (the editor compares rust-bitcoin's fresh decode of each side).
 //
 // v1 limitations (intentional):
 // - Inputs/outputs are matched by index, not by prevout.
-// - Map values from psbtInspectDoc are compared as primitives (===).
+// - Map values from psbtInspectDoc are compared as raw hex primitives (===).
 // - This engine only reports differences; it does not decide safety.
 
 const SIGNING_FIELDS = new Set([
@@ -18,11 +21,20 @@ const SIGNING_FIELDS = new Set([
   "PSBT_IN_SIGHASH_TYPE",
 ]);
 
+// The unsigned transaction rides in the global map as key 00
+// (PSBT_GLOBAL_UNSIGNED_TX). Its bytes are exactly the transaction the tx
+// section already compares field by field, so the pair is excluded from the
+// map comparison: counting it would report every transaction change a second
+// time and flag a "metadata" change that is not one.
+const UNSIGNED_TX_GLOBAL_KEY = "00";
+
 const categoryFor = (name) => (SIGNING_FIELDS.has(name) ? "signing" : "metadata");
 
 const mapByKey = (pairs = []) => {
   const out = new Map();
   for (const pair of pairs) {
+    // Duplicate keys within one map are invalid PSBT (rust-bitcoin rejects
+    // them), so the first occurrence is the only one that can exist.
     if (!out.has(pair.key)) out.set(pair.key, pair);
   }
   return out;
@@ -67,7 +79,8 @@ export const comparePsbtDocs = (before, after) => {
   for (const field of ["version", "locktime"]) compareTransactionField(changes, "transaction", null, field, leftTx[field], rightTx[field]);
   compareIndexed(changes, leftTx.inputs, rightTx.inputs, "input", ["txid", "vout", "scriptSig", "sequence"]);
   compareIndexed(changes, leftTx.outputs, rightTx.outputs, "output", ["value", "scriptPubKey"]);
-  changes.push(...compareMap(before.globals, after.globals, "global"));
+  const globalPairs = (doc) => (doc.globals || []).filter((pair) => pair.key !== UNSIGNED_TX_GLOBAL_KEY);
+  changes.push(...compareMap(globalPairs(before), globalPairs(after), "global"));
   const inputCount = Math.max((before.inputs || []).length, (after.inputs || []).length);
   for (let index = 0; index < inputCount; index++) changes.push(...compareMap(before.inputs?.[index], after.inputs?.[index], "input-map", index));
   const outputCount = Math.max((before.outputs || []).length, (after.outputs || []).length);

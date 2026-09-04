@@ -65,6 +65,10 @@ if (process.argv.includes("--clean")) {
 }
 
 const template = read("index.html");
+// The page body lives once in shell.html: it is injected into index.html for
+// first paint / no-JS and imported by app.js (esbuild text loader) for the
+// boot render, so the two can never drift.
+const shell = read("shell.html");
 const workerTemplate = read("service-worker.js");
 const css = read("css/styles.css");
 // The header logo is inlined as SVG markup so the downloaded file shows it
@@ -92,6 +96,7 @@ const jsMain = buildSync({
   target: "es2022",
   legalComments: "none",
   charset: "utf8",
+  loader: { ".html": "text" },
   define: { __ENTROPYLAB_TEST_HOOKS__: testHooks ? "true" : "false" },
 }).outputFiles[0].text.split(siteLogoSpan).join(siteLogo);
 const jsSqliteWriter = read("js/sqlite-writer.js");
@@ -104,6 +109,7 @@ const jsEnhanced = read("js/enhanced-inputs.js");
 const jsRepeat = read("js/repeat-inputs.js");
 
 let html = template
+  .replace("/*@@SHELL@@*/", () => shell)
   .split(siteLogoSpan).join(siteLogo)
   .replace("/*@@FAVICON@@*/", () => favicon)
   .replace("/*@@FAVICON_SVG@@*/", () => faviconSvg)

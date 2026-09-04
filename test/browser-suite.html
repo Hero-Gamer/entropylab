@@ -264,6 +264,33 @@
     assert(!Object.keys(localStorage).some((key) => /network/i.test(key)), "The network choice must not persist to storage");
   });
 
+  await test("the locale switch translates the shell and restores English on the way back", async () => {
+    const select = document.getElementById("locale-select");
+    assert(select, "Locale select is missing");
+    const pitchItem = document.querySelector(".pitch-list li");
+    const betaBanner = document.querySelector(".beta-warning-text");
+    const download = document.querySelector(".download-html");
+    const modeOption = document.querySelector("#key-mode-select option");
+    assert(pitchItem && betaBanner && download && modeOption, "Fixture elements for the locale switch are missing");
+    equal(pitchItem.textContent, "Save this air-gapped bitcoin calculator to a removable drive and open it on a computer that never goes online.", "Pitch starts in English");
+    select.value = "es";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await wait(0);
+    // Static shell text, a rich (markup-bearing) block, an aria-label, and a
+    // t()-rendered dynamic label all follow the switch.
+    equal(pitchItem.textContent, "Guarda esta calculadora de bitcoin aislada de internet en una unidad extraíble y ábrela en una computadora que nunca se conecte a internet.", "Static shell text did not translate");
+    assert(betaBanner.querySelector("strong")?.textContent === "Software en beta", "Rich banner did not translate: " + betaBanner.textContent);
+    equal(download.getAttribute("aria-label"), "Descargar EntropyLab", "aria-label did not translate");
+    equal(modeOption.textContent, "Tiradas de dados", "The method dropdown did not re-render in Spanish");
+    // Switching back restores the English originals, not a stale translation.
+    select.value = "en";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await wait(0);
+    equal(pitchItem.textContent, "Save this air-gapped bitcoin calculator to a removable drive and open it on a computer that never goes online.", "Switching back did not restore the English original");
+    equal(modeOption.textContent, "Dice rolls", "The method dropdown did not restore English");
+    assert(localStorage.getItem("entropylab-locale") === "en", "The locale choice should be stored as English again");
+  });
+
   await test("language and form dropdowns use the network picker's caret styling", async () => {
     const networkButton = document.getElementById("network-picker-button");
     const languageButton = document.querySelector(".locale-control .custom-select-button");
@@ -508,6 +535,20 @@
     const disallowed = new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertText", data: "B" });
     assert(cards.dispatchEvent(disallowed) === false, "A character unused by card transcripts was accepted from typing");
     show.click();
+    input(cards, "");
+  });
+
+  await test("a duplicated card-pad click commits once and clears both selections", async () => {
+    await chooseMode("Cards");
+    const cards = await until(() => document.getElementById("cards"), "card transcript input");
+    const ace = document.querySelector('[data-card-rank="A"]');
+    const hearts = document.querySelector('[data-card-suit="H"]');
+    ace.click();
+    hearts.click();
+    hearts.click();
+    equal(cards.value, "Ah ");
+    assert(!document.querySelector(".card-suit-pad .active"), "Suit remained selected after the duplicated click");
+    assert(!document.querySelector(".card-rank-pad .active"), "Rank remained selected after the duplicated click");
     input(cards, "");
   });
 

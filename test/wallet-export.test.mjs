@@ -472,6 +472,8 @@ const hodlExtendedKeyVersions = { mainnet: { x: { pub: 0x0488b21e } } };
 const hodlHDKey = { fromExtendedKey: (text) => hdNodeFrom(b58checkDecode(text)) };
 const hodlSecp256k1 = { getPublicKey: (secret) => publicKeyForPrivate(secret) };
 function hodlBindAddressMatch(){}
+// app.js calls the i18n t() directly now; the harness runs it in English.
+const hodlT = (source, vars) => !vars ? source : source.replace(/\{(\w+)\}/g, (_, name) => (vars[name] == null ? "{" + name + "}" : String(vars[name])));
 ${extract("function hodlPrivateDataControls", "function hodlWalletMessages")}
 ${extract("function hodlWalletDatDeps", "function hodlFocusWalletResult")}
 ${sqliteSrc}

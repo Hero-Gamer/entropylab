@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const app = readFileSync(join(root, "..", "src/js/app.js"), "utf8");
+const shell = readFileSync(join(root, "..", "src/shell.html"), "utf8");
 
 function loadSlice(name) {
   const start = app.indexOf(`function ${name}(`);
@@ -51,7 +52,7 @@ test("global sync emits only complete destination symbols", () => {
 });
 
 test("global sync replaces the old workspace and number-base-only sync features", () => {
-  assert.match(app, /id="global-sync-host"/);
+  assert.match(shell, /id="global-sync-host"/);
   assert.doesNotMatch(app, /global-sync-hash-host/);
   assert.match(app, /id="global-entropy-sync"/);
   assert.match(app, /globalSync: false/);

@@ -14,6 +14,17 @@ Guidelines for AI coding agents.
   includes `entropylab.html` and the `src/js/*-wasm-b64.js` modules
   (regenerate them with `npm run build:wasm`; it needs Rust, toolchain pinned
   by each crate's `rust-toolchain.toml`).
+- The page body lives once in `src/shell.html`: the build injects it into
+  `index.html`, and `app.js` assigns it at boot. Edit markup there, never in
+  two places.
+- Translations are content-keyed: the English text at the call site is the
+  catalog key (`t("Save watch-only sheet")`); there is no `en.json`. Static
+  markup needs nothing — a content sweep translates text nodes and
+  aria/placeholder attributes; use `data-i18n-rich` only on blocks whose
+  translation carries markup, `data-i18n-skip` on brand/technical content.
+  Enum-indexed labels live in `src/js/i18n-labels.js`. After adding or editing
+  user-facing strings, run `npm run i18n:sync` and fill the appended empty
+  entries in all four locale catalogs — CI fails on missing or dead entries.
 - The whole development environment is also a docker image (`Dockerfile` +
   `compose.yaml`): pinned Node, the pinned Rust wasm toolchain + clang,
   Firefox, and Chrome. `docker compose up --build` mounts the repo at

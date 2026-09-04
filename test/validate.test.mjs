@@ -41,6 +41,7 @@ const requiredFiles = [
   "test/browser-instrumentation.html",
   "test/browser-suite.html",
   "src/index.html",
+  "src/shell.html",
   "src/assets/logo-dark.svg",
   "src/assets/logo-light.svg",
   "src/assets/favicon.svg",
@@ -199,10 +200,10 @@ test("the release build attests the wallet artifact and ships a checksum manifes
 });
 
 test("repository links follow the Team Ooga Booga ownership", () => {
-  for (const path of ["README.md", "CONTRIBUTING.md", "SECURITY.md", "llms.txt", "src/index.html", "src/js/app.js"]) {
+  for (const path of ["README.md", "CONTRIBUTING.md", "SECURITY.md", "llms.txt", "src/index.html", "src/shell.html", "src/js/app.js"]) {
     assert.doesNotMatch(read(path), /github\.com\/(?:w-s-bitcoin|Team-Ooga-Booga)\/entropylab/, `${path} still links through a former owner`);
   }
-  assert.match(read("src/index.html"), /https:\/\/github\.com\/OogaBoogaX\/entropylab/);
+  assert.match(read("src/shell.html"), /https:\/\/github\.com\/OogaBoogaX\/entropylab/);
 });
 
 test("the GHCR image name is normalized for mixed-case organization logins", () => {
@@ -367,7 +368,7 @@ test("the build inlines the header logo and SVG favicon from src/assets", () => 
   assert.match(build, /logoSvg\("logo-light"\)/);
   assert.match(build, /read\("assets\/favicon\.svg"\)/);
   assert.match(build, /\.split\(siteLogoSpan\)\.join\(siteLogo\)/);
-  assert.match(template, /<span class="site-logo" aria-hidden="true"><\/span>/);
+  assert.match(read("src/shell.html"), /<span class="site-logo" aria-hidden="true"><\/span>/);
   assert.match(template, /<link rel="icon" type="image\/svg\+xml" href="data:image\/svg\+xml,\/\*@@FAVICON_SVG@@\*\/">/);
 });
 

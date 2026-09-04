@@ -48,6 +48,7 @@ const source = [
   importLine("coders"),
   importLine("base58"),
   importLine("i18n"),
+  importLine("i18n-labels"),
   app.slice(srStart, srEnd + 1),
   ...[
     "hodlNote",

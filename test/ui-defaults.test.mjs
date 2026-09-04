@@ -2,9 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { transformSync } from "esbuild";
+import { hodlKeyModeLabels } from "../src/js/i18n-labels.js";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const template = read("src/index.html");
+const shell = read("src/shell.html");
 const appSource = read("src/js/app.js");
 // These source invariants predate the readable application source and match
 // its compact syntax. Normalize formatting without renaming identifiers.
@@ -25,15 +27,15 @@ const appWhitespace = transformSync(appSource, {
 }).code;
 const css = read("src/css/styles.css");
 const online = read("src/js/online.js");
-const en = JSON.parse(read("src/locales/en.json"));
+
 
 test("top status banner omits the entropy RNG message", () => {
-  assert.doesNotMatch(`${template}\n${app}`, /No entropy RNG/);
-  assert.match(template, /<div class="kicker">Run Offline · Bring your own entropy<\/div>/);
+  assert.doesNotMatch(`${shell}\n${app}`, /No entropy RNG/);
+  assert.match(shell, /<div class="kicker">Run Offline · Bring your own entropy<\/div>/);
 });
 
 test("optional BIP39 passphrase placeholders explain that blank means none", () => {
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     assert.match(markup, /id="pass"[^>]*placeholder="Enter a BIP39 passphrase, or leave blank for none"/);
     assert.match(markup, /id="psbt-pass"[^>]*placeholder="Enter a BIP39 passphrase, or leave blank for none"/);
     assert.doesNotMatch(markup, /placeholder="Leave blank unless you set one"/);
@@ -52,10 +54,9 @@ test("wallet coin type indexes enable and default to mainnet", () => {
     const mainnetCoinType = new RegExp(
       `<input id="${id}" type="(?:text|number)"[^>]*inputmode="numeric" value="0${id === "network" ? "'" : ""}"`,
     );
-    assert.match(template, mainnetCoinType);
-    assert.match(appWhitespace, mainnetCoinType);
+    assert.match(shell, mainnetCoinType);
   }
-  for (const markup of [template, appWhitespace]) {
+  for (const markup of [shell]) {
     assert.match(markup, /id="network-help">Coin type index (?:·|\\xB7) Mainnet (?:·|\\xB7) Hardened (?:·|\\xB7) 0 to 2,147,483,647/);
     assert.match(markup, /id="msig-network-help">Coin type index (?:·|\\xB7) Mainnet (?:·|\\xB7) Hardened (?:·|\\xB7) 0 to 2,147,483,647/);
     // The PSBT tools dropped their own network selects: they read the header
@@ -75,7 +76,7 @@ test("wallet coin type indexes enable and default to mainnet", () => {
 });
 
 test("the header network picker sets the network every tool defaults to", () => {
-  for (const markup of [template, appWhitespace]) {
+  for (const markup of [shell]) {
     // The control rides the fixed header's action row, between the GitHub
     // link and the theme toggle, and ships in the mainnet state.
     const header = markup.indexOf('<div class="site-header no-print">');
@@ -125,8 +126,8 @@ test("the header network picker sets the network every tool defaults to", () => 
   // The option names and the button's accessible name come from the locale
   // catalogs so the whole header follows the selected language.
   assert.match(appSource, /let key = \["mainnet", "testnet", "signet", "regtest"\]\.includes\(hodlNetworkChoice\) \? hodlNetworkChoice : "mainnet"/);
-  assert.match(appSource, /let name = hodlT\(`networkPicker\.name\.\$\{key\}`\)/);
-  assert.match(appSource, /button\.setAttribute\("aria-label", hodlT\("networkPicker\.buttonAria", \{ network: name \}\)\)/);
+  assert.match(appSource, /let name = hodlT\(hodlNetworkNames\[key\]\)/);
+  assert.match(appSource, /button\.setAttribute\("aria-label", hodlT\("Bitcoin network: \{network\}. Change the network the tools derive and check for", \{ network: name \}\)\)/);
   assert.match(appSource, /option\.dataset\.network === hodlNetworkChoice/);
   assert.match(appSource, /function hodlApplyNetworkDefault\(network\)/);
   assert.match(appSource, /function hodlInitNetworkPicker\(\)/);
@@ -180,14 +181,13 @@ test("the header network picker sets the network every tool defaults to", () => 
 });
 
 test("advanced derivation fields use the shared responsive settings grid", () => {
-  assert.match(template, /<div class="field network-field"><label for="network">Network<\/label>[\s\S]*?<input id="network"[^>]*>/);
-  assert.match(app, /<div class="field network-field"><label for="network">Network<\/label>[\s\S]*?<input id="network"[^>]*>/);
+  assert.match(shell, /<div class="field network-field"><label for="network">Network<\/label>[\s\S]*?<input id="network"[^>]*>/);
   assert.match(css, /\.derivation-advanced-fields \{ display: grid; gap: var\(--space-component\); \}/);
   assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*?\.key-settings-row \{ grid-template-columns: minmax\(0, 1fr\); \}/);
 });
 
 test("key and multisig derivation use an indexed address window with an estimate and progress", () => {
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     assert.match(markup, /id="address-start"[^>]*value="0"/);
     assert.match(markup, /id="address-range"[^>]*value="1"/);
     assert.match(markup, /id="msig-address-start"[^>]*value="0"/);
@@ -220,13 +220,13 @@ test("key and multisig derivation use an indexed address window with an estimate
   assert.match(css, /\.wallet-table tbody tr:not\(\.address-virtual-spacer\) \{ height: 34px; \}/);
   assert.match(css, /\.derive-progress-bar \{[\s\S]*?background: linear-gradient/);
   assert.match(appSource, /function hodlCreateDerivationTracker\(progress, control\)/);
-  assert.match(appSource, /label\.innerHTML = `\$\{hodlCopiedIconMarkup\(\)\}<span>\$\{hodlT\("action.done"\)\}<\/span>`/);
+  assert.match(appSource, /label\.innerHTML = `\$\{hodlCopiedIconMarkup\(\)\}<span>\$\{hodlT\("Done"\)\}<\/span>`/);
   assert.match(appSource, /async function hodlAddressRowsWithProgress/);
   assert.match(css, /\.derive-progress\.is-complete \{[^}]*var\(--ok\)/);
   assert.match(css, /\.derive-progress \{[\s\S]*?border: 0;/);
   assert.match(css, /\.btn\.primary\[data-derivation-state="running"\][\s\S]*?background: var\(--danger\)/);
   assert.doesNotMatch(css, /derive-progress-slide|animation: derive-progress/);
-  assert.match(appSource, /button\.textContent = hodlT\("action.stop"\)/);
+  assert.match(appSource, /button\.textContent = hodlT\("Stop"\)/);
   assert.match(appSource, /button\.style\.width = `\$\{width\}px`/);
   assert.match(appSource, /button\.style\.removeProperty\("width"\)/);
   assert.match(appSource, /class HodlDerivationCancelledError extends Error/);
@@ -236,7 +236,7 @@ test("key and multisig derivation use an indexed address window with an estimate
 });
 
 test("key and multisig derivation select one or two address branches", () => {
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     assert.match(markup, /id="branch-start"[^>]*value="0"/);
     assert.match(markup, /id="branch-start-harden"[^>]*type="checkbox"/);
     assert.match(markup, /id="branch-range"[^>]*max="2"[^>]*value="1"/);
@@ -265,7 +265,7 @@ test("a running derivation yields off the main thread, survives hidden tabs, and
   assert.match(appSource, /function hodlInvalidateMsig\(\) \{[\s\S]*?hodlStopDerivation\("msig"\)[\s\S]*?\}/);
   assert.match(appSource, /function hodlSyncDeriveButton\(\) \{[\s\S]*?hodlActiveDerivation\.kind === "key"[\s\S]*?button\.disabled = true;/);
   assert.match(appSource, /function hodlSyncMsigDeriveButton\(\) \{[\s\S]*?hodlActiveDerivation\.kind === "msig"[\s\S]*?button\.disabled = true;/);
-  assert.equal(appSource.match(/hodlT\("error\.msig\.deriveBusy"\)/g)?.length, 2);
+  assert.equal(appSource.match(/hodlT\("A derivation is already running\."\)/g)?.length, 2);
 });
 
 test("entropy progress messages sit directly below their inputs and above keypads", () => {
@@ -306,10 +306,10 @@ test("direct dice and card methods expose manual BIP39 calculations before copyi
 test("Seed phrase offers one-based or zero-based BIP39 word-number entry", () => {
   assert.match(appSource, /name="seed-method" value="words"/);
   assert.match(appSource, /name="seed-method" value="numbers"/);
-  assert.match(appSource, /hodlT\("seed.method.words"\)/);
-  assert.match(appSource, /hodlT\("seed.method.numbers"\)/);
+  assert.match(appSource, /hodlT\("Direct word entry"\)/);
+  assert.match(appSource, /hodlT\("BIP39 word numbers"\)/);
   assert.match(appSource, /id="seed-zero-index"/);
-  assert.match(appSource, /hodlT\("seed.zeroIndexNote"\)/);
+  assert.match(appSource, /hodlT\("\(0–2047 instead of the default 1–2048\)"\)/);
   assert.match(appSource, /function hodlTranslateSeedNumberIndex\(value, toZeroIndexed\)/);
   assert.match(appSource, /function hodlSeedNumberCanInsertDigit\(input, digit, zeroIndexed = hodlSeedZeroIndexed\)/);
   assert.match(appSource, /function hodlAutocompleteSeedNumberInput\(input, event, targetWords = hodlTargetWordCount, zeroIndexed = hodlSeedZeroIndexed\)/);
@@ -334,12 +334,13 @@ test("hashed cards can match Ian Coleman's suit-symbol SHA-256 transcript", () =
 });
 
 test("Number bases offers exact Base 2, 4, 8, 16, Crockford Base32, and Base64-alphabet input", () => {
-  assert.match(appSource, /hodlT\(`mode\.\$\{mode\}`\)/);
-  assert.doesNotMatch(template, />Hex or binary<\/button>/);
+  assert.match(appSource, /hodlT\(hodlKeyModeLabels\[mode\]\)/);
+  assert.doesNotMatch(shell, />Hex or binary<\/button>/);
   assert.ok(app.includes('formatChoices=["bin","base4","base8","hex","base32","base64"]'));
   assert.match(app, /name="entropy-format" value="\$\{id\}"/);
+  const labelsModule = read("src/js/i18n-labels.js");
   for (const label of ["Binary (Base 2)", "Base 4", "Octal (Base 8)", "Hexadecimal (Base 16)", "Crockford Base32", "Base64 (RFC 4648 alphabet)"]) {
-    assert.ok(app.includes(`label:"${label}"`), label);
+    assert.ok(labelsModule.includes(`label: "${label}"`), label);
   }
   assert.match(app, /alphabet:"0123456789ABCDEFGHJKMNPQRSTVWXYZ"/);
   assert.match(app, /alphabet:"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789\+\/"/);
@@ -349,7 +350,7 @@ test("Number bases offers exact Base 2, 4, 8, 16, Crockford Base32, and Base64-a
   assert.match(app, /id="show-number-base-calculations"/);
   assert.match(app, /function hodlBinaryCalculationRows\(value,targetWords=hodlTargetWordCount\)/);
   assert.match(app, /id="number-base-calculations" class="number-base-calculations-panel"/);
-  assert.match(appSource, /id="global-sync-host"/);
+  assert.match(shell, /id="global-sync-host"/);
   assert.doesNotMatch(appSource, /global-sync-hash-host/);
   assert.match(appSource, /id="global-entropy-sync"/);
   assert.match(app, /globalSync:!1/);
@@ -358,7 +359,7 @@ test("Number bases offers exact Base 2, 4, 8, 16, Crockford Base32, and Base64-a
   assert.match(css, /\.global-sync-status \{[\s\S]*?color: var\(--ok\)/);
   // The sync control stacks: switch and title on one row, explanation beneath.
   assert.match(appSource, /<div class="global-sync-head">/);
-  assert.match(appSource, /<span class="label">Sync entropy across methods<\/span><\/label>/);
+  assert.match(appSource, /<span class="label">\$\{hodlT\("Sync entropy across methods"\)\}<\/span><\/label>/);
   assert.match(appSource, /<p class="seed-autocomplete-note global-sync-note" id="global-sync-note">/);
   // The explanation describes the switch instead of naming it.
   assert.match(appSource, /id="global-entropy-sync" aria-describedby="global-sync-note"/);
@@ -384,8 +385,8 @@ test("Number bases offers exact Base 2, 4, 8, 16, Crockford Base32, and Base64-a
   assert.match(app, /fields:\{[\s\S]*?base4:"",base8:"",base32:"",base64:""/);
   assert.match(app, /function hodlBase64KeyboardMarkup\(\)\{return hodlKeyboardMarkup\(!0,"Base64 entropy","base64-keyboard"\)\}/);
   assert.match(app, /function hodlBindBase64Keyboard\(input\)/);
-  assert.match(app, /hodlT\("hex.heads"\)/);
-  assert.match(app, /hodlT\("hex.tails"\)/);
+  assert.match(app, /hodlT\("Heads \(0\)"\)/);
+  assert.match(app, /hodlT\("Tails \(1\)"\)/);
   assert.match(css, /\.dice-input-pad\.entropy-keypad \{ grid-template-columns: repeat\(8[^}]*grid-auto-flow: row;/);
   assert.match(css, /\.dice-input-pad\.entropy-keypad\.coin-phase \{ grid-template-columns: repeat\(2/);
   assert.match(css, /\.dice-input-pad\.entropy-keypad-bin \{ grid-template-columns: repeat\(2/);
@@ -401,7 +402,7 @@ test("dealt playing cards use theme-appropriate surfaces", () => {
 });
 
 test("card undo uses the keyboard delete icon and one rank-grid column", () => {
-  assert.match(app, /class="card-undo-button seed-keyboard-delete" id="card-undo"[^>]*aria-label="\$\{hodlT\("cards.undo"\)\}"[^>]*><svg viewBox="0 0 24 18"/);
+  assert.match(app, /class="card-undo-button seed-keyboard-delete" id="card-undo"[^>]*aria-label="\$\{hodlT\("Undo last card"\)\}"[^>]*><svg viewBox="0 0 24 18"/);
   assert.match(appSource, /function hodlSetInputValueAtEnd\(input, value\)/);
   assert.match(appSource, /hodlSetInputValueAtEnd\(input, value\);\s*input\.dispatchEvent\(new Event\("input"\)\)/);
   assert.match(css, /\.card-controls-row \{[\s\S]*?grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/);
@@ -411,7 +412,7 @@ test("card undo uses the keyboard delete icon and one rank-grid column", () => {
 test("Cards offers isolated hashed and direct word-selection methods", () => {
   assert.match(app, /name="card-method" value="hashed"/);
   assert.match(app, /name="card-method" value="direct"/);
-  assert.match(app, /hodlT\("cards.direct.title"\)/);
+  assert.match(app, /hodlT\("Direct word selection"\)/);
   assert.match(appSource, /fields: \{[\s\S]*?cards: "", directCards: ""/);
   assert.match(appSource, /direct \? "" : `<div class="card-suit-pad"/);
   assert.match(appSource, /hodlDirectCardRanks = \["A", "2", "3", "4", "5", "6", "7", "8"\]/);
@@ -498,8 +499,8 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   assert.match(app, /function hodlMiniPrivateKeyPrefix\(value\)/);
   assert.match(app, /name="kk" value="wif" checked/);
   assert.match(app, /name="kk" value="hex-key"/);
-  assert.match(app, /hodlT\("key\.wif"\)/);
-  assert.match(app, /hodlT\("key\.hex"\)/);
+  assert.match(app, /hodlT\("WIF"\)/);
+  assert.match(app, /hodlT\("Private key hex"\)/);
   assert.match(app, /function hodlDetectPrivateKeyKind\(value\)/);
   assert.match(app, /function hodlNormalizePrivateKeyKind\(kind,value=""\)/);
   assert.match(app, /var hodlPrivateKeyKinds=\["wif","hex-key","minikey","brain"\]/);
@@ -553,8 +554,8 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   assert.match(app, /id="private-key-input-help"[\s\S]*hodlPrivateKeyKeyboardToggleMarkup\(\)[\s\S]*<textarea id="key"/);
   assert.match(app, /privateKey\?"key":"pass",privateKey\?"private-keyboard-toggle":"passphrase-keyboard-toggle"/);
   assert.match(app, /hodlRenderPassphraseKeyboard\(\);return/);
-  assert.match(template, /id="passphrase-field"[\s\S]*id="passphrase-keyboard-toggle-host" hidden[\s\S]*id="passphrase-highlight"[\s\S]*<input id="pass"/);
-  assert.match(template, /id="passphrase-field"[\s\S]*id="passphrase-keyboard-host" hidden[\s\S]*id="master-fingerprint-preview"[\s\S]*id="key-settings"/);
+  assert.match(shell, /id="passphrase-field"[\s\S]*id="passphrase-keyboard-toggle-host" hidden[\s\S]*id="passphrase-highlight"[\s\S]*<input id="pass"/);
+  assert.match(shell, /id="passphrase-field"[\s\S]*id="passphrase-keyboard-host" hidden[\s\S]*id="master-fingerprint-preview"[\s\S]*id="key-settings"/);
   assert.match(app, /button\.disabled=constrained\?!hodlPassphraseBip39CanEnterCharacter\(input,button\.dataset\.seedKey\):!1/);
   assert.match(app, /function hodlBindSeedKeyboardDelete\(getInput,button,applyDelete=hodlApplySeedKeyboardKey\)/);
   assert.match(appWhitespace, /setTimeout\(\(\)=>\{holdTimer=null;repeated=true;remove\(\);if\(!button\.disabled\)repeatTimer=setInterval\(remove,69\)\},420\)/);
@@ -598,12 +599,11 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
 
 test("multisig derivation settings follow the key inputs", () => {
   const fieldOrder = /id="msig-keys"[\s\S]*id="msig-key-order-status"[\s\S]*id="msig-hint"[\s\S]*id="msig-script-type"[\s\S]*id="msig-purpose"[\s\S]*id="msig-network"[\s\S]*id="msig-account"[\s\S]*id="msig-address-start"[\s\S]*id="msig-address-range"[\s\S]*id="msig-key-order"[\s\S]*id="msig-go"/;
-  assert.match(template, fieldOrder);
-  assert.match(app, fieldOrder);
+  assert.match(shell, fieldOrder);
 });
 
 test("key derivation and multisig use the accurate Script type label", () => {
-  for (const markup of [template, appWhitespace]) {
+  for (const markup of [shell]) {
     assert.match(markup, /id="script-type-field"[^>]*>[\s\S]*?Script type[\s\S]*?<select/);
     assert.match(markup, /<label class="field">(?:<span[^>]*>)?Script type(?:<\/span>)?\s*<select id="msig-script-type"[^>]*>/);
     assert.match(markup, /<option value="p2wsh" selected(?:="selected")?(?:\s[^>]*)?>Native SegWit<\/option>/);
@@ -615,7 +615,7 @@ test("key derivation and multisig use the accurate Script type label", () => {
 });
 
 test("key derivation separates script type from the hardened purpose index", () => {
-  for (const markup of [template, appWhitespace]) {
+  for (const markup of [shell]) {
     assert.match(markup, /id="script-type-field"[^>]*>[\s\S]*?Script type[\s\S]*?<select id="script-type">[\s\S]*?<option value="bip44"[^>]*>Legacy<\/option>[\s\S]*?<option value="bip49"[^>]*>Nested SegWit<\/option>[\s\S]*?<option value="bip84" selected(?:="selected")?[^>]*>Native SegWit<\/option>[\s\S]*?<option value="bip86"[^>]*>Taproot<\/option><\/select>/);
     assert.match(markup, /id="script-type"[\s\S]*id="purpose"[\s\S]*id="network"[\s\S]*id="account"/);
     assert.match(markup, /id="purpose" type="text" inputmode="numeric" value="84'"/);
@@ -630,7 +630,7 @@ test("key derivation separates script type from the hardened purpose index", () 
 });
 
 test("one editable derivation path replaces schemes and accepts arbitrary depth", () => {
-  for (const markup of [template, appWhitespace]) {
+  for (const markup of [shell]) {
     assert.match(markup, /id="script-type-field">Script type[\s\S]*?id="derivation-path-field">Derivation path[\s\S]*?id="derivation-path" type="text" value="m\/84'\/0'\/0'\/0\/0"/);
     assert.match(markup, /<details class="derivation-advanced" id="derivation-advanced">[\s\S]*?<summary>Advanced entry<\/summary>/);
     assert.doesNotMatch(markup, /id="derivation-scheme"|id="custom-derivation-path"|id="scheme-script-index"/);
@@ -652,7 +652,7 @@ test("advanced derivation indexes constrain and restore hardening suffixes", () 
 });
 
 test("derivation indexes keep adjacent Harden controls with safe defaults", () => {
-  for (const markup of [template, appWhitespace]) {
+  for (const markup of [shell]) {
     for (const id of ["purpose", "network", "account", "msig-purpose", "msig-network", "msig-account"]) {
       assert.match(markup, new RegExp(`id="${id}"[\\s\\S]*?id="${id}-harden" type="checkbox" checked`));
     }
@@ -671,12 +671,12 @@ test("derivation indexes keep adjacent Harden controls with safe defaults", () =
 });
 
 test("multisig script type and placeholders follow detected co-signer exports", () => {
-  for (const markup of [template, appWhitespace]) {
+  for (const markup of [shell]) {
     assert.match(markup, /option value="mixed" disabled data-custom-select-placeholder="true"(?:\s[^>]*)?>Mixed · incompatible keys/);
     assert.match(markup, /id="msig-script-warning" role="status" hidden/);
     assert.match(markup, /id="msig-go"[^>]*aria-describedby="msig-script-warning"/);
   }
-  assert.match(template, /placeholder="\[fingerprint\/48h\/0h\/0h\/2h\]xpub…"/);
+  assert.match(shell, /placeholder="\[fingerprint\/48h\/0h\/0h\/2h\]xpub…"/);
   assert.match(app, /function hodlMultisigKeyPlaceholder\(kind,network,purpose,coinType=hodlCoinTypeFromNetwork\(network\),hardening=/);
   assert.match(appWhitespace, /kind==="p2sh"&&purpose===45\)return`\[fingerprint\/\$\{purposeStep\}\]\$\{testnet\?"tpub":"xpub"\}(?:…|\\u2026)`/);
   assert.match(appWhitespace, /kind==="p2sh"\|\|purpose===87\)return`\[fingerprint\/\$\{purposeStep\}\/\$\{coin\}\/\$\{account\}\]\$\{testnet\?"tpub":"xpub"\}(?:…|\\u2026)`/);
@@ -687,9 +687,9 @@ test("multisig script type and placeholders follow detected co-signer exports", 
   assert.match(app, /function hodlUpdateMsigPurposeDetection\(\)/);
   assert.doesNotMatch(app, /or BIP48 script 3h/);
   assert.doesNotMatch(app, /if\(steps\[3\]==="3h"\)return"p2tr"/);
-  assert.match(app, /hodlT\("error\.msig\.purposeMixed"/);
+  assert.match(app, /hodlT\("Co-signer purpose indexes do not match \(\{purposes\}\)\./);
   assert.match(app, /button\.disabled=!ready/);
-  assert.match(app, /if\(kind==="mixed"\)throw hodlError\("error\.msig\.mixedScripts"\)/);
+  assert.match(app, /if\(kind==="mixed"\)throw hodlError\("Co-signer keys indicate different script types. Export every key for the same multisig script type before deriving\."\)/);
 });
 
 test("key derivation shows the relevant paste-ready multisig co-signer exports", () => {
@@ -704,7 +704,7 @@ test("key derivation shows the relevant paste-ready multisig co-signer exports",
   assert.match(app, /multisigCosignerExports:root\.privateKey\?hodlBuildMultisigCosignerExports\(root,network,accountIndex,masterFingerprint,coinType\):\[\]/);
   assert.match(app, /function hodlRenderMultisigCosignerExport\(exports,accountId\)/);
   assert.match(app, /exports\.filter\(candidate=>candidate\.accountId===accountId\)/);
-  assert.match(appWhitespace, /items\.map\(item=>hodlPublicFieldHtml\(hodlT\("result\.cosignerExport",\{prefix:item\.prefix,label:item\.label\}\),item\.value\)\)\.join\(""\)/);
+  assert.match(appWhitespace, /items\.map\(item=>hodlPublicFieldHtml\(hodlT\("Multisig co-signer \{prefix\} · \{label\}",\{prefix:item\.prefix,label:item\.label\}\),item\.value\)\)\.join\(""\)/);
   assert.match(app, /\$\{hodlSlip132WatchFields\(account,hodlWalletResult\)\}\s*\$\{hodlImportedCoreRecoveryExport\(hodlWalletResult,account\)\}\s*\$\{hodlRenderMultisigCosignerExport\(hodlWalletResult.multisigCosignerExports,account\.def\.id\)\}/);
   assert.doesNotMatch(`${app}\n${css}`, /account-multisig-exports/);
   assert.match(app, /Legacy P2SH requires the depth-1 BIP45 purpose key at m\/45h/);
@@ -743,7 +743,7 @@ test("derived wallets offer an address match check", () => {
 });
 
 test("multisig key order is sorted by default and listed order is advanced", () => {
-  for (const markup of [template, app]) {
+  for (const markup of [shell]) {
     assert.match(markup, /id="msig-advanced"/);
     assert.match(markup, /id="msig-key-order"/);
     assert.match(markup, /<option value="sorted" selected(?:="selected")?(?:\s[^>]*)?>Sorted (?:·|\\xB7) sortedmulti<\/option>/);
@@ -755,16 +755,16 @@ test("multisig key order is sorted by default and listed order is advanced", () 
   assert.match(app, /function hodlMsigKeysSorted\(\)/);
   assert.match(app, /function hodlBindMsigKeyReorder\(box\)/);
   assert.match(app, /function hodlMoveMsigKeyRow\(row,offset\)/);
-  assert.match(app, /hodlT\("msig.moveUp"\)/);
-  assert.match(app, /hodlT\("msig.moveDown"\)/);
+  assert.match(app, /hodlT\("Move up"\)/);
+  assert.match(app, /hodlT\("Move down"\)/);
   assert.match(app, /function hodlMsigScriptOrder\(keyTokens\)/);
-  assert.match(app, /id="multisig-order-heading">\$\{hodlT\("msig\.orderHeading"\)\}/);
+  assert.match(app, /id="multisig-order-heading">\$\{hodlT\("Script key order"\)\}/);
   assert.match(app, /keyOrder:"sorted"/);
   assert.match(app, /listed co-signer order is part of the script/);
 });
 
 test("multisig separates script type from purpose and keeps the Legacy BIP87 shortcut", () => {
-  for (const markup of [template, app]) {
+  for (const markup of [shell]) {
     assert.match(markup, /id="msig-script-type"[\s\S]*id="msig-purpose"[\s\S]*id="msig-network"[\s\S]*id="msig-account"/);
     assert.match(markup, /id="msig-purpose" type="number" min="0" max="2147483647" step="1" inputmode="numeric" value="48"/);
     assert.match(markup, /id="msig-purpose-help"[^>]*>Purpose index (?:·|\\xB7) Hardened (?:·|\\xB7) 0 to 2,147,483,647/);
@@ -833,8 +833,8 @@ test("every facade export app.js calls is imported from that facade", () => {
 
 test("the master fingerprint cards reserve a compact empty square for each LifeHash", () => {
   // Both cards keep a frame beside the value, while the image itself starts hidden.
-  assert.match(app, /id="base-master-fingerprint-card"[\s\S]*?class="master-fingerprint-lifehash-frame"[\s\S]*?id="base-master-fingerprint-lifehash"[^>]*hidden/);
-  assert.match(app, /id="passphrase-master-fingerprint-card"[\s\S]*?class="master-fingerprint-lifehash-frame"[\s\S]*?id="passphrase-master-fingerprint-lifehash"[^>]*hidden/);
+  assert.match(shell, /id="base-master-fingerprint-card"[\s\S]*?class="master-fingerprint-lifehash-frame"[\s\S]*?id="base-master-fingerprint-lifehash"[^>]*hidden/);
+  assert.match(shell, /id="passphrase-master-fingerprint-card"[\s\S]*?class="master-fingerprint-lifehash-frame"[\s\S]*?id="passphrase-master-fingerprint-lifehash"[^>]*hidden/);
   // The card setter renders the deterministic icon for the shown fingerprint.
   assert.match(app, /function hodlSetMasterFingerprintCard\(card,valueNode,value,imageNode\)/);
   assert.match(app, /hodlLifeHash\.fromFingerprint\(value\)/);
@@ -862,7 +862,7 @@ test("account results do not repeat derivation settings shown above", () => {
 });
 
 test("multisig account is displayed as a disabled value derived from key origins", () => {
-  for (const markup of [template, app]) {
+  for (const markup of [shell]) {
     assert.match(markup, /<input id="msig-account" type="text" value="" placeholder="Derived from keys"[^>]*disabled/);
     assert.match(markup, /id="msig-account-warning" role="status" hidden/);
   }
@@ -873,7 +873,7 @@ test("multisig account is displayed as a disabled value derived from key origins
 });
 
 test("multisig threshold labels describe signatures and keys", () => {
-  for (const markup of [template, app]) {
+  for (const markup of [shell]) {
     assert.match(markup, />Signatures needed to spend \(m\)/);
     assert.match(markup, />Total signing keys \(n\)/);
     assert.doesNotMatch(markup, /People \/ devices \(n\)/);
@@ -912,7 +912,7 @@ test("multisig threshold labels describe signatures and keys", () => {
 });
 
 test("multisig consistently uses derive for its heading and action", () => {
-  for (const markup of [template, app]) {
+  for (const markup of [shell]) {
     assert.match(markup, /<h2[^>]*>Derive a multisig wallet<\/h2>/);
     assert.match(markup, /id="msig-go"[^>]*>Derive Multisig<\/button>/);
     assert.match(markup, /id="msig-go"[^>]*disabled[^>]*aria-disabled="true"/);
@@ -931,23 +931,23 @@ test("Station add controls stay pinned to the right of their tab strips", () => 
 });
 
 test("the Key Station method picker is one dropdown carrying every method's mark", () => {
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     // #modes hosts the title and the dropdown; the segmented row is gone.
     assert.match(markup, /<div class="key-mode-select" id="modes"><p class="label" id="key-method-label"[^>]*>Method<\/p><\/div>/);
     assert.doesNotMatch(markup, /key-mode-control|key-mode-label/);
   }
   // The title is the control's accessible name, so speech input can say it.
   assert.match(css, /\.key-mode-select > \.label \{ margin: 0 0 8px; \}/);
-  assert.doesNotMatch(template, /Brain wallet — lab/);
-  // The labels live in the locale catalogs; the dropdown reads them through hodlT.
-  assert.match(appSource, /option\.textContent = hodlT\(`mode\.\$\{mode\}`\);/);
+  assert.doesNotMatch(shell, /Brain wallet — lab/);
+  // The labels live in i18n-labels.js; the dropdown reads them through hodlT.
+  assert.match(appSource, /option\.textContent = hodlT\(hodlKeyModeLabels\[mode\]\);/);
   for (const mode of ["dice", "cards", "hex", "seed", "key"]) {
-    assert.ok(en[`mode.${mode}`]?.length > 0, `mode.${mode} label is missing from the English catalog`);
+    assert.ok(hodlKeyModeLabels[mode]?.length > 0, `${mode} label is missing from the English label table`);
   }
-  assert.equal(en["mode.dice"], "Dice rolls");
-  assert.equal(en["mode.hex"], "Number bases");
-  assert.equal(en["mode.seed"], "Seed phrase");
-  assert.equal(en["mode.key"], "Private key");
+  assert.equal(hodlKeyModeLabels.dice, "Dice rolls");
+  assert.equal(hodlKeyModeLabels.hex, "Number bases");
+  assert.equal(hodlKeyModeLabels.seed, "Seed phrase");
+  assert.equal(hodlKeyModeLabels.key, "Private key");
   // The marks outlived the buttons: the dropdown shows them instead.
   assert.match(appSource, /function hodlCreateKeyMethodIcon\(mode\) \{/);
   for (const mode of ["dice", "cards", "hex", "seed"]) {
@@ -998,7 +998,7 @@ test("Station icons keep the original SP mark while normalizing the MS key clust
 test("the delete control reads as unavailable on a Station tab", () => {
   // All three strips ship it disabled: a fresh page holds only the bench,
   // and app.js keeps minus unavailable while that bench is selected.
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     for (const id of ["delete-key", "delete-bip85", "delete-msig"]) {
       assert.match(
         markup,
@@ -1064,7 +1064,7 @@ test("top banners share one consistent gap", () => {
 });
 
 test("the beta notice sits at the top of the page as a banner", () => {
-  for (const markup of [template, app]) {
+  for (const markup of [shell]) {
     const wrapper = markup.indexOf('<div class="wrap">');
     const live = markup.slice(wrapper).replace(/<!--[\s\S]*?-->/g, "");
     // It is a load-time warning again, so it keeps the alert role and leads
@@ -1090,13 +1090,13 @@ test("the page closes on a footer in both markups", () => {
   // static template and the runtime template alike, and stays off paper. The
   // build stamp (version, commit, LifeHash of the commit) rides the footer;
   // the build tokens are stamped by scripts/build.mjs.
-  for (const markup of [template, app]) {
+  for (const markup of [shell]) {
     // esbuild escapes the emoji and the middots when it minifies the
     // runtime template, so the two markups carry the same characters in two
     // spellings.
     assert.match(
       markup,
-      /<footer class="page-footer muted no-print"><div>Team Ooga Booga<\/div><div class="page-footer-emoji">(?:🪨|\\u\{1FAA8\}) (?:🔥|\\u\{1F525\}) (?:🎲|\\u\{1F3B2\}) (?:🍌|\\u\{1F34C\})<\/div><div>Since 964013 (?:·|\\x[Bb]7|\\u00[Bb]7) <span class="page-footer-build">v\{\{VERSION\}\} (?:·|\\x[Bb]7|\\u00[Bb]7) commit <code>\{\{COMMIT_SHORT\}\}<\/code> <img class="page-footer-lifehash" id="page-footer-lifehash" data-commit="\{\{COMMIT\}\}" width="20" height="20" alt="LifeHash of the build commit" hidden><\/span><\/div><div class="page-footer-links">/,
+      /<footer class="page-footer muted no-print"><div>Team Ooga Booga<\/div><div class="page-footer-emoji">(?:🪨|\\u\{1FAA8\}) (?:🔥|\\u\{1F525\}) (?:🎲|\\u\{1F3B2\}) (?:🍌|\\u\{1F34C\})<\/div><div data-i18n-skip>Since 964013 (?:·|\\x[Bb]7|\\u00[Bb]7) <span class="page-footer-build">v\{\{VERSION\}\} (?:·|\\x[Bb]7|\\u00[Bb]7) commit <code>\{\{COMMIT_SHORT\}\}<\/code> <img class="page-footer-lifehash" id="page-footer-lifehash" data-commit="\{\{COMMIT\}\}" width="20" height="20" alt="LifeHash of the build commit" hidden><\/span><\/div><div class="page-footer-links">/,
     );
     // A fourth row closes it: the two controls that left the header bar.
     assert.match(
@@ -1127,7 +1127,7 @@ test("the page closes on a footer in both markups", () => {
 test("the beta banner carries a dismiss control in a narrow right-hand column", () => {
   // Both markups ship the control: the static template renders before boot,
   // and the runtime template replaces it once the application takes over.
-  for (const markup of [template, app]) {
+  for (const markup of [shell]) {
     assert.match(
       markup,
       /<button type="button" class="beta-warning-dismiss" id="beta-warning-dismiss" aria-label="Dismiss the beta software warning"[^>]*>/,
@@ -1186,7 +1186,7 @@ test("the beta banner carries a dismiss control in a narrow right-hand column", 
 test("the online and noscript warnings are titled like the beta banner", () => {
   // The online warning ships in both markups; the noscript notice is static
   // only, because the application root it would live in is replaced at boot.
-  for (const markup of [template, app]) {
+  for (const markup of [shell]) {
     assert.match(
       markup,
       /<div class="online-warning-text"(?: [^>]*)?><strong>Online version<\/strong> Do not enter seed phrases/,
@@ -1199,12 +1199,12 @@ test("the online and noscript warnings are titled like the beta banner", () => {
       "the online warning must not carry a dismiss control",
     );
   }
-  assert.match(template, /<div class="beta-warning-text"><strong>JavaScript is required<\/strong> EntropyLab performs wallet/);
+  assert.match(shell, /<div class="beta-warning-text"><strong>JavaScript is required<\/strong> EntropyLab performs wallet/);
   // No lead-in colons anywhere: the label is a line of its own now.
-  assert.doesNotMatch(`${template}\n${app}`, /<strong>(Online version|JavaScript is required|Beta software):<\/strong>/);
+  assert.doesNotMatch(`${shell}\n${app}`, /<strong>(Online version|JavaScript is required|Beta software):<\/strong>/);
   // The noscript notice carries no control: there is no JavaScript running to
   // answer one. It takes the label treatment and nothing else.
-  const noscript = template.slice(template.indexOf("<noscript>"), template.indexOf("</noscript>"));
+  const noscript = shell.slice(shell.indexOf("<noscript>"), shell.indexOf("</noscript>"));
   assert.doesNotMatch(noscript, /-dismiss/, "the noscript notice cannot carry a scripted control");
   // The hosted-site warning is permanent: the reveal unit must not read or
   // write storage, so every visit warns again.
@@ -1219,9 +1219,10 @@ test("the beta disclaimer gates the page as a modal until accepted", () => {
   // contents, so the gate must live outside it — and outside the runtime
   // template — to survive boot.
   const rootAt = template.indexOf('<div id="btc-calc">');
-  const footerAt = template.indexOf('<footer class="page-footer');
+  const shellAt = template.indexOf("/*@@SHELL@@*/");
   const overlayAt = template.indexOf('<div class="disclaimer-overlay');
-  assert.ok(rootAt >= 0 && footerAt > rootAt && overlayAt > footerAt, "the disclaimer overlay must follow the #btc-calc root");
+  assert.ok(rootAt >= 0 && shellAt > rootAt && overlayAt > shellAt, "the disclaimer overlay must follow the #btc-calc shell");
+  assert.ok(shell.indexOf('<footer class="page-footer') > 0, "the shell must close on the page footer");
   assert.ok(overlayAt < template.indexOf("/*@@JS_BROWSER_CHECK@@*/"), "the disclaimer overlay must ship before the scripts");
   assert.doesNotMatch(appSource, /beta-disclaimer/, "the runtime template must not carry the disclaimer");
   // It starts hidden: the reveal is scripted, so a no-JavaScript host never
@@ -1285,7 +1286,7 @@ test("the layout has a 320px floor that the fixed header shares", () => {
 });
 
 test("header theme toggle cycles dark, light, and OS themes without a flash", () => {
-  for (const markup of [template, app]) {
+  for (const markup of [shell]) {
     assert.match(markup, /class="theme-toggle" id="theme-toggle" data-theme-mode="dark" aria-label="Theme: dark\. Switch to light"/);
   }
   assert.match(template, /<script>\(function\(\)\{try\{var m=localStorage\.getItem\("entropylab-theme"\)/);
@@ -1319,7 +1320,7 @@ test("header theme toggle cycles dark, light, and OS themes without a flash", ()
 });
 
 test("the site header is fixed, carries the logo, and holds the version, download, and theme controls", () => {
-  for (const markup of [template, app]) {
+  for (const markup of [shell]) {
     // The header precedes the page wrapper, so the banners scroll beneath it.
     const header = markup.indexOf('<div class="site-header no-print">');
     const wrapper = markup.indexOf('<div class="wrap">');
@@ -1379,7 +1380,7 @@ test("the site header is fixed, carries the logo, and holds the version, downloa
   assert.match(css, /\.locale-control \.custom-select \{[^}]*margin-top: 0;[^}]*font-family: inherit;[^}]*font-size: 14px;/s);
   assert.match(css, /\.locale-control \.custom-select-button \{[^}]*min-height: 40px;[^}]*padding: 0 12px;[^}]*border-radius: 8px;[^}]*background: var\(--surface-2\)/s);
   assert.match(css, /\.custom-select-chevron \{[^}]*width: 12px; height: 12px;[^}]*stroke: currentColor;[^}]*stroke-linecap: round; stroke-linejoin: round;/s);
-  assert.match(appSource, /class="network-picker-chevron"[^>]*>[\s\S]*?<path d="m6 9 6 6 6-6"\/>/);
+  assert.match(shell, /class="network-picker-chevron"[^>]*>[\s\S]*?<path d="m6 9 6 6 6-6"\/>/);
   assert.match(read("src/js/enhanced-inputs.js"), /chevronPath\.setAttribute\("d", "m6 9 6 6 6-6"\)/);
 });
 
@@ -1390,7 +1391,7 @@ test("the header logo is inlined for both themes and never fetched from assets",
   assert.match(css, /:root\[data-theme="light"\] \.site-logo \.site-logo-light \{ display: block; \}/);
   assert.doesNotMatch(css, /data:image/);
   // No markup copy may point the logo at the hosted assets directory.
-  for (const markup of [template, app]) {
+  for (const markup of [shell]) {
     assert.doesNotMatch(markup, /online-brand-mark/);
     assert.doesNotMatch(markup, /assets\/entropylab_(dark|light)\.png/);
   }
@@ -1407,13 +1408,13 @@ test("the seam into the tool is wider than the page's other major seams", () => 
   assert.match(css, /\.workspace \{ position: relative; margin: var\(--space-lede\) 0 0; \}/);
   // The card's surface comes off it: no background, no border, padding kept.
   assert.match(css, /\.sources \{ margin-top: var\(--space-major\); background: none; border: 0; \}/);
-  for (const markup of [template, app]) {
+  for (const markup of [shell]) {
     assert.match(markup, /<section class="card muted sources">/);
   }
 });
 
 test("the marketing card states its pitch as a list rather than a paragraph", () => {
-  for (const markup of [template, app]) {
+  for (const markup of [shell]) {
     const list = markup.match(/<ul class="pitch-list muted">[\s\S]*?<\/ul>/)?.[0];
     assert.ok(list, "the pitch list is missing");
     assert.equal((list.match(/<li[\s>]/g) || []).length, 4);
@@ -1428,7 +1429,7 @@ test("the marketing card states its pitch as a list rather than a paragraph", ()
 });
 
 test("the Keys tool intro tells what the calculator does, like the other tool intros", () => {
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     // No placeholder copy rides the page's first tool intro.
     assert.doesNotMatch(markup, /lorem ipsum/i);
     assert.match(markup, /<p class="muted calc-intro">Turn entropy you bring (?:—|\\u2014) dice rolls, playing cards, a number in any base, a seed phrase, or a private key/);
@@ -1452,7 +1453,7 @@ test("narrow screens keep the fixed header on one row by hiding control labels",
   assert.match(css, /@media \(max-width: 719px\) \{[\s\S]*?\.page-footer-links \.github-repo-link \{ flex: 0 0 44px; width: 44px; padding: 0; justify-content: center; \}/);
   // The download button squares off against the 40px network picker.
   assert.match(css, /@media \(max-width: 719px\) \{[\s\S]*?\.download-controls \.download-html \{ flex: 0 0 40px; width: 40px; padding: 0; justify-content: center; \}/);
-  for (const markup of [template, app]) {
+  for (const markup of [shell]) {
     // The version reads as plain text beside the logo; "v0.1.3" already says
     // what it is, so it never carries a control label.
     assert.doesNotMatch(markup, /version-picker|version-select|<span class="control-label">Version<\/span>/);
@@ -1483,7 +1484,7 @@ test("PSBT amounts and fees are labeled as unverified claims", () => {
 });
 
 test("seed-length selector offers all five BIP39 sizes as a dropdown", () => {
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     // One dropdown in the Method control's clothes, not five buttons.
     assert.match(markup, /<select id="seed-length-select" aria-labelledby="seed-length-label">/);
     for (const words of [12, 15, 18, 21, 24]) {
@@ -1506,14 +1507,13 @@ test("seed-length selector offers all five BIP39 sizes as a dropdown", () => {
 test("D++ uses the published hexadecimal D16 transcript without a notation toggle", () => {
   assert.match(appSource, /let dplusFaces = \["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D", "E", "F"\]/);
   // The label text lives in the locale catalogs now; the key call stays in the source.
-  assert.match(appSource, /hodlT\("dice\.label\.dplus", \{ final: hodlDPlusFinalDescription/);
-  assert.match(en["dice.label.dplus"], /^D\+\+ rolls \(D8, D16, D16; then/);
-  assert.doesNotMatch(en["dice.label.dplus"], /D8 1–8, D16 0–F/);
+  assert.match(appSource, /hodlT\("D\+\+ rolls \(D8, D16, D16; then \{final\}\)", \{ final: hodlDPlusFinalDescription/);
+  assert.match(appSource, /"D\+\+ rolls \(D8, D16, D16; then \{final\}\)"/);
   assert.doesNotMatch(appSource, /D\+\+ rolls \(D8 1\\u20138, D16 0\\u2013F/);
   assert.match(appSource, /accessibleRange\.className = "sr-only";\s*accessibleRange\.textContent = rollRange;/);
   assert.doesNotMatch(appSource, /meta\.append\(document\.createTextNode\(" \\xB7 "\), emphasis, document\.createTextNode\(rollRange\)\)/);
-  assert.match(appSource, /D8 labeled 1\\u20138 and two hexadecimal D16 dice labeled 0\\u2013F/);
-  assert.match(appSource, /hodlT\("dice.help.dplus"/);
+  assert.match(shell, /D8 labeled 1(?:–|\\u2013)8 and two hexadecimal D16 dice labeled 0(?:–|\\u2013)F/);
+  assert.match(appSource, /hodlT\("Enter the D8 face from 1–8, then both hexadecimal D16 faces from 0–F exactly as shown on the dice\./);
   assert.doesNotMatch(appSource, /data-dplus-die|hodlDPlusNumberedD16|dplusNumberedD16|Decimal D16/);
   assert.doesNotMatch(css, /dplus-die-pad|dplus-key-decimal|dplus-key-face/);
 });
@@ -1523,7 +1523,7 @@ test("dice rolls hide Pearson chi-squared fairness behind a text expand button",
   assert.match(app, /aria-controls="dice-fairness"/);
   assert.match(app, /class="dice-fairness-toggle"/);
   assert.match(app, /data-dice-fairness-glyph/);
-  assert.match(app, /hodlT\("dice.fairness.toggle"\)/);
+  assert.match(app, /hodlT\("Die Distribution \/ Fairness Analysis"\)/);
   assert.match(appSource, /<div class="seed-word-copy-row">\$\{leading\}<span class="seed-phrase-copied"/);
   assert.match(css, /\.seed-word-copy-row \.dice-fairness-toggle \{ margin-right: auto; \}/);
   assert.match(app, /id="dice-fairness" class="dice-fairness" hidden role="status" aria-live="polite"/);
@@ -1533,13 +1533,13 @@ test("dice rolls hide Pearson chi-squared fairness behind a text expand button",
   assert.match(app, /function hodlRenderDiceFairness\(value,\s*method,\s*targetWords\s*=\s*hodlTargetWordCount\)/);
   assert.match(app, /hodlRenderDiceFairness\(input\.value,\s*hodlDiceMethod,\s*config\.words\)/);
   assert.match(app, /showDiceFairness:!1/);
-  assert.match(app, /dice\.fairness\.verdict\./);
-  assert.match(app, /hodlT\("dice.fairness.hideAria"\)/);
+  assert.match(app, /hodlFairnessVerdictLabels\[report\.verdict\.id\]/);
+  assert.match(app, /hodlT\("Hide die distribution \/ fairness analysis"\)/);
   assert.match(css, /\.dice-fairness \{/);
   assert.match(css, /\.dice-fairness-toggle \{/);
   assert.match(css, /\.dice-fairness\[data-tone="danger"\] \{/);
-  assert.match(template, /dicefairness\.johnellmore\.com/);
-  assert.match(template, /How can I test whether a die is fair/);
+  assert.match(shell, /dicefairness\.johnellmore\.com/);
+  assert.match(shell, /How can I test whether a die is fair/);
 });
 
 test("card suit glyphs have explicit local symbol-font fallbacks (issue #104)", () => {
@@ -1556,7 +1556,7 @@ test("card suit glyphs have explicit local symbol-font fallbacks (issue #104)", 
   }
   // Fonts are local system fonts only: no webfont may ever be downloaded.
   assert.doesNotMatch(css, /@font-face|\.woff2?|fonts\.googleapis|fonts\.gstatic/);
-  assert.doesNotMatch(template, /@font-face|\.woff2?|fonts\.googleapis|fonts\.gstatic/);
+  assert.doesNotMatch(`${template}\n${shell}`, /@font-face|\.woff2?|fonts\.googleapis|fonts\.gstatic/);
 });
 
 test("virtual keypads never focus the field on touch so the mobile keyboard stays closed (#123)", () => {
@@ -1574,8 +1574,8 @@ test("virtual keypads never focus the field on touch so the mobile keyboard stay
 });
 
 test("workspace tabs place Vanity between Keys and BIP-85", () => {
-  assert.match(appSource, /\["calc", "workspace\.key", "workspace\.keyShort"\], \["vanity", "workspace\.vanity", "workspace\.vanityShort"\], \["bip85", "workspace\.bip85", "workspace\.bip85Short"\], \["msig", "workspace\.msig", "workspace\.msigShort"\], \["sp", "workspace\.sp", "workspace\.spShort"\], \["psbt", "workspace\.psbt", "workspace\.psbtShort"\]/);
-  for (const markup of [template, appSource]) {
+  assert.match(appSource, /\["calc", "Keys", "Keys"\], \["vanity", "Vanity", "Vanity"\], \["bip85", "BIP-85", "BIP85"\], \["msig", "Multi Signature", "MultiSig"\], \["sp", "Silent Payments", "SP"\], \["psbt", "PSBT", "PSBT"\]/);
+  for (const markup of [shell]) {
     assert.match(markup, /id="bip85-card"/);
     assert.match(markup, /id="bip85-go"/);
     assert.match(markup, /Derive child/);
@@ -1585,9 +1585,9 @@ test("workspace tabs place Vanity between Keys and BIP-85", () => {
 });
 
 test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
-  assert.match(appSource, /\["psbt", "workspace\.psbt", "workspace\.psbtShort"\]/);
-  assert.doesNotMatch(appSource, /\["psbted", "workspace\.psbted", "workspace\.psbtedShort"\]/);
-  for (const markup of [template, appSource]) {
+  assert.match(appSource, /\["psbt", "PSBT", "PSBT"\]/);
+  assert.doesNotMatch(appSource, /\["psbted", "PSBT Editor", "Editor"\]/);
+  for (const markup of [shell]) {
     assert.match(markup, /<div class="tool-intro-stack" id="psbt-tool-intros" hidden>[\s\S]*?id="psbt-tool-intro"[\s\S]*?id="psbted-tool-intro"[\s\S]*?<section class="key-manager no-print" id="psbt-manager" hidden>/);
     assert.match(markup, /<section class="key-manager no-print" id="psbt-manager" hidden>/);
     assert.match(markup, /<div class="key-tab-strip">\s*<div class="key-tabs" id="psbt-tool-tabs" role="tablist" aria-label="PSBT stations">/);
@@ -1595,14 +1595,14 @@ test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
     assert.match(markup, /class="tab key-tab is-lab"[^>]*data-psbt-tool="editor"/);
     assert.doesNotMatch(markup, /class="psbt-tool-tabs segmented-control/);
   }
-  assert.match(appSource, /data-psbt-tool="nonce"[^>]*data-i18n="workspace\.psbtNonce">PSBT \/ Nonce/);
-  assert.match(appSource, /data-psbt-tool="editor"[^>]*data-i18n="workspace\.psbted">PSBT Editor/);
+  assert.match(shell, /data-psbt-tool="nonce"[^>]*>PSBT \/ Nonce/);
+  assert.match(shell, /data-psbt-tool="editor"[^>]*>PSBT Editor/);
   assert.match(appSource, /getElementById\("psbt-manager"\)/);
   assert.match(appSource, /getElementById\("psbt-tool-intros"\)/);
   assert.match(appSource, /function hodlShowPsbtTool\(id, focus = false\)/);
   assert.match(appSource, /hodlInitTabDrag\(document\.getElementById\("psbt-tool-tabs"\)\)/);
   assert.match(appSource, /getElementById\("psbted-card"\)\.hidden = !visible \|\| hodlPsbtTool !== "editor"/);
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     assert.match(markup, /id="psbted-card"/);
     assert.match(markup, /id="psbted-text"/);
     assert.match(markup, /id="psbted-load"/);
@@ -1632,7 +1632,7 @@ test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
 });
 
 test("Journal gates its four tools behind the encrypted notebook", () => {
-  assert.match(appSource, /\["psbt", "workspace\.psbt", "workspace\.psbtShort"\], \["journal", "workspace\.journal", "workspace\.journalShort"\]\];/);
+  assert.match(appSource, /\["psbt", "PSBT", "PSBT"\], \["journal", "Journal", "Journal"\]\];/);
   assert.match(appSource, /import \{[\s\S]*wipeJournal,[\s\S]*\} from "\.\/journal\.js"/);
   assert.match(appSource, /import \{[\s\S]*sealDocument as hodlJournalSealDocument,[\s\S]*\} from "\.\/journal\.js"/);
   assert.match(appSource, /openExport as hodlJournalOpenExport/);
@@ -1649,7 +1649,7 @@ test("Journal gates its four tools behind the encrypted notebook", () => {
   assert.match(appSource, /hodlJournalWipeMem\(\)/);
   assert.match(appSource, /function hodlInitSecretFieldAutoClear\(\) \{[\s\S]*hodlJournalWipeMem\(\)/);
   assert.match(appSource, /function hodlJournalWipeMem\(\) \{[\s\S]*hodlJournalWipeNotebook\(\)/);
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     assert.match(markup, /<div class="tool-intro" id="journal-tool-intro" hidden>[\s\S]*?<h2>Entropy Journal<\/h2>[\s\S]*?<section class="key-manager no-print" id="journal-manager" hidden>/);
     assert.match(markup, /id="journal-global-download"[^>]*disabled aria-disabled="true"[^>]*>[\s\S]*?<span>Download journal<\/span><\/button>/);
     assert.match(markup, /class="btn clear-current-action" id="journal-global-clear"[^>]*disabled aria-disabled="true"[^>]*>Clear journal<\/button>/);
@@ -1715,10 +1715,10 @@ test("Journal gates its four tools behind the encrypted notebook", () => {
     assert.match(markup, /class="btn clear-current-action" id="journal-log-clear"[^>]*>Clear log<\/button>/);
     assert.match(markup, /class="row psbt-actions journal-log-actions"/);
   }
-  assert.match(appSource, /data-journal-tool="notes"[^>]*data-i18n="workspace\.journalNotes"[^>]*>Notepad/);
-  assert.match(appSource, /data-journal-tool="keymanager"[^>]*data-i18n="workspace\.journalKeyManager"[^>]*>Key manager/);
-  assert.match(appSource, /data-journal-tool="state"[^>]*data-i18n="workspace\.journalState"[^>]*>Session state/);
-  assert.match(appSource, /data-journal-tool="log"[^>]*data-i18n="workspace\.journalLog"[^>]*>Session log/);
+  assert.match(shell, /data-journal-tool="notes"[^>]*>Notepad/);
+  assert.match(shell, /data-journal-tool="keymanager"[^>]*>Key manager/);
+  assert.match(shell, /data-journal-tool="state"[^>]*>Session state/);
+  assert.match(shell, /data-journal-tool="log"[^>]*>Session log/);
   assert.match(css, /#journal-card\[hidden\]/);
   assert.match(css, /#journal-notes-card\[hidden\]/);
   assert.match(css, /#journal-keymanager-card\[hidden\]/);
@@ -1800,11 +1800,7 @@ test("Journal gates its four tools behind the encrypted notebook", () => {
   assert.match(appSource, /hodlJournalLog\("note-delete", "", "journal"\)/);
   assert.match(appSource, /hodlJournal\.log\.length = 0;\s*hodlJournalLog\("clear", "session-log", "journal"\)/);
   assert.match(css, /#journal-notes-card:not\(\[hidden\]\), #journal-keymanager-card:not\(\[hidden\]\), #journal-state-card:not\(\[hidden\]\), #journal-log-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
-  assert.equal(en["workspace.journal"], "Journal");
-  assert.equal(en["workspace.journalNotes"], "Notepad");
-  assert.equal(en["workspace.journalKeyManager"], "Key manager");
-  assert.equal(en["workspace.journalState"], "Session state");
-  assert.equal(en["workspace.journalLog"], "Session log");
+  assert.match(appSource, /\["journal", "Journal", "Journal"\]/);
   assert.match(appSource, /PASSWORD_MIN_LENGTH as hodlJournalPasswordMinLength/);
   assert.match(appSource, /function hodlSyncJournalCreatePasswordValidation\(\) \{[\s\S]*Array\.from\(passwordValue\)\.length >= hodlJournalPasswordMinLength[\s\S]*Password has too few characters[\s\S]*Passwords do not match/);
   assert.match(appSource, /if \(ready\) ready\.hidden = !\(passwordLongEnough && confirmValue && passwordsMatch\);/);
@@ -1834,13 +1830,13 @@ test("fixed inner tabs reserve the height of their longest introduction", () => 
 test("BIP-85 stays available as a workspace without a duplicate Key Station action", () => {
   // BIP-85 has its own tab, so the shortcut that used to sit beside Derive Key
   // is gone; the row is Derive, progress, Save to Journal, Clear.
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     assert.match(markup, /id="go"[^>]*>Derive Key<\/button>[\s\S]*?id="derive-progress"[\s\S]*?id="journal-open"[^>]*>Save to Journal<\/button>[\s\S]*?id="wipe"/);
     assert.doesNotMatch(markup, /id="bip85-open"|>Derive BIP-85 child<\/button>/);
   }
   assert.doesNotMatch(appSource, /getElementById\("bip85-open"\)/);
   assert.match(appSource, /getElementById\("journal-open"\)/);
-  assert.match(appSource, /\["calc", "workspace\.key", "workspace\.keyShort"\], \["vanity", "workspace\.vanity", "workspace\.vanityShort"\], \["bip85", "workspace\.bip85", "workspace\.bip85Short"\]/);
+  assert.match(appSource, /\["calc", "Keys", "Keys"\], \["vanity", "Vanity", "Vanity"\], \["bip85", "BIP-85", "BIP85"\]/);
   // The tab keeps its own way to adopt a key, so the removal must not have
   // taken the underlying session-key path with it.
   assert.match(appSource, /function hodlPickBip85SessionKey\(/);
@@ -1849,9 +1845,9 @@ test("BIP-85 stays available as a workspace without a duplicate Key Station acti
 
 test("Silent Payments sits between Multi Signature and PSBT / Nonce", () => {
   const order = /Keys[\s\S]*Multi Signature[\s\S]*Silent Payments[\s\S]*aria-label="PSBT"/;
-  assert.match(template, order);
-  assert.match(appSource, /\["calc", "workspace\.key", "workspace\.keyShort"\], \["vanity", "workspace\.vanity", "workspace\.vanityShort"\], \["bip85", "workspace\.bip85", "workspace\.bip85Short"\], \["msig", "workspace\.msig", "workspace\.msigShort"\], \["sp", "workspace\.sp", "workspace\.spShort"\], \["psbt", "workspace\.psbt", "workspace\.psbtShort"\]/);
-  for (const markup of [template, appSource]) {
+  assert.match(shell, order);
+  assert.match(appSource, /\["calc", "Keys", "Keys"\], \["vanity", "Vanity", "Vanity"\], \["bip85", "BIP-85", "BIP85"\], \["msig", "Multi Signature", "MultiSig"\], \["sp", "Silent Payments", "SP"\], \["psbt", "PSBT", "PSBT"\]/);
+  for (const markup of [shell]) {
     assert.match(markup, /id="sp-card"/);
     assert.match(markup, /id="sp-key"/);
     assert.match(markup, /id="sp-network"/);
@@ -1860,10 +1856,10 @@ test("Silent Payments sits between Multi Signature and PSBT / Nonce", () => {
     assert.match(markup, /id="sp-verify-go"/);
     assert.match(markup, /BIP-352/);
   }
-  assert.match(template, /id="sp-payname"/);
-  assert.match(template, /bitcoin:\?sp=/);
-  assert.match(template, /BIP-321/);
-  assert.match(template, /BIP-353/);
+  assert.match(shell, /id="sp-payname"/);
+  assert.match(shell, /bitcoin:\?sp=/);
+  assert.match(shell, /BIP-321/);
+  assert.match(shell, /BIP-353/);
   assert.match(css, /#sp-card\[hidden\]/);
 });
 
@@ -1877,28 +1873,29 @@ test("Silent Payments has a connected SP Station with a monochrome coin-and-sign
   assert.match(appSource, /function hodlInitSpBench\(\) \{/);
   assert.match(appSource, /label\.textContent = "SP Station";/);
   assert.match(appSource, /button\.append\(hodlCreateSilentPaymentsIcon\(\), label\);/);
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     assert.match(markup, /id="sp-manager"/);
     assert.match(markup, /id="sp-tabs"/);
   }
-  assert.doesNotMatch(template, /aria-label="Silent Payments"><span class="workspace-tab-icon/);
+  assert.doesNotMatch(shell, /aria-label="Silent Payments"><span class="workspace-tab-icon/);
 });
 
 test("the workspace switcher keeps every tool on screen as a tab strip", () => {
   // The switcher is a nav holding one scrollable strip of tabs; it is neither
   // a segmented control nor a dropdown. Every tool is visible without asking.
-  assert.match(template, /<nav class="workspace no-print" id="workspace">/);
-  assert.match(appSource, /<nav class="workspace no-print" id="workspace"><\/nav>/);
-  assert.doesNotMatch(template, /segmented-control" id="workspace"/);
-  assert.match(template, /<div class="workspace-tabs" id="workspace-tabs" role="tablist" aria-label="Tool">/);
+  assert.match(shell, /<nav class="workspace no-print" id="workspace">/);
+  assert.match(shell, /<nav class="workspace no-print" id="workspace">/);
+  assert.match(appSource, /function hodlInitWorkspace\(\) \{\s*let box = hodlElement\("#workspace"\);\s*box\.innerHTML = "";/);
+  assert.doesNotMatch(shell, /segmented-control" id="workspace"/);
+  assert.match(shell, /<div class="workspace-tabs" id="workspace-tabs" role="tablist" aria-label="Tool">/);
   // All seven tools ship in the static markup, each with a full name and the
   // short form narrow screens show instead.
-  for (const [full, short, key, shortKey] of [["Keys", "Keys", "workspace.key", "workspace.keyShort"], ["Vanity", "Vanity", "workspace.vanity", "workspace.vanityShort"], ["BIP-85", "BIP85", "workspace.bip85", "workspace.bip85Short"], ["Multi Signature", "MultiSig", "workspace.msig", "workspace.msigShort"], ["Silent Payments", "SP", "workspace.sp", "workspace.spShort"], ["PSBT", "PSBT", "workspace.psbt", "workspace.psbtShort"], ["Journal", "Journal", "workspace.journal", "workspace.journalShort"]]) {
+  for (const [full, short] of [["Keys", "Keys"], ["Vanity", "Vanity"], ["BIP-85", "BIP85"], ["Multi Signature", "MultiSig"], ["Silent Payments", "SP"], ["PSBT", "PSBT"], ["Journal", "Journal"]]) {
     assert.ok(
-      template.includes(`<span class="workspace-tab-full">${full}</span><span class="workspace-tab-short">${short}</span>`),
+      shell.includes(`<span class="workspace-tab-full">${full}</span><span class="workspace-tab-short">${short}</span>`),
       `${full} is missing from the workspace strip`,
     );
-    assert.match(appSource, new RegExp(`\\["[a-z0-9]+", "${key.replaceAll(".", "\\.")}", "${shortKey.replaceAll(".", "\\.")}"\\]`));
+    assert.match(appSource, new RegExp(`\\["[a-z0-9]+", "${full.replace(/[$()*+.?[\]^{|}]/g, "\\$&")}", "${short}"\\]`));
   }
   // One swaps for the other at the width the header drops its own labels.
   assert.match(css, /\.workspace-tab-short \{ display: none; \}/);
@@ -1908,7 +1905,7 @@ test("the workspace switcher keeps every tool on screen as a tab strip", () => {
   // the tab itself and assistive tech hears it at every width.
   assert.match(appSource, /button\.setAttribute\("aria-label", hodlT\(label\)\);/);
   for (const full of ["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "Journal"]) {
-    assert.match(template, new RegExp(`aria-label="${full.replace("/", "\\/")}">[\\s\\S]*?<span class="workspace-tab-full">${full.replace("/", "\\/")}</span>`), `${full} tab needs its accessible name`);
+    assert.match(shell, new RegExp(`aria-label="${full.replace("/", "\\/")}">[\\s\\S]*?<span class="workspace-tab-full">${full.replace("/", "\\/")}</span>`), `${full} tab needs its accessible name`);
   }
   // A tablist owes arrow keys; the key and multisig strips already answer them.
   assert.match(appSource, /function hodlWorkspaceTabKeydown\(event, index\) \{/);
@@ -1919,7 +1916,7 @@ test("the workspace switcher keeps every tool on screen as a tab strip", () => {
   assert.match(appSource, /button\.onkeydown = \(event\) => hodlWorkspaceTabKeydown\(event, index\);/);
   // Nothing collapses the strip behind a control: no toggle, no dropdown, and
   // no open/close state left over from one.
-  assert.doesNotMatch(`${template}${appSource}`, /workspace-menu|hodlSetWorkspaceMenuOpen/);
+  assert.doesNotMatch(`${shell}${appSource}`, /workspace-menu|hodlSetWorkspaceMenuOpen/);
   assert.doesNotMatch(css, /\.workspace-menu/);
   // It wears the key tabs' folder shape: a raised active tab whose bottom
   // border is painted out against the strip's rule.
@@ -1934,7 +1931,7 @@ test("the workspace switcher keeps every tool on screen as a tab strip", () => {
   assert.match(css, /\.workspace-tab\.active \{[^}]*background: var\(--bg\); color: var\(--fg\); border-color: var\(--border\); border-bottom-color: var\(--bg\);/s);
   // The panel closes the folder: the tool content sits inside a border that
   // carries on from the strip, open at the top where the strip's rule is.
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     assert.match(markup, /<div class="workspace-panel" id="workspace-panel">/);
   }
   assert.match(css, /\.workspace-panel \{[^}]*border: 1px solid var\(--border\); border-radius: 0 0 20px 20px;/s);
@@ -1943,7 +1940,7 @@ test("the workspace switcher keeps every tool on screen as a tab strip", () => {
   assert.match(css, /\.workspace-panel \.card \{ margin-bottom: 0; \}/);
   assert.match(css, /\.card \{[^}]*margin: 16px 0; \}/);
   // Every tool panel lives inside it, and the closing Sources card does not.
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     const panel = markup.slice(markup.indexOf('<div class="workspace-panel"'), markup.indexOf('class="card muted sources"'));
     for (const id of ["calc-card", "bip85-card", "msig-card", "sp-card", "psbt-card", "journal-card", "journal-notes-card", "journal-keymanager-card", "journal-state-card", "journal-log-card"]) {
       assert.ok(panel.includes(`id="${id}"`), `${id} must sit inside the workspace panel`);
@@ -1963,13 +1960,13 @@ test("the workspace switcher keeps every tool on screen as a tab strip", () => {
   // A hint points at tools past the right edge. It tracks what is still out
   // there rather than merely whether the strip scrolls, so it clears once the
   // end is reached, and it is decorative: the tabs are the real route.
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     assert.match(markup, /More tools/);
   }
   // It is a real control, so it is a button with a label rather than a
   // decorative span: an interactive element must not be hidden from the
   // accessibility tree.
-  assert.match(template, /<button type="button" class="workspace-more" id="workspace-more" aria-controls="workspace-tabs" aria-label="Scroll the tool list to see more tools" hidden>/);
+  assert.match(shell, /<button type="button" class="workspace-more" id="workspace-more" aria-controls="workspace-tabs" aria-label="Scroll the tool list to see more tools" hidden>/);
   assert.match(appSource, /hint\.setAttribute\("aria-label", "Scroll the tool list to see more tools"\);/);
   assert.doesNotMatch(appSource, /hint\.setAttribute\("aria-hidden"/);
   // One click finishes the journey: the label promises the remaining tools and
@@ -2001,7 +1998,7 @@ test("Key Station stays put and a derived key opens a fingerprint tab with a sum
   assert.match(appSource, /button\.id = state\.isLab \? "key-tab-lab"/);
   assert.match(appSource, /function hodlAddKey\(\) \{\s*hodlSelectLab\(\);/s);
   assert.match(appSource, /button\.disabled = !state \|\| state\.isLab;/);
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     assert.match(markup, /id="key-summary"/);
     assert.match(markup, /id="key-lab"/);
     assert.match(markup, /id="key-edit-inputs"/);
@@ -2021,10 +2018,10 @@ test("Key Station stays put and a derived key opens a fingerprint tab with a sum
 
 test("derived key results put private recovery before script type and addresses", () => {
   assert.match(appSource, /\$\{hodlHdWalletData\(t\)\}[\s\S]*id="acct-tabs-label">Script type[\s\S]*id="acct"/);
-  assert.match(appSource, /id="wallet-private-heading">\$\{hodlT\("result.private"\)\}/);
-  assert.match(appSource, /hodlT\("result.privateDesc"\)/);
-  assert.match(appSource, /id="account-private-heading">\$\{hodlT\("result.privateAccount"\)\}/);
-  assert.match(appSource, /id="account-watch-heading">\$\{hodlT\("result.watchOnly"\)\}/);
+  assert.match(appSource, /id="wallet-private-heading">\$\{hodlT\("Private recovery material"\)\}/);
+  assert.match(appSource, /hodlT\("These values can recreate or spend from the wallet. Reveal them only while this file is running offline on an air-gapped computer\."\)/);
+  assert.match(appSource, /id="account-private-heading">\$\{hodlT\("Private account material"\)\}/);
+  assert.match(appSource, /id="account-watch-heading">\$\{hodlT\("Watch-only wallet data"\)\}/);
   assert.match(appSource, /id="account-address-heading">Addresses/);
   assert.match(appSource, /Verify the first selected address on another trusted wallet or signing device before accepting bitcoin\./);
   assert.doesNotMatch(appSource, /id="account-receive-heading">Receive/);
@@ -2033,7 +2030,7 @@ test("derived key results put private recovery before script type and addresses"
 });
 
 test("every MS Station co-signer row can pick any session key, and key reuse offers a derivation path", () => {
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     assert.match(markup, /class="station-key-source msig-station-key-source"[\s\S]*id="msig-session-keys"[\s\S]*id="msig-reuse-session-keys"[\s\S]*id="msig-session-key-status"/);
     assert.match(markup, /Bring in a key from Key Station/);
   }
@@ -2062,7 +2059,7 @@ test("every MS Station co-signer row can pick any session key, and key reuse off
   assert.match(appSource, /var hodlMsigKeyTarget = null/);
   assert.match(appSource, /function hodlMsigNextKeyRow\(\) \{/);
   assert.match(appSource, /reuseSessionKeys\?\.addEventListener\("change"/);
-  assert.match(appSource, /Reused keys need different derivation paths\./);
+  assert.match(shell, /Reused keys need different derivation paths\./);
   assert.match(css, /\.msig-session-keys \{/);
   assert.match(css, /\.msig-session-key \{/);
   assert.match(css, /\.msig-session-key\.active/);
@@ -2071,7 +2068,7 @@ test("every MS Station co-signer row can pick any session key, and key reuse off
 });
 
 test("BIP-85 and SP Stations can bring in compatible Key Station roots", () => {
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     assert.match(markup, /id="bip85-session-keys"/);
     assert.match(markup, /id="sp-session-keys"/);
     assert.match(markup, /Bring in a key from Key Station/);
@@ -2111,7 +2108,7 @@ test("MS Station stays put and a derived wallet opens its own results tab", () =
   assert.match(appSource, /function hodlEditMsigInputs\(\) \{/);
   assert.match(appSource, /hodlSelectMsig\(hodlFillMsigLabFromWallet\(hodlMsigs\[hodlActiveMsig\]\)\)/);
   assert.match(appSource, /if \(edit\) edit\.onclick = hodlEditMsigInputs;/);
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     assert.match(markup, /id="msig-summary"/);
     assert.match(markup, /id="msig-lab"/);
     assert.match(markup, /id="msig-out"/);
@@ -2122,7 +2119,7 @@ test("MS Station stays put and a derived wallet opens its own results tab", () =
 });
 
 test("BIP-85 Station retains each child in a LifeHash fingerprint tab", () => {
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     assert.match(markup, /id="bip85-manager"/);
     assert.match(markup, /id="bip85-tabs"/);
     assert.match(markup, /id="add-bip85"/);
@@ -2157,15 +2154,14 @@ test("session wallets use folder tabs that merge into the card", () => {
 
 test("the vanity grinder is a workspace tab that ships collapsed and never auto-runs", () => {
   // The tab is registered between Keys and BIP-85 and localized like the rest.
-  assert.match(appSource, /\["vanity", "workspace\.vanity", "workspace\.vanityShort"\]/);
-  for (const code of ["en", "de", "es", "fr", "pt"]) {
+  assert.match(appSource, /\["vanity", "Vanity", "Vanity"\]/);
+  for (const code of ["de", "es", "fr", "pt"]) {
     const catalog = JSON.parse(read(`src/locales/${code}.json`));
-    assert.ok(catalog["workspace.vanity"]?.length, `${code} workspace.vanity`);
-    assert.ok(catalog["workspace.vanityShort"]?.length, `${code} workspace.vanityShort`);
+    assert.ok(catalog["Vanity"]?.length, `${code} Vanity`);
   }
   // Both templates carry the intro and the card, both hidden until the tab is
   // picked; the card is a tabpanel and stays out of print output.
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     assert.match(markup, /<div class="tool-intro" id="vanity-tool-intro" hidden>/);
     assert.match(markup, /<section class="card no-print" id="vanity-card" role="tabpanel" hidden>/);
     // The key comes in through the same clickable Key Station picker the
@@ -2288,7 +2284,7 @@ test("the private recovery section lists the BIP39 passphrase beside the seed ph
 });
 
 test("the vanity estimate is timed from a device sample, and Stop on first find halts the grind at the first match", () => {
-  for (const markup of [template, appSource]) {
+  for (const markup of [shell]) {
     assert.match(markup, /<button class="btn secondary" id="vanity-stop" type="button" disabled>Stop<\/button>\s*<button class="btn secondary" id="vanity-first" type="button" aria-pressed="false"[^>]*>Stop on first find<\/button>/);
   }
   const vanityController = appSource.slice(appSource.indexOf("// ── Vanity grinder"), appSource.indexOf("function hodlInitWorkspace()"));

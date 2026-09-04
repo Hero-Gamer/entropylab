@@ -41,31 +41,29 @@ export function encodeBip353Txt(address) {
   return encodeBitcoinUri(address);
 }
 
-// BIP-353: user@domain → user._bitcoin-payment.domain
-//          domain      → _bitcoin-payment.domain
+// BIP-353: user@domain → user.user._bitcoin-payment.domain — the fixed "user"
+// label sits between the local part and _bitcoin-payment. There is no
+// domain-only form; a bare domain is refused. A pasted ₿ prefix is display
+// chrome, never part of the DNS label.
 export function bip353Lookup(name) {
-  const trimmed = String(name || "").trim();
+  const trimmed = String(name || "").trim().replace(/^₿/, "");
   if (!trimmed) return null;
   if (/\s/.test(trimmed)) throw new Error("A payment name cannot contain spaces.");
   if (/^bitcoin:/i.test(trimmed)) throw new Error("That is a URI, not a payment name.");
   const at = trimmed.lastIndexOf("@");
+  if (at === -1) throw new Error("A payment name needs a user part, like you@example.com.");
   if (at === 0) throw new Error("Payment name is missing the user part before @.");
   if (at === trimmed.length - 1) throw new Error("Payment name is missing the domain after @.");
-  let user = "";
-  let domain = trimmed;
-  if (at > 0) {
-    user = trimmed.slice(0, at);
-    domain = trimmed.slice(at + 1);
-  }
+  const user = trimmed.slice(0, at);
+  const domain = trimmed.slice(at + 1);
   if (!/^[A-Za-z0-9._-]+$/.test(domain) || !domain.includes(".")) {
     throw new Error("Payment name domain must look like example.com.");
   }
-  if (user && !/^[A-Za-z0-9._-]+$/.test(user)) {
+  if (!/^[A-Za-z0-9._-]+$/.test(user)) {
     throw new Error("Payment name user part can only use letters, digits, dot, underscore, or hyphen.");
   }
-  const lookup = user ? `${user.toLowerCase()}._bitcoin-payment.${domain.toLowerCase()}` : `_bitcoin-payment.${domain.toLowerCase()}`;
-  const display = user ? `${user}@${domain}` : domain;
-  return { name: display, lookup };
+  const lookup = `${user.toLowerCase()}.user._bitcoin-payment.${domain.toLowerCase()}`;
+  return { name: `${user}@${domain}`, lookup };
 }
 
 export function parseBitcoinUri(raw) {

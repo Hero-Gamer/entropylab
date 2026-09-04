@@ -84,15 +84,17 @@ test("a payment name is not resolved", () => {
 });
 
 test("BIP-353 lookup names stay on the user's domain", () => {
+  // matt@mattcorallo.com → matt.user._bitcoin-payment.mattcorallo.com (BIP-353).
   assert.deepEqual(bip353Lookup("you@example.com"), {
     name: "you@example.com",
-    lookup: "you._bitcoin-payment.example.com",
+    lookup: "you.user._bitcoin-payment.example.com",
   });
-  assert.deepEqual(bip353Lookup("Example.COM"), {
-    name: "Example.COM",
-    lookup: "_bitcoin-payment.example.com",
+  assert.deepEqual(bip353Lookup("₿You@Example.COM"), {
+    name: "You@Example.COM",
+    lookup: "you.user._bitcoin-payment.example.com",
   });
   assert.equal(bip353Lookup(""), null);
+  assert.throws(() => bip353Lookup("Example.COM"), /needs a user part/);
   assert.throws(() => bip353Lookup("not a name"), /cannot contain spaces/);
   assert.throws(() => bip353Lookup(URI), /URI, not a payment name/);
 });

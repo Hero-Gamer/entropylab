@@ -9392,7 +9392,7 @@ function hodlRenderSpReceive() {
       <p class="label">BIP-353 DNS TXT</p>
       <p class="psbt-kv" id="sp-bip353-txt">${hodlSpEscape(txt)}</p>
       ${hodlSpCopyButton("sp-bip353-txt", "Copy TXT")}
-      <p class="muted">${named ? `Create a TXT record at <code>${hodlSpEscape(named.lookup)}</code> for <code>${hodlSpEscape(named.name)}</code>.` : "Create a TXT record at <code>you._bitcoin-payment.yourdomain</code> (or <code>_bitcoin-payment.yourdomain</code> for a domain-only name)."} This page does not resolve DNS.</p>
+      <p class="muted">${named ? `Create a TXT record at <code>${hodlSpEscape(named.lookup)}</code> for <code>${hodlSpEscape(named.name)}</code>.` : "Name the record <code>you@yourdomain</code> above and this prints its lookup, e.g. <code>you.user._bitcoin-payment.yourdomain</code>."} This page does not resolve DNS.</p>
       <p class="muted">Scan path <code>${hodlSpKeys.scanPath}</code> · Spend path <code>${hodlSpKeys.spendPath}</code></p>
       <p class="label">Scan public key</p>
       <p class="psbt-kv" id="sp-scan-pub">${hodlSpBytesToHex(hodlSpKeys.scanPub)}</p>

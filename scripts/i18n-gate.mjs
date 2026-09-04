@@ -27,12 +27,17 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
 // Pure scope check, exported for tests. Returns every violation; an empty
 // array means the PR is outside the gate's scope (no locale files changed).
+// Until TRANSLATION_APP_SLUG is configured the gate is inert on purpose:
+// there is no bot identity to check against, so locale PRs are ordinary
+// human-reviewed PRs exactly as they were before the gate existed. Failing
+// closed would block every human locale fix — including the very PR that
+// bootstraps the sidecars — while guarding nothing. Once the slug is set the
+// gate fails closed as designed: only the App's bot may touch locale files.
 export function gateProblems({ author, appSlug, baseRef, headRef, changedFiles }) {
   if (!changedFiles.some((file) => file.startsWith("src/locales/"))) return [];
+  if (!appSlug) return [];
   const problems = [];
-  if (!appSlug) {
-    problems.push("TRANSLATION_APP_SLUG is not configured, so locale changes cannot be attributed to the translation automation");
-  } else if (author !== `${appSlug}[bot]`) {
+  if (author !== `${appSlug}[bot]`) {
     problems.push(`locale files changed but the PR author is "${author}" — locale files may only change via the translation automation (${appSlug}[bot])`);
   }
   if (baseRef !== "rock") problems.push(`translation PRs must target rock, not "${baseRef}"`);
@@ -89,6 +94,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const problems = gateProblems({ author, appSlug, baseRef, headRef, changedFiles });
   if (!changedFiles.some((file) => file.startsWith("src/locales/"))) {
     console.log("no locale files changed — translation gate not in scope");
+    process.exit(0);
+  }
+  if (!appSlug) {
+    // Inert, but never silently: an Actions annotation on every locale-touching
+    // PR makes a missing (or accidentally removed) slug visible in the checks UI
+    // instead of passing without a trace.
+    console.log("::warning::TRANSLATION_APP_SLUG is not configured — locale files changed with the translation gate inert (ordinary human review applies)");
+    console.log("TRANSLATION_APP_SLUG is not configured — translation automation not set up, gate not in scope");
     process.exit(0);
   }
   const lang = BRANCH_PATTERN.exec(headRef ?? "")?.[1];

@@ -33,8 +33,10 @@ Guidelines for AI coding agents.
   (`.github/workflows/translate.yml`, setup in
   `docs/Translation_Automation_Setup.md`) fills them and opens one
   auto-merging PR per language. Locale files change ONLY through that
-  automation — the `translation-gate` CI job rejects any other PR touching
-  `src/locales/`. CI fails only on invalid catalog content
+  automation — once the operator configures `TRANSLATION_APP_SLUG`, the
+  `translation-gate` CI job rejects any other PR touching `src/locales/`
+  (until then the gate is inert and locale PRs get ordinary human review).
+  CI fails only on invalid catalog content
   (`scripts/i18n-validate.mjs`, run via `scripts/i18n-sync.mjs`) or on source
   markup outside the sanitizer table — a new link or formatting form means
   extending `hodlCatalogAllowedTags` first. `npm run i18n:sync` prunes dead

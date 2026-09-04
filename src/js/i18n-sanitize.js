@@ -28,7 +28,9 @@ export const hodlCatalogAllowedTags = Object.freeze({
     Object.freeze({ href: "entropylab.html", download: "entropylab.html" }),
     ...[
       "https://github.com/bitcoin/bips/blob/master/bip-0085.mediawiki",
+      "https://github.com/bitcoin/bips/blob/master/bip-0321.mediawiki",
       "https://github.com/bitcoin/bips/blob/master/bip-0352.mediawiki",
+      "https://github.com/bitcoin/bips/blob/master/bip-0353.mediawiki",
       "https://github.com/bitcoin/bips/blob/master/bip-0392.mediawiki",
       "https://github.com/iancoleman/bip39",
       "https://github.com/pointbiz/bitaddress.org",

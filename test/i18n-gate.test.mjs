@@ -39,8 +39,12 @@ test("a human (or wrong bot) touching locale files fails", () => {
   }
 });
 
-test("an unconfigured app slug fails closed", () => {
-  assert.ok(gate({ appSlug: "" }).some((p) => p.includes("TRANSLATION_APP_SLUG is not configured")));
+test("an unconfigured app slug leaves locale PRs to ordinary human review", () => {
+  // No App is configured yet: there is no bot identity to gate on, so the
+  // gate is inert rather than fail-closed — otherwise it would block every
+  // human locale fix before operator setup, including the bootstrap PR.
+  assert.deepEqual(gate({ appSlug: "" }), []);
+  assert.deepEqual(gate({ appSlug: "", author: "alice" }), []);
 });
 
 test("the base must be rock", () => {
@@ -96,5 +100,7 @@ test("CLI: exit code follows the verdict", () => {
   assert.equal(run(["--author", "alice", "--app-slug", SLUG, "--base", "rock", "--head", "feature/x", "--files", "src/js/app.js"]), 0);
   assert.equal(run(["--author", "alice", "--app-slug", SLUG, "--base", "rock", "--head", "i18n/translate-es", "--files", ...ES_FILES]), 1);
   assert.equal(run(["--author", BOT, "--app-slug", SLUG, "--base", "rock", "--head", "i18n/translate-es", "--files", ...ES_FILES]), 0);
+  // Unconfigured slug: inert even for a human locale PR (see gateProblems).
+  assert.equal(run(["--author", "alice", "--app-slug", "", "--base", "rock", "--head", "feature/x", "--files", ...ES_FILES]), 0);
 });
 

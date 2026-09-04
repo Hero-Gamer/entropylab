@@ -2,7 +2,11 @@
 
 One-time setup for the post-merge translation pipeline (issue #286). Until
 these steps are done, `.github/workflows/translate.yml` skips itself (it
-checks `vars.TRANSLATION_APP_ID`), so the repo stays green either way.
+checks `vars.TRANSLATION_APP_ID`) and the `translation-gate` CI job is inert
+(it has no App identity to check against, so locale-changing PRs stay
+ordinary human-reviewed PRs), so the repo stays green either way. The gate
+starts failing closed the moment `TRANSLATION_APP_SLUG` is set — configure
+the slug only together with the rest of this setup.
 
 The pipeline in one paragraph: after English UI text changes on `rock`, job A
 (read-only token, LLM secret) generates schema-constrained, audited,

@@ -47,6 +47,7 @@ const requiredFiles = [
   "src/css/styles.css",
   "src/js/app.js",
   "src/js/psbt-editor.js",
+  "src/js/journal.js",
   "src/js/psbt-wasm.js",
   "src/js/psbt-wasm-b64.js",
   "src/js/bip85.js",
@@ -64,6 +65,7 @@ const requiredFiles = [
   "test/psbt-metadata.test.mjs",
   "test/secret-clear.test.mjs",
   "test/cid.test.mjs",
+  "test/journal.test.mjs",
   "test/wipe-wasm.test.mjs",
   ".github/workflows/ci-cd.yml",
 ];
@@ -336,6 +338,12 @@ for (const file of htmlFiles) {
       `${file} favicon does not match assets/favicon.png`,
     );
   });
+  test(`${file} ships none of the test-only browser-suite bridge`, () => {
+    // The __entropyLabCrypto hook lets the browser suite reach app internals;
+    // it is compiled in only for the harness's --test-hooks staging variant.
+    const html = read(file);
+    assert.doesNotMatch(html, /__ENTROPYLAB_TEST_HOOKS__|__entropyLabTest|__entropyLabCrypto/);
+  });
   test(`${file} never fetches the header logo or favicon from assets`, () => {
     // The downloaded file has no assets/ beside it, so both have to travel
     // inside the document or the fixed header renders empty when air-gapped.
@@ -361,6 +369,17 @@ test("the build inlines the header logo and SVG favicon from src/assets", () => 
   assert.match(build, /\.split\(siteLogoSpan\)\.join\(siteLogo\)/);
   assert.match(template, /<span class="site-logo" aria-hidden="true"><\/span>/);
   assert.match(template, /<link rel="icon" type="image\/svg\+xml" href="data:image\/svg\+xml,\/\*@@FAVICON_SVG@@\*\/">/);
+});
+
+test("the browser-suite crypto bridge is gated out of the release build", () => {
+  // The artifact check above is the invariant; this pins the mechanism so the
+  // gate cannot be dropped without a red test: the hook in app.js must sit
+  // behind the build-time flag, and the build must default that flag off and
+  // refuse to write a hooks build over the release artifact.
+  assert.match(read("src/js/app.js"), /if \(__ENTROPYLAB_TEST_HOOKS__ && globalThis\.__entropyLabTest\) globalThis\.__entropyLabCrypto = /);
+  const build = read("scripts/build.mjs");
+  assert.match(build, /define: \{ __ENTROPYLAB_TEST_HOOKS__: testHooks \? "true" : "false" \}/);
+  assert.match(build, /--test-hooks requires --out outside the repository root/);
 });
 
 test("the document head declares its link-preview card", () => {

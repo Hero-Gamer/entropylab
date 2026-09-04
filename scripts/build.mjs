@@ -8,15 +8,28 @@
 // serve the same application. The output is byte-for-byte reproducible from
 // the sources, the version declared in package.json, and the commit the
 // build is cut from (stamped into the footer).
+//
+// The browser test harness builds a staging variant with
+// `--test-hooks --out <dir>`: it compiles in the suite's test bridge (see
+// src/js/app.js) and writes the files outside the repository root. The
+// release build leaves the flag off, so no test code reaches entropylab.html.
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildSync } from "esbuild";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const SRC = join(root, "src");
+
+const testHooks = process.argv.includes("--test-hooks");
+const outFlag = process.argv.indexOf("--out");
+if (outFlag !== -1 && !process.argv[outFlag + 1]) throw new Error("--out requires a directory");
+const outDir = outFlag === -1 ? root : resolve(root, process.argv[outFlag + 1]);
+if (testHooks && outDir === root) {
+  throw new Error("--test-hooks requires --out outside the repository root: the release artifact ships no test code");
+}
 
 const read = (path) => readFileSync(join(SRC, path), "utf8");
 const version = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
@@ -79,6 +92,7 @@ const jsMain = buildSync({
   target: "es2022",
   legalComments: "none",
   charset: "utf8",
+  define: { __ENTROPYLAB_TEST_HOOKS__: testHooks ? "true" : "false" },
 }).outputFiles[0].text.split(siteLogoSpan).join(siteLogo);
 const jsSqliteWriter = read("js/sqlite-writer.js");
 const jsWalletExport = read("js/wallet-export.js");
@@ -125,12 +139,16 @@ for (const leftover of `${html}\n${worker}`.match(/\/\*@@|{{(?:VERSION|PWA_VERSI
   throw new Error(`Unreplaced build token in output: ${leftover}`);
 }
 
-// Remove stale generated files (e.g. versioned copies from older releases)
-for (const name of generated()) rmSync(join(root, name), { force: true });
+if (outDir === root) {
+  // Remove stale generated files (e.g. versioned copies from older releases)
+  for (const name of generated()) rmSync(join(root, name), { force: true });
+} else {
+  mkdirSync(outDir, { recursive: true });
+}
 
-writeFileSync(join(root, appFile), html);
-writeFileSync(join(root, workerFile), worker);
+writeFileSync(join(outDir, appFile), html);
+writeFileSync(join(outDir, workerFile), worker);
 
-console.log(`Built EntropyLab v${version}`);
+console.log(`Built EntropyLab v${version}${testHooks ? " (test hooks enabled; not for release)" : ""}`);
 console.log(`  ${appFile} (${Buffer.byteLength(html, "utf8")} bytes)`);
 console.log(`  ${workerFile} (${Buffer.byteLength(worker, "utf8")} bytes)`);

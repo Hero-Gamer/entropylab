@@ -82,9 +82,9 @@ for (const [network, families] of Object.entries(hodlExtendedKeyVersions)) for (
   hodlExtendedKeyPrefixTable.push({ network, family, scope: "singlesig", private: false, ver: entry.pub, name: entry.pubName });
   hodlExtendedKeyPrefixTable.push({ network, family, scope: "singlesig", private: true, ver: entry.prv, name: entry.prvName });
 }
-const en = JSON.parse(readFileSync(join(root, "src/locales/en.json"), "utf8"));
+// English-as-key: the spec key is already the English text.
 const hodlT = (key, vars) => {
-  let text = en[key] || key;
+  let text = key;
   if (vars) text = text.replace(/\{(\w+)\}/g, (_, n) => (vars[n] == null ? `{${n}}` : String(vars[n])));
   return text;
 };

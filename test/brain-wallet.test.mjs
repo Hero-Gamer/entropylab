@@ -8,9 +8,8 @@ import { fileURLToPath } from "node:url";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const app = readFileSync(join(root, "..", "src/js/app.js"), "utf8");
-const en = JSON.parse(readFileSync(join(root, "..", "src/locales/en.json"), "utf8"));
 function hodlT(key, vars) {
-  let text = en[key] || key;
+  let text = key; // English-as-key
   if (vars) text = text.replace(/\{(\w+)\}/g, (_, n) => (vars[n] == null ? `{${n}}` : String(vars[n])));
   return text;
 }
@@ -116,10 +115,9 @@ test("the brain-wallet HD output has no silent fingerprint or mnemonic preview p
   // The private-key mode never previews a fingerprint or mnemonic, which now
   // covers the HD brain output too.
   assert.match(app, /if \(hodlKeyMode === "key"\) \{\s*preview\.hidden = true;/);
-  assert.match(app, /hodlT\("note\.brainLabEmpty", \{ derive: hodlT\("action\.derive"\) \}\)/);
-  assert.match(en["note.brainLabEmpty"], /24 words appear only after \{derive\}/);
-  assert.match(app, /hodlError\("error\.brainAck"\)/);
-  assert.match(en["error.brainAck"], /Acknowledge the lab warning before deriving/);
+  assert.match(app, /hodlT\("([\w .-]*\{derive\}[\w .-]*)", \{ derive: hodlT\("Derive Key"\) \}\)/);
+  assert.match(app, /24 words appear only after \{derive\}/);
+  assert.match(app, /hodlError\("Acknowledge the lab warning before deriving/);
   // Each output is acknowledged on its own, so one does not unlock the other.
   assert.match(app, /hodlBrainLabAck = \{ scalar: false, hd: false \}/);
   assert.match(app, /hodlBrainLabAck\[output\] = ack\.checked/);

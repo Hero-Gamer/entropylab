@@ -261,8 +261,8 @@ var hodlWalletExport = (() => {
   const walletDatButtonLabel = (includePrivate = false) => {
     const t = globalThis.hodlT;
     return includePrivate
-      ? (t ? t("walletdat.downloadPrivate") : "Download wallet.dat with secrets (xprvs)")
-      : (t ? t("walletdat.downloadWatch") : "Download watch-only wallet.dat");
+      ? (t ? t("Download wallet.dat with secrets (xprvs)") : "Download wallet.dat with secrets (xprvs)")
+      : (t ? t("Download watch-only wallet.dat") : "Download watch-only wallet.dat");
   };
 
   return {

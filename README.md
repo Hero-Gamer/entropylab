@@ -109,7 +109,9 @@ Official website: [entropylab.online](https://entropylab.online)
 - Derives BIP-352 Silent Payment addresses (`sp1q…` / `tsp1q…`) from a seed or
   root xprv, including labeled codes, BIP-392 `spscan` / `spspend` descriptors,
   sender taproot outputs from pasted vin JSON, and receiver verification of
-  pasted x-only outputs. This is a calculator: it does not scan the chain.
+  pasted x-only outputs. Prints a BIP-321 `bitcoin:?sp=` URI and the BIP-353
+  DNS TXT to paste on a domain you control; paste that URI back on Send.
+  This is a calculator: it does not scan the chain or resolve names.
 - Grinds vanity addresses for a Key Station key (Vanity tab), picked through
   the same chip picker as BIP-85 and Silent Payments. Two methods: the
   **passphrase grind** extends the key's BIP39 passphrase with base-62

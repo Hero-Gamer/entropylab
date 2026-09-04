@@ -17,6 +17,12 @@ import {
   spendPrivForOutput,
   bytesToHex as hodlSpBytesToHex,
 } from "./bip352.js";
+import {
+  bip353Lookup,
+  encodeBitcoinUri,
+  encodeBip353Txt,
+  parseRecipientLines,
+} from "./bip321.js";
 import { inspectPsbtInscriptions, describeEnvelope } from "./inscription.js";
 import { parseOpReturn, describeOpReturn } from "./opreturn.js";
 import { parseRawTx, extractEcdsaSignatures, inscriptionHints, isPsbtMagic, serializeTx } from "./tx.js";
@@ -8930,13 +8936,7 @@ function hodlSpParseVins(text) {
   return parsed;
 }
 function hodlSpParseRecipients(text) {
-  let lines = String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (!lines.length) throw new Error("Paste at least one silent payment address.");
-  return lines.map((line) => {
-    let match = line.match(/^(sp1[0-9a-z]+|tsp1[0-9a-z]+)(?:\s+(\d+))?$/i);
-    if (!match) throw new Error(`Not a silent payment address: ${line.slice(0, 24)}`);
-    return { address: match[1].toLowerCase(), count: match[2] ? Number(match[2]) : 1 };
-  });
+  return parseRecipientLines(text);
 }
 function hodlSpParseOutputs(text) {
   let raw = String(text || "").trim();
@@ -8991,6 +8991,9 @@ function hodlRenderSpReceive() {
   let scanPoint = hodlSecp256k1.Point.fromBytes(hodlSpKeys.scanPub);
   let spendPoint = hodlSecp256k1.Point.fromBytes(hodlSpKeys.spendPub);
   let address = labeled ? createLabeledSilentPaymentAddress(hodlSpKeys.scanPriv, spendPoint, m, hrp) : encodeSilentPaymentAddress(scanPoint, spendPoint, hrp);
+  let uri = encodeBitcoinUri(address);
+  let txt = encodeBip353Txt(address);
+  let named = bip353Lookup(document.getElementById("sp-payname")?.value);
   let spscan = encodeSpscan(hodlSpKeys.scanPriv, hodlSpKeys.spendPub, hodlSpNetwork());
   let spspend = encodeSpspend(hodlSpKeys.scanPriv, hodlSpKeys.spendPriv, hodlSpNetwork());
   let origin = `${hodlSpKeys.fingerprint}/352h/${hodlSpCoinType()}h/${hodlSpAccount()}h`;
@@ -9002,6 +9005,13 @@ function hodlRenderSpReceive() {
       <div class="sp-qr">${qr}</div>
       <p class="psbt-kv" id="sp-address-value">${hodlSpEscape(address)}</p>
       ${hodlSpCopyButton("sp-address-value", "Copy address")}
+      <p class="label">BIP-321 URI</p>
+      <p class="psbt-kv" id="sp-bip321-uri">${hodlSpEscape(uri)}</p>
+      ${hodlSpCopyButton("sp-bip321-uri", "Copy URI")}
+      <p class="label">BIP-353 DNS TXT</p>
+      <p class="psbt-kv" id="sp-bip353-txt">${hodlSpEscape(txt)}</p>
+      ${hodlSpCopyButton("sp-bip353-txt", "Copy TXT")}
+      <p class="muted">${named ? `Create a TXT record at <code>${hodlSpEscape(named.lookup)}</code> for <code>${hodlSpEscape(named.name)}</code>.` : "Name the record <code>you@yourdomain</code> above and this prints its lookup, e.g. <code>you.user._bitcoin-payment.yourdomain</code>."} This page does not resolve DNS.</p>
       <p class="muted">Scan path <code>${hodlSpKeys.scanPath}</code> · Spend path <code>${hodlSpKeys.spendPath}</code></p>
       <p class="label">Scan public key</p>
       <p class="psbt-kv" id="sp-scan-pub">${hodlSpBytesToHex(hodlSpKeys.scanPub)}</p>
@@ -9019,7 +9029,8 @@ function hodlRenderSpReceive() {
   });
 }
 function hodlRenderSpSend() {
-  let recipients = hodlSpParseRecipients(document.getElementById("sp-recipients")?.value);
+  let parsed = hodlSpParseRecipients(document.getElementById("sp-recipients")?.value);
+  let recipients = parsed.recipients;
   let hrp = hodlSpHrp(hodlSpNetwork());
   for (const recipient of recipients) decodeSilentPaymentAddress(recipient.address, hrp);
   let result = createSilentPaymentOutputs(hodlSpParseVins(document.getElementById("sp-send-vins")?.value), recipients, { hrp });
@@ -9028,7 +9039,7 @@ function hodlRenderSpSend() {
     return;
   }
   let network = hodlSpNetwork();
-  document.getElementById("sp-out").innerHTML = `<p class="psbt-ok">${result.outputs.length} unique taproot output${result.outputs.length === 1 ? "" : "s"}.</p>` + result.outputs.map((xonly, index) => {
+  document.getElementById("sp-out").innerHTML = `<p class="psbt-ok">${result.outputs.length} unique taproot output${result.outputs.length === 1 ? "" : "s"}.</p>` + (parsed.lightning ? `<p class="muted">Lightning parameters in the URI were ignored. This page does not pay invoices or offers.</p>` : "") + result.outputs.map((xonly, index) => {
     let address = p2trAddressFromXonly(xonly, network);
     return `<div class="sp-output"><p class="label">Output ${index + 1}</p><p class="psbt-kv" id="sp-out-addr-${index}">${hodlSpEscape(address)}</p><p class="psbt-kv" id="sp-out-xonly-${index}">${hodlSpEscape(xonly)}</p>${hodlSpCopyButton(`sp-out-addr-${index}`, "Copy P2TR")}</div>`;
   }).join("");
@@ -9093,7 +9104,7 @@ function hodlInitSp() {
   document.getElementById("sp-verify-go").onclick = () => { hodlSpMode = "verify"; hodlRunSp(); };
   document.getElementById("sp-wipe").onclick = () => {
     hodlSpWipeMem();
-    ["sp-key", "sp-pass", "sp-recipients", "sp-send-vins", "sp-verify-vins", "sp-verify-outputs", "sp-label"].forEach((id) => {
+    ["sp-key", "sp-pass", "sp-recipients", "sp-send-vins", "sp-verify-vins", "sp-verify-outputs", "sp-label", "sp-payname"].forEach((id) => {
       let field = document.getElementById(id);
       if (field) field.value = "";
     });
@@ -13655,11 +13666,12 @@ function hodlInitSecretFieldAutoClear() {
     if (spOut) spOut.innerHTML = "";
     if (spError) spError.textContent = "";
     if (spSession) spSession.textContent = hodlSpNote;
-    let spRecipients = document.getElementById("sp-recipients"), spVerifyVins = document.getElementById("sp-verify-vins"), spVerifyOutputs = document.getElementById("sp-verify-outputs"), spLabel = document.getElementById("sp-label");
+    let spRecipients = document.getElementById("sp-recipients"), spVerifyVins = document.getElementById("sp-verify-vins"), spVerifyOutputs = document.getElementById("sp-verify-outputs"), spLabel = document.getElementById("sp-label"), spPayname = document.getElementById("sp-payname");
     if (spRecipients) spRecipients.value = "";
     if (spVerifyVins) spVerifyVins.value = "";
     if (spVerifyOutputs) spVerifyOutputs.value = "";
     if (spLabel) spLabel.value = "";
+    if (spPayname) spPayname.value = "";
     // Found vanity passphrases and the brought-in salt are private key
     // material; stop the grinder and drop them too.
     hodlVanityCancel();

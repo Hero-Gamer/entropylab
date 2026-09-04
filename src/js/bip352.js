@@ -373,14 +373,20 @@ const normalizeVin = (vin) => ({
 export function eligibleInputKeys(vins) {
   const pubkeys = [];
   const privkeys = [];
-  for (const raw of vins) {
+  for (const [index, raw] of vins.entries()) {
     const vin = normalizeVin(raw);
     const extracted = extractInputPubKey(vin);
     if (!extracted) continue;
     pubkeys.push(extracted);
     if (vin.private_key) {
+      const scalar = scalarFromBytes(typeof vin.private_key === "string" ? hexToBytes(vin.private_key) : vin.private_key);
+      const suppliedPoint = Point.fromBytes(secp256k1.getPublicKey(bigToBytes32(scalar), true));
+      const matches = extracted.isTaproot
+        ? equalBytes(pointToXOnly(suppliedPoint), pointToXOnly(extracted.point))
+        : equalBytes(pointToCompressed(suppliedPoint), pointToCompressed(extracted.point));
+      if (!matches) throw new Error(`Input ${index} private key does not match its eligible input public key.`);
       privkeys.push({
-        scalar: scalarFromBytes(typeof vin.private_key === "string" ? hexToBytes(vin.private_key) : vin.private_key),
+        scalar,
         isTaproot: extracted.isTaproot,
       });
     }

@@ -230,6 +230,15 @@ test("future SegWit inputs fail sending and make v0 receivers skip the transacti
   assert.deepEqual(result, { outputs: [], inputPubKeySum: null, tweak: null, sharedSecret: null });
 });
 
+test("sender rejects a private key that does not match its eligible input", () => {
+  const given = structuredClone(vectors[0].sending[0].given);
+  given.vin[0].private_key = "00".repeat(31) + "01";
+  assert.throws(
+    () => createSilentPaymentOutputs(given.vin, given.recipients, { hrp: "sp" }),
+    /input 0 private key does not match/i,
+  );
+});
+
 test("generateLabel is deterministic", () => {
   const scan = hexToBytes("0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c");
   const a = generateLabel(scan, 0);

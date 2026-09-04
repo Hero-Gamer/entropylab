@@ -2768,6 +2768,13 @@
     derive.click();
     await until(() => document.getElementById("save") || document.getElementById("error").textContent, "wallet result");
     assert(!document.getElementById("error").textContent, "Wallet derivation failed");
+    const mobileResult = document.querySelector(".key-result");
+    mobileResult.style.width = "220px";
+    assert(
+      mobileResult.scrollWidth <= mobileResult.clientWidth,
+      `Derived wallet widened a mobile layout to ${mobileResult.scrollWidth}px from ${mobileResult.clientWidth}px`,
+    );
+    mobileResult.style.width = "";
     const derivationProgress = await until(() => document.getElementById("derive-progress").classList.contains("is-complete") && document.getElementById("derive-progress"), "completed derivation progress");
     assert(!derivationProgress.hidden, "Completed derivation progress did not remain visible");
     equal(derivationProgress.getAttribute("aria-valuenow"), "100", "Derivation progress did not reach 100%");

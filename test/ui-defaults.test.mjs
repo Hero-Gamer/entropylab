@@ -2029,6 +2029,18 @@ test("derived key results put private recovery before script type and addresses"
   assert.match(appSource, /hodlBindWalletResultActions\(\);/);
 });
 
+test("derived wallet results stay within the mobile layout (#238)", () => {
+  assert.match(css, /\.key-result \{ min-width: 0; max-width: 100%;/);
+  assert.match(css, /\.key-result-main \{ min-width: 0; max-width: 100%;/);
+  assert.match(css, /\.secret-placeholder \{ display: grid; min-width: 0; max-width: 100%;/);
+  assert.match(css, /\.secret-placeholder-mask \{[^}]*max-width: 100%;[^}]*overflow-wrap: anywhere;[^}]*word-break: break-all;/);
+  assert.match(css, /\.qr \{ max-width: 100%;/);
+  assert.match(css, /\.qr svg \{[^}]*max-width: 100%;[^}]*height: auto;[^}]*aspect-ratio: 1;/);
+  assert.match(css, /\.qr-descriptor svg \{ width: 280px; height: auto; \}/);
+  assert.match(css, /\.qr-seed svg \{ width: 200px; height: auto; \}/);
+  assert.match(css, /\.wallet-table \{[^}]*width: 100%; max-width: 100%;[^}]*overflow: auto;/);
+});
+
 test("every MS Station co-signer row can pick any session key, and key reuse offers a derivation path", () => {
   for (const markup of [shell]) {
     assert.match(markup, /class="station-key-source msig-station-key-source"[\s\S]*id="msig-session-keys"[\s\S]*id="msig-reuse-session-keys"[\s\S]*id="msig-session-key-status"/);

@@ -21,7 +21,7 @@ const doc = (pairs) => ({
   fee: { known: false },
 });
 
-test("a matching non-witness UTXO is shown as verified", () => {
+test("a matching non-witness UTXO without witness data remains unverified", () => {
   const pairs = [{
     name: "PSBT_IN_NON_WITNESS_UTXO",
     decoded: {
@@ -31,9 +31,9 @@ test("a matching non-witness UTXO is shown as verified", () => {
     },
   }];
   const html = psbtVizHtml(doc(pairs), "mainnet");
-  assert.ok(html.includes("1000 sats"), "verified amount missing");
-  assert.ok(html.includes("(verified)"), "matching non-witness claim was not marked verified");
-  assert.ok(!html.includes("(unverified)"), "verified input was also marked unverified");
+  assert.ok(html.includes("1000 sats"), "non-witness amount missing");
+  assert.ok(html.includes("(unverified)"), "non-witness-only claim was incorrectly marked verified");
+  assert.ok(!html.includes("(verified)"), "non-witness-only claim was incorrectly marked verified");
 });
 
 test("a witness-only UTXO is shown as an unverified claim", () => {
@@ -74,7 +74,7 @@ test("a non-witness declaration without a matched prevout is unverified", () => 
   assert.ok(html.includes("(unverified)"), "unmatched non-witness declaration was incorrectly marked verified");
 });
 
-test("agreeing witness and non-witness claims are verified and do not conflict", () => {
+test("agreeing witness and non-witness claims are verified", () => {
   const pairs = [
     { name: "PSBT_IN_WITNESS_UTXO", decoded: { value: "1000", scriptPubKey: "51" } },
     { name: "PSBT_IN_NON_WITNESS_UTXO", decoded: { txid: "11".repeat(32), outputCount: 1, prevout: { vout: 0, value: "1000", scriptPubKey: "51" } } },
@@ -82,27 +82,33 @@ test("agreeing witness and non-witness claims are verified and do not conflict",
   const html = psbtVizHtml(doc(pairs), "mainnet");
   assert.ok(html.includes("1000 sats"), "agreed amount missing");
   assert.ok(html.includes("(verified)"), "agreed non-witness claim was not marked verified");
-  assert.ok(!html.includes("conflicting claims"), "agreeing claims incorrectly conflict");
+  assert.ok(!html.includes("conflicting"), "agreeing claims incorrectly conflict");
 });
 
-test("disagreeing valid claims are a mismatch", () => {
+test("disagreeing amounts are a mismatch", () => {
   const pairs = [
     { name: "PSBT_IN_WITNESS_UTXO", decoded: { value: "5000", scriptPubKey: "51" } },
     { name: "PSBT_IN_NON_WITNESS_UTXO", decoded: { txid: "11".repeat(32), outputCount: 1, prevout: { vout: 0, value: "1000", scriptPubKey: "51" } } },
   ];
   const html = psbtVizHtml(doc(pairs), "mainnet");
-  assert.ok(html.includes("mismatch: conflicting claims: 5 000 vs 1 000 sats"), "valid disagreement was not marked mismatch");
+  assert.ok(html.includes("mismatch: conflicting claims: 5 000 vs 1 000 sats"), "valid amount disagreement was not marked mismatch");
 });
 
-test("verified status makes the script-comparison limitation explicit", () => {
-  const pairs = [{
-    name: "PSBT_IN_NON_WITNESS_UTXO",
-    decoded: {
-      txid: "11".repeat(32),
-      outputCount: 1,
-      prevout: { vout: 0, value: "1000", scriptPubKey: "51" },
-    },
-  }];
+test("disagreeing scripts are a mismatch even when amounts agree", () => {
+  const pairs = [
+    { name: "PSBT_IN_WITNESS_UTXO", decoded: { value: "1000", scriptPubKey: "51" } },
+    { name: "PSBT_IN_NON_WITNESS_UTXO", decoded: { txid: "11".repeat(32), outputCount: 1, prevout: { vout: 0, value: "1000", scriptPubKey: "52" } } },
+  ];
   const html = psbtVizHtml(doc(pairs), "mainnet");
-  assert.ok(html.includes("scriptPubKey from the validated non-witness UTXO; witness script is not compared"), "verification limitation was not exposed in the UI");
+  assert.ok(html.includes("mismatch: conflicting scriptPubKeys"), "script disagreement was not marked mismatch");
+  assert.ok(!html.includes("(verified)"), "script disagreement was incorrectly marked verified");
+});
+
+test("verified status explains that both claims agree on amount and script", () => {
+  const pairs = [
+    { name: "PSBT_IN_WITNESS_UTXO", decoded: { value: "1000", scriptPubKey: "51" } },
+    { name: "PSBT_IN_NON_WITNESS_UTXO", decoded: { txid: "11".repeat(32), outputCount: 1, prevout: { vout: 0, value: "1000", scriptPubKey: "51" } } },
+  ];
+  const html = psbtVizHtml(doc(pairs), "mainnet");
+  assert.ok(html.includes("amount and scriptPubKey independently established by agreement"), "verification basis was not exposed in the UI");
 });

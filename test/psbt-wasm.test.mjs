@@ -145,19 +145,51 @@ test("transaction field edits re-serialize and re-inspect", () => {
   assert.equal(fresh.rustBitcoinError, null);
 });
 
-test("amounts at and above 2^53 survive inspect → rebuild exactly, as strings (issue #351)", () => {
+test("amounts at and above 2^53 survive the JSON boundary exactly, as strings (issue #351)", () => {
   // 2^53 + 1 rounds to 2^53 as an f64: transported as a JSON number it would
-  // come back corrupted from an inspect → edit → rebuild round trip.
+  // come back corrupted from an inspect → edit → rebuild round trip. (Such an
+  // output is past MAX_MONEY, so the build gate refuses it — the lossless
+  // check runs through inspection of raw bytes, which is where the rounding
+  // used to happen.)
+  const spliceOutput0 = (leHex) => unhex(VALID_HEX.replace("603bea0b00000000", leHex));
+  assert.equal(psbtInspectDoc(spliceOutput0("0100000000002000")).tx.outputs[0].value, "9007199254740993"); // 2^53 + 1
+  assert.equal(psbtInspectDoc(spliceOutput0("ffffffffffffffff")).tx.outputs[0].value, "18446744073709551615"); // u64::MAX
+  // The largest consensus-valid amount, 21M BTC in sats (2.1e15, f64-safe),
+  // rides the same string path through a full inspect → rebuild round trip.
   const doc = inspectValid();
-  doc.tx.outputs[0].value = "9007199254740993";
-  const fresh = psbtInspectDoc(rebuild(doc));
-  assert.equal(fresh.tx.outputs[0].value, "9007199254740993");
-  // 21M BTC in sats (2.1e15) is f64-safe but rides the same string path.
   doc.tx.outputs[0].value = "2100000000000000";
+  doc.tx.outputs[1].value = "0"; // keep the aggregate within MAX_MONEY
   assert.equal(psbtInspectDoc(rebuild(doc)).tx.outputs[0].value, "2100000000000000");
-  // u64::MAX round-trips exactly too.
-  doc.tx.outputs[0].value = "18446744073709551615";
-  assert.equal(psbtInspectDoc(rebuild(doc)).tx.outputs[0].value, "18446744073709551615");
+});
+
+test("build rejects consensus-invalid transactions with Core's reasons; inspect reports them (issues #322, #361)", () => {
+  const sane = { version: 2, locktime: 0, inputs: [{ txid: "22".repeat(32), vout: 0, scriptSig: "", sequence: 0xffffffff }], outputs: [{ value: 1000, scriptPubKey: "51" }] };
+  const buildTx = (tx) => psbtBuildBytes({ tx, globals: [], inputs: [[]], outputs: tx.outputs.map(() => []) });
+  const MAX_MONEY = "2100000000000000";
+
+  // The sane control builds and inspects clean.
+  const ok = psbtInspectDoc(buildTx(sane));
+  assert.equal(ok.txSanityError, null);
+  assert.equal(ok.rustBitcoinError, null);
+
+  // No outputs / no inputs.
+  assert.throws(() => buildTx({ ...sane, outputs: [] }), /consensus-invalid: bad-txns-vout-empty/);
+  assert.throws(() => psbtBuildBytes({ tx: { ...sane, inputs: [] }, globals: [], inputs: [], outputs: [[]] }), /bad-txns-vin-empty/);
+
+  // Duplicate prevouts.
+  const dup = { ...sane, inputs: [sane.inputs[0], sane.inputs[0]] };
+  assert.throws(() => psbtBuildBytes({ tx: dup, globals: [], inputs: [[], []], outputs: [[]] }), /bad-txns-inputs-duplicate/);
+
+  // One output past MAX_MONEY (u64::MAX included) and an over-cap total.
+  assert.throws(() => buildTx({ ...sane, outputs: [{ value: "18446744073709551615", scriptPubKey: "51" }] }), /bad-txns-vout-toolarge/);
+  assert.throws(() => buildTx({ ...sane, outputs: [{ value: "2100000000000001", scriptPubKey: "51" }] }), /bad-txns-vout-toolarge/);
+  assert.throws(() => buildTx({ ...sane, outputs: [{ value: MAX_MONEY, scriptPubKey: "51" }, { value: "1", scriptPubKey: "52" }] }), /bad-txns-txouttotal-toolarge/);
+
+  // Inspection separates the facts: structurally valid, consensus-invalid.
+  const insane = psbtInspectDoc(unhex(VALID_HEX.replace("603bea0b00000000", "ffffffffffffffff")));
+  assert.equal(insane.rustBitcoinError, null); // rust-bitcoin parses the PSBT fine
+  assert.equal(insane.txSanityError, "bad-txns-vout-toolarge");
+  assert.equal(insane.tx.outputs[0].value, "18446744073709551615");
 });
 
 test("fee computes once every input carries a claimed amount", () => {
@@ -357,8 +389,22 @@ test("hostile amount totals mark totals and fee invalid instead of wrapping (iss
   assert.equal(boundary.fee.error, "amounts overflow u64");
 
   // Multiple u64::MAX outputs overflow the output total the same way, even
-  // though the input claim is honest.
-  const outs = hostile({ claims: [1000n], outputs: [U64_MAX, U64_MAX] });
+  // though the input claim is honest. The build gate refuses outputs past
+  // MAX_MONEY (issue #322), so splice the wire bytes directly instead.
+  const zeroed = psbtBuildBytes({
+    tx: {
+      version: 2,
+      locktime: 0,
+      inputs: [{ txid: "22".repeat(32), vout: 0, scriptSig: "", sequence: 0xffffffff }],
+      outputs: [{ value: 0, scriptPubKey: "51" }, { value: 0, scriptPubKey: "51" }],
+    },
+    globals: [],
+    inputs: [[{ key: "01", value: le64hex(1000n) + "00" }]],
+    outputs: [[], []],
+  });
+  const overOut = Buffer.from(zeroed).toString("hex").replaceAll("0000000000000000" + "0151", "ffffffffffffffff" + "0151");
+  const outs = psbtInspectDoc(unhex(overOut));
+  assert.equal(outs.txSanityError, "bad-txns-vout-toolarge"); // per-output rule fires first, as in Core
   assert.equal(outs.totalOut, null);
   assert.equal(outs.fee.known, true);
   assert.equal(outs.fee.sats, null);

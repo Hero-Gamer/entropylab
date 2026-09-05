@@ -485,7 +485,13 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
         : "unknown — some inputs carry no claimed previous-output amount";
     const verdict = doc.rustBitcoinError
       ? `<span class="psbted-note-warn">rust-bitcoin reports: ${escapeHtml(doc.rustBitcoinError)}</span>`
-      : `<span class="psbted-note-ok">parses under rust-bitcoin</span>`;
+      : `<span class="psbted-note-ok">PSBT structure parses under rust-bitcoin</span>`;
+    // Structural validity and consensus validity are separate facts: name the
+    // transaction's sanity state explicitly so "parses" never reads as
+    // "accepted by Bitcoin" (issues #322, #361).
+    const sanity = doc.txSanityError
+      ? `<span class="psbted-note-bad">unsigned transaction is consensus-invalid (${escapeHtml(doc.txSanityError)}) — export is blocked</span>`
+      : `<span class="psbted-note-ok">unsigned transaction passes consensus sanity checks</span>`;
 
     // The last remaining input carries no delete control: a zero-input
     // unsigned transaction cannot round-trip through BIP-174 serialization,
@@ -552,7 +558,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
       : "";
 
     out.innerHTML = `
-      <p class="psbt-kv"><strong>PSBT v${escapeHtml(String(doc.psbtVersion))}</strong> · ${tx.inputs.length} input(s) · ${tx.outputs.length} output(s) · fee ${fee} · ${verdict}</p>
+      <p class="psbt-kv"><strong>PSBT v${escapeHtml(String(doc.psbtVersion))}</strong> · ${tx.inputs.length} input(s) · ${tx.outputs.length} output(s) · fee ${fee} · ${verdict} · ${sanity}</p>
       <p class="muted" id="psbted-status" aria-live="polite">${stale ? "The fields do not build right now — see the error above; the result below is the last valid build." : "Every edit rebuilds the PSBT immediately; the fields show rust-bitcoin's decode of the current build."}</p>
 
       ${psbtVizHtml(doc, network(), selected)}
@@ -583,7 +589,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
     box.classList.toggle("psbted-stale", stale);
     box.innerHTML = `
       ${stale ? `<p class="psbted-note-warn" id="psbted-stale-note">The fields do not build right now — this is the last valid build.</p>` : ""}
-      <p class="psbt-ok">Rebuilt PSBT is accepted by rust-bitcoin (${resultBytes.length} bytes).</p>
+      <p class="psbt-ok">Rebuilt PSBT parses under rust-bitcoin; its unsigned transaction passes consensus sanity checks (${resultBytes.length} bytes).</p>
       <label class="field">Edited PSBT (base64)<textarea id="psbted-result-b64" readonly spellcheck="false">${escapeHtml(b64)}</textarea></label>
       <div class="row psbt-actions">
         <button class="btn secondary" id="psbted-copy-b64" type="button">Copy base64</button>

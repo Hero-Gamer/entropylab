@@ -31,7 +31,8 @@ use bitcoin::psbt::{Psbt, PsbtSighashType};
 use bitcoin::taproot::{LeafVersion, TapTree, TaprootBuilder};
 use bitcoin::transaction::Version;
 use bitcoin::{
-    Amount, OutPoint, Script, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Txid, VarInt, Witness,
+    Amount, OutPoint, Script, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Txid, VarInt, Weight,
+    Witness,
 };
 use serde_json::{json, Map, Value};
 use std::cell::RefCell;
@@ -744,6 +745,41 @@ fn resolve_input_amount(pairs: &[RawPair], tx: &Transaction, index: usize) -> Am
     AmountClaim::Claimed(first)
 }
 
+/// Bitcoin Core's CheckTransaction sanity, minus the coinbase cases an
+/// unsigned PSBT transaction can never hit: nonempty vin/vout, the block
+/// weight bound, per-output and aggregate MoneyRange, and unique prevouts.
+/// Structural PSBT validity (Psbt::deserialize) says nothing about any of
+/// these. Returns Core's rejection reason when the transaction is
+/// consensus-invalid (issues #322, #361).
+fn tx_sanity_error(tx: &Transaction) -> Option<&'static str> {
+    if tx.input.is_empty() {
+        return Some("bad-txns-vin-empty");
+    }
+    if tx.output.is_empty() {
+        return Some("bad-txns-vout-empty");
+    }
+    if tx.weight() > Weight::MAX_BLOCK {
+        return Some("bad-txns-oversize");
+    }
+    let mut total = Amount::ZERO;
+    for output in &tx.output {
+        if output.value > Amount::MAX_MONEY {
+            return Some("bad-txns-vout-toolarge");
+        }
+        total = match total.checked_add(output.value) {
+            Some(sum) if sum <= Amount::MAX_MONEY => sum,
+            _ => return Some("bad-txns-txouttotal-toolarge"),
+        };
+    }
+    let mut prevouts = BTreeSet::new();
+    for input in &tx.input {
+        if !prevouts.insert(input.previous_output) {
+            return Some("bad-txns-inputs-duplicate");
+        }
+    }
+    None
+}
+
 fn inspect(bytes: &[u8]) -> Result<String, String> {
     let raw = parse_raw(bytes)?;
     let tx = &raw.unsigned_tx;
@@ -817,6 +853,14 @@ fn inspect(bytes: &[u8]) -> Result<String, String> {
         Err(e) => Value::String(e.to_string()),
     };
 
+    // Structural parse validity and Bitcoin transaction validity are separate
+    // facts: a PSBT can deserialize cleanly around a transaction no node would
+    // accept, and the UI must not label that "accepted" (issues #322, #361).
+    let tx_sanity = match tx_sanity_error(tx) {
+        Some(reason) => Value::String(reason.into()),
+        None => Value::Null,
+    };
+
     let doc = json!({
         "psbtVersion": raw.version,
         "tx": tx_json,
@@ -828,6 +872,7 @@ fn inspect(bytes: &[u8]) -> Result<String, String> {
         "totalOut": out_sum.map_or(Value::Null, sats_json),
         "fee": fee,
         "rustBitcoinError": rust_bitcoin_error,
+        "txSanityError": tx_sanity,
     });
     let text = serde_json::to_string(&doc).map_err(|e| format!("JSON encode failed: {e}"))?;
     if text.len() > MAX_JSON_BYTES {
@@ -964,6 +1009,13 @@ fn build(json_bytes: &[u8]) -> Result<Vec<u8>, String> {
         .map_err(|e| format!("edit document is not valid JSON: {e}"))?;
 
     let tx = build_tx(&doc)?;
+    // Export gate: the unsigned transaction must be one a Bitcoin node would
+    // at least consider, not merely one PSBT deserialization accepts (issues
+    // #322, #361). A hand-edit must not produce an exportable file around a
+    // consensus-invalid transaction.
+    if let Some(reason) = tx_sanity_error(&tx) {
+        return Err(format!("the unsigned transaction is consensus-invalid: {reason}"));
+    }
     let unsigned = encode::serialize(&tx);
 
     // The unsigned transaction pair is regenerated from the tx section; a

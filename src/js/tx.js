@@ -5,7 +5,7 @@
 // (entropylab-wasm); this file reshapes the flat layout it emits and keeps
 // the app's guardrails (size caps, the witness-flag rule, the trailing-byte
 // rule) and error strings.
-import { heap, wasmExports as wasm, withInput } from "./entropylab-wasm.js";
+import { wasmExports as wasm, withInput, withOutput } from "./entropylab-wasm.js";
 
 const ORD_MAGIC = Uint8Array.of(0x00, 0x63, 0x03, 0x6f, 0x72, 0x64); // OP_FALSE OP_IF "ord"
 
@@ -176,17 +176,20 @@ export function parseRawTx(bytes) {
   // BIP144: a zero marker must be followed by flag 0x01 (kept from the
   // previous parser; rust-bitcoin would decode other flags).
   if (bytes[4] === 0x00 && bytes.length > 5 && bytes[5] !== 0x01) throw new Error("Unknown witness flag.");
-  const cap = bytes.length * 2 + 65536;
-  const { code, body } = withInput(bytes, (p) => {
-    const outPtr = wasm().el_alloc(cap);
-    try {
-      const produced = wasm().el_tx_parse(p, bytes.length, outPtr, cap);
-      return { code: produced, body: produced > 0 ? heap().slice(outPtr, outPtr + produced) : null };
-    } finally {
-      wasm().el_free(outPtr, cap);
-    }
+  // The flat layout can be larger than the wire bytes (every witness item
+  // adds a 4-byte length), so size it exactly with a query call instead of an
+  // estimate: an estimate can under-allocate a decodable transaction and
+  // misreport it as truncated (issue #339). The query also bounds the decoded
+  // output before any allocation; past the ceiling the decoder refuses
+  // outright rather than letting an attacker steer a huge allocation.
+  const FLAT_CAP = 64 * 1024 * 1024;
+  const body = withInput(bytes, (p) => {
+    const needed = wasm().el_tx_parse(p, bytes.length, 0, 0);
+    if (needed === -2) throw new Error("Transaction contains trailing bytes.");
+    if (needed < 0) throw new Error("Transaction ended early.");
+    if (needed > FLAT_CAP) throw new Error("Transaction is too large to expand for inspection.");
+    return withOutput(needed, (out) => wasm().el_tx_parse(p, bytes.length, out, needed));
   });
-  if (code === -2) throw new Error("Transaction contains trailing bytes.");
   if (!body) throw new Error("Transaction ended early.");
   const r = layoutReader(body);
   const version = r.i32();

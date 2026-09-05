@@ -1008,7 +1008,8 @@ pub unsafe extern "C" fn el_bech32m_decode(
 //   u32 witness_count + per item (u32 len + bytes) || u32 out_count |
 //   per output: u64 amount | u32 script_len + script || u32 locktime
 // Returns bytes written, -1 on decode failure, -2 when bytes trail the
-// transaction, -3 when the output capacity is too small.
+// transaction, -3 when the output capacity is too small. A null `out` is a
+// size query: it returns the required flat capacity instead of writing.
 
 use bitcoin::consensus::Decodable;
 use bitcoin::Transaction;
@@ -1033,6 +1034,14 @@ pub unsafe extern "C" fn el_tx_parse(input: *const u8, input_len: usize, out: *m
     }
     for txout in &tx.output {
         size += 8 + 4 + txout.script_pubkey.len();
+    }
+    if out.is_null() {
+        // Size query (the two-call convention): report the flat-layout
+        // capacity the caller must provide. The estimate-based caller cap
+        // could under-allocate a decodable transaction — a witness can carry
+        // many empty items at one wire byte each against four flat bytes —
+        // and misreport it as truncated (issue #339).
+        return if size > i32::MAX as usize { -3 } else { size as i32 };
     }
     if size > cap {
         return -3;

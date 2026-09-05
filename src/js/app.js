@@ -7944,6 +7944,7 @@ function hodlTx(bytes) {
     if (message.includes("trailing")) throw new Error("Unsigned transaction contains trailing bytes.");
     if (message.includes("too many inputs")) throw new Error("Unsigned transaction has too many inputs.");
     if (message.includes("too many outputs")) throw new Error("Unsigned transaction has too many outputs.");
+    if (message.includes("too large to expand")) throw new Error("Unsigned transaction is too large to expand for inspection.");
     throw new Error("Unsigned transaction ended early.");
   }
   for (const input of tx.inputs) {

@@ -98,6 +98,25 @@ test("the signed BIP143 transaction parses with its witness intact", () => {
   assert.equal(witnessSig.pubkey.length, 33);
 });
 
+test("a witness-heavy transaction is sized from its decode, not an estimate (issue #339)", () => {
+  // 100,000 empty witness items: one wire byte each but four flat bytes each,
+  // so the old 2x + 64 KiB estimate under-allocated and the decoder answered
+  // "Transaction ended early" for a transaction that decodes fine.
+  const items = 100_000;
+  const raw = new Uint8Array([
+    ...hex.decode("02000000" + "0001" + "01" + "11".repeat(32) + "00000000" + "00" + "ffffffff" + "01" + "0000000000000000" + "0151"),
+    ...hex.decode("fe" + "a0860100"), // compact-size 100,000
+    ...new Uint8Array(items),
+    ...hex.decode("00000000"),
+  ]);
+  const parsed = parseRawTx(raw);
+  assert.equal(parsed.segwit, true);
+  assert.equal(parsed.inputs[0].witness.length, items);
+  // Truncation and trailing bytes keep their distinct messages.
+  assert.throws(() => parseRawTx(raw.slice(0, -5)), /ended early/);
+  assert.throws(() => parseRawTx(new Uint8Array([...raw, 0])), /trailing bytes/);
+});
+
 test("non-canonical transactions are rejected", () => {
   // trailing bytes
   assert.throws(() => parseRawTx(new Uint8Array([...BIP143_WRAPPED_UNSIGNED, 0])), /trailing/);

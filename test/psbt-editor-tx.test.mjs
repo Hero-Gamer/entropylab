@@ -61,7 +61,7 @@ test("adding an output appends a zero-value empty-script slot and its map", () =
   const fresh = rebuild(doc);
   assert.equal(fresh.tx.outputs.length, before + 1);
   assert.equal(fresh.outputs.length, before + 1);
-  assert.equal(fresh.tx.outputs[before].value, 0);
+  assert.equal(fresh.tx.outputs[before].value, "0");
   assert.equal(fresh.tx.outputs[before].scriptPubKey, "");
   assert.deepEqual(fresh.outputs[before], []);
 });

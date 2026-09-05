@@ -860,7 +860,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
             draft.tx.inputs.push({ txid: "0".repeat(64), vout: 0, scriptSig: "", sequence: 4294967295 });
             draft.inputs.push([]);
           } else {
-            draft.tx.outputs.push({ value: 0, scriptPubKey: "" });
+            draft.tx.outputs.push({ value: "0", scriptPubKey: "" });
             draft.outputs.push([]);
           }
         });

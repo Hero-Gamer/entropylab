@@ -18,6 +18,11 @@
 //! shape back, re-serializes the transaction and maps, and validates the result
 //! with rust-bitcoin's `Psbt::deserialize` before returning it. Nothing here
 //! generates randomness or touches the network.
+//!
+//! All satoshi amounts cross the boundary as JSON strings, never numbers:
+//! JavaScript parses the document with JSON.parse, where any value at or
+//! above 2^53 would silently round to the nearest f64 and an edited document
+//! would re-serialize the rounded amount (issue #351).
 
 use bitcoin::bip32::{ChildNumber, DerivationPath, Xpub};
 use bitcoin::consensus::encode::{self, Decodable, Encodable};
@@ -374,6 +379,13 @@ fn script_json(script: &Script) -> Value {
     json!({ "hex": hex_encode(script.as_bytes()), "asm": script.to_asm_string() })
 }
 
+/// Amounts cross to JavaScript as strings: JSON numbers are f64, so a u64 at
+/// or above 2^53 would round on `JSON.parse` and an inspect → rebuild round
+/// trip would silently corrupt the amount (issue #351).
+fn sats_json(sats: u64) -> Value {
+    Value::String(sats.to_string())
+}
+
 fn proprietary_json(keydata: &[u8]) -> Value {
     // <prefix compactsize><prefix><subtype 1 byte><keydata>
     let mut off = 0usize;
@@ -492,7 +504,7 @@ fn decode_pair(kind: &str, pair: &RawPair, tx: &Transaction, input_index: Option
                     let outpoint = input.previous_output;
                     if outpoint.txid == prev.compute_txid() {
                         if let Some(spent) = prev.output.get(outpoint.vout as usize) {
-                            out["prevout"] = json!({ "vout": outpoint.vout, "value": spent.value.to_sat(),
+                            out["prevout"] = json!({ "vout": outpoint.vout, "value": sats_json(spent.value.to_sat()),
                                 "scriptPubKey": hex_encode(spent.script_pubkey.as_bytes()) });
                         }
                     }
@@ -512,7 +524,7 @@ fn decode_pair(kind: &str, pair: &RawPair, tx: &Transaction, input_index: Option
                     return Err("witness utxo has trailing bytes".into());
                 }
                 let script = Script::from_bytes(&pair.value[off..]);
-                json!({ "value": amount, "scriptPubKey": hex_encode(script.as_bytes()),
+                json!({ "value": sats_json(amount), "scriptPubKey": hex_encode(script.as_bytes()),
                     "asm": script.to_asm_string() })
             }
             ("input", 0x02) => {
@@ -708,7 +720,7 @@ fn inspect(bytes: &[u8]) -> Result<String, String> {
             "sequence": input.sequence.to_consensus_u32(),
         })).collect::<Vec<_>>(),
         "outputs": tx.output.iter().map(|output| json!({
-            "value": output.value.to_sat(),
+            "value": sats_json(output.value.to_sat()),
             "scriptPubKey": hex_encode(output.script_pubkey.as_bytes()),
             "asm": output.script_pubkey.to_asm_string(),
         })).collect::<Vec<_>>(),
@@ -744,7 +756,7 @@ fn inspect(bytes: &[u8]) -> Result<String, String> {
         if !money_valid {
             json!({ "known": true, "sats": Value::Null, "error": "amounts exceed Bitcoin's MAX_MONEY" })
         } else if in_sum >= out_sum {
-            json!({ "known": true, "sats": in_sum - out_sum })
+            json!({ "known": true, "sats": sats_json(in_sum - out_sum) })
         } else {
             json!({ "known": true, "sats": Value::Null, "error": "outputs exceed claimed inputs" })
         }
@@ -763,8 +775,8 @@ fn inspect(bytes: &[u8]) -> Result<String, String> {
         "globals": raw.globals.iter().map(|p| pair_json("global", p, tx, None)).collect::<Vec<_>>(),
         "inputs": raw.inputs.iter().enumerate().map(|(n, map)| map.iter().map(|p| pair_json("input", p, tx, Some(n))).collect::<Vec<_>>()).collect::<Vec<_>>(),
         "outputs": raw.outputs.iter().map(|map| map.iter().map(|p| pair_json("output", p, tx, None)).collect::<Vec<_>>()).collect::<Vec<_>>(),
-        "totalIn": if known_inputs == tx.input.len() { known_in_sats.map_or(Value::Null, |sum| json!(sum)) } else { Value::Null },
-        "totalOut": out_sum.map_or(Value::Null, |sum| json!(sum)),
+        "totalIn": if known_inputs == tx.input.len() { known_in_sats.map_or(Value::Null, sats_json) } else { Value::Null },
+        "totalOut": out_sum.map_or(Value::Null, sats_json),
         "fee": fee,
         "rustBitcoinError": rust_bitcoin_error,
     });

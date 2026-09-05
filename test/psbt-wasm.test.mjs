@@ -99,7 +99,7 @@ test("inspect decodes the transaction, every map pair, and the parse verdict", (
   assert.equal(doc.tx.inputs[0].txid, "e47b5b7a879f13a8213815cf3dc3f5b35af1e217f412829bc4f75a8ca04909ab");
   assert.equal(doc.tx.inputs[0].vout, 0);
   assert.equal(doc.tx.inputs[0].sequence, 4294967294);
-  assert.equal(doc.tx.outputs[0].value, 199900000);
+  assert.equal(doc.tx.outputs[0].value, "199900000");
   assert.equal(doc.tx.outputs[0].scriptPubKey, "76a914768a40bbd740cbe81d988e71de2a4d5c71396b1d88ac");
   assert.match(doc.tx.outputs[0].asm, /OP_DUP OP_HASH160/);
 
@@ -110,7 +110,7 @@ test("inspect decodes the transaction, every map pair, and the parse verdict", (
   assert.deepEqual(doc.outputs[1], []);
 
   const witnessUtxo = doc.inputs[1][0].decoded;
-  assert.equal(witnessUtxo.value, 100000000);
+  assert.equal(witnessUtxo.value, "100000000");
   assert.equal(witnessUtxo.scriptPubKey, "a9143545e6e33b832c47050f24d3eeb93c9c03948bc787");
   assert.match(witnessUtxo.asm, /OP_HASH160/);
   const redeem = doc.inputs[1][1].decoded;
@@ -121,7 +121,7 @@ test("inspect decodes the transaction, every map pair, and the parse verdict", (
   // Only one input carries a claimed amount, so the fee stays unknown.
   assert.equal(doc.fee.known, false);
   assert.equal(doc.totalIn, null);
-  assert.equal(doc.totalOut, 199909358);
+  assert.equal(doc.totalOut, "199909358");
 });
 
 test("an unedited document rebuilds byte-identically", () => {
@@ -134,23 +134,30 @@ test("transaction field edits re-serialize and re-inspect", () => {
   doc.tx.version = 1;
   doc.tx.locktime = 850000;
   doc.tx.inputs[0].sequence = 4294967293;
-  doc.tx.outputs[0].value = doc.tx.outputs[0].value + 1000;
+  doc.tx.outputs[0].value = String(BigInt(doc.tx.outputs[0].value) + 1000n);
   doc.tx.outputs[1].scriptPubKey = "00144d1b7e3b0d6a1f0a3f3a4c5f6b7c8d9e0f1a2b3c";
   const fresh = psbtInspectDoc(rebuild(doc));
   assert.equal(fresh.tx.version, 1);
   assert.equal(fresh.tx.locktime, 850000);
   assert.equal(fresh.tx.inputs[0].sequence, 4294967293);
-  assert.equal(fresh.tx.outputs[0].value, 199901000);
+  assert.equal(fresh.tx.outputs[0].value, "199901000");
   assert.equal(fresh.tx.outputs[1].scriptPubKey, "00144d1b7e3b0d6a1f0a3f3a4c5f6b7c8d9e0f1a2b3c");
   assert.equal(fresh.rustBitcoinError, null);
 });
 
-test("numeric fields accept string values (JSON-safe for large u64s)", () => {
+test("amounts at and above 2^53 survive inspect → rebuild exactly, as strings (issue #351)", () => {
+  // 2^53 + 1 rounds to 2^53 as an f64: transported as a JSON number it would
+  // come back corrupted from an inspect → edit → rebuild round trip.
   const doc = inspectValid();
-  doc.tx.outputs[0].value = "2100000000000000"; // 21M BTC in sats
+  doc.tx.outputs[0].value = "9007199254740993";
   const fresh = psbtInspectDoc(rebuild(doc));
-  assert.equal(fresh.tx.outputs[0].value, 2100000000000000);
-  assert.ok(Number.isSafeInteger(fresh.tx.outputs[0].value));
+  assert.equal(fresh.tx.outputs[0].value, "9007199254740993");
+  // 21M BTC in sats (2.1e15) is f64-safe but rides the same string path.
+  doc.tx.outputs[0].value = "2100000000000000";
+  assert.equal(psbtInspectDoc(rebuild(doc)).tx.outputs[0].value, "2100000000000000");
+  // u64::MAX round-trips exactly too.
+  doc.tx.outputs[0].value = "18446744073709551615";
+  assert.equal(psbtInspectDoc(rebuild(doc)).tx.outputs[0].value, "18446744073709551615");
 });
 
 test("fee computes once every input carries a claimed amount", () => {
@@ -167,8 +174,8 @@ test("fee computes once every input carries a claimed amount", () => {
   doc.inputs[0].at(-1).value = "00a3e111000000001976a914" + "00".repeat(20) + "88ac"; // 300,000,000 sats
   const richer = psbtInspectDoc(rebuild(doc));
   assert.equal(richer.fee.known, true);
-  assert.equal(richer.totalIn, 400000000);
-  assert.equal(richer.fee.sats, 400000000 - 199909358);
+  assert.equal(richer.totalIn, "400000000");
+  assert.equal(richer.fee.sats, String(400000000 - 199909358));
 });
 
 test("inputs spending different outputs of one transaction resolve by index, not txid", () => {
@@ -197,11 +204,11 @@ test("inputs spending different outputs of one transaction resolve by index, not
   const inspected = psbtInspectDoc(psbtBuildBytes(doc));
   assert.equal(inspected.rustBitcoinError, null);
   // Each input map decodes its own prevout: distinct vout, amount, and script.
-  assert.deepEqual(inspected.inputs[0][0].decoded.prevout, { vout: 0, value: 1000, scriptPubKey: "51" });
-  assert.deepEqual(inspected.inputs[1][0].decoded.prevout, { vout: 1, value: 9000, scriptPubKey: "52" });
+  assert.deepEqual(inspected.inputs[0][0].decoded.prevout, { vout: 0, value: "1000", scriptPubKey: "51" });
+  assert.deepEqual(inspected.inputs[1][0].decoded.prevout, { vout: 1, value: "9000", scriptPubKey: "52" });
   // Totals and fee use the two distinct outputs, not the first output twice.
-  assert.equal(inspected.totalIn, 10000);
-  assert.deepEqual(inspected.fee, { known: true, sats: 8500 });
+  assert.equal(inspected.totalIn, "10000");
+  assert.deepEqual(inspected.fee, { known: true, sats: "8500" });
 });
 
 test("a non-witness utxo that does not match its input's outpoint is not claimed", () => {
@@ -230,10 +237,10 @@ test("a non-witness utxo that does not match its input's outpoint is not claimed
   }));
 
   const correct = build(a.hex, b.hex);
-  assert.equal(correct.inputs[0][0].decoded.prevout.value, 1000);
-  assert.equal(correct.inputs[1][0].decoded.prevout.value, 9000);
-  assert.equal(correct.totalIn, 10000);
-  assert.deepEqual(correct.fee, { known: true, sats: 8500 });
+  assert.equal(correct.inputs[0][0].decoded.prevout.value, "1000");
+  assert.equal(correct.inputs[1][0].decoded.prevout.value, "9000");
+  assert.equal(correct.totalIn, "10000");
+  assert.deepEqual(correct.fee, { known: true, sats: "8500" });
 
   // Reversing the maps must not silently associate either utxo with the wrong
   // input: the txid no longer matches, so the prevout and amount are omitted.
@@ -309,8 +316,8 @@ test("hostile amount totals mark totals and fee invalid instead of wrapping (iss
 
   // Exactly MAX_MONEY stays valid: 21M BTC in, nothing out, all of it fee.
   const exact = hostile({ claims: [MAX_MONEY], outputs: [0n] });
-  assert.deepEqual(exact.fee, { known: true, sats: 2100000000000000 });
-  assert.equal(exact.totalIn, 2100000000000000);
+  assert.deepEqual(exact.fee, { known: true, sats: "2100000000000000" });
+  assert.equal(exact.totalIn, "2100000000000000");
 });
 
 test("unknown and proprietary pairs round-trip with decodes", () => {

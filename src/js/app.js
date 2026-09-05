@@ -5735,11 +5735,13 @@ function hodlBindKeyFields() {
     document.getElementById("network")?.addEventListener("change", apply);
     let trim = document.getElementById("brain-wallet-trim");
     if (trim) trim.onchange = () => {
+      // Trimming changes the hashed bytes, so it changes the wallet: retract
+      // the displayed result and re-sync the mirrored representations, like
+      // every other entropy-affecting control.
       if (state) state.brainWalletTrim = trim.checked;
-      hodlSyncBrainOutput();
-      hodlRenderPrivateKeyInputState(key);
-      hodlSyncKeyClearButton();
-      hodlSyncDeriveButton();
+      hodlInvalidateLiveKeyResult();
+      hodlGlobalSyncFromCurrentInput();
+      refreshBrain();
     };
     apply();
   }

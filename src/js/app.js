@@ -9506,6 +9506,9 @@ function hodlRenderPsbt(psbt) {
   let inscriptionReport = { inputs: [], envelopes: [] }, inscriptionScanIncomplete = false;
   try {
     inscriptionReport = inspectPsbtInscriptions(psbt);
+    // Malformed witnesses and truncated scripts are coverage gaps: the
+    // summary must not claim a completed inscription scan over them.
+    if (inscriptionReport.incomplete) inscriptionScanIncomplete = true;
   } catch {
     inscriptionReport = { inputs: [], envelopes: [] };
     inscriptionScanIncomplete = true;

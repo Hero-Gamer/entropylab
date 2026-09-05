@@ -3150,6 +3150,41 @@
     assert(document.getElementById("sp-key").value.trim(), "SP Station did not populate the selected session key");
     assert(document.getElementById("sp-session").textContent.includes("Session key from"), "SP Station did not load the selected key");
     assert(!document.getElementById("sp-error").textContent, "SP Station rejected a compatible Key Station key");
+
+    // Issue #331: the send flow derives each input's key from the loaded
+    // session — pasted scalars are refused. Self-payment to the session's own
+    // receive address, spending the session's own m/86'/1'/0'/0/0 output.
+    // (The SP select is set directly: the header picker invalidates the
+    // derived Key Station result, which the next tests still need.)
+    const spNetwork = document.getElementById("sp-network");
+    spNetwork.value = "testnet";
+    spNetwork.dispatchEvent(new Event("change", { bubbles: true }));
+    document.getElementById("sp-derive").click();
+    const receiveAddress = await until(() => document.getElementById("sp-address-value")?.textContent.startsWith("tsp1") && document.getElementById("sp-address-value"), "SP receive address");
+    const recipient = receiveAddress.textContent.trim();
+    document.querySelector('#sp-modes [data-sp-mode="send"]').click();
+    // m/86'/1'/0'/0/0 of this suite's wallet, as a key-path P2TR input.
+    const ownedVin = [{ txid: "00".repeat(32), vout: 0, scriptSig: "", txinwitness: "01" + "40" + "5a".repeat(64), prevout: { scriptPubKey: { hex: "51203b82b2b2a9185315da6f80da5f06d0440d8a5e1457fa93387c2d919c86ec8786" } } }];
+    input(document.getElementById("sp-recipients"), recipient);
+    input(document.getElementById("sp-send-vins"), JSON.stringify(ownedVin));
+    document.getElementById("sp-send-go").click();
+    await until(() => document.getElementById("sp-out").textContent.includes("taproot output") || document.getElementById("sp-error").textContent, "SP send computes");
+    assert(document.getElementById("sp-out").textContent.includes("1 taproot output"), "session-resolved send did not compute the output");
+    assert(document.getElementById("sp-out").textContent.includes("tb1p"), "the output did not render as testnet P2TR");
+    // A pasted scalar is refused.
+    input(document.getElementById("sp-send-vins"), JSON.stringify([{ ...ownedVin[0], private_key: "01".repeat(32) }]));
+    document.getElementById("sp-send-go").click();
+    await until(() => document.getElementById("sp-error").textContent.includes("derives each input's key from the loaded session"), "pasted scalar refusal");
+    // A foreign origin fingerprint is refused.
+    input(document.getElementById("sp-send-vins"), JSON.stringify([{ ...ownedVin[0], path: "m/86'/1'/0'/0/0", fingerprint: "deadbeef" }]));
+    document.getElementById("sp-send-go").click();
+    await until(() => document.getElementById("sp-error").textContent.includes("is not this session's 73c5da0a"), "foreign fingerprint refusal");
+    // And a script no session key produces is refused.
+    input(document.getElementById("sp-send-vins"), JSON.stringify([{ ...ownedVin[0], prevout: { scriptPubKey: { hex: "51208d678520df960df678ab30d318b913ddfdf56468e3d882459618173771af0e9c" } } }]));
+    document.getElementById("sp-send-go").click();
+    await until(() => document.getElementById("sp-error").textContent.includes("not found under this session"), "unowned script refusal");
+    spNetwork.value = "mainnet";
+    spNetwork.dispatchEvent(new Event("change", { bubbles: true }));
     document.querySelector('#workspace [data-workspace="calc"]').click();
     await until(() => !document.getElementById("key-manager").hidden, "key workspace after SP Station test");
   });

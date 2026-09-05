@@ -357,7 +357,9 @@ export function p2trAddressFromXonly(xonly, network = "mainnet") {
 
 // The prevout's scriptPubKey bytes (BIP352 input-key eligibility tests the
 // script type), not the txid/vout pair "prevout" means elsewhere.
-const vinPrevoutScript = (vin) => (vin.prevout instanceof Uint8Array ? vin.prevout : hexToBytes(typeof vin.prevout === "string" ? vin.prevout : vin.prevout.scriptPubKey.hex));
+// The prevout script of a vin, in any of the accepted shapes (raw bytes, hex
+// string, or the published-vector { scriptPubKey: { hex } } form).
+export const vinPrevoutScript = (vin) => (vin.prevout instanceof Uint8Array ? vin.prevout : hexToBytes(typeof vin.prevout === "string" ? vin.prevout : vin.prevout.scriptPubKey.hex));
 
 const normalizeVin = (vin) => ({
   txid: vin.txid,

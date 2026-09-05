@@ -10,11 +10,17 @@ import {
   encodeSilentPaymentAddress,
   encodeSpscan,
   encodeSpspend,
+  extractInputPubKey,
   formatSpDescriptor,
   hrpForNetwork as hodlSpHrp,
+  isP2pkh,
+  isP2sh,
+  isP2tr,
+  isP2wpkh,
   p2trAddressFromXonly,
   scanSilentPaymentOutputs,
   spendPrivForOutput,
+  vinPrevoutScript,
   bytesToHex as hodlSpBytesToHex,
 } from "./bip352.js";
 import {
@@ -29,7 +35,7 @@ import { parseRawTx, extractEcdsaSignatures, inscriptionHints, isPsbtMagic, seri
 import { wasmExports as hodlWasm, withInput as hodlWasmIn, withOutput as hodlWasmOut } from "./entropylab-wasm.js";
 import { indexHdKey, indexSingleKey, matchOwnership, pathLabel } from "./ownership.js";
 import { hex as hodlHex } from "./coders.js";
-import { addressFor, addressFromScript, descriptorDerive, p2shP2wpkhScript, p2shScript, p2trKeyScript, p2wshScript } from "./addresses.js";
+import { addressFor, addressFromScript, descriptorDerive, p2pkhScript, p2shP2wpkhScript, p2shScript, p2trKeyScript, p2wpkhScript, p2wshScript } from "./addresses.js";
 import { base58checkDecode, base58checkEncode } from "./base58.js";
 import { HDKey as hodlHDKey } from "./hdkey.js";
 import { entropyToMnemonic as hodlEntropyToMnemonic, mnemonicToEntropy as hodlMnemonicToEntropy, mnemonicToSeedSync as hodlMnemonicToSeed, validateMnemonic as hodlIsValidMnemonic } from "./bip39.js";
@@ -9120,12 +9126,70 @@ function hodlRenderSpReceive() {
     try { hodlRenderSpReceive(); } catch (error) { document.getElementById("sp-error").textContent = error.message || String(error); }
   });
 }
+// Resolve every eligible vin's input key from the loaded SP session root —
+// never from a pasted scalar (issue #331). A vin may name its derivation
+// path explicitly ("path": "m/84'/1'/0'/0/5", plus an optional "fingerprint"
+// that must equal the session root's) or be resolved through the session
+// ownership index by its prevout script. Either way the derived key is
+// verified against the prevout script before use, and every derived node is
+// wiped after output construction.
+function hodlSpDeriveVinKeys(vins) {
+  hodlSpEnsureHd();
+  const root = hodlSpHd, network = hodlSpNetwork(), fingerprint = hodlFingerprintHex(root.fingerprint);
+  let index = null;
+  return vins.map((vin, i) => {
+    // The published BIP-352 vectors carry raw per-input scalars; the UI flow
+    // derives from the session instead. (The library function keeps vector
+    // support for the test suite.)
+    if (vin && typeof vin === "object" && "private_key" in vin) {
+      throw new Error(`Input ${i} carries a "private_key" field. The send flow derives each input's key from the loaded session — remove it (that field exists for the published BIP-352 test vectors).`);
+    }
+    // Only inputs of the eligible script types take part; anything else is
+    // skipped by the sender and needs no key.
+    const extracted = extractInputPubKey(vin);
+    if (!extracted) return vin;
+    if (vin.fingerprint !== undefined && String(vin.fingerprint).toLowerCase().replace(/^0x/, "") !== fingerprint) {
+      throw new Error(`Input ${i}: origin fingerprint ${vin.fingerprint} is not this session's ${fingerprint}.`);
+    }
+    let path = typeof vin.path === "string" && vin.path.trim() ? vin.path.trim() : null;
+    if (!path) {
+      if (!index) index = indexHdKey(root, network);
+      const hit = matchOwnership(index, vinPrevoutScript(vin));
+      if (hit.state !== "ours") {
+        throw new Error(`Input ${i}: the prevout script was not found under this session's keys. Add a "path" field (e.g. "m/84'/…") to name the input's derivation path.`);
+      }
+      path = hit.path;
+    }
+    if (!/^m(\/|$)/.test(path)) throw new Error(`Input ${i}: path must start at the session root ("m/…").`);
+    let node = null;
+    try {
+      node = root.derive(path);
+      if (!node.privateKey) throw new Error(`Input ${i}: path ${path} names a watch-only node.`);
+      // The derived key must actually produce the prevout script — the "lie"
+      // check, including the BIP-341 tweak for P2TR inputs.
+      const scriptBytes = vinPrevoutScript(vin);
+      const pubkey = node.publicKey;
+      let expected = null;
+      if (isP2pkh(scriptBytes)) expected = p2pkhScript(pubkey);
+      else if (isP2wpkh(scriptBytes)) expected = p2wpkhScript(pubkey);
+      else if (isP2sh(scriptBytes)) expected = p2shP2wpkhScript(pubkey);
+      else if (isP2tr(scriptBytes)) expected = p2trKeyScript(pubkey.slice(1));
+      if (expected && hodlSpBytesToHex(expected) !== hodlSpBytesToHex(scriptBytes)) {
+        throw new Error(`Input ${i}: the key derived at ${path} does not produce the prevout's scriptPubKey.`);
+      }
+      if (expected === null) throw new Error(`Input ${i}: unrecognized prevout script type.`);
+      return { ...vin, private_key: hodlSpBytesToHex(node.privateKey) };
+    } finally {
+      if (node) node.wipePrivateData();
+    }
+  });
+}
 function hodlRenderSpSend() {
   let parsed = hodlSpParseRecipients(document.getElementById("sp-recipients")?.value);
   let recipients = parsed.recipients;
   let hrp = hodlSpHrp(hodlSpNetwork());
   for (const recipient of recipients) decodeSilentPaymentAddress(recipient.address, hrp);
-  let result = createSilentPaymentOutputs(hodlSpParseVins(document.getElementById("sp-send-vins")?.value), recipients, { hrp });
+  let result = createSilentPaymentOutputs(hodlSpDeriveVinKeys(hodlSpParseVins(document.getElementById("sp-send-vins")?.value)), recipients, { hrp });
   if (!result.outputs.length) {
     document.getElementById("sp-out").innerHTML = `<p class="psbt-warn">No silent payment outputs. Eligible inputs may be missing, the private-key sum may be zero, or a scan-key group exceeded K<sub>max</sub> = 2323.</p>`;
     return;

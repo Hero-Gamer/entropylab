@@ -546,8 +546,8 @@ words, pick one of the checksum words.</span></span>
           <span class="field-note">Paste the code or a BIP-321 URI. Names like you@domain are not resolved here — look the TXT up on an online machine and paste the URI.</span>
         </label>
         <label class="field">Inputs (BIP-352 vin JSON)
-          <textarea id="sp-send-vins" placeholder='[{"txid":"…","vout":0,"scriptSig":"…","txinwitness":"","prevout":{"scriptPubKey":{"hex":"…"}},"private_key":"…"}]' spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
-          <span class="field-note">Same shape as the published BIP-352 send vectors. Each eligible input needs its private key. P2TR / P2WPKH / P2SH-P2WPKH / P2PKH only.</span>
+          <textarea id="sp-send-vins" placeholder='[{"txid":"…","vout":0,"scriptSig":"…","txinwitness":"","prevout":{"scriptPubKey":{"hex":"…"}},"path":"m/86&#39;/1&#39;/0&#39;/0/0"}]' spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+          <span class="field-note">Same shape as the published BIP-352 send vectors, minus the keys: each eligible input's key is derived from the loaded session key. An input outside the session's known addresses needs a "path" field ("m/…", optional "fingerprint"). P2TR / P2WPKH / P2SH-P2WPKH / P2PKH only.</span>
         </label>
         <div class="row psbt-actions">
           <button class="btn primary" id="sp-send-go" type="button">Compute taproot outputs</button>

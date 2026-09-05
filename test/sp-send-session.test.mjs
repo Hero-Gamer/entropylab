@@ -21,6 +21,8 @@ import {
   isP2sh,
   isP2tr,
   isP2wpkh,
+  scanSilentPaymentOutputs,
+  taprootOutputPrivateKey,
   vinPrevoutScript,
   bytesToHex,
 } from "../src/js/bip352.js";
@@ -54,11 +56,13 @@ const hodlSpDeriveVinKeys = new Function(
   "indexHdKey", "matchOwnership", "extractInputPubKey", "vinPrevoutScript",
   "isP2pkh", "isP2sh", "isP2tr", "isP2wpkh",
   "p2pkhScript", "p2shP2wpkhScript", "p2trKeyScript", "p2wpkhScript",
+  "taprootOutputPrivateKey",
   `${loadSlice("hodlFingerprintHex")}; ${loadSlice("hodlSpDeriveVinKeys")}; return hodlSpDeriveVinKeys;`,
 )(
   indexHdKey, matchOwnership, extractInputPubKey, vinPrevoutScript,
   isP2pkh, isP2sh, isP2tr, isP2wpkh,
   p2pkhScript, p2shP2wpkhScript, p2trKeyScript, p2wpkhScript,
+  taprootOutputPrivateKey,
 );
 
 const vinOf = (scriptHex, extra = {}) => ({
@@ -83,8 +87,10 @@ test("an owned input resolves through the ownership index, and the derived key m
   const [resolved] = hodlSpDeriveVinKeys([vinOf(OWNED_SCRIPT)]);
   assert.ok(resolved.private_key, "no key injected");
   const pub = secp256k1.getPublicKey(hexToBytes_(resolved.private_key), true);
-  // The derived key really does produce the prevout script (BIP-341 tweak).
-  assert.equal(bytesToHex(p2trKeyScript(pub.slice(1))), OWNED_SCRIPT);
+  // The injected key is the key of the taproot OUTPUT key (BIP-341 tweaked,
+  // as BIP-352 sending requires): its x-only public key is the prevout
+  // program itself, which is what the recipient extracts from the input.
+  assert.equal(bytesToHex(pub.slice(1)), OWNED_SCRIPT.slice(4));
   // Same result via an explicit path.
   const [byPath] = hodlSpDeriveVinKeys([vinOf(OWNED_SCRIPT, { path: "m/86'/1'/0'/0/0" })]);
   assert.equal(byPath.private_key, resolved.private_key);
@@ -114,6 +120,26 @@ test("a session-resolved send equals the same inputs keyed by hand (vector-mode 
   const byHand = createSilentPaymentOutputs([vinOf(OWNED_SCRIPT, { private_key: resolved.private_key })], [{ address: recipient, count: 1 }], { hrp: "tsp" });
   assert.deepEqual(bySession.outputs, byHand.outputs);
   assert.equal(bySession.outputs.length, 1);
+});
+
+test("a session send spending a tweaked P2TR input is detectable by the recipient", () => {
+  // Regression: the injected key must be the key of the taproot OUTPUT key
+  // (BIP-341 tweaked) — the raw internal key produced outputs scanning could
+  // never find (silent funds loss), and the input-key match check rejects it.
+  setup();
+  const [resolved] = hodlSpDeriveVinKeys([vinOf(OWNED_SCRIPT)]);
+  const keys = deriveSilentPaymentKeys(SEED, { coinType: 1, account: 0 });
+  const recipient = encodeSilentPaymentAddress(keys.scanPoint, keys.spendPoint, "tsp");
+  const send = createSilentPaymentOutputs([resolved], [{ address: recipient, count: 1 }], { hrp: "tsp" });
+  assert.equal(send.outputs.length, 1);
+  const scan = scanSilentPaymentOutputs({
+    scanPriv: keys.scanPriv,
+    spendPub: keys.spendPoint,
+    vins: [resolved],
+    outputs: send.outputs,
+    labels: [],
+  });
+  assert.equal(scan.outputs.length, 1, "the recipient cannot detect the output: the input key is not the output key's");
 });
 
 // The library keeps raw private_key support for the published BIP-352

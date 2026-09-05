@@ -2629,6 +2629,24 @@
     assert(conflictOut.includes("0.00005000") && conflictOut.includes("0.00001000"), "both claimed amounts missing");
     assert(conflictOut.includes("Fee unknown"), "conflicted input must void the fee");
     assert(!conflictOut.includes("Unverified fee"), "a fee was derived from conflicting claims");
+    // Issue #333: Taproot sighash suffixes are part of the safety analysis.
+    // ANYONECANPAY|ALL drops input commitment, not outputs, and says so.
+    const tapAcp = "cHNidP8BAF4CAAAAATMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzAQAAAAD/////AUCcAAAAAAAAIlEgEREREREREREREREREREREREREREREREREREREREREREAAAAAAAEBK1DDAAAAAAAAIlEgEREREREREREREREREREREREREREREREREREREREREREBE0FaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpagQAA";
+    input(box, tapAcp);
+    document.getElementById("psbt-go").click();
+    await until(() => document.getElementById("psbt-out").textContent.includes("ANYONECANPAY") || document.getElementById("psbt-error").textContent, "taproot sighash report");
+    equal(document.getElementById("psbt-error").textContent, "", "inspector rejected the taproot fixture");
+    const tapOut = document.getElementById("psbt-out").textContent;
+    assert(tapOut.includes("does not commit to all shown inputs"), "ANYONECANPAY|ALL must flag the missing input commitment");
+    assert(!tapOut.includes("does not commit to all shown outputs"), "ANYONECANPAY|ALL must not misstate output commitment");
+    // A 65-byte signature with an explicit 0x00 suffix is invalid (DEFAULT is
+    // only the 64-byte form) and must not parse as a countable signature.
+    const tapZero = "cHNidP8BAF4CAAAAATMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzAQAAAAD/////AUCcAAAAAAAAIlEgEREREREREREREREREREREREREREREREREREREREREREAAAAAAAEBK1DDAAAAAAAAIlEgEREREREREREREREREREREREREREREREREREREREREREBE0FaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaAAAA";
+    input(box, tapZero);
+    document.getElementById("psbt-go").click();
+    await until(() => document.getElementById("psbt-out").textContent.includes("not valid under BIP341") || document.getElementById("psbt-error").textContent, "explicit-zero sighash report");
+    equal(document.getElementById("psbt-error").textContent, "", "inspector rejected the explicit-zero fixture");
+    assert(document.getElementById("psbt-out").textContent.includes("not valid under BIP341"), "explicit 0x00 suffix must not read as SIGHASH_DEFAULT");
     input(box, "");
     document.getElementById("psbt-wipe").click();
     document.querySelector('#workspace [data-workspace="calc"]').click();

@@ -37,6 +37,7 @@ import { wordlist as bip39English } from "./bip39-english.js";
 // The PSBT editor (its own workspace tab) drives the rust-bitcoin WASM
 // bindings in psbt-wasm.js; heavy lifting lives in psbt-editor.js.
 import { initPsbtEditor } from "./psbt-editor.js";
+import { hodlTapKeySigs, hodlTapScriptSigs, hodlTapSighashProblems } from "./psbt-schnorr.js";
 import { initQrReferences } from "./qr-references.js";
 import { renderSVG as hodlUqrRenderSvg } from "uqr";
 import { BIP39_LANGUAGE_ENGLISH, BIP85_APPS, bip85Path, deriveApplication, parseChildIndex, wipeBip85Result, wipeBytes as hodlWipeBytes } from "./bip85.js";
@@ -8030,8 +8031,11 @@ function hodlPartialSigs(entries) {
     return { pubkey: entry.keydata, der: signature.slice(0, -1), sighash: signature[signature.length - 1], raw: signature };
   });
 }
-function hodlTapSigs(entries) {
-  return hodlFind(entries, 19).concat(hodlFind(entries, 20));
+// Taproot signatures are analyzed parsed, not raw-counted: the sighash
+// suffix is part of the safety analysis and an unparseable Schnorr signature
+// is flagged, not silently counted (issue #333).
+function hodlTapSigsParsed(entries) {
+  return hodlTapKeySigs(entries, hodlFind).concat(hodlTapScriptSigs(entries, hodlFind));
 }
 // PSBT_IN_SIGHASH_TYPE (input type 0x03): empty keydata, four-byte
 // little-endian policy. It must be decoded before signing, and shown even
@@ -8047,18 +8051,26 @@ function hodlSighashLabel(policy) {
   let base = policy & 0x7f, baseName = base === 1 ? "SIGHASH_ALL" : base === 2 ? "SIGHASH_NONE" : base === 3 ? "SIGHASH_SINGLE" : "unknown 0x" + base.toString(16);
   return baseName + ((policy & 0x80) ? " | ANYONECANPAY" : "") + " (0x" + policy.toString(16) + ")";
 }
-// Exact SIGHASH_ALL is the only policy that commits to every displayed
-// output. Anything else, or a disagreement between the PSBT field and a
-// signature's appended byte, is blocking — no session key required.
+// Exact SIGHASH_ALL is the only policy that commits to every displayed input
+// and output. NONE/SINGLE (± ANYONECANPAY) drop output commitments and
+// ANYONECANPAY|ALL drops the other inputs; the warning names which side is
+// uncommitted (issue #333). A disagreement between the PSBT field and a
+// signature's appended byte is blocking too — no session key required.
 function hodlSighashProblems(declared, suffix) {
   let problems = [], tr = hodlT;
+  const commitment = (value) => {
+    let base = value & 0x7f;
+    if (base === 2 || base === 3) return tr("does not commit to all shown outputs");
+    if (base === 1) return tr("does not commit to all shown inputs");
+    return tr("is not a defined sighash policy");
+  };
   if (declared !== null && declared !== 1) {
-    let policy = hodlSighashLabel(declared);
-    problems.push(tr("The PSBT requests {policy}, which does not commit to all shown outputs.", { policy }));
+    let policy = hodlSighashLabel(declared), lacks = commitment(declared);
+    problems.push(tr("The PSBT requests {policy}, which {lacks}.", { policy, lacks }));
   }
   if (suffix !== null && suffix !== 1) {
-    let policy = hodlSighashLabel(suffix);
-    problems.push(tr("This signature uses {policy}, which does not commit to all shown outputs.", { policy }));
+    let policy = hodlSighashLabel(suffix), lacks = commitment(suffix);
+    problems.push(tr("This signature uses {policy}, which {lacks}.", { policy, lacks }));
   }
   if (declared !== null && suffix !== null && declared !== suffix) problems.push(tr("The PSBT-declared policy and the signature's appended sighash byte disagree."));
   return problems;
@@ -9432,7 +9444,7 @@ function hodlRenderPsbt(psbt) {
       declaredSighashError = exception.message || String(exception);
     }
     let declaredLabel = declaredSighashError ? "" : declaredSighash === null ? "SIGHASH_ALL (default)" : hodlSighashLabel(declaredSighash);
-    let previous = tx.inputs[index], destination = claim ? hodlAddr(claim.script, network) : "(previous output details unavailable)", signatures = hodlPartialSigs(entries), tapSignatures = hodlTapSigs(entries), finalized = hodlFinalized(entries);
+    let previous = tx.inputs[index], destination = claim ? hodlAddr(claim.script, network) : "(previous output details unavailable)", signatures = hodlPartialSigs(entries), tapSignatures = hodlTapSigsParsed(entries), finalized = hodlFinalized(entries), taprootish = entries.some((entry) => entry.type >= 0x13 && entry.type <= 0x18);
     if (finalized) {
       // Finalized signatures moved into the final script fields must not
       // escape repeated-nonce analysis (issue #87).
@@ -9456,10 +9468,30 @@ function hodlRenderPsbt(psbt) {
     if (declaredSighashError) {
       policyProblems++;
       html.push("<p class='psbt-bad'><strong>Policy problem:</strong> input " + index + " declares a malformed sighash policy. Do not sign until its policy is known.</p>");
-    } else if (declaredSighash !== null && declaredSighash !== 1) {
+    } else if (declaredSighash !== null && declaredSighash !== 1 && !(taprootish && declaredSighash === 0)) {
+      // SIGHASH_DEFAULT (0) is Taproot's full-commitment policy, so only
+      // ECDSA inputs treat 0 as undefined. The warning names which commitment
+      // side is missing (issue #333).
       policyProblems++;
-      html.push("<p class='psbt-bad'><strong>Policy problem:</strong> input " + index + " requests " + hodlEscapeHtml(declaredLabel) + "; that policy does not commit to all shown outputs. Do not accept the displayed outputs as what a signature will authorize.</p>");
+      let base = declaredSighash & 0x7f, lacks = base === 1 ? "does not commit to all shown inputs" : base >= 2 && base <= 3 ? "does not commit to all shown outputs" : "is not a defined sighash policy";
+      html.push("<p class='psbt-bad'><strong>Policy problem:</strong> input " + index + " requests " + hodlEscapeHtml(declaredLabel) + "; that policy " + hodlEscapeHtml(lacks) + ". Do not accept the displayed outputs as what a signature will authorize.</p>");
     }
+    // Every Schnorr signature's sighash suffix joins the safety analysis; one
+    // that does not parse under BIP341 (64 bytes, or 65 with a defined
+    // sighash byte) is a policy problem, not a countable signature.
+    tapSignatures.forEach((tapSig) => {
+      if (!tapSig.r) {
+        uninspected += 1;
+        policyIncomplete += 1;
+        policyProblems++;
+        html.push("<p class='psbt-bad'><strong>Policy problem:</strong> input " + index + " carries a Schnorr signature that is not valid under BIP341 (64 bytes, or 65 with a defined sighash byte). Do not sign until its policy is known.</p>");
+        return;
+      }
+      hodlTapSighashProblems(declaredSighash, tapSig.sighash, hodlSighashLabel).forEach((problem) => {
+        policyProblems++;
+        html.push("<p class='psbt-bad'><strong>Policy problem:</strong> input " + index + ": " + hodlEscapeHtml(problem) + " Do not sign until its policy is known.</p>");
+      });
+    });
     if (tapSignatures.length || (finalized && !signatures.length)) policyIncomplete++;
     signatures.forEach(signature => {
       let parts = hodlSigParts(signature.der),
@@ -9576,7 +9608,7 @@ function hodlRenderPsbt(psbt) {
   else html.push("<p class='muted'>No ECDSA signatures with a readable r value are present, so there is no nonce to compare yet.</p>");
   if (rValues.length) html.push("<p class='psbt-kv'>r values:<br>" + rValues.map(value => hodlEscapeHtml(value.hex) + " (input " + value.input + ")").join("<br>") + "</p>");
   rows.forEach(row => html.push("<p class='" + row.className + "'><strong>Input " + row.input + "</strong> pubkey " + hodlEscapeHtml(row.pubkey.slice(0, 18)) + "\u2026 \u2014 " + hodlEscapeHtml(row.message) + "</p>"));
-  if (tapSignatureCount) html.push("<p class='muted'>This PSBT also contains " + tapSignatureCount + " Taproot / Schnorr signature(s). They are counted but their BIP340 nonces are not analyzed in this version.</p>");
+  if (tapSignatureCount) html.push("<p class='muted'>This PSBT also contains " + tapSignatureCount + " Taproot / Schnorr signature(s). Their sighash policies are checked above; their BIP340 nonces are not analyzed in this version.</p>");
   html.push("<p class='muted'>RFC 6979 comparison currently covers SegWit v0 P2WPKH and P2WSH signatures using SIGHASH_ALL, including Bitcoin Core-style low-r grinding. Jade anti-exfil is secp256k1-zkp sign-to-contract and needs the USB host nonce plus signer opening; QR / sign_psbt Jade does not run it yet. BitBox anti-klepto is a different construction. Nonce reuse detection compares r values for the same secp256k1 point, including signatures carried by finalized scriptSig/witness fields, compressed and uncompressed encodings, and recoverable non-strict DER. A clean verdict is not issued when a signature cannot be inspected. Inscription detection reads OP_FALSE OP_IF \"ord\" envelopes in tap-leaf scripts and finalized witnesses; it does not number sats. Output ownership is derived from the session key: accounts 0\u20132, 50 receive + 50 change, all four script types. It does not talk to the chain.</p>");
   let nonceIncomplete = uninspected || tapSignatureCount || unsupportedNonceChecks || rValues.length < 2;
   let checks = [

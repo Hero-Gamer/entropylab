@@ -17,9 +17,10 @@
 //
 // Input amount claims are classified locally from the already-decoded PSBT
 // fields. A valid non-witness UTXO whose txid matches the input outpoint is
-// independently established by the supplied transaction bytes; a witness
-// UTXO alone remains an unverified claim. Disagreement between valid witness
-// and non-witness claims is a mismatch. No network lookup is performed.
+// independently established by the supplied transaction bytes. A witness
+// UTXO alone remains an unverified claim. Verification requires both witness
+// and validated non-witness claims to agree on amount and scriptPubKey.
+// Disagreement is a mismatch. No network lookup is performed.
 import { addressFromScript } from "./addresses.js";
 
 const escapeHtml = (text) =>
@@ -61,16 +62,28 @@ const scriptKind = (scriptHex, asm) => {
   return null;
 };
 
-// Prefer a decoded witness claim when present, but use a validated non-witness
-// prevout as the authoritative claim when both agree. A disagreement remains
-// visible so the existing fee-conflict behavior is preserved.
+// Prefer the validated non-witness claim when both claims agree. If either
+// amount or scriptPubKey disagrees, preserve the conflict so the UI can show
+// a mismatch rather than silently selecting one claim.
 const claimedPrevout = (pairs) => {
   const witness = pairs.find((pair) => pair.name === "PSBT_IN_WITNESS_UTXO" && pair.decoded);
   const nonWitness = pairs.find((pair) => pair.name === "PSBT_IN_NON_WITNESS_UTXO" && pair.decoded?.prevout);
   const witnessClaim = witness && { value: witness.decoded.value, scriptPubKey: witness.decoded.scriptPubKey };
   const nonWitnessClaim = nonWitness && { value: nonWitness.decoded.prevout.value, scriptPubKey: nonWitness.decoded.prevout.scriptPubKey };
   if (witnessClaim && nonWitnessClaim) {
-    return witnessClaim.value === nonWitnessClaim.value ? nonWitnessClaim : { conflict: [witnessClaim.value, nonWitnessClaim.value] };
+    const amountMismatch = witnessClaim.value !== nonWitnessClaim.value;
+    const scriptMismatch = witnessClaim.scriptPubKey !== nonWitnessClaim.scriptPubKey;
+    if (amountMismatch || scriptMismatch) {
+      return {
+        conflict: {
+          amounts: [witnessClaim.value, nonWitnessClaim.value],
+          script: scriptMismatch,
+          value: nonWitnessClaim.value,
+          scriptPubKey: nonWitnessClaim.scriptPubKey,
+        },
+      };
+    }
+    return nonWitnessClaim;
   }
   return witnessClaim ?? nonWitnessClaim ?? null;
 };
@@ -78,14 +91,16 @@ const claimedPrevout = (pairs) => {
 // Verification status is derived from the existing psbt-wasm validation:
 // a decoded non-witness prevout is only exposed after the supplied transaction
 // matches the input outpoint and the referenced output exists. This is a UI
-// projection only; no second UTXO validator is performed here. Verification
-// establishes the amount from the validated non-witness UTXO; the witness and
-// non-witness scriptPubKeys are not compared by this implementation.
+// projection only; no second UTXO validator is performed here. Per #191's
+// verification contract, a definitive Verified state additionally requires a
+// decoded witness UTXO whose amount and scriptPubKey agree with that validated
+// non-witness prevout.
 const utxoVerification = (pairs) => {
   const claim = claimedPrevout(pairs);
   if (claim?.conflict) return "mismatch";
+  const hasWitness = pairs.some((pair) => pair.name === "PSBT_IN_WITNESS_UTXO" && pair.decoded);
   const hasNonWitness = pairs.some((pair) => pair.name === "PSBT_IN_NON_WITNESS_UTXO" && pair.decoded?.prevout);
-  return hasNonWitness ? "verified" : "unverified";
+  return hasWitness && hasNonWitness ? "verified" : "unverified";
 };
 
 const SIGNING_PAIR_NAMES = ["PSBT_IN_PARTIAL_SIG", "PSBT_IN_TAP_KEY_SIG", "PSBT_IN_TAP_SCRIPT_SIG"];
@@ -131,10 +146,12 @@ const inputBox = (doc, index, network, selected) => {
   const verificationText = verification === "verified" ? "verified" : verification === "mismatch" ? "mismatch" : "unverified";
   const verificationTone = verification === "verified" ? "psbted-note-ok" : verification === "mismatch" ? "psbted-note-bad" : "muted";
   const amountHtml = conflict
-    ? `<span class="psbted-note-bad">${verificationText}: conflicting claims: ${groupSats(conflict[0])} vs ${groupSats(conflict[1])} sats</span>`
+    ? conflict.script
+      ? `<span class="psbted-note-bad">${verificationText}: conflicting scriptPubKeys${conflict.amounts[0] !== conflict.amounts[1] ? ` and amounts: ${groupSats(conflict.amounts[0])} vs ${groupSats(conflict.amounts[1])} sats` : ""}</span>`
+      : `<span class="psbted-note-bad">${verificationText}: conflicting claims: ${groupSats(conflict.amounts[0])} vs ${groupSats(conflict.amounts[1])} sats</span>`
     : claim
-      ? `${groupSats(claim.value)} sats <span class="${verificationTone}" title="${verification === "verified" ? "amount independently established from the validated non-witness UTXO; scriptPubKey from the validated non-witness UTXO; witness script is not compared" : "not verified from a matching non-witness UTXO"}">(${verificationText})</span>`
-      : `<span class="muted">no amount claim</span> <span class="${verificationTone}" title="not verified: no matching non-witness UTXO claim">(${verificationText})</span>`;
+      ? `${groupSats(claim.value)} sats <span class="${verificationTone}" title="${verification === "verified" ? "amount and scriptPubKey independently established by agreement between the validated non-witness UTXO and the witness UTXO" : "not verified: both witness and matching non-witness UTXO claims are required"}">(${verificationText})</span>`
+      : `<span class="muted">no amount claim</span> <span class="${verificationTone}" title="not verified: both witness and matching non-witness UTXO claims are required">(${verificationText})</span>`;
   return `<div class="psbted-viz-box${open ? " is-open" : ""}">
     <button type="button" class="psbted-viz-open" data-viz="input:${index}" aria-expanded="${open}" aria-label="Input ${index}, ${escapeHtml(address ?? label)}: show and edit this input's PSBT fields">
       <span class="psbted-viz-idx">#${index}</span>
@@ -171,8 +188,8 @@ export const psbtVizHtml = (doc, network, selected = null) => {
   // The aggregate total is still a claim unless every input amount is known;
   // the per-input labels provide the more precise verification state.
   const inputsHint = doc.totalIn === null
-    ? "amounts as claimed by the PSBT; not verified unless a matching non-witness UTXO is present"
-    : `${groupSats(doc.totalIn)} sats claimed; not verified unless a matching non-witness UTXO is present`;
+    ? "amounts as claimed by the PSBT; not verified unless matching witness and non-witness UTXO claims agree"
+    : `${groupSats(doc.totalIn)} sats claimed; not verified unless matching witness and non-witness UTXO claims agree`;
   const txOpen = selected?.kind === "tx";
   return `<div class="psbted-viz">
   <svg class="psbted-viz-svg" aria-hidden="true" focusable="false"></svg>

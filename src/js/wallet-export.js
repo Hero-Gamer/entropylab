@@ -127,9 +127,15 @@ var hodlWalletExport = (() => {
 
   const reverseHex = (hexText) => hex(hexText).reverse();
 
-  // Descriptor bodies end in "/*)" for every descriptor this app produces, so
-  // a digit+h before a path separator or bracket is always a hardened step.
-  const toCompatForm = (body) => body.replace(/(\d)h(?=[/\]])/g, "$1'");
+  // Core's compat form renders hardened steps with ' — but only inside the
+  // [fingerprint/path] key origin. Key material must be re-encoded untouched:
+  // base58 contains both digits and "h", and the account xpub sits directly
+  // before a "/", so a body-wide substitution can corrupt the xpub itself
+  // (about 1 in 375 account xpubs end in <digit>h) and produce a DescriptorID
+  // that disagrees with the one Core recomputes at load (DBErrors::CORRUPT).
+  const toCompatForm = (body) =>
+    body.replace(/\[([0-9a-fA-F]{8})((?:\/\d+h?)*)\]/g, (match, fingerprint, path) =>
+      `[${fingerprint}${path.replace(/(\d)h/g, "$1'")}]`);
 
   const stripChecksum = (descriptor) => {
     const hash = descriptor.lastIndexOf("#");

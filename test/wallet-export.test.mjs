@@ -329,6 +329,47 @@ test("accounts without private material stay watch-only in a private export", ()
   for (const key of watchOnly.keys()) assert.equal(fallback.get(key), watchOnly.get(key));
 });
 
+// Regression: the h->' compat rewrite must stay inside the [origin] segment.
+// About 1 in 375 account xpubs end in a digit followed by the base58 letter
+// "h"; a body-wide rewrite corrupted that xpub, and Bitcoin Core refused to
+// load the wallet ("descriptor ID calculated by the wallet differs from the
+// one in DB"). Both xpubs below are real m/84'/0'/0' account keys with that
+// ending, so the old code path is exercised exactly.
+const XPUB_TAIL_4H = "xpub6DGDSTSv42ve3BBRALC4UVi3LdaoQjA9R2yV9RSDojTRKQTK5Jk73WKqm6v392eeF3Lxawf8gHiBpD5xBDx7HYvbkLoZ6e1Emu9fvW2M24h";
+const XPUB_TAIL_2H = "xpub6ChZ8GTJVLpepi3oLPQUHRx6H7RkwQ6bsoqvSfwTw5jZuRithtrc75Tfq7H3sa8bXkA9d35K3CdJDY5B2aTFmdFEp19AGWT7XTXDVFvCn2h";
+
+test("descriptor ids keep account xpubs ending in <digit>h byte-identical", () => {
+  const descriptorFor = (xpub) => {
+    const body = `wpkh([00000000/84h/0h/0h]${xpub}/0/*)`;
+    return `${body}#${descriptorChecksum(body)}`;
+  };
+  const wallet = {
+    kind: "hd",
+    network: "mainnet",
+    accounts: [{
+      def: { id: "bip84" },
+      receiveDescriptor: descriptorFor(XPUB_TAIL_4H),
+      changeDescriptor: descriptorFor(XPUB_TAIL_2H),
+    }],
+  };
+  const records = moduleRecords(wallet, false);
+  const descriptorPrefix = "10" + "77616c6c657464657363726970746f72"; // length-prefixed "walletdescriptor"
+  const ids = [...records.keys()].filter((key) => key.startsWith(descriptorPrefix)).map((key) => key.slice(descriptorPrefix.length));
+  assert.equal(ids.length, 2);
+  for (const xpub of [XPUB_TAIL_4H, XPUB_TAIL_2H]) {
+    // What Core computes at load: origin steps rendered with ', key material
+    // (including its trailing "h") re-encoded untouched.
+    const compat = `wpkh([00000000/84'/0'/0']${xpub}/0/*)`;
+    const expectedId = bytesToHex(sha256(new TextEncoder().encode(`${compat}#${descriptorChecksum(compat)}`)));
+    assert.ok(ids.includes(expectedId), `record id for ...${xpub.slice(-12)} must match Core's DescriptorID`);
+  }
+  // The stored descriptor string keeps the original xpub text as well.
+  const storedValues = ids.map((id) => Buffer.from(records.get(descriptorPrefix + id), "hex").toString());
+  for (const xpub of [XPUB_TAIL_4H, XPUB_TAIL_2H]) {
+    assert.ok(storedValues.some((value) => value.includes(xpub)), `stored descriptor keeps ...${xpub.slice(-12)} verbatim`);
+  }
+});
+
 test("generated watch-only wallet.dat verifies with real SQLite", { skip: !PYTHON_SQLITE }, () => {
   const { buildWalletDat } = loadModule();
   const bytes = buildWalletDat(WATCH_ONLY_WALLET, false, deps, REF_CREATION_TIME);

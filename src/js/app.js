@@ -9114,7 +9114,18 @@ function hodlRenderSpSend() {
     return;
   }
   let network = hodlSpNetwork();
-  document.getElementById("sp-out").innerHTML = `<p class="psbt-ok">${result.outputs.length} unique taproot output${result.outputs.length === 1 ? "" : "s"}.</p>` + (parsed.lightning ? `<p class="muted">Lightning parameters in the URI were ignored. This page does not pay invoices or offers.</p>` : "") + result.outputs.map((xonly, index) => {
+  // A URI's payment intent is surfaced, never silently dropped (issues #321,
+  // #326): requested amounts are shown for the sender to enter manually —
+  // this page builds output scripts only — and a URI that offered several
+  // payment instructions says which one was selected.
+  let notes = "";
+  if (parsed.alternatives) notes += `<p class="psbt-warn">The URI offered ${parsed.alternatives} alternative payment instructions. The first silent-payment address was selected; the rest are not paid.</p>`;
+  parsed.recipients.forEach((recipient, index) => {
+    if (recipient.amountSats !== null) {
+      notes += `<p class="psbt-warn">The URI requested ${hodlSats(BigInt(recipient.amountSats))} BTC for recipient ${index + 1} (${hodlSpEscape(recipient.address.slice(0, 20))}…). This page builds output scripts only — enter the amount yourself when funding.</p>`;
+    }
+  });
+  document.getElementById("sp-out").innerHTML = `<p class="psbt-ok">${result.outputs.length} unique taproot output${result.outputs.length === 1 ? "" : "s"}.</p>` + notes + (parsed.lightning ? `<p class="muted">Lightning parameters in the URI were ignored. This page does not pay invoices or offers.</p>` : "") + result.outputs.map((xonly, index) => {
     let address = p2trAddressFromXonly(xonly, network);
     return `<div class="sp-output"><p class="label">Output ${index + 1}</p><p class="psbt-kv" id="sp-out-addr-${index}">${hodlSpEscape(address)}</p><p class="psbt-kv" id="sp-out-xonly-${index}">${hodlSpEscape(xonly)}</p>${hodlSpCopyButton(`sp-out-addr-${index}`, "Copy P2TR")}</div>`;
   }).join("");

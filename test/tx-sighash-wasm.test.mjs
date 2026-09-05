@@ -117,3 +117,24 @@ test("non-canonical transactions are rejected", () => {
   );
   assert.throws(() => parseRawTx(nonMinimal));
 });
+
+test("serializeTx rejects out-of-u64-range amounts instead of wrapping (issue #338)", () => {
+  const tx = {
+    version: 2,
+    locktime: 0,
+    inputs: [{ txid: new Uint8Array(32), vout: 0, scriptSig: new Uint8Array(), sequence: 0xffffffff }],
+    outputs: [{ amount: 0n, script: new Uint8Array([0x51]) }],
+  };
+  const withAmount = (amount) => ({ ...tx, outputs: [{ amount, script: new Uint8Array([0x51]) }] });
+  // In-range boundaries serialize: 0, MAX_MONEY, and u64::MAX.
+  for (const amount of [0n, 2100000000000000n, 0xffffffffffffffffn, "0", "18446744073709551615"]) {
+    assert.doesNotThrow(() => serializeTx(withAmount(amount)), String(amount));
+  }
+  // u64::MAX lands as eight 0xff bytes (no wrap to zero).
+  const max = serializeTx(withAmount(0xffffffffffffffffn));
+  assert.deepEqual(Array.from(max.slice(47, 55)), Array(8).fill(0xff));
+  // Negative and oversized values must throw, not alias modulo 2^64.
+  for (const amount of [-1n, 0x10000000000000000n, 0x10000000000000001n, "-1", "18446744073709551616"]) {
+    assert.throws(() => serializeTx(withAmount(amount)), /out of the unsigned 64-bit range/, String(amount));
+  }
+});

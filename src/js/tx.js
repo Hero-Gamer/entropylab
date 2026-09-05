@@ -151,10 +151,17 @@ export function serializeTx(tx) {
   }
   out.push(...varint(tx.outputs.length));
   for (const output of tx.outputs) {
-    let amount = BigInt(output.amount);
+    // Validate before emitting: the eight-byte little-endian write would
+    // otherwise alias negative and oversized values modulo 2^64 (issue #338).
+    // (BigInt() already throws on non-integers; MAX_MONEY is a consensus
+    // rule, enforced where transactions are constructed — psbt-wasm's build
+    // gate — not by this wire serializer.)
+    const amount = BigInt(output.amount);
+    if (amount < 0n || amount > 0xffffffffffffffffn) {
+      throw new Error("Output amount is out of the unsigned 64-bit range.");
+    }
     for (let i = 0; i < 8; i++) {
-      out.push(Number(amount & 255n));
-      amount >>= 8n;
+      out.push(Number((amount >> BigInt(8 * i)) & 255n));
     }
     out.push(...varint(output.script.length), ...output.script);
   }

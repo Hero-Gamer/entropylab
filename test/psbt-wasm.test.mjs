@@ -434,6 +434,38 @@ test("a taproot derivation pair with a huge leaf count decodes to an error, not 
   assert.match(pair.decodeError, /tap bip32 derivation is truncated/);
 });
 
+test("build and inspect limits agree: exactly 10,000 pairs per map round-trips (issue #355)", () => {
+  // The inspector counted the terminator slot against the cap while the
+  // builder did not, so exactly 10,000 pairs built fine but refused to
+  // re-inspect. Both sides now accept up to 10,000 real pairs.
+  const doc = inspectValid();
+  const existing = doc.globals.length;
+  for (let i = 0; i < 10_000 - existing; i++) {
+    doc.globals.push({ key: "70" + i.toString(16).padStart(8, "0"), value: "00" });
+  }
+  const bytes = rebuild(doc);
+  const fresh = psbtInspectDoc(bytes);
+  assert.equal(fresh.globals.length, 10_000);
+  doc.globals.push({ key: "70ffffffff", value: "00" }); // pair 10,001
+  assert.throws(() => rebuild(doc), /too many pairs/);
+});
+
+test("the builder enforces the same 5 MB cap as the inspector (issue #355)", () => {
+  // Just under the cap: builds and re-inspects. Split across the two output
+  // maps because rust-bitcoin also bounds each map to 4,000,000 bytes.
+  const under = inspectValid();
+  under.outputs[0].push({ key: "71" + "22".repeat(32), value: "ab".repeat(2_400_000) });
+  under.outputs[1].push({ key: "71" + "33".repeat(32), value: "cd".repeat(2_400_000) });
+  const bytes = rebuild(under);
+  assert.ok(bytes.length < 5_000_000);
+  assert.equal(psbtInspectDoc(bytes).rustBitcoinError, null);
+  // Just over: the builder refuses instead of emitting an uninspectable file.
+  const over = inspectValid();
+  over.outputs[0].push({ key: "71" + "22".repeat(32), value: "ab".repeat(2_900_000) });
+  over.outputs[1].push({ key: "71" + "33".repeat(32), value: "cd".repeat(2_900_000) });
+  assert.throws(() => rebuild(over), /rebuilt PSBT is too large/);
+});
+
 test("psbtBytesFromText accepts base64 and hex with whitespace", () => {
   assert.deepEqual(psbtBytesFromText(VALID_B64), VALID);
   assert.deepEqual(psbtBytesFromText(VALID_HEX.toUpperCase()), VALID);

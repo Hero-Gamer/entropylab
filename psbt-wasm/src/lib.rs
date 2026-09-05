@@ -243,12 +243,15 @@ struct RawPair {
 fn read_map(bytes: &[u8], off: &mut usize) -> Result<Vec<RawPair>, String> {
     let mut pairs = Vec::new();
     loop {
-        if pairs.len() >= MAX_PAIRS_PER_MAP {
-            return Err("PSBT map has too many entries to inspect safely".into());
-        }
         let key_len = read_varint(bytes, off)?;
         if key_len == 0 {
             return Ok(pairs);
+        }
+        // Count real pairs only, so a map of exactly MAX_PAIRS_PER_MAP pairs
+        // plus its terminator still inspects: the builder accepts that many,
+        // and what the editor builds must remain inspectable.
+        if pairs.len() >= MAX_PAIRS_PER_MAP {
+            return Err("PSBT map has too many entries to inspect safely".into());
         }
         let key_end = span_end(*off, key_len, bytes.len()).ok_or("PSBT ended inside a key")?;
         let key = bytes[*off..key_end].to_vec();
@@ -945,7 +948,9 @@ fn build(json_bytes: &[u8]) -> Result<Vec<u8>, String> {
         out.push(0x00);
     }
 
-    if out.len() > MAX_PSBT_BYTES * 2 {
+    // Same cap as inspection: the editor must never emit a PSBT it would
+    // then refuse to re-inspect (and the JS loader rejects over 5 MB too).
+    if out.len() > MAX_PSBT_BYTES {
         return Err("rebuilt PSBT is too large".into());
     }
     // The authoritative gate: the rebuilt file must parse as a PSBT under

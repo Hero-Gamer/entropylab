@@ -2616,6 +2616,19 @@
     equal(document.getElementById("psbt-error").textContent, "", "inspector rejected the testnet selection");
     document.getElementById("network-picker-button").click();
     document.querySelector('#network-picker-menu [data-network="mainnet"]').click();
+    // Issue #350: an input whose witness UTXO claims 5,000 sats while its
+    // (txid-verified) non-witness UTXO carries 1,000 must not show a fee at
+    // all — the conflict is named and the fee stays unknown.
+    const conflictPsbt = "cHNidP8BAFICAAAAAYNUCtlv8zXTPDr2h+6wsPDUNuzsackM+DvAvxr0m8IIAAAAAAD/////AYQDAAAAAAAAFgAUEREREREREREREREREREREREREREAAAAAAAEBH4gTAAAAAAAAFgAUEREREREREREREREREREREREREREBAFICAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////AegDAAAAAAAAFgAUEREREREREREREREREREREREREREAAAAAAAA=";
+    input(box, conflictPsbt);
+    document.getElementById("psbt-go").click();
+    await until(() => document.getElementById("psbt-out").textContent.includes("Conflicting previous-output claims") || document.getElementById("psbt-error").textContent, "conflict report");
+    equal(document.getElementById("psbt-error").textContent, "", "inspector rejected the conflict fixture");
+    const conflictOut = document.getElementById("psbt-out").textContent;
+    assert(conflictOut.includes("Conflicting previous-output claims"), "conflict warning missing");
+    assert(conflictOut.includes("0.00005000") && conflictOut.includes("0.00001000"), "both claimed amounts missing");
+    assert(conflictOut.includes("Fee unknown"), "conflicted input must void the fee");
+    assert(!conflictOut.includes("Unverified fee"), "a fee was derived from conflicting claims");
     input(box, "");
     document.getElementById("psbt-wipe").click();
     document.querySelector('#workspace [data-workspace="calc"]').click();

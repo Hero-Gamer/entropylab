@@ -8008,6 +8008,21 @@ function hodlWitUtxo(entries) {
   if (scriptStart + scriptLength !== entry.val.length) throw new Error("A witness UTXO contains trailing bytes.");
   return { amount, script: entry.val.slice(scriptStart) };
 }
+// PSBT_IN_NON_WITNESS_UTXO (0x00): the full previous transaction. Unlike a
+// witness claim, this one is checkable — the embedded transaction's txid must
+// equal the input's referenced prevout and the amount is read from that
+// transaction's own output, so a lied amount cannot survive (issue #350).
+// `input` is the inspector's parsed input (wire-order txid bytes, vout).
+function hodlNonWitUtxo(entries, input) {
+  let entry = hodlFind(entries, 0).find((item) => item.keydata.length === 0);
+  if (!entry) return null;
+  let prev = parseRawTx(entry.val);
+  let txid = hodlSha256(hodlSha256(entry.val));
+  if (!hodlEq(txid, input.txid)) throw new Error("A non-witness UTXO's transaction does not match the input's previous output.");
+  let output = prev.outputs[input.vout];
+  if (!output) throw new Error("A non-witness UTXO's transaction does not contain the spent output.");
+  return { amount: output.amount, script: output.script };
+}
 function hodlPartialSigs(entries) {
   return hodlFind(entries, 2).map((entry) => {
     let signature = entry.val;
@@ -9360,6 +9375,7 @@ function hodlRenderPsbt(psbt) {
     tx = psbt.tx,
     inputSum = 0n,
     knownInputs = 0,
+    conflictedInputs = [],
     html = [],
     rValues = [],
     rows = [],
@@ -9389,10 +9405,26 @@ function hodlRenderPsbt(psbt) {
   html.push(hodlOwnershipWarning(tx.outputs, network, ownershipMap));
   psbt.inputs.forEach((entries, index) => {
     let witnessUtxo = hodlWitUtxo(entries);
-    if (witnessUtxo) {
-      inputSum += witnessUtxo.amount;
-      knownInputs++;
+    // The non-witness UTXO is the checkable claim: it embeds the previous
+    // transaction, so its txid must match the input's outpoint (issue #350).
+    let nonWitnessUtxo = null, nonWitnessError = "";
+    try {
+      nonWitnessUtxo = hodlNonWitUtxo(entries, tx.inputs[index]);
+    } catch (exception) {
+      nonWitnessError = exception.message || String(exception);
     }
+    // Resolve all declarations as a set: agreeing claims count once,
+    // disagreeing claims count as nothing and are flagged, and the verified
+    // non-witness amount is preferred for display when both agree.
+    let claim = null, claimConflict = false;
+    if (witnessUtxo && nonWitnessUtxo) {
+      if (witnessUtxo.amount === nonWitnessUtxo.amount) claim = nonWitnessUtxo;
+      else claimConflict = true;
+    } else claim = witnessUtxo || nonWitnessUtxo;
+    if (claim) {
+      inputSum += claim.amount;
+      knownInputs++;
+    } else if (claimConflict) conflictedInputs.push(index);
     let declaredSighash = null, declaredSighashError = "";
     try {
       declaredSighash = hodlSighashPolicy(entries);
@@ -9400,7 +9432,7 @@ function hodlRenderPsbt(psbt) {
       declaredSighashError = exception.message || String(exception);
     }
     let declaredLabel = declaredSighashError ? "" : declaredSighash === null ? "SIGHASH_ALL (default)" : hodlSighashLabel(declaredSighash);
-    let previous = tx.inputs[index], destination = witnessUtxo ? hodlAddr(witnessUtxo.script, network) : "(previous output details unavailable)", signatures = hodlPartialSigs(entries), tapSignatures = hodlTapSigs(entries), finalized = hodlFinalized(entries);
+    let previous = tx.inputs[index], destination = claim ? hodlAddr(claim.script, network) : "(previous output details unavailable)", signatures = hodlPartialSigs(entries), tapSignatures = hodlTapSigs(entries), finalized = hodlFinalized(entries);
     if (finalized) {
       // Finalized signatures moved into the final script fields must not
       // escape repeated-nonce analysis (issue #87).
@@ -9413,7 +9445,9 @@ function hodlRenderPsbt(psbt) {
       uninspected += finalMaterial.uninspected + (finalMaterial.malformed ? 1 : 0);
     }
     tapSignatureCount += tapSignatures.length;
-    html.push("<p class='psbt-kv'><strong>Input " + index + "</strong> \xB7 " + hodlHexRev(previous.txid) + " : " + previous.vout + (witnessUtxo ? " \xB7 " + hodlSats(witnessUtxo.amount) + " BTC claimed" : "") + "<br>" + hodlEscapeHtml(destination) + "<br>" + (signatures.length + tapSignatures.length ? signatures.length + tapSignatures.length + " signature(s) present" : finalized ? "Finalized input data present" : "Not signed yet") + (declaredSighashError ? "<br>Declared sighash policy unreadable: " + hodlEscapeHtml(declaredSighashError) : "<br>Signature policy: " + hodlEscapeHtml(declaredLabel)) + "</p>");
+    html.push("<p class='psbt-kv'><strong>Input " + index + "</strong> \xB7 " + hodlHexRev(previous.txid) + " : " + previous.vout + (claim ? " \xB7 " + hodlSats(claim.amount) + " BTC claimed" : "") + "<br>" + hodlEscapeHtml(destination) + "<br>" + (signatures.length + tapSignatures.length ? signatures.length + tapSignatures.length + " signature(s) present" : finalized ? "Finalized input data present" : "Not signed yet") + (declaredSighashError ? "<br>Declared sighash policy unreadable: " + hodlEscapeHtml(declaredSighashError) : "<br>Signature policy: " + hodlEscapeHtml(declaredLabel)) + "</p>");
+    if (claimConflict) html.push("<p class='psbt-bad'><strong>Conflicting previous-output claims:</strong> input " + index + " declares " + hodlSats(witnessUtxo.amount) + " BTC in its witness UTXO but " + hodlSats(nonWitnessUtxo.amount) + " BTC in its non-witness UTXO (checked against the embedded previous transaction). Neither amount is trusted and the fee is left unknown.</p>");
+    if (nonWitnessError) html.push("<p class='psbt-bad'><strong>Non-witness UTXO problem:</strong> input " + index + ": " + hodlEscapeHtml(nonWitnessError) + " That field claims nothing.</p>");
     let inputEnvelopes = (inscriptionReport.inputs[index] && inscriptionReport.inputs[index].envelopes) || [];
     inputEnvelopes.forEach((envelope) => {
       let className = envelope.unrecognizedEven || envelope.bodyBytes > 100000 ? "psbt-bad" : "psbt-warn";
@@ -9518,12 +9552,13 @@ function hodlRenderPsbt(psbt) {
       rows.push({ input: index, message, className, pubkey: hodlHex.encode(signature.pubkey) });
     });
   });
-  if (knownInputs === tx.inputs.length) {
+  if (conflictedInputs.length) html.push("<p class='psbt-bad'><strong>Fee unknown</strong> — input(s) " + conflictedInputs.join(", ") + " carry conflicting witness and non-witness UTXO amounts.</p>");
+  else if (knownInputs === tx.inputs.length) {
     let outputSum = tx.outputs.reduce((sum, output) => sum + output.amount, 0n), fee = inputSum - outputSum;
-    if (fee >= 0n) html.push("<p class='psbt-kv'><strong>Unverified fee (PSBT witness UTXO claims)</strong> \xB7 " + hodlSats(fee) + " BTC</p>");
+    if (fee >= 0n) html.push("<p class='psbt-kv'><strong>Unverified fee (PSBT previous-output claims)</strong> \xB7 " + hodlSats(fee) + " BTC</p>");
     else html.push("<p class='psbt-bad'><strong>Inconsistent claimed amounts:</strong> outputs exceed claimed inputs by " + hodlSats(-fee) + " BTC.</p>");
-  } else html.push("<p class='muted'>Fee unknown — some inputs do not include a claimed witness UTXO amount.</p>");
-  html.push("<p class='muted'>Input amounts and any fee are unverified PSBT claims. This tool does not check them against previous transactions or the blockchain.</p>");
+  } else html.push("<p class='muted'>Fee unknown — some inputs do not include a claimed previous-output amount.</p>");
+  html.push("<p class='muted'>Witness-UTXO amounts are unverified PSBT claims; non-witness UTXO amounts are cross-checked against the embedded previous transaction. Neither is checked against the blockchain.</p>");
   if (inscriptionReport.envelopes.length) {
     html.push("<p class='psbt-warn'><strong>" + inscriptionReport.envelopes.length + " inscription envelope" + (inscriptionReport.envelopes.length === 1 ? "" : "s") + " in this PSBT.</strong> This is what the file reveals in witness or tap-leaf scripts. EntropyLab does not number sats, fetch content from the chain, or render binary payloads.</p>");
   }

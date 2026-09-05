@@ -2451,6 +2451,22 @@
     assert(edited.startsWith("cHNidP8B") && edited !== vector, "edited PSBT missing or unchanged");
     assert(!document.getElementById("psbted-build"), "the Re-serialize button is gone");
     assert(outText().includes("199901000"), "edited amount was not re-decoded");
+    // Issue #320: a valid edit followed by an invalid pending value leaves the
+    // last valid build visible but must disable every export boundary (copy,
+    // download, reload, QR) until the fields build again.
+    input(document.querySelector("[data-txout-val='0']"), "not-a-number");
+    await until(() => document.getElementById("psbted-error").textContent, "stale rebuild error");
+    for (const id of ["psbted-copy-b64", "psbted-copy-hex", "psbted-download", "psbted-reload", "psbted-result-b64", "psbted-result-hex"]) {
+      assert(document.getElementById(id).disabled, `${id} stayed enabled while stale`);
+    }
+    assert(!document.querySelector("#psbted-qr-code svg"), "stale bytes still animated as QR");
+    assert(outText().includes("last valid build"), "stale note missing");
+    // Typing back to a buildable value re-enables every export control.
+    input(document.querySelector("[data-txout-val='0']"), "199902000");
+    await until(() => document.getElementById("psbted-error").textContent === "" && document.getElementById("psbted-result-b64").value.includes("cHNidP8B"), "rebuild after stale");
+    assert(!document.getElementById("psbted-copy-b64").disabled, "copy stayed disabled after a clean rebuild");
+    assert(!document.getElementById("psbted-download").disabled, "download stayed disabled after a clean rebuild");
+    assert(document.querySelector("#psbted-qr-code svg"), "QR did not resume after a clean rebuild");
     input(box, '<img src=x onerror="window.__browserTestInjected=true">');
     document.getElementById("psbted-load").click();
     await until(() => document.getElementById("psbted-error").textContent, "editor rejection");

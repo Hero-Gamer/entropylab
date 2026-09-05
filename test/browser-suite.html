@@ -2427,6 +2427,8 @@
     await until(() => document.querySelector("#psbted-out .psbted-pairs"), "editor pair tables");
     const outText = () => document.getElementById("psbted-out").textContent;
     assert(outText().includes("PSBT_IN_WITNESS_UTXO"), "typed pair names missing");
+    const vizText = () => document.querySelector("#psbted-out .psbted-viz").textContent;
+    assert(vizText().includes("finalized"), "finalized fixture lost its final scriptSig status on load");
     assert(outText().includes("100000000 sats"), "witness utxo amount missing");
     assert(outText().includes("parses under rust-bitcoin"), "rust-bitcoin verdict missing");
     assert(outText().includes("1BonMcawnmL4XMxEcofTWqTXxtk9K7hEWe"), "mainnet output address missing");
@@ -2451,6 +2453,11 @@
     assert(edited.startsWith("cHNidP8B") && edited !== vector, "edited PSBT missing or unchanged");
     assert(!document.getElementById("psbted-build"), "the Re-serialize button is gone");
     assert(outText().includes("199901000"), "edited amount was not re-decoded");
+    // Issue #325: the amount edit invalidated every digest the fixture's final
+    // scriptSig committed to, so the pair is dropped instead of left looking
+    // signed; input 0 reads unsigned again. (The pair-type dropdown always
+    // lists the field name, so the signal is the diagram's status line.)
+    assert(!vizText().includes("finalized"), "stale final scriptSig survived a transaction edit");
     // Issue #320: a valid edit followed by an invalid pending value leaves the
     // last valid build visible but must disable every export boundary (copy,
     // download, reload, QR) until the fields build again.
@@ -2512,7 +2519,9 @@
     await until(() => report().includes("transaction") || compareError(), "comparison report");
     equal(compareError(), "", "comparison failed");
     assert(report().includes("The underlying transaction changed"), "transaction change not flagged");
-    assert(report().includes("Signing state unchanged"), "signing state should read unchanged");
+    // The editor dropped the stale final scriptSig when the amount changed
+    // (issue #325), so the signing state differs from the pristine vector.
+    assert(report().includes("Signing state changed"), "dropped final scriptSig not flagged as a signing change");
     assert(report().includes("PSBT metadata unchanged"), "a transaction edit must not flag metadata");
     assert(report().includes("199900000") && report().includes("199901000"), "before/after amounts missing");
     // The same bytes on both sides are semantically identical.

@@ -260,6 +260,31 @@ export const psbtEditorBuildDoc = (doc) => ({
   outputs: doc.outputs.map((map) => map.map((pair) => ({ key: pair.key, value: pair.value }))),
 });
 
+// Input-map key types whose values commit to the unsigned transaction:
+// partial signatures (0x02), final scriptSig (0x07), final witness (0x08),
+// Taproot key/script signatures (0x13/0x14). Any edit to the transaction
+// changes every digest those values commit to, so keeping them would leave a
+// rebuilt PSBT looking signed while its signatures are invalid (issues #325,
+// #360). Sighash-type hints (0x03) and UTXO claims are not signatures and
+// stay.
+const SIGNING_KEY_TYPES = new Set(["02", "07", "08", "13", "14"]);
+
+// Drops every signing/finalization pair from the document's input maps, in
+// place. Called by the editor when the transaction section is about to be
+// rebuilt with different bytes than the pairs were inspected against.
+export const dropSigningPairs = (doc) => {
+  let dropped = 0;
+  for (const map of doc.inputs) {
+    for (let i = map.length - 1; i >= 0; i--) {
+      if (SIGNING_KEY_TYPES.has(map[i].key.slice(0, 2))) {
+        map.splice(i, 1);
+        dropped += 1;
+      }
+    }
+  }
+  return dropped;
+};
+
 // --- Comparison report -----------------------------------------------------
 // Rendering for comparePsbtDocs output (psbt-diff.js). Pure string building,
 // unit-tested under Node; every interpolated value passes escapeHtml or
@@ -406,6 +431,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
   let doc = null; // inspect document being edited; null when nothing is loaded
   let resultBytes = null; // last successfully built PSBT
   let stale = false; // true while the current fields do not build; resultBytes is then the last valid build
+  let pristineTx = null; // JSON of the transaction the current signing pairs commit to; null while unknown
   let qrTimer = null; // animation timer of the UR fragment QR, when running
   // Which flow-diagram part is open ({ kind: "input"|"output", index } for a
   // box or { kind: "tx" } for the middle transaction box); its fields render
@@ -723,11 +749,19 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
   // field being edited, so a successful keystroke never interrupts typing.
   const rebuild = ({ restoreFocus = false } = {}) => {
     const focus = restoreFocus ? captureFocus() : null;
+    // A transaction edit invalidates every signature and final script the
+    // maps carry: drop them before the rebuild so the result never looks
+    // signed with stale material (issues #325, #360).
+    if (pristineTx !== null && JSON.stringify(doc.tx) !== pristineTx) {
+      dropSigningPairs(doc);
+      pristineTx = null; // pairs and transaction agree again (or are gone)
+    }
     const fresh = psbtBuildBytes(psbtEditorBuildDoc(doc));
     const decoded = psbtInspectDoc(fresh);
     doc = decoded;
     resultBytes = fresh;
     stale = false;
+    pristineTx = JSON.stringify(doc.tx);
     setError("");
     render();
     renderResult();
@@ -798,12 +832,14 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
       doc = null;
       resultBytes = null;
       stale = false;
+      pristineTx = null;
       render();
       setError(exception.message || String(exception));
       return;
     }
     resultBytes = null;
     stale = false;
+    pristineTx = null; // the fresh document's pairs commit to its own transaction
     // The loaded PSBT builds at once, so the result text and QR appear
     // without an extra click.
     try {
@@ -1045,6 +1081,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
     doc = null;
     resultBytes = null;
     stale = false;
+    pristineTx = null;
     selected = null;
     text.value = "";
     setError("");

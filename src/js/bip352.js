@@ -370,17 +370,37 @@ const normalizeVin = (vin) => ({
   private_key: vin.private_key,
 });
 
+// BIP-352 spends a taproot input with "the private key corresponding to the
+// taproot output key (i.e. the tweaked private key)": the BIP-341 key-path
+// tweak of the even-Y internal key. Supplying the raw internal key instead
+// produces outputs the recipient can never detect.
+export function taprootOutputPrivateKey(secret) {
+  const internal = scalarFromBytes(secret instanceof Uint8Array ? secret : hexToBytes(secret));
+  const even = pointHasEvenY(Point.fromBytes(secp256k1.getPublicKey(bigToBytes32(internal), true))) ? internal : ORDER - internal;
+  const xonly = pointToXOnly(Point.fromBytes(secp256k1.getPublicKey(bigToBytes32(even), true)));
+  const tweak = scalarFromBytes(taggedHash("TapTweak", xonly));
+  const output = (even + tweak) % ORDER;
+  if (output === 0n) throw new Error("Taproot key-path tweak produced an invalid key.");
+  return bigToBytes32(output);
+}
+
 export function eligibleInputKeys(vins) {
   const pubkeys = [];
   const privkeys = [];
-  for (const raw of vins) {
+  for (const [index, raw] of vins.entries()) {
     const vin = normalizeVin(raw);
     const extracted = extractInputPubKey(vin);
     if (!extracted) continue;
     pubkeys.push(extracted);
     if (vin.private_key) {
+      const scalar = scalarFromBytes(typeof vin.private_key === "string" ? hexToBytes(vin.private_key) : vin.private_key);
+      const suppliedPoint = Point.fromBytes(secp256k1.getPublicKey(bigToBytes32(scalar), true));
+      const matches = extracted.isTaproot
+        ? equalBytes(pointToXOnly(suppliedPoint), pointToXOnly(extracted.point))
+        : equalBytes(pointToCompressed(suppliedPoint), pointToCompressed(extracted.point));
+      if (!matches) throw new Error(`Input ${index} private key does not match its eligible input public key.`);
       privkeys.push({
-        scalar: scalarFromBytes(typeof vin.private_key === "string" ? hexToBytes(vin.private_key) : vin.private_key),
+        scalar,
         isTaproot: extracted.isTaproot,
       });
     }

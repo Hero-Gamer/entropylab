@@ -87,6 +87,18 @@ test("recipient lines accept a raw code, a URI, and a trailing count", () => {
   assert.equal(mixed.lightning, false);
 });
 
+test("mixed-case silent payment addresses are rejected before normalization (issue #335)", () => {
+  // Uppercase one alphabetic character in the middle of a valid vector.
+  const mixed = SP.slice(0, 10) + SP[10].toUpperCase() + SP.slice(11);
+  assert.ok(mixed !== mixed.toLowerCase() && mixed !== mixed.toUpperCase());
+  assert.throws(() => parseBitcoinUri(`bitcoin:?sp=${mixed}`), /mixed case/);
+  assert.throws(() => parseRecipientLine(mixed), /mixed case/);
+  // All-lowercase and all-uppercase remain valid encodings.
+  assert.equal(parseRecipientLine(SP)[0].address, SP);
+  assert.equal(parseRecipientLine(SP.toUpperCase())[0].address, SP);
+  assert.equal(parseBitcoinUri(`bitcoin:?sp=${SP.toUpperCase()}`).silentPayments[0], SP);
+});
+
 test("a Lightning parameter is noted and then ignored", () => {
   const row = parseRecipientLine(`bitcoin:?sp=${SP}&lightning=lnbc1ignored`);
   assert.equal(row[0].address, SP);

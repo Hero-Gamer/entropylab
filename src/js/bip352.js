@@ -235,6 +235,12 @@ export function encodeSilentPaymentAddress(scanPoint, spendPoint, hrp = "sp", ve
 
 export function decodeSilentPaymentAddress(address, expectedHrp) {
   if (typeof address !== "string" || !address) throw new Error("Silent payment address is empty.");
+  // Bech32/Bech32m permit all-lowercase or all-uppercase encodings and
+  // require mixed case to be rejected — lowercasing first would launder a
+  // corrupted or crafted address into a valid one (issue #335).
+  if (address !== address.toLowerCase() && address !== address.toUpperCase()) {
+    throw new Error("A silent payment address must be all lowercase or all uppercase, not mixed case.");
+  }
   const lower = address.toLowerCase();
   const decoded = bech32mDecode(lower);
   if (!decoded) throw new Error("Not a Bech32m silent payment address.");

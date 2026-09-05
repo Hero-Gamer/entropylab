@@ -27,7 +27,13 @@ function parseQuery(query) {
 }
 
 function assertSilentPaymentAddress(address) {
-  const text = String(address || "").trim().toLowerCase();
+  const trimmed = String(address || "").trim();
+  // Bech32m is all-lowercase or all-uppercase; mixed case is invalid and must
+  // be rejected before normalization launders it (issue #335).
+  if (trimmed !== trimmed.toLowerCase() && trimmed !== trimmed.toUpperCase()) {
+    throw new Error("A silent payment address must be all lowercase or all uppercase, not mixed case.");
+  }
+  const text = trimmed.toLowerCase();
   if (!SP_ADDRESS.test(text)) throw new Error("Not a silent payment address.");
   return text;
 }
@@ -142,7 +148,7 @@ export function parseRecipientLine(line) {
     throw new Error("This page does not resolve DNS. Paste a bitcoin:?sp= URI or an sp1q address.");
   }
   if (!SP_ADDRESS.test(text)) throw new Error(`Not a silent payment address: ${text.slice(0, 24)}`);
-  return [{ address: text.toLowerCase(), count, lightning: false, amount: null, amountSats: null, alternatives: 0 }];
+  return [{ address: assertSilentPaymentAddress(text), count, lightning: false, amount: null, amountSats: null, alternatives: 0 }];
 }
 
 export function parseRecipientLines(text) {

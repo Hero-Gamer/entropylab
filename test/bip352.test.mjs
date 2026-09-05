@@ -151,6 +151,12 @@ test("hardened BIP-352 paths refuse watch-only seeds", () => {
   const watch = HDKey.fromExtendedKey(xpub);
   assert.equal(watch.privateKey, null);
   assert.throws(() => watch.derive("m/352'/0'/0'/1'/0"));
+  // Bech32m case rules: all-uppercase is a valid encoding, mixed case is not
+  // (issue #335) — reject before any lowercasing launders it.
+  assert.deepEqual(decodeSilentPaymentAddress(address.toUpperCase(), "sp").hrp, "sp");
+  const mixed = address.slice(0, 6) + address[6].toUpperCase() + address.slice(7);
+  assert.ok(mixed !== mixed.toLowerCase() && mixed !== mixed.toUpperCase());
+  assert.throws(() => decodeSilentPaymentAddress(mixed, "sp"), /mixed case/);
 });
 
 test("BIP-392 spscan / spspend encode and wrap in sp()", () => {

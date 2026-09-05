@@ -8597,7 +8597,10 @@ function hodlUseKeyForBip85(state) {
     } finally {
       hodlWipeBytes(seed);
     }
-    hodlBip85Testnet = false;
+    // The version bytes follow the session network on every load path: a
+    // testnet wallet must not yield mainnet-version children because it
+    // arrived as a mnemonic rather than a root xprv (issue #352).
+    hodlBip85Testnet = hodlNetworkFamily(result.network) === "testnet";
     hodlBip85Note = "Parent: " + (state.name || "Key Station key") + (result.passphraseUsed || (state.fields.pass || "").length ? " with BIP-39 passphrase (COLDCARD does the same \u2014 children differ without it)." : ".") + " Kept in page memory only.";
   } else if (result.kind === "hd" && result.rootXprv) {
     hodlBip85Root = hodlHDKey.fromExtendedKey(hodlParseExtendedKey(result.rootXprv).xkey);

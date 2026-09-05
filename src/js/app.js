@@ -9509,7 +9509,8 @@ function hodlRenderPsbt(psbt) {
     uninspected = 0,
     policyProblems = 0,
     policyIncomplete = 0,
-    unsupportedNonceChecks = 0;
+    unsupportedNonceChecks = 0,
+    feeInconsistent = 0;
   let inscriptionReport = { inputs: [], envelopes: [] }, inscriptionScanIncomplete = false;
   try {
     inscriptionReport = inspectPsbtInscriptions(psbt);
@@ -9704,7 +9705,10 @@ function hodlRenderPsbt(psbt) {
   else if (knownInputs === tx.inputs.length) {
     let outputSum = tx.outputs.reduce((sum, output) => sum + output.amount, 0n), fee = inputSum - outputSum;
     if (fee >= 0n) html.push("<p class='psbt-kv'><strong>Unverified fee (PSBT previous-output claims)</strong> \xB7 " + hodlSats(fee) + " BTC</p>");
-    else html.push("<p class='psbt-bad'><strong>Inconsistent claimed amounts:</strong> outputs exceed claimed inputs by " + hodlSats(-fee) + " BTC.</p>");
+    else {
+      feeInconsistent = 1;
+      html.push("<p class='psbt-bad'><strong>Inconsistent claimed amounts:</strong> outputs exceed claimed inputs by " + hodlSats(-fee) + " BTC.</p>");
+    }
   } else html.push("<p class='muted'>Fee unknown — some inputs do not include a claimed previous-output amount.</p>");
   html.push("<p class='muted'>Witness-UTXO amounts are unverified PSBT claims; non-witness UTXO amounts are cross-checked against the embedded previous transaction. Neither is checked against the blockchain.</p>");
   if (inscriptionReport.envelopes.length) {
@@ -9732,10 +9736,12 @@ function hodlRenderPsbt(psbt) {
   let checks = [
     {
       label: "Previous outputs and fee",
-      state: "incomplete",
-      detail: knownInputs === tx.inputs.length
-        ? "Amounts and fee were calculated from PSBT-provided witness UTXO claims, but those claims were not checked against previous transactions or the blockchain."
-        : "One or more inputs have no witness UTXO amount, and available PSBT claims were not checked against previous transactions or the blockchain.",
+      state: feeInconsistent ? "problem" : "incomplete",
+      detail: feeInconsistent
+        ? "The claimed output amounts exceed the claimed input amounts, so the PSBT's own claims are inconsistent; claims were not checked against previous transactions or the blockchain."
+        : knownInputs === tx.inputs.length
+          ? "Amounts and fee were calculated from PSBT-provided witness UTXO claims, but those claims were not checked against previous transactions or the blockchain."
+          : "One or more inputs have no witness UTXO amount, and available PSBT claims were not checked against previous transactions or the blockchain.",
     },
     {
       label: "SIGHASH policy",

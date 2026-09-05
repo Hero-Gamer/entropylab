@@ -40,7 +40,7 @@ const base64Encode = (bytes) => {
 // inspector (5 MB decoded, 7 MB of base64 text).
 export const psbtBytesFromText = (raw) => {
   const value = String(raw ?? "").trim(), compact = value.replace(/\s/g, "");
-  if (!value) throw new Error("Paste a PSBT v0.");
+  if (!value) throw new Error("Paste a PSBT (v0 or v2).");
   if (compact.length > 7e6) throw new Error("This PSBT is too large to edit safely.");
   let bytes;
   if (/^[0-9a-fA-F]+$/.test(compact) && compact.length % 2 === 0 && compact.length >= 10) bytes = hexToBytes(compact.toLowerCase());
@@ -513,9 +513,14 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
       : doc.fee?.error
         ? `<span class="psbted-note-bad">${escapeHtml(doc.fee.error)}</span>`
         : "unknown — some inputs carry no claimed previous-output amount";
-    const verdict = doc.rustBitcoinError
-      ? `<span class="psbted-note-warn">rust-bitcoin reports: ${escapeHtml(doc.rustBitcoinError)}</span>`
-      : `<span class="psbted-note-ok">PSBT structure parses under rust-bitcoin</span>`;
+    // rust-bitcoin's PSBT module is v0-only (deprecated upstream); v2 files
+    // are validated by the crate's own BIP-370 reader, and the verdict says so
+    // instead of borrowing rust-bitcoin's name (issue #358).
+    const verdict = doc.psbtVersion === 2
+      ? `<span class="psbted-note-ok">PSBT v2 (BIP-370) — decoded by EntropyLab's own reader (rust-bitcoin checks v0 only)</span>`
+      : doc.rustBitcoinError
+        ? `<span class="psbted-note-warn">rust-bitcoin reports: ${escapeHtml(doc.rustBitcoinError)}</span>`
+        : `<span class="psbted-note-ok">PSBT structure parses under rust-bitcoin</span>`;
     // Structural validity and consensus validity are separate facts: name the
     // transaction's sanity state explicitly so "parses" never reads as
     // "accepted by Bitcoin" (issues #322, #361).

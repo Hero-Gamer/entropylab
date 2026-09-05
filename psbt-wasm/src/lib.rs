@@ -279,6 +279,181 @@ struct RawPsbt {
     version: u32,
 }
 
+// ── PSBT v2 (BIP-370) ───────────────────────────────────────────────────────
+//
+// v2 moves the transaction into typed fields: global TX_VERSION / counts /
+// FALLBACK_LOCKTIME, per-input PREVIOUS_TXID / OUTPUT_INDEX / SEQUENCE /
+// REQUIRED_*_LOCKTIME, per-output AMOUNT / SCRIPT. The unsigned transaction is
+// synthesized from those fields here, on rust-bitcoin primitives, and flows
+// through the same inspection as a v0 file. rust-bitcoin 0.32's own PSBT
+// module is v0-only and deprecated upstream; no dependency is added for this.
+
+/// The BIP-125-style threshold separating height- from time-based locktimes.
+const LOCKTIME_THRESHOLD: u32 = 500_000_000;
+
+/// The one occurrence of a keyless-data typed field in a v2 map; duplicates
+/// of a typed field are a format error, not an ambiguity to resolve.
+fn v2_field<'a>(pairs: &'a [RawPair], type_byte: u8, what: &str) -> Result<Option<&'a [u8]>, String> {
+    let mut found = pairs
+        .iter()
+        .filter(|pair| pair.key.len() == 1 && pair.key[0] == type_byte);
+    let first = found.next();
+    if found.next().is_some() {
+        return Err(format!("{what} appears more than once"));
+    }
+    Ok(first.map(|pair| pair.value.as_slice()))
+}
+
+fn v2_u32(pairs: &[RawPair], type_byte: u8, what: &str) -> Result<Option<u32>, String> {
+    match v2_field(pairs, type_byte, what)? {
+        None => Ok(None),
+        Some(value) if value.len() == 4 => Ok(Some(u32::from_le_bytes(value.try_into().unwrap()))),
+        Some(_) => Err(format!("{what} must be a 4-byte value")),
+    }
+}
+
+/// A BIP-370 count is a compact-size value that must consume its whole field
+/// — a valid count followed by trailing bytes is malformed, and non-canonical
+/// encodings are refused by read_varint already (issue #340).
+fn v2_count(pairs: &[RawPair], type_byte: u8, what: &str) -> Result<Option<u64>, String> {
+    let Some(value) = v2_field(pairs, type_byte, what)? else { return Ok(None) };
+    let mut off = 0usize;
+    let count = read_varint(value, &mut off)?;
+    if off != value.len() {
+        return Err(format!("{what} has trailing bytes after the count"));
+    }
+    Ok(Some(count))
+}
+
+/// One input's locktime requirements, in the BIP-370 "Determining Lock Time"
+/// sense.
+#[derive(Clone, Copy, Default)]
+struct LocktimeRequirement {
+    time: Option<u32>,
+    height: Option<u32>,
+}
+
+/// BIP-370 locktime determination: the fallback when no input requires a
+/// locktime; otherwise the type every locktime-specifying input supports —
+/// height when both are possible — at the maximum required value;
+/// incompatible per-input time/height requirements cannot be computed
+/// (issue #337).
+fn determine_locktime(fallback: Option<u32>, reqs: &[LocktimeRequirement]) -> Result<u32, String> {
+    let specifying: Vec<&LocktimeRequirement> =
+        reqs.iter().filter(|r| r.time.is_some() || r.height.is_some()).collect();
+    if specifying.is_empty() {
+        return Ok(fallback.unwrap_or(0));
+    }
+    let all_time = specifying.iter().all(|r| r.time.is_some());
+    let all_height = specifying.iter().all(|r| r.height.is_some());
+    if all_height {
+        // Both types possible (every specifying input gave both) also lands
+        // here: height wins, per BIP-370's tie-break.
+        Ok(specifying.iter().filter_map(|r| r.height).max().unwrap())
+    } else if all_time {
+        Ok(specifying.iter().filter_map(|r| r.time).max().unwrap())
+    } else {
+        Err("PSBT v2 locktime cannot be computed: inputs require incompatible time and height locktimes".into())
+    }
+}
+
+/// Reads one input map's locktime requirement fields, validating ranges.
+fn locktime_requirement(map: &[RawPair], index: usize) -> Result<LocktimeRequirement, String> {
+    let time = v2_field(map, 0x11, "PSBT_IN_REQUIRED_TIME_LOCKTIME")?;
+    let height = v2_field(map, 0x12, "PSBT_IN_REQUIRED_HEIGHT_LOCKTIME")?;
+    let mut req = LocktimeRequirement::default();
+    if let Some(value) = time {
+        if value.len() != 4 {
+            return Err(format!("PSBT v2 input {index} required time locktime must be a 4-byte value"));
+        }
+        let required = u32::from_le_bytes(value.try_into().unwrap());
+        if required < LOCKTIME_THRESHOLD {
+            return Err(format!("PSBT v2 input {index} required time locktime must be at least {LOCKTIME_THRESHOLD}"));
+        }
+        req.time = Some(required);
+    }
+    if let Some(value) = height {
+        if value.len() != 4 {
+            return Err(format!("PSBT v2 input {index} required height locktime must be a 4-byte value"));
+        }
+        let required = u32::from_le_bytes(value.try_into().unwrap());
+        if required == 0 || required >= LOCKTIME_THRESHOLD {
+            return Err(format!("PSBT v2 input {index} required height locktime must be 1 to {}", LOCKTIME_THRESHOLD - 1));
+        }
+        req.height = Some(required);
+    }
+    Ok(req)
+}
+
+/// Synthesizes the v2 unsigned transaction from the typed fields, with the
+/// BIP-370 locktime algorithm (issue #337).
+fn synthesize_v2(
+    tx_version: i32,
+    fallback_locktime: Option<u32>,
+    inputs: &[Vec<RawPair>],
+    outputs: &[Vec<RawPair>],
+) -> Result<Transaction, String> {
+    let mut tx_inputs = Vec::with_capacity(inputs.len());
+    let mut requirements = Vec::with_capacity(inputs.len());
+    for (index, map) in inputs.iter().enumerate() {
+        let txid = v2_field(map, 0x0e, "PSBT_IN_PREVIOUS_TXID")?
+            .ok_or_else(|| format!("PSBT v2 input {index} is missing a previous txid"))?;
+        if txid.len() != 32 {
+            return Err(format!("PSBT v2 input {index} previous txid must be 32 bytes"));
+        }
+        let vout = v2_field(map, 0x0f, "PSBT_IN_OUTPUT_INDEX")?
+            .ok_or_else(|| format!("PSBT v2 input {index} is missing an output index"))?;
+        if vout.len() != 4 {
+            return Err(format!("PSBT v2 input {index} output index must be a 4-byte value"));
+        }
+        let sequence = match v2_field(map, 0x10, "PSBT_IN_SEQUENCE")? {
+            Some(value) if value.len() == 4 => u32::from_le_bytes(value.try_into().unwrap()),
+            Some(_) => return Err(format!("PSBT v2 input {index} sequence must be a 4-byte value")),
+            None => 0xffffffff, // BIP-370: an omitted sequence is final
+        };
+        requirements.push(locktime_requirement(map, index)?);
+        // BIP-370's "standard byte order" is the wire order, and Txid stores
+        // the hash bytes exactly as they appear on the wire.
+        tx_inputs.push(TxIn {
+            previous_output: OutPoint {
+                txid: Txid::from_raw_hash({
+                    use bitcoin::hashes::Hash as _;
+                    bitcoin::hashes::sha256d::Hash::from_byte_array(txid.try_into().unwrap())
+                }),
+                vout: u32::from_le_bytes(vout.try_into().unwrap()),
+            },
+            script_sig: ScriptBuf::new(),
+            sequence: Sequence(sequence),
+            witness: Witness::new(),
+        });
+    }
+    let locktime = determine_locktime(fallback_locktime, &requirements)?;
+    let mut tx_outputs = Vec::with_capacity(outputs.len());
+    for (index, map) in outputs.iter().enumerate() {
+        let amount = v2_field(map, 0x03, "PSBT_OUT_AMOUNT")?
+            .ok_or_else(|| format!("PSBT v2 output {index} is missing an amount"))?;
+        if amount.len() != 8 {
+            return Err(format!("PSBT v2 output {index} amount must be an 8-byte value"));
+        }
+        let value = i64::from_le_bytes(amount.try_into().unwrap());
+        if value < 0 {
+            return Err(format!("PSBT v2 output {index} amount is negative"));
+        }
+        let script = v2_field(map, 0x04, "PSBT_OUT_SCRIPT")?
+            .ok_or_else(|| format!("PSBT v2 output {index} is missing a script"))?;
+        tx_outputs.push(TxOut {
+            value: Amount::from_sat(value as u64),
+            script_pubkey: ScriptBuf::from_bytes(script.to_vec()),
+        });
+    }
+    Ok(Transaction {
+        version: Version(tx_version),
+        lock_time: LockTime::from_consensus(locktime),
+        input: tx_inputs,
+        output: tx_outputs,
+    })
+}
+
 fn parse_raw(bytes: &[u8]) -> Result<RawPsbt, String> {
     if bytes.len() > MAX_PSBT_BYTES {
         return Err("this PSBT is too large to inspect safely".into());
@@ -306,24 +481,44 @@ fn parse_raw(bytes: &[u8]) -> Result<RawPsbt, String> {
             unsigned = Some(pair.value.clone());
         }
     }
-    if version != 0 {
-        return Err(format!("only PSBT v0 is supported (this file declares v{version})"));
-    }
-    let unsigned = unsigned.ok_or("this PSBT must contain exactly one unsigned transaction")?;
-    let unsigned_tx = decode_unsigned_tx(&unsigned)?;
 
-    if unsigned_tx.input.len() > MAX_TX_ELEMENTS || unsigned_tx.output.len() > MAX_TX_ELEMENTS {
-        return Err("unsigned transaction has too many inputs or outputs".into());
+    // v0 carries the unsigned transaction; v2 (BIP-370) must not — its
+    // transaction is synthesized from typed fields after the maps are read.
+    let v0_tx = if version == 0 {
+        let unsigned = unsigned.ok_or("this PSBT must contain exactly one unsigned transaction")?;
+        Some(decode_unsigned_tx(&unsigned)?)
+    } else if version == 2 {
+        if unsigned.is_some() {
+            return Err("a PSBT v2 must not carry PSBT_GLOBAL_UNSIGNED_TX".into());
+        }
+        None
+    } else {
+        return Err(format!("only PSBT v0 and v2 are supported (this file declares v{version})"));
+    };
+
+    let (in_count, out_count) = if let Some(tx) = &v0_tx {
+        (tx.input.len(), tx.output.len())
+    } else {
+        let in_count = v2_count(&globals, 0x04, "PSBT_GLOBAL_INPUT_COUNT")?
+            .ok_or("a PSBT v2 is missing PSBT_GLOBAL_INPUT_COUNT")?;
+        let out_count = v2_count(&globals, 0x05, "PSBT_GLOBAL_OUTPUT_COUNT")?
+            .ok_or("a PSBT v2 is missing PSBT_GLOBAL_OUTPUT_COUNT")?;
+        let in_count = usize::try_from(in_count).map_err(|_| "PSBT v2 declares too many inputs")?;
+        let out_count = usize::try_from(out_count).map_err(|_| "PSBT v2 declares too many outputs")?;
+        (in_count, out_count)
+    };
+    if in_count > MAX_TX_ELEMENTS || out_count > MAX_TX_ELEMENTS {
+        return Err("the transaction has too many inputs or outputs".into());
     }
-    let mut inputs = Vec::with_capacity(unsigned_tx.input.len());
-    for _ in 0..unsigned_tx.input.len() {
+    let mut inputs = Vec::with_capacity(in_count);
+    for _ in 0..in_count {
         if off >= bytes.len() {
             return Err("PSBT is missing an input map".into());
         }
         inputs.push(read_map(bytes, &mut off)?);
     }
-    let mut outputs = Vec::with_capacity(unsigned_tx.output.len());
-    for _ in 0..unsigned_tx.output.len() {
+    let mut outputs = Vec::with_capacity(out_count);
+    for _ in 0..out_count {
         if off >= bytes.len() {
             return Err("PSBT is missing an output map".into());
         }
@@ -332,8 +527,18 @@ fn parse_raw(bytes: &[u8]) -> Result<RawPsbt, String> {
     if off != bytes.len() {
         return Err("PSBT contains trailing data or extra maps".into());
     }
+    let unsigned_tx = match v0_tx {
+        Some(tx) => tx,
+        None => {
+            let tx_version = v2_u32(&globals, 0x02, "PSBT_GLOBAL_TX_VERSION")?
+                .ok_or("a PSBT v2 is missing PSBT_GLOBAL_TX_VERSION")? as i32;
+            let fallback_locktime = v2_u32(&globals, 0x03, "PSBT_GLOBAL_FALLBACK_LOCKTIME")?;
+            synthesize_v2(tx_version, fallback_locktime, &inputs, &outputs)?
+        }
+    };
     Ok(RawPsbt { globals, inputs, outputs, unsigned_tx, version })
 }
+
 
 /// Consensus-decodes the unsigned transaction, enforcing the PSBT v0 rules:
 /// legacy (witness-free) serialization, empty scriptSigs, exact consumption.
@@ -432,6 +637,11 @@ fn decode_pair(kind: &str, pair: &RawPair, tx: &Transaction, input_index: Option
     let name = match (kind, type_byte) {
         ("global", 0x00) => "PSBT_GLOBAL_UNSIGNED_TX",
         ("global", 0x01) => "PSBT_GLOBAL_XPUB",
+        ("global", 0x02) => "PSBT_GLOBAL_TX_VERSION",
+        ("global", 0x03) => "PSBT_GLOBAL_FALLBACK_LOCKTIME",
+        ("global", 0x04) => "PSBT_GLOBAL_INPUT_COUNT",
+        ("global", 0x05) => "PSBT_GLOBAL_OUTPUT_COUNT",
+        ("global", 0x06) => "PSBT_GLOBAL_TX_MODIFIABLE",
         ("global", 0xfb) => "PSBT_GLOBAL_VERSION",
         ("global", 0xfc) => "PSBT_GLOBAL_PROPRIETARY",
         ("global", _) => "PSBT_GLOBAL_UNKNOWN",
@@ -448,6 +658,11 @@ fn decode_pair(kind: &str, pair: &RawPair, tx: &Transaction, input_index: Option
         ("input", 0x0b) => "PSBT_IN_SHA256",
         ("input", 0x0c) => "PSBT_IN_HASH160",
         ("input", 0x0d) => "PSBT_IN_HASH256",
+        ("input", 0x0e) => "PSBT_IN_PREVIOUS_TXID",
+        ("input", 0x0f) => "PSBT_IN_OUTPUT_INDEX",
+        ("input", 0x10) => "PSBT_IN_SEQUENCE",
+        ("input", 0x11) => "PSBT_IN_REQUIRED_TIME_LOCKTIME",
+        ("input", 0x12) => "PSBT_IN_REQUIRED_HEIGHT_LOCKTIME",
         ("input", 0x13) => "PSBT_IN_TAP_KEY_SIG",
         ("input", 0x14) => "PSBT_IN_TAP_SCRIPT_SIG",
         ("input", 0x15) => "PSBT_IN_TAP_LEAF_SCRIPT",
@@ -459,6 +674,8 @@ fn decode_pair(kind: &str, pair: &RawPair, tx: &Transaction, input_index: Option
         ("output", 0x00) => "PSBT_OUT_REDEEM_SCRIPT",
         ("output", 0x01) => "PSBT_OUT_WITNESS_SCRIPT",
         ("output", 0x02) => "PSBT_OUT_BIP32_DERIVATION",
+        ("output", 0x03) => "PSBT_OUT_AMOUNT",
+        ("output", 0x04) => "PSBT_OUT_SCRIPT",
         ("output", 0x05) => "PSBT_OUT_TAP_INTERNAL_KEY",
         ("output", 0x06) => "PSBT_OUT_TAP_TREE",
         ("output", 0x07) => "PSBT_OUT_TAP_BIP32_DERIVATION",
@@ -484,6 +701,70 @@ fn decode_pair(kind: &str, pair: &RawPair, tx: &Transaction, input_index: Option
                     return Err("version must be 4 bytes".into());
                 }
                 json!({ "version": u32::from_le_bytes(pair.value[..4].try_into().unwrap()) })
+            }
+            // BIP-370 typed fields, decoded for display (they also drive the
+            // synthesized transaction; this view is informational).
+            ("global", 0x02) => {
+                if pair.value.len() != 4 {
+                    return Err("transaction version must be a 4-byte value".into());
+                }
+                json!({ "txVersion": i32::from_le_bytes(pair.value[..4].try_into().unwrap()) })
+            }
+            ("global", 0x03) => {
+                if pair.value.len() != 4 {
+                    return Err("fallback locktime must be a 4-byte value".into());
+                }
+                json!({ "fallbackLocktime": u32::from_le_bytes(pair.value[..4].try_into().unwrap()) })
+            }
+            ("global", 0x04) | ("global", 0x05) => {
+                let mut off = 0usize;
+                let count = read_varint(&pair.value, &mut off)?;
+                if off != pair.value.len() {
+                    return Err("the count has trailing bytes".into());
+                }
+                json!({ "count": count })
+            }
+            ("global", 0x06) => {
+                if pair.value.len() != 1 {
+                    return Err("tx modifiable flags must be a 1-byte value".into());
+                }
+                let flags = pair.value[0];
+                json!({ "inputsModifiable": flags & 1 != 0, "outputsModifiable": flags & 2 != 0, "hasSighashSingle": flags & 4 != 0, "undefinedFlags": flags & !0x07 != 0 })
+            }
+            ("input", 0x0e) => {
+                if pair.value.len() != 32 {
+                    return Err("previous txid must be 32 bytes".into());
+                }
+                let mut display = pair.value.clone();
+                display.reverse(); // stored wire order; displayed as a txid
+                json!({ "txid": hex_encode(&display) })
+            }
+            ("input", 0x0f) => {
+                if pair.value.len() != 4 {
+                    return Err("output index must be a 4-byte value".into());
+                }
+                json!({ "vout": u32::from_le_bytes(pair.value[..4].try_into().unwrap()) })
+            }
+            ("input", 0x10) => {
+                if pair.value.len() != 4 {
+                    return Err("sequence must be a 4-byte value".into());
+                }
+                json!({ "sequence": u32::from_le_bytes(pair.value[..4].try_into().unwrap()) })
+            }
+            ("input", 0x11) | ("input", 0x12) => {
+                if pair.value.len() != 4 {
+                    return Err("required locktime must be a 4-byte value".into());
+                }
+                json!({ "locktime": u32::from_le_bytes(pair.value[..4].try_into().unwrap()) })
+            }
+            ("output", 0x03) => {
+                if pair.value.len() != 8 {
+                    return Err("output amount must be an 8-byte value".into());
+                }
+                json!({ "value": sats_json(i64::from_le_bytes(pair.value[..8].try_into().unwrap()) as u64) })
+            }
+            ("output", 0x04) => {
+                json!({ "scriptPubKey": hex_encode(&pair.value), "asm": Script::from_bytes(&pair.value).to_asm_string() })
             }
             (_, 0xfc) => proprietary_json(keydata),
             ("input", 0x00) => {
@@ -848,9 +1129,16 @@ fn inspect(bytes: &[u8]) -> Result<String, String> {
         json!({ "known": true, "sats": Value::Null, "error": "amounts overflow u64" })
     };
 
-    let rust_bitcoin_error = match Psbt::deserialize(bytes) {
-        Ok(_) => Value::Null,
-        Err(e) => Value::String(e.to_string()),
+    // rust-bitcoin's PSBT type is v0-only (and deprecated upstream), so a v2
+    // file is validated by this crate's own BIP-370 reader instead — reporting
+    // rust-bitcoin's "unsupported version" would mislabel a valid v2 file.
+    let rust_bitcoin_error = if raw.version == 2 {
+        Value::Null
+    } else {
+        match Psbt::deserialize(bytes) {
+            Ok(_) => Value::Null,
+            Err(e) => Value::String(e.to_string()),
+        }
     };
 
     // Structural parse validity and Bitcoin transaction validity are separate
@@ -1021,10 +1309,20 @@ fn build(json_bytes: &[u8]) -> Result<Vec<u8>, String> {
     // The unsigned transaction pair is regenerated from the tx section; a
     // passed-through PSBT_GLOBAL_UNSIGNED_TX pair (key "00") is dropped.
     let global_pairs = build_map(&doc["globals"], "`globals`")?;
+    let mut version = 0u32;
     for pair in &global_pairs {
-        if pair.key == [0xfb] && pair.value != [0, 0, 0, 0] {
-            return Err("only PSBT v0 is supported: the global version pair must be absent or 0".into());
+        if pair.key == [0xfb] {
+            if pair.value.len() != 4 {
+                return Err("PSBT_GLOBAL_VERSION must be a 4-byte value".into());
+            }
+            version = u32::from_le_bytes(pair.value[..4].try_into().unwrap());
         }
+    }
+    if version == 2 {
+        return build_v2(&doc, &tx, global_pairs);
+    }
+    if version != 0 {
+        return Err(format!("only PSBT v0 and v2 are supported: the global version pair declares v{version}"));
     }
 
     let inputs = build_pairs(&doc, "inputs")?;
@@ -1071,6 +1369,123 @@ fn build(json_bytes: &[u8]) -> Result<Vec<u8>, String> {
     // witness-carrying unsigned transactions and count mismatches.
     Psbt::deserialize(&out).map_err(|e| format!("rebuilt PSBT does not parse: {e}"))?;
     Ok(out)
+}
+
+/// Builds a BIP-370 PSBT v2 from the document: the transaction's fields are
+/// regenerated from the tx section (global TX_VERSION and counts, per-input
+/// prevout and non-default sequence, per-output amount and script), the
+/// locktime requirement fields pass through, and every other pair passes
+/// through in place. A passed-through PSBT_GLOBAL_UNSIGNED_TX is refused.
+fn build_v2(doc: &Value, tx: &Transaction, global_pairs: Vec<RawPair>) -> Result<Vec<u8>, String> {
+    use bitcoin::hashes::Hash as _;
+    let inputs = build_pairs(doc, "inputs")?;
+    let outputs = build_pairs(doc, "outputs")?;
+    if inputs.len() != tx.input.len() {
+        return Err(format!(
+            "the document has {} input maps but the transaction has {} inputs",
+            inputs.len(),
+            tx.input.len()
+        ));
+    }
+    if outputs.len() != tx.output.len() {
+        return Err(format!(
+            "the document has {} output maps but the transaction has {} outputs",
+            outputs.len(),
+            tx.output.len()
+        ));
+    }
+
+    // The locktime is determined by the requirement fields, not edited
+    // directly: an edit to the tx locktime that disagrees with them is a
+    // build error, not a silent rewrite (issue #337).
+    let fallback_locktime = v2_u32(&global_pairs, 0x03, "PSBT_GLOBAL_FALLBACK_LOCKTIME")?;
+    let mut requirements = Vec::with_capacity(inputs.len());
+    for (index, map) in inputs.iter().enumerate() {
+        requirements.push(locktime_requirement(map, index)?);
+    }
+    let derived_locktime = determine_locktime(fallback_locktime, &requirements)?;
+    if tx.lock_time.to_consensus_u32() != derived_locktime {
+        return Err(format!(
+            "PSBT v2 locktime is {derived_locktime} from the required-locktime fields and fallback; edit PSBT_IN_REQUIRED_*_LOCKTIME or PSBT_GLOBAL_FALLBACK_LOCKTIME instead"
+        ));
+    }
+
+    let mut out = Vec::new();
+    out.extend_from_slice(b"psbt\xff");
+    // BIP-370's canonical global order: TX_VERSION, FALLBACK_LOCKTIME, the
+    // counts, TX_MODIFIABLE, then everything else (VERSION included) as passed
+    // through. The counts and version are regenerated from the tx section;
+    // the fallback and modifiable flags carry through at their slots.
+    push_pair(&mut out, &[0x02], &tx.version.0.to_le_bytes());
+    for pair in &global_pairs {
+        if pair.key.as_slice() == [0x03] {
+            push_pair(&mut out, &pair.key, &pair.value);
+        }
+    }
+    push_count_pair(&mut out, 0x04, tx.input.len() as u64);
+    push_count_pair(&mut out, 0x05, tx.output.len() as u64);
+    for pair in &global_pairs {
+        if pair.key.as_slice() == [0x06] {
+            push_pair(&mut out, &pair.key, &pair.value);
+        }
+    }
+    for pair in &global_pairs {
+        match pair.key.as_slice() {
+            // The tx section is authoritative; like v0, a document's stale
+            // unsigned-tx pair is dropped (a v2 *file* carrying one is
+            // refused on inspect). 0x03/0x06 were emitted at their slots.
+            [0x00] | [0x02] | [0x03] | [0x04] | [0x05] | [0x06] => continue,
+            _ => push_pair(&mut out, &pair.key, &pair.value),
+        }
+    }
+    out.push(0x00);
+    for (index, map) in inputs.iter().enumerate() {
+        let input = &tx.input[index];
+        // The wire-order prevout hash is the txid's internal byte order.
+        push_pair(&mut out, &[0x0e], &input.previous_output.txid.to_raw_hash().to_byte_array());
+        push_pair(&mut out, &[0x0f], &input.previous_output.vout.to_le_bytes());
+        if input.sequence.0 != 0xffffffff {
+            push_pair(&mut out, &[0x10], &input.sequence.0.to_le_bytes());
+        }
+        for pair in map {
+            if matches!(pair.key.as_slice(), [0x0e] | [0x0f] | [0x10]) {
+                continue; // regenerated above
+            }
+            push_pair(&mut out, &pair.key, &pair.value);
+        }
+        out.push(0x00);
+    }
+    for (index, map) in outputs.iter().enumerate() {
+        let output = &tx.output[index];
+        push_pair(&mut out, &[0x03], &(output.value.to_sat() as i64).to_le_bytes());
+        push_pair(&mut out, &[0x04], output.script_pubkey.as_bytes());
+        for pair in map {
+            if matches!(pair.key.as_slice(), [0x03] | [0x04]) {
+                continue; // regenerated above
+            }
+            push_pair(&mut out, &pair.key, &pair.value);
+        }
+        out.push(0x00);
+    }
+
+    if out.len() > MAX_PSBT_BYTES {
+        return Err("rebuilt PSBT is too large".into());
+    }
+    // rust-bitcoin has no v2 gate; the closed-loop gate is this crate's own
+    // BIP-370 reader: the emitted file must parse and synthesize the very
+    // transaction that was built.
+    let check = parse_raw(&out)?;
+    if encode::serialize(&check.unsigned_tx) != encode::serialize(tx) {
+        return Err("rebuilt PSBT v2 does not round-trip its transaction".into());
+    }
+    Ok(out)
+}
+
+/// Emits a BIP-370 count global pair (compact-size value, exactly the field).
+fn push_count_pair(out: &mut Vec<u8>, key: u8, value: u64) {
+    let mut encoded = Vec::new();
+    push_varint(&mut encoded, value);
+    push_pair(out, &[key], &encoded);
 }
 
 #[cfg(test)]

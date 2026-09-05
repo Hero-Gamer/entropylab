@@ -495,16 +495,123 @@ test("build rejects values rust-bitcoin cannot parse into typed fields", () => {
   assert.throws(() => rebuild(doc), /rebuilt PSBT does not parse/);
 });
 
-test("inspect rejects garbage, the invalid BIP-174 vector, and v2 files", () => {
+test("inspect rejects garbage and the invalid BIP-174 vector", () => {
   assert.throws(() => psbtInspectDoc(new Uint8Array([1, 2, 3])), /not a PSBT/);
   assert.throws(
     () => psbtInspectDoc(new Uint8Array(Buffer.from(INVALID_B64, "base64"))),
     /missing an output map/
   );
-  // A PSBT_GLOBAL_VERSION of 2 must be refused until v2 support exists.
-  const doc = inspectValid();
-  doc.globals.push({ key: "fb", value: "02000000" });
-  assert.throws(() => psbtBuildBytes(psbtEditorBuildDoc(doc)), /only PSBT v0 is supported/);
+});
+
+// ── PSBT v2 (BIP-370) — issues #337, #340, #358 ─────────────────────────────
+
+// BIP-370's own vectors (the BIP's hex/base64 test cases, verbatim).
+const V2_MINIMAL_B64 =
+  "cHNidP8BAgQCAAAAAQQBAQEFAQIB+wQCAAAAAAEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA==";
+const V2_MINIMAL_HEX = Buffer.from(V2_MINIMAL_B64, "base64").toString("hex");
+const inspectB64 = (b64) => psbtInspectDoc(new Uint8Array(Buffer.from(b64, "base64")));
+
+// Splice exactly one occurrence of `from` out of/into the vector hex.
+const spliceOnce = (hex, from, to) => {
+  assert.equal(hex.split(from).length - 1, 1, `expected one occurrence of ${from}`);
+  return hex.replace(from, to);
+};
+
+test("PSBT v2: the BIP-370 minimal vector inspects and rebuilds byte-identically (issue #358)", () => {
+  const doc = inspectB64(V2_MINIMAL_B64);
+  assert.equal(doc.psbtVersion, 2);
+  assert.equal(doc.tx.version, 2);
+  assert.equal(doc.tx.locktime, 0);
+  assert.equal(doc.tx.inputs.length, 1);
+  assert.equal(doc.tx.inputs[0].txid, "c85f81844094f9f0eec1e41f8d63e0a99e9f73dc725d7319871c9c4121d90a0b");
+  assert.equal(doc.tx.inputs[0].vout, 0);
+  assert.equal(doc.tx.inputs[0].sequence, 4294967295); // omitted = final
+  assert.deepEqual(doc.tx.outputs.map((o) => o.value), ["800000000", "199998859"]);
+  // rust-bitcoin is v0-only; the v2 parse is this crate's own BIP-370 reader.
+  assert.equal(doc.rustBitcoinError, null);
+  assert.equal(doc.txSanityError, null);
+  // Typed field names render for the pair tables.
+  assert.deepEqual(doc.globals.map((p) => p.name), [
+    "PSBT_GLOBAL_TX_VERSION",
+    "PSBT_GLOBAL_INPUT_COUNT",
+    "PSBT_GLOBAL_OUTPUT_COUNT",
+    "PSBT_GLOBAL_VERSION",
+  ]);
+  assert.deepEqual(doc.inputs[0].map((p) => p.name), ["PSBT_IN_PREVIOUS_TXID", "PSBT_IN_OUTPUT_INDEX"]);
+  assert.deepEqual(doc.outputs[0].map((p) => p.name), ["PSBT_OUT_AMOUNT", "PSBT_OUT_SCRIPT"]);
+  // An unedited document rebuilds byte-identically.
+  assert.equal(Buffer.from(rebuild(doc)).toString("base64"), V2_MINIMAL_B64);
+});
+
+test("PSBT v2: BIP-370 locktime determination vectors (issue #337)", () => {
+  const cases = [
+    ["cHNidP8BAgQCAAAAAQQBAQEFAQIB+wQCAAAAAAEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA==", 0], // none specified
+    ["cHNidP8BAgQCAAAAAQMEAAAAAAEEAQIBBQEBAfsEAgAAAAABDiAPdY2/vU2nwWyKMwnDyB4RAPVh6mRttbAXUsSF4b3enwEPBAEAAAAAAQ4gOhs7PIN9ZInqejHY5sfdUDwAG+8+BpWOdXSAjWjKeKUBDwQAAAAAAAEDCE+TNXcAAAAAAQQWABQLE1LKzQPPaqG388jWOIZxs0peEQA=", 0], // fallback 0
+    ["cHNidP8BAgQCAAAAAQMEAAAAAAEEAQIBBQEBAfsEAgAAAAABDiAPdY2/vU2nwWyKMwnDyB4RAPVh6mRttbAXUsSF4b3enwEPBAEAAAABEgQQJwAAAAEOIDobOzyDfWSJ6nox2ObH3VA8ABvvPgaVjnV0gI1oynilAQ8EAAAAAAABAwhPkzV3AAAAAAEEFgAUCxNSys0Dz2qht/PI1jiGcbNKXhEA", 10000], // height 10000, none
+    ["cHNidP8BAgQCAAAAAQMEAAAAAAEEAQIBBQEBAfsEAgAAAAABDiAPdY2/vU2nwWyKMwnDyB4RAPVh6mRttbAXUsSF4b3enwEPBAEAAAABEgQQJwAAAAEOIDobOzyDfWSJ6nox2ObH3VA8ABvvPgaVjnV0gI1oynilAQ8EAAAAAAESBCgjAAAAAQMIT5M1dwAAAAABBBYAFAsTUsrNA89qobfzyNY4hnGzSl4RAA==", 10000], // height 10000, height 9000
+    ["cHNidP8BAgQCAAAAAQMEAAAAAAEEAQIBBQEBAfsEAgAAAAABDiAPdY2/vU2nwWyKMwnDyB4RAPVh6mRttbAXUsSF4b3enwEPBAEAAAABEQSLjcRiARIEECcAAAABDiA6Gzs8g31kiep6Mdjmx91QPAAb7z4GlY51dICNaMp4pQEPBAAAAAABEQSMjcRiARIEKCMAAAABAwhPkzV3AAAAAAEEFgAUCxNSys0Dz2qht/PI1jiGcbNKXhEA", 10000], // both/both → height
+    ["cHNidP8BAgQCAAAAAQMEAAAAAAEEAQIBBQEBAfsEAgAAAAABDiAPdY2/vU2nwWyKMwnDyB4RAPVh6mRttbAXUsSF4b3enwEPBAEAAAABEQSLjcRiAAEOIDobOzyDfWSJ6nox2ObH3VA8ABvvPgaVjnV0gI1oynilAQ8EAAAAAAERBIyNxGIBEgQoIwAAAAEDCE+TNXcAAAAAAQQWABQLE1LKzQPPaqG388jWOIZxs0peEQA=", 1657048460], // time-only + both → time
+    ["cHNidP8BAgQCAAAAAQMEAAAAAAEEAQIBBQEBAfsEAgAAAAABDiAPdY2/vU2nwWyKMwnDyB4RAPVh6mRttbAXUsSF4b3enwEPBAEAAAABEQSLjcRiARIEECcAAAABDiA6Gzs8g31kiep6Mdjmx91QPAAb7z4GlY51dICNaMp4pQEPBAAAAAABEQSMjcRiAAEDCE+TNXcAAAAAAQQWABQLE1LKzQPPaqG388jWOIZxs0peEQA=", 1657048460], // both + time-only → time
+    ["cHNidP8BAgQCAAAAAQMEAAAAAAEEAQIBBQEBAfsEAgAAAAABDiAPdY2/vU2nwWyKMwnDyB4RAPVh6mRttbAXUsSF4b3enwEPBAEAAAAAAQ4gOhs7PIN9ZInqejHY5sfdUDwAG+8+BpWOdXSAjWjKeKUBDwQAAAAAAREEjI3EYgABAwhPkzV3AAAAAAEEFgAUCxNSys0Dz2qht/PI1jiGcbNKXhEA", 1657048460], // time-only + none → time
+  ];
+  for (const [b64, locktime] of cases) {
+    assert.equal(inspectB64(b64).tx.locktime, locktime, `locktime for ${b64.slice(20, 36)}…`);
+  }
+  // Height-only on input 1, time-only on input 2: incompatible.
+  assert.throws(
+    () => inspectB64("cHNidP8BAgQCAAAAAQMEAAAAAAEEAQIBBQEBAfsEAgAAAAABDiAPdY2/vU2nwWyKMwnDyB4RAPVh6mRttbAXUsSF4b3enwEPBAEAAAABEgQQJwAAAAEOIDobOzyDfWSJ6nox2ObH3VA8ABvvPgaVjnV0gI1oynilAQ8EAAAAAAERBIyNxGIAAQMIT5M1dwAAAAABBBYAFAsTUsrNA89qobfzyNY4hnGzSl4RAA=="),
+    /incompatible time and height locktimes/
+  );
+});
+
+test("PSBT v2: BIP-370's invalid cases are refused (issue #358)", () => {
+  // v2 carrying PSBT_GLOBAL_UNSIGNED_TX.
+  assert.throws(
+    () => inspectB64("cHNidP8BAFICAAAAAcGqJW4hS5ahgi+T3kK/87Xz/40FGTBuNRXXUVpegFsSAAAAAAD/////ARjGmjsAAAAAFgAUsKOvFEIIQSaTyn0WaFK1LbCu8G4AAAAAAQIEAgAAAAEDBAAAAAABBAEBAQUBAgEGAQcB+wQCAAAAAAEAUgIAAAABwaolbiFLlqGCL5PeQr/ztfP/jQUZMG41FddRWl6AWxIAAAAAAP////8BGMaaOwAAAAAWABSwo68UQghBJpPKfRZoUrUtsK7wbgAAAAABAR8Yxpo7AAAAABYAFLCjrxRCCEEmk8p9FmhStS2wrvBuAQ4gCwrZIUGcHIcZc11y3HOfnqngY40f5MHu8PmUQISBX8gBDwQAAAAAARAE/v///wERBIyNxGIBEgQQJwAAACICAtYB+EhGpnVfd2vgDj2d6PsQrMk1+4PEX7AWLUytWreSGPadhz5UAACAAQAAgAAAAIAAAAAAKgAAAAEDCAAIry8AAAAAAQQWABTEMPZMR1baMQ29GghVcu8pmSYnLAAiAgLjb7/1PdU0Bwz4/TlmFGgPNXqbhdtzQL8c+nRdKtezQBj2nYc+VAAAgAEAAIAAAACAAQAAAGQAAAABAwiLvesLAAAAAAEEFgAUTdGTrJZKVqwbnhzKhFT+L0dPhRMA"),
+    /must not carry PSBT_GLOBAL_UNSIGNED_TX/
+  );
+  // Missing PSBT_GLOBAL_INPUT_COUNT (BIP case).
+  assert.throws(
+    () => inspectB64("cHNidP8BAgQCAAAAAQMEAAAAAAEFAQIB+wQCAAAAAAEAUgIAAAABwaolbiFLlqGCL5PeQr/ztfP/jQUZMG41FddRWl6AWxIAAAAAAP////8BGMaaOwAAAAAWABSwo68UQghBJpPKfRZoUrUtsK7wbgAAAAABAR8Yxpo7AAAAABYAFLCjrxRCCEEmk8p9FmhStS2wrvBuAQ4gCwrZIUGcHIcZc11y3HOfnqngY40f5MHu8PmUQISBX8gBDwQAAAAAARAE/v///wAiAgLWAfhIRqZ1X3dr4A49nej7EKzJNfuDxF+wFi1MrVq3khj2nYc+VAAAgAEAAIAAAACAAAAAACoAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAIgIC42+/9T3VNAcM+P05ZhRoDzV6m4Xbc0C/HPp0XSrXs0AY9p2HPlQAAIABAACAAAAAgAEAAABkAAAAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA=="),
+    /missing PSBT_GLOBAL_INPUT_COUNT/
+  );
+  // Required time locktime below 500,000,000 (BIP case).
+  assert.throws(
+    () => inspectB64("cHNidP8BAgQCAAAAAQQBAQEFAQIB+wQCAAAAAAEAUgIAAAABwaolbiFLlqGCL5PeQr/ztfP/jQUZMG41FddRWl6AWxIAAAAAAP////8BGMaaOwAAAAAWABSwo68UQghBJpPKfRZoUrUtsK7wbgAAAAABAR8Yxpo7AAAAABYAFLCjrxRCCEEmk8p9FmhStS2wrvBuAQ4gCwrZIUGcHIcZc11y3HOfnqngY40f5MHu8PmUQISBX8gBDwQAAAAAAREE/2TNHQAiAgLWAfhIRqZ1X3dr4A49nej7EKzJNfuDxF+wFi1MrVq3khj2nYc+VAAAgAEAAIAAAACAAAAAACoAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAIgIC42+/9T3VNAcM+P05ZhRoDzV6m4Xbc0C/HPp0XSrXs0AY9p2HPlQAAIABAACAAAAAgAEAAABkAAAAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA=="),
+    /at least 500000000/
+  );
+  // Required height locktime at 500,000,000 (BIP case).
+  assert.throws(
+    () => inspectB64("cHNidP8BAgQCAAAAAQQBAQEFAQIB+wQCAAAAAAEAUgIAAAABwaolbiFLlqGCL5PeQr/ztfP/jQUZMG41FddRWl6AWxIAAAAAAP////8BGMaaOwAAAAAWABSwo68UQghBJpPKfRZoUrUtsK7wbgAAAAABAR8Yxpo7AAAAABYAFLCjrxRCCEEmk8p9FmhStS2wrvBuAQ4gCwrZIUGcHIcZc11y3HOfnqngY40f5MHu8PmUQISBX8gBDwQAAAAAARIEAGXNHQAiAgLWAfhIRqZ1X3dr4A49nej7EKzJNfuDxF+wFi1MrVq3khj2nYc+VAAAgAEAAIAAAACAAAAAACoAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAIgIC42+/9T3VNAcM+P05ZhRoDzV6m4Xbc0C/HPp0XSrXs0AY9p2HPlQAAIABAACAAAAAgAEAAABkAAAAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA=="),
+    /height locktime must be 1 to 499999999/
+  );
+  // Splice-based strictness on the minimal vector (issue #340 counts exact).
+  const noVersion = spliceOnce(V2_MINIMAL_HEX, "01020402000000", "");
+  assert.throws(() => psbtInspectDoc(unhex(noVersion)), /missing PSBT_GLOBAL_TX_VERSION/);
+  const trailingCount = spliceOnce(V2_MINIMAL_HEX, "01040101", "0104020100");
+  assert.throws(() => psbtInspectDoc(unhex(trailingCount)), /trailing bytes after the count/);
+  const negativeAmount = spliceOnce(V2_MINIMAL_HEX, "0008af2f00000000", "ffffffffffffffff");
+  assert.throws(() => psbtInspectDoc(unhex(negativeAmount)), /amount is negative/);
+  const dupPrevoutIndex = spliceOnce(V2_MINIMAL_HEX, "010f0400000000", "010f0400000000010f0400000000");
+  assert.throws(() => psbtInspectDoc(unhex(dupPrevoutIndex)), /appears more than once/);
+  // An unknown version is still refused.
+  const v3 = spliceOnce(V2_MINIMAL_HEX, "01fb0402000000", "01fb0403000000");
+  assert.throws(() => psbtInspectDoc(unhex(v3)), /only PSBT v0 and v2/);
+});
+
+test("PSBT v2: builds from the tx section, and a locktime edit must go through the requirement fields (issue #337)", () => {
+  // An amount edit regenerates the PSBT_OUT_AMOUNT pair and stays parseable.
+  const doc = inspectB64(V2_MINIMAL_B64);
+  doc.tx.outputs[0].value = "799999999";
+  const edited = psbtInspectDoc(rebuild(doc));
+  assert.equal(edited.tx.outputs[0].value, "799999999");
+  assert.equal(edited.rustBitcoinError, null);
+  // A locktime-bearing v2 document: requirement fields drive the tx locktime.
+  const locked = inspectB64("cHNidP8BAgQCAAAAAQMEAAAAAAEEAQIBBQEBAfsEAgAAAAABDiAPdY2/vU2nwWyKMwnDyB4RAPVh6mRttbAXUsSF4b3enwEPBAEAAAABEgQQJwAAAAEOIDobOzyDfWSJ6nox2ObH3VA8ABvvPgaVjnV0gI1oynilAQ8EAAAAAAABAwhPkzV3AAAAAAEEFgAUCxNSys0Dz2qht/PI1jiGcbNKXhEA");
+  assert.equal(locked.tx.locktime, 10000);
+  assert.equal(Buffer.from(rebuild(locked)).toString("base64"), "cHNidP8BAgQCAAAAAQMEAAAAAAEEAQIBBQEBAfsEAgAAAAABDiAPdY2/vU2nwWyKMwnDyB4RAPVh6mRttbAXUsSF4b3enwEPBAEAAAABEgQQJwAAAAEOIDobOzyDfWSJ6nox2ObH3VA8ABvvPgaVjnV0gI1oynilAQ8EAAAAAAABAwhPkzV3AAAAAAEEFgAUCxNSys0Dz2qht/PI1jiGcbNKXhEA");
+  locked.tx.locktime = 9999; // an edit that fights the requirement field
+  assert.throws(() => rebuild(locked), /edit PSBT_IN_REQUIRED_\*_LOCKTIME or PSBT_GLOBAL_FALLBACK_LOCKTIME/);
 });
 
 test("oversized compact-size lengths fail as parse errors, never as WASM traps (issue #323)", () => {

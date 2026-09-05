@@ -2478,6 +2478,17 @@
     document.getElementById("psbted-load").click();
     await until(() => document.getElementById("psbted-error").textContent, "editor rejection");
     assert(!document.querySelector("#psbted-card img") && window.__browserTestInjected !== true, "Editor input executed markup");
+    // Issue #358: BIP-370 v2 is wired into the editor — the spec's own minimal
+    // vector loads, synthesizes its transaction, and rebuilds byte-identically.
+    const v2 = "cHNidP8BAgQCAAAAAQQBAQEFAQIB+wQCAAAAAAEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA==";
+    input(box, v2);
+    document.getElementById("psbted-load").click();
+    await until(() => document.querySelector("#psbted-out .psbted-pairs") || document.getElementById("psbted-error").textContent, "v2 load");
+    equal(document.getElementById("psbted-error").textContent, "", "editor rejected the BIP-370 vector");
+    assert(outText().includes("PSBT v2 (BIP-370)"), "v2 verdict missing");
+    assert(outText().includes("PSBT_GLOBAL_TX_VERSION"), "v2 typed field names missing");
+    assert(outText().includes("PSBT_IN_PREVIOUS_TXID"), "v2 input field names missing");
+    assert(document.getElementById("psbted-result-b64").value === v2, "v2 rebuild was not byte-identical");
     input(box, "");
     document.querySelector('#workspace [data-workspace="calc"]').click();
     await until(() => !document.getElementById("calc-card").hidden, "key workspace");

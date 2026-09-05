@@ -7964,7 +7964,7 @@ function hodlParsePsbt(bytes) {
   offset = globalMap.next;
   let versionEntry = globalMap.entries.find((entry) => entry.type === 251 && entry.keydata.length === 0);
   if (versionEntry) {
-    if (versionEntry.val.length !== 4 || hodlR32(versionEntry.val, 0) !== 0) throw new Error("EntropyLab currently supports PSBT v0 only.");
+    if (versionEntry.val.length !== 4 || hodlR32(versionEntry.val, 0) !== 0) throw new Error("This inspector reads PSBT v0. PSBT v2 (BIP-370) files open in the PSBT editor tab.");
   }
   let unsignedEntries = globalMap.entries.filter((entry) => entry.type === 0 && entry.keydata.length === 0);
   if (unsignedEntries.length !== 1) throw new Error("This PSBT must contain exactly one unsigned transaction.");

@@ -474,9 +474,11 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
       return;
     }
     const tx = doc.tx;
+    // sats null with every input claimed marks an invalid fee: the document's
+    // error string says why (negative fee, u64 overflow, or past MAX_MONEY).
     const fee = doc.fee?.known
       ? doc.fee.sats === null
-        ? `<span class="psbted-note-bad">outputs exceed claimed inputs</span>`
+        ? `<span class="psbted-note-bad">${escapeHtml(doc.fee.error || "outputs exceed claimed inputs")}</span>`
         : `${escapeHtml(String(doc.fee.sats))} sats (${satsToBtc(doc.fee.sats)} BTC, from PSBT-claimed input amounts)`
       : "unknown — some inputs carry no claimed previous-output amount";
     const verdict = doc.rustBitcoinError

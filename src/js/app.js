@@ -20,7 +20,6 @@ import {
   p2trAddressFromXonly,
   scanSilentPaymentOutputs,
   spendPrivForOutput,
-  taprootOutputPrivateKey,
   vinPrevoutScript,
   bytesToHex as hodlSpBytesToHex,
 } from "./bip352.js";
@@ -9189,11 +9188,7 @@ function hodlSpDeriveVinKeys(vins) {
         throw new Error(`Input ${i}: the key derived at ${path} does not produce the prevout's scriptPubKey.`);
       }
       if (expected === null) throw new Error(`Input ${i}: unrecognized prevout script type.`);
-      // BIP-352 spends a taproot input with the key of its output key, so the
-      // P2TR case injects the BIP-341-tweaked scalar; anything less would
-      // produce outputs the recipient can never detect.
-      const privateKey = isP2tr(scriptBytes) ? taprootOutputPrivateKey(node.privateKey) : node.privateKey;
-      return { ...vin, private_key: hodlSpBytesToHex(privateKey) };
+      return { ...vin, private_key: hodlSpBytesToHex(node.privateKey) };
     } finally {
       if (node) node.wipePrivateData();
     }

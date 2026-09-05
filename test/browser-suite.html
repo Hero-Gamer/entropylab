@@ -1036,6 +1036,9 @@
       input(journalPasswordInput, "too short");
       assert(!journalPasswordStatus.hidden && journalPasswordStatus.classList.contains("is-invalid"), "A short Journal password should show a red warning");
       equal(journalPasswordStatus.textContent, "Password has too few characters");
+      journalPasswordInput.focus();
+      journalPasswordInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+      assert(document.activeElement === journalPasswordInput, "Enter should not advance past a short Journal password");
       assert(Math.abs(journalPasswordStatus.getBoundingClientRect().right - journalPasswordInput.getBoundingClientRect().right) <= 2, "Password validation should align to the right of its label");
       input(journalPasswordInput, "");
       assert(journalPasswordStatus.hidden, "Clearing the Journal password should hide its validation message");
@@ -1046,6 +1049,9 @@
       const journalPassword = "correct horse battery staple";
       input(journalPasswordInput, journalPassword);
       assert(journalPasswordStatus.classList.contains("is-valid") && journalPasswordStatus.textContent.includes("Password is long enough"), "A long Journal password should show a green check");
+      journalPasswordInput.focus();
+      journalPasswordInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+      assert(document.activeElement === journalConfirmInput, "Enter should advance a valid Journal password to confirmation");
       input(journalConfirmInput, journalPassword);
       assert(journalConfirmStatus.classList.contains("is-valid"), "Matching Journal passwords should show a green check");
       equal(journalConfirmStatus.textContent, "\u2713 Passwords match");
@@ -1062,7 +1068,8 @@
       journalTabs.forEach((tab) => assert(tab.disabled, "A rejected password should not unlock Journal tabs"));
       input(journalPasswordInput, journalPassword);
       input(journalConfirmInput, journalPassword);
-      document.getElementById("journal-create").click();
+      journalConfirmInput.focus();
+      journalConfirmInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
       await until(() => !document.getElementById("journal-notes-card").hidden, "valid journal creation to open Notepad");
       assert(document.getElementById("journal-card").hidden, "The create/open gate should disappear after journal creation");
       assert(!journalIntro.hidden, "Entropy Journal introduction should remain visible after journal creation");
@@ -1471,6 +1478,10 @@
     const headerDownloadStyle = getComputedStyle(document.querySelector(".download-controls .download-html"));
     equal(getComputedStyle(body).borderTopLeftRadius, "0px", "the page tab should join directly to the top-left of the editor");
     equal(getComputedStyle(pageTabs[0]).backgroundColor, getComputedStyle(notesWrap).backgroundColor, "the selected page tab should use the editor background");
+    body.focus();
+    equal(getComputedStyle(body).outlineStyle, "none", "the focused editor should replace the browser outline with its connected page outline");
+    equal(getComputedStyle(pageTabs[0]).borderTopColor, getComputedStyle(body).borderTopColor, "the focused editor outline should climb around its active page tab");
+    equal(getComputedStyle(pageTabs[0], "::after").backgroundColor, getComputedStyle(notesWrap).backgroundColor, "the active page tab should mask the editor outline beneath it");
     assert(notesCopy && notesCopy.classList.contains("seed-phrase-copy"), "the notepad should reuse the clipboard icon button");
     equal(Math.round(notesCopy.getBoundingClientRect().top - notesWrap.getBoundingClientRect().top), 10, "the notepad copy button should align with the bottom of the first text line");
     equal(Math.round(notesWrap.getBoundingClientRect().right - notesCopy.getBoundingClientRect().right), 12, "the notepad copy button should sit in the top-right corner");
@@ -1551,10 +1562,18 @@
     assert(prompt.hidden, "typing should hide the first-note prompt");
     await new Promise((resolve) => setTimeout(resolve, 1100));
     equal(body.value, `${frozenTimestamp}kitchen table dice`, "the timestamp should freeze once note text is entered");
-    body.value = frozenTimestamp;
-    body.setSelectionRange(body.value.length, body.value.length);
+    body.setSelectionRange(4, 12);
+    body.dispatchEvent(new Event("select", { bubbles: true }));
+    equal(body.selectionStart, frozenTimestamp.length, "a selection contained by the timestamp should collapse at the note boundary");
+    equal(body.selectionEnd, frozenTimestamp.length, "the timestamp should never remain selected");
+    body.setSelectionRange(4, body.value.length);
+    body.dispatchEvent(new Event("select", { bubbles: true }));
+    equal(body.selectionStart, frozenTimestamp.length, "a partial timestamp selection should begin at the note text");
+    equal(body.selectionEnd, body.value.length, "a partial timestamp selection should preserve its note-text edge");
+    body.setRangeText("", body.selectionStart, body.selectionEnd, "end");
     body.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
-    assert(prompt && !prompt.hidden, "deleting back to the timestamp should restore the first-note prompt");
+    assert(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}  $/.test(body.value), "deleting all note text should leave one live timestamp on the line");
+    assert(prompt && !prompt.hidden, "deleting all note text should restore the first-note prompt");
     equal(body.selectionStart, body.value.length, "the restored caret should return to the front of the prompt");
     body.setRangeText("kitchen table dice", body.value.length, body.value.length, "end");
     body.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "kitchen table dice" }));
@@ -1665,6 +1684,9 @@
     equal(pageTabs[1].querySelector(".journal-page-tab-full").textContent, "Page 2", "new pages should follow the Key Station index convention");
     equal(pageTabs[1].querySelector(".journal-page-tab-short").textContent, "P2", "the second page should carry its narrow name");
     assert(pageTabs[1].classList.contains("active"), "the new page should become active");
+    body.focus();
+    equal(getComputedStyle(pageTabs[1]).borderTopColor, getComputedStyle(body).borderTopColor, "the connected focus outline should follow the active page");
+    assert(getComputedStyle(pageTabs[0]).borderTopColor !== getComputedStyle(body).borderTopColor, "the focus outline should leave the inactive page behind");
     assert(!document.getElementById("delete-journal-page").disabled, "minus should enable when another page exists");
     assert(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}  $/.test(body.value), "a new page should open with a live note");
     body.setRangeText("second page note", body.value.length, body.value.length, "end");
@@ -1698,11 +1720,17 @@
     equal(encryptedNotebookDocument.entropylabJournalExport, 1, "the default notebook download should be a password-encrypted Journal export");
     body.value = "temporary encrypted replacement";
     body.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "temporary encrypted replacement" }));
+    const pagesBeforeEncryptedImport = pageTabsRoot.children.length;
     const fileInput = document.getElementById("journal-notes-file");
     Object.defineProperty(fileInput, "files", { configurable: true, value: [new File([encryptedNotebookText], "field-notes.encrypted.json", { type: "application/json" })] });
     fileInput.dispatchEvent(new Event("change", { bubbles: true }));
     await until(() => body.value.includes("kitchen table dice"), "encrypted notebook import");
-    equal(pageTabsRoot.children[0].querySelector(".journal-page-tab-full").textContent, "Field notes", "uploading an encrypted notebook should restore page labels");
+    equal(pageTabsRoot.children.length, pagesBeforeEncryptedImport + 1, "uploading onto a filled page should open the imported notebook in a new page");
+    assert(pageTabsRoot.children[1].classList.contains("active"), "the imported page should become active");
+    pageTabsRoot.children[0].click();
+    assert(body.value.endsWith("temporary encrypted replacement"), "uploading should preserve the filled page that was already open");
+    pageTabsRoot.children[1].click();
+    assert(body.value.includes("kitchen table dice"), "the new page should contain the encrypted notebook import");
     const encryptChoice = document.getElementById("journal-notes-encrypt");
     encryptChoice.checked = false;
     encryptChoice.dispatchEvent(new Event("change", { bubbles: true }));
@@ -1720,12 +1748,23 @@
     document.getElementById("journal-notes-upload").click();
     body.value = "temporary replacement";
     body.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "temporary replacement" }));
+    const pagesBeforePlainImport = pageTabsRoot.children.length;
     document.getElementById("journal-notes-status").textContent = "";
     Object.defineProperty(fileInput, "files", { configurable: true, value: [new File([notebookText], "field-notes.json", { type: "application/json" })] });
     fileInput.dispatchEvent(new Event("change", { bubbles: true }));
     await until(() => document.getElementById("journal-notes-status").textContent.includes("Imported"), "notebook import");
     assert(body.value.includes("kitchen table dice"), "uploading a notebook should restore its notes");
+    equal(pageTabsRoot.children.length, pagesBeforePlainImport + notebookDocument.pages.length, "each uploaded notebook page should be added when the current page is filled");
     equal(pageTabsRoot.children[0].querySelector(".journal-page-tab-full").textContent, "Field notes", "uploading should restore page labels");
+    const pagesBeforeEmptyImport = pageTabsRoot.children.length;
+    document.getElementById("add-journal-page").click();
+    equal(pageTabsRoot.children.length, pagesBeforeEmptyImport + 1, "the empty-page import check should start on a new page");
+    Object.defineProperty(fileInput, "files", { configurable: true, value: [new File(["loaded into empty page"], "single.txt", { type: "text/plain" })] });
+    fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+    await until(() => body.value === "loaded into empty page", "plain text to load into the empty current page");
+    equal(pageTabsRoot.children.length, pagesBeforeEmptyImport + 1, "uploading onto an empty page should reuse it instead of adding another page");
+    document.getElementById("add-journal-page").click();
+    assert(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}  $/.test(body.value), "the next Journal test should start from a fresh note line");
     document.querySelector('#journal-tool-tabs [data-journal-tool="state"]').click();
     await until(() => !document.getElementById("journal-state-card").hidden, "session state");
     const stateText = document.getElementById("journal-state-text");
@@ -2892,17 +2931,59 @@
     );
     assert(pickerHash.src.startsWith("data:image/"), "the Journal key picker did not render a LifeHash");
     const body = document.getElementById("journal-notes-text");
+    const beforeKey = body.value;
+    const keyToken = defaultFingerprintName ? `◆◆ [${fingerprint}]\u2063` : `◆◆ ${option.dataset.keyName} [${fingerprint}]\u2063`;
+    body.setSelectionRange(body.value.length, body.value.length);
+    const pickerRoot = picker.nextElementSibling;
+    const pickerButton = pickerRoot.querySelector(".custom-select-button");
+    pickerButton.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    pickerButton.click();
+    assert(pickerRoot.classList.contains("open") && !pickerRoot.querySelector(".custom-select-list").hidden, "the key dropdown should open above the notepad");
+    [...pickerRoot.querySelectorAll(".custom-select-option")].find((item) => item.textContent.trim() === option.textContent.trim()).click();
+    await until(() => body.value.includes(keyToken), "the dropdown to insert its key");
+    equal(body.value.split("\n").slice(0, -1).join("\n"), beforeKey.split("\n").slice(0, -1).join("\n"), "the key dropdown should preserve earlier notes");
+    const insertedLine = body.value.split("\n").at(-1);
+    const insertedStamp = insertedLine.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}  /)?.[0];
+    assert(insertedStamp && insertedLine === `${insertedStamp}${keyToken} `, "the key dropdown should insert after exactly one timestamp");
+    assert(body.value.includes(keyToken), "selecting a key should insert the same non-duplicated label inline");
+    assert(!body.value.includes(`${fingerprint} [${fingerprint}]`), "the inline key should not repeat a default fingerprint name");
+    let keyStart = body.value.indexOf(keyToken), keyEnd = keyStart + keyToken.length;
+    equal(body.value.slice(keyEnd), " ", "an inline key should have exactly one trailing space");
+    body.setSelectionRange(keyEnd + 1, keyEnd + 1);
+    body.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true }));
+    equal(body.selectionStart, keyStart, "Backspace beside an inline key should select its beginning");
+    equal(body.selectionEnd, keyEnd, "Backspace beside an inline key should select the complete token");
+    body.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true }));
+    assert(!body.value.includes(keyToken), "a second Backspace should remove the selected key");
+    equal(body.value.split("\n").slice(0, -1).join("\n"), beforeKey.split("\n").slice(0, -1).join("\n"), "removing an inline key should preserve earlier notes");
+    assert(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}  $/.test(body.value.split("\n").at(-1)), "removing the only content in a note should restore its live empty timestamp");
     body.setSelectionRange(body.value.length, body.value.length);
     picker.value = option.value;
     picker.dispatchEvent(new Event("change", { bubbles: true }));
-    assert(body.value.includes(defaultFingerprintName ? `◆◆ [${fingerprint}] ◆` : `◆◆ ${option.dataset.keyName} [${fingerprint}] ◆`), "selecting a key should insert the same non-duplicated label inline");
-    assert(!body.value.includes(`${fingerprint} [${fingerprint}]`), "the inline key should not repeat a default fingerprint name");
+    keyStart = body.value.indexOf(keyToken, beforeKey.length);
+    keyEnd = keyStart + keyToken.length;
+    body.setSelectionRange(keyStart + 2, keyStart + 2);
+    body.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    equal(body.selectionStart, keyStart, "clicking an inline key should select its beginning");
+    equal(body.selectionEnd, keyEnd, "clicking an inline key should select the complete token");
     const inlineHash = await until(
       () => [...document.querySelectorAll("#journal-notes-render .journal-inline-key-lifehash")].find((image) => !image.hidden && image.src),
       "inline Journal LifeHash",
     );
     const lineHeight = parseFloat(getComputedStyle(document.getElementById("journal-notes-render")).lineHeight);
     assert(inlineHash.getBoundingClientRect().height <= lineHeight, "the inline LifeHash should fit within the line height");
+    const lastLineStart = body.value.lastIndexOf("\n") + 1;
+    const stamp = body.value.slice(lastLineStart).match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}  /)?.[0];
+    assert(stamp, "the inline key note should retain its timestamp");
+    body.value = body.value.slice(0, lastLineStart) + `${stamp}left  ${keyToken}   right`;
+    body.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "left and right" }));
+    keyStart = body.value.indexOf(keyToken, lastLineStart);
+    body.setSelectionRange(keyStart, keyStart + keyToken.length);
+    body.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true }));
+    equal(body.value.slice(lastLineStart), `${stamp}left right`, "deleting an inline key should collapse surrounding whitespace to one space");
+    body.setSelectionRange(body.value.length, body.value.length);
+    picker.value = option.value;
+    picker.dispatchEvent(new Event("change", { bubbles: true }));
     equal(picker.value, "", "the key picker should reset after inserting a reference");
 
     state.lastBlob = null;
@@ -2954,6 +3035,27 @@
     assert(document.querySelector("#bip85-out .wallet-data-fields")?.textContent.includes("Master fingerprint"), "The BIP39 child did not identify its master fingerprint");
     assert(!document.getElementById("delete-bip85").disabled, "The child delete control did not become available");
 
+    document.querySelector('#workspace [data-workspace="journal"]').click();
+    document.querySelector('#journal-tool-tabs [data-journal-tool="notes"]').click();
+    const journalPicker = document.getElementById("journal-key-insert");
+    const bip85Option = await until(
+      () => [...journalPicker.options].find((option) => option.dataset.referenceKind === "bip85"),
+      "BIP-85 child in the Journal key picker",
+    );
+    assert(bip85Option.textContent.startsWith("BIP-85 · BIP-39 · "), "The BIP-85 picker option did not identify its source and application");
+    const notes = document.getElementById("journal-notes-text");
+    notes.setSelectionRange(notes.value.length, notes.value.length);
+    journalPicker.value = bip85Option.value;
+    journalPicker.dispatchEvent(new Event("change", { bubbles: true }));
+    const bip85Token = `◈◈ BIP-85 · BIP-39 [${bip85Option.dataset.fingerprint}]\u2063`;
+    await until(() => notes.value.includes(bip85Token), "BIP-85 reference in the notepad");
+    const inlineBip85 = document.querySelector("#journal-notes-render .journal-inline-bip85");
+    assert(inlineBip85?.textContent.includes("BIP-85 · BIP-39"), "The inline BIP-85 reference did not retain its distinct label");
+    assert(getComputedStyle(inlineBip85).color === getComputedStyle(document.documentElement).getPropertyValue("--blue").trim() || getComputedStyle(inlineBip85).boxShadow !== "none", "The inline BIP-85 reference did not receive its distinct styling");
+
+    bip85Workspace.click();
+    await until(() => !document.getElementById("bip85-manager").hidden, "BIP-85 after Journal insertion");
+
     document.getElementById("add-bip85").click();
     await until(() => !document.getElementById("bip85-bench").hidden, "BIP-85 bench after plus");
     assert(!document.getElementById("bip85-out").textContent.trim(), "Returning to the bench left a child result visible");
@@ -2961,8 +3063,10 @@
     document.getElementById("bip85-go").click();
     await until(() => tabs.children.length === 3 && document.querySelector("#bip85-out #bip85-private-heading"), "second BIP-85 child tab");
     assert(tabs.children[2].querySelector(".key-tab-lifehash"), "The second BIP-85 child tab is missing its LifeHash target");
+    equal([...document.getElementById("journal-key-insert").options].filter((option) => option.dataset.referenceKind === "bip85").length, 2, "The Journal picker did not list every BIP-85 child");
     document.getElementById("delete-bip85").click();
     await until(() => tabs.children.length === 2, "selected BIP-85 child deletion");
+    equal([...document.getElementById("journal-key-insert").options].filter((option) => option.dataset.referenceKind === "bip85").length, 1, "The Journal picker retained a deleted BIP-85 child");
     assert(!document.getElementById("delete-bip85").disabled, "The remaining child was not selected after deletion");
 
     keyWorkspace.click();

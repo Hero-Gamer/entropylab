@@ -103,6 +103,37 @@ const utxoVerification = (pairs) => {
   return hasWitness && hasNonWitness ? "verified" : "unverified";
 };
 
+// Calculate the fee only from inputs whose UTXO amounts and scripts are
+// independently established by the existing inspector validation. This keeps
+// the fee claim separate from the ordinary PSBT-provided fee calculation.
+const independentlyVerifiedFee = (doc) => {
+  if (!doc.tx.inputs.length || doc.inputs.length !== doc.tx.inputs.length) return null;
+
+  let totalIn = 0n;
+  for (let index = 0; index < doc.tx.inputs.length; index++) {
+    const pairs = doc.inputs[index] ?? [];
+    if (utxoVerification(pairs) !== "verified") return null;
+    const claim = claimedPrevout(pairs);
+    if (!claim || claim.conflict) return null;
+    try {
+      totalIn += BigInt(claim.value);
+    } catch {
+      return null;
+    }
+  }
+
+  let totalOut = 0n;
+  for (const output of doc.tx.outputs) {
+    try {
+      totalOut += BigInt(output.value);
+    } catch {
+      return null;
+    }
+  }
+
+  return totalIn - totalOut;
+};
+
 const SIGNING_PAIR_NAMES = ["PSBT_IN_PARTIAL_SIG", "PSBT_IN_TAP_KEY_SIG", "PSBT_IN_TAP_SCRIPT_SIG"];
 const FINAL_PAIR_NAMES = ["PSBT_IN_FINAL_SCRIPTSIG", "PSBT_IN_FINAL_SCRIPTWITNESS"];
 
@@ -121,6 +152,13 @@ const signingStatus = (pairs) => {
 
 // Render the fee summary while preserving the inspector's unknown/conflict states.
 const feeHtml = (doc) => {
+  const verifiedFee = independentlyVerifiedFee(doc);
+  if (verifiedFee !== null) {
+    return verifiedFee < 0n
+      ? `<span class="psbted-note-bad">outputs exceed independently verified inputs</span>`
+      : `<span class="psbted-viz-feenum">${groupSats(verifiedFee)} sats</span> <span class="psbted-note-ok">(independently verified)</span>`;
+  }
+
   if (doc.fee?.known) {
     return doc.fee.sats === null
       ? `<span class="psbted-note-bad">${escapeHtml(doc.fee?.error || "outputs exceed claimed inputs")}</span>`

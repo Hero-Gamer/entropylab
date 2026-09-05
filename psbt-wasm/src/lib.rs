@@ -683,16 +683,43 @@ fn pair_json(kind: &str, pair: &RawPair, tx: &Transaction, input_index: Option<u
     view
 }
 
-/// The prevout amount this pair claims for the input at `input_index`, and
+/// What one input's UTXO declarations resolve to, as a set.
+enum AmountClaim {
+    /// No valid declaration at all.
+    None,
+    /// Every valid declaration agrees on this amount.
+    Claimed(u64),
+    /// Witness and non-witness declarations are both valid but disagree: the
+    /// amount is unknown no matter which one "wins" (issue #324).
+    Conflict,
+}
+
+/// The prevout amount this pair declares for the input at `input_index`, and
 /// only when this pair is that input's (witness or verified non-witness) UTXO
-/// declaration; None otherwise.
-fn claimed_prevout_amount(pair: &RawPair, tx: &Transaction, input_index: usize) -> Option<u64> {
+/// declaration *and* decodes exactly like its typed decode does — a malformed
+/// declaration claims nothing. None otherwise.
+fn pair_amount_claim(pair: &RawPair, tx: &Transaction, input_index: usize) -> Option<u64> {
     match pair.key[0] {
-        0x01 if pair.key.len() == 1 && pair.value.len() >= 8 => {
-            Some(u64::from_le_bytes(pair.value[..8].try_into().unwrap()))
+        0x01 if pair.key.len() == 1 => {
+            // TxOut consensus: 8-byte LE amount plus a compact-size script
+            // spanning the value exactly (the typed decode at the pair view
+            // rejects anything looser, so a looser claim must not count).
+            if pair.value.len() < 9 {
+                return None;
+            }
+            let amount = u64::from_le_bytes(pair.value[..8].try_into().unwrap());
+            let mut off = 8usize;
+            let script_len = read_varint(&pair.value, &mut off).ok()?;
+            if span_end(off, script_len, pair.value.len()) != Some(pair.value.len()) {
+                return None;
+            }
+            Some(amount)
         }
         0x00 if pair.key.len() == 1 => {
             let prev = Transaction::consensus_decode(&mut &pair.value[..]).ok()?;
+            if encode::serialize(&prev) != pair.value {
+                return None; // trailing bytes: the typed decode rejects it too
+            }
             // Match the input map to its unsigned-transaction input by index
             // (not by txid) and require the non-witness utxo to be that exact
             // outpoint's transaction before claiming its amount.
@@ -704,6 +731,17 @@ fn claimed_prevout_amount(pair: &RawPair, tx: &Transaction, input_index: usize) 
         }
         _ => None,
     }
+}
+
+/// All of one input's amount declarations resolved as a set, independent of
+/// map serialization order: the first claim no longer wins (issue #324).
+fn resolve_input_amount(pairs: &[RawPair], tx: &Transaction, index: usize) -> AmountClaim {
+    let mut claims = pairs.iter().filter_map(|p| pair_amount_claim(p, tx, index));
+    let Some(first) = claims.next() else { return AmountClaim::None };
+    if claims.any(|other| other != first) {
+        return AmountClaim::Conflict;
+    }
+    AmountClaim::Claimed(first)
 }
 
 fn inspect(bytes: &[u8]) -> Result<String, String> {
@@ -735,11 +773,16 @@ fn inspect(bytes: &[u8]) -> Result<String, String> {
     let mut known_in_sats = Some(0u64);
     let mut known_inputs = 0usize;
     let mut money_valid = true;
+    let mut conflicts = Vec::new();
     for (index, pairs) in raw.inputs.iter().enumerate() {
-        if let Some(amount) = pairs.iter().find_map(|p| claimed_prevout_amount(p, tx, index)) {
-            known_in_sats = known_in_sats.and_then(|sum| sum.checked_add(amount));
-            money_valid &= amount <= max_money;
-            known_inputs += 1;
+        match resolve_input_amount(pairs, tx, index) {
+            AmountClaim::Claimed(amount) => {
+                known_in_sats = known_in_sats.and_then(|sum| sum.checked_add(amount));
+                money_valid &= amount <= max_money;
+                known_inputs += 1;
+            }
+            AmountClaim::Conflict => conflicts.push(index),
+            AmountClaim::None => {}
         }
     }
     money_valid &= known_in_sats.is_none_or(|sum| sum <= max_money);
@@ -750,7 +793,12 @@ fn inspect(bytes: &[u8]) -> Result<String, String> {
     money_valid &= out_sum.is_none_or(|sum| sum <= max_money)
         && tx.output.iter().all(|output| output.value.to_sat() <= max_money);
 
-    let fee = if known_inputs != tx.input.len() {
+    let fee = if !conflicts.is_empty() {
+        // Amounts disagree within one input, so neither the input total nor
+        // the fee is derivable — say so explicitly rather than picking one.
+        let list = conflicts.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(", ");
+        json!({ "known": false, "error": format!("input(s) {list} declare conflicting witness and non-witness UTXO amounts") })
+    } else if known_inputs != tx.input.len() {
         json!({ "known": false })
     } else if let (Some(in_sum), Some(out_sum)) = (known_in_sats, out_sum) {
         if !money_valid {
@@ -775,7 +823,8 @@ fn inspect(bytes: &[u8]) -> Result<String, String> {
         "globals": raw.globals.iter().map(|p| pair_json("global", p, tx, None)).collect::<Vec<_>>(),
         "inputs": raw.inputs.iter().enumerate().map(|(n, map)| map.iter().map(|p| pair_json("input", p, tx, Some(n))).collect::<Vec<_>>()).collect::<Vec<_>>(),
         "outputs": raw.outputs.iter().map(|map| map.iter().map(|p| pair_json("output", p, tx, None)).collect::<Vec<_>>()).collect::<Vec<_>>(),
-        "totalIn": if known_inputs == tx.input.len() { known_in_sats.map_or(Value::Null, sats_json) } else { Value::Null },
+        "totalIn": if conflicts.is_empty() && known_inputs == tx.input.len() { known_in_sats.map_or(Value::Null, sats_json) } else { Value::Null },
+        "inputConflicts": conflicts,
         "totalOut": out_sum.map_or(Value::Null, sats_json),
         "fee": fee,
         "rustBitcoinError": rust_bitcoin_error,

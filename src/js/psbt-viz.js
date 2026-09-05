@@ -61,15 +61,21 @@ const scriptKind = (scriptHex, asm) => {
   return null;
 };
 
-// The amount an input claims to spend: the witness UTXO pair when present,
-// otherwise the spent output of the non-witness UTXO's previous transaction.
-// Pairs that fail their typed decode claim nothing.
+// The amount an input claims to spend, resolved as a set so map order cannot
+// change the answer (issue #324): when both a witness UTXO and a verified
+// non-witness UTXO claim exist they must agree, otherwise the box shows a
+// conflict warning instead of picking one. The verified non-witness claim's
+// script wins the label when both are present and consistent. Pairs that
+// fail their typed decode claim nothing.
 const claimedPrevout = (pairs) => {
   const witness = pairs.find((pair) => pair.name === "PSBT_IN_WITNESS_UTXO" && pair.decoded);
-  if (witness) return { value: witness.decoded.value, scriptPubKey: witness.decoded.scriptPubKey };
   const nonWitness = pairs.find((pair) => pair.name === "PSBT_IN_NON_WITNESS_UTXO" && pair.decoded?.prevout);
-  if (nonWitness) return { value: nonWitness.decoded.prevout.value, scriptPubKey: nonWitness.decoded.prevout.scriptPubKey };
-  return null;
+  const witnessClaim = witness && { value: witness.decoded.value, scriptPubKey: witness.decoded.scriptPubKey };
+  const nonWitnessClaim = nonWitness && { value: nonWitness.decoded.prevout.value, scriptPubKey: nonWitness.decoded.prevout.scriptPubKey };
+  if (witnessClaim && nonWitnessClaim) {
+    return witnessClaim.value === nonWitnessClaim.value ? nonWitnessClaim : { conflict: [witnessClaim.value, nonWitnessClaim.value] };
+  }
+  return witnessClaim ?? nonWitnessClaim ?? null;
 };
 
 // Signing progress of one input, read off its map's pair names.
@@ -90,27 +96,30 @@ const feeHtml = (doc) => {
       ? `<span class="psbted-note-bad">${escapeHtml(doc.fee?.error || "outputs exceed claimed inputs")}</span>`
       : `<span class="psbted-viz-feenum">${groupSats(doc.fee.sats)} sats</span> <span class="muted">(PSBT claim)</span>`;
   }
-  return `<span class="muted" title="an input carries no amount claim">unknown</span>`;
+  return doc.fee?.error
+    ? `<span class="psbted-note-bad">${escapeHtml(doc.fee.error)}</span>`
+    : `<span class="muted" title="an input carries no amount claim">unknown</span>`;
 };
 
 const inputBox = (doc, index, network, selected) => {
   const input = doc.tx.inputs[index];
   const pairs = doc.inputs[index] ?? [];
   const claim = claimedPrevout(pairs);
-  const address = claim ? addressFor(claim.scriptPubKey, network) : null;
+  const conflict = claim?.conflict;
+  const address = claim && !conflict ? addressFor(claim.scriptPubKey, network) : null;
   // Boxes stay dense: identifiers truncate mid-string (the full text is in
   // the tooltip and the button's aria-label).
-  const label = address ? shortenMiddle(address) : claim ? shortenMiddle(claim.scriptPubKey, 12, 10) : `${shortenMiddle(input.txid, 8, 6)}:${input.vout}`;
+  const label = address ? shortenMiddle(address) : claim && !conflict ? shortenMiddle(claim.scriptPubKey, 12, 10) : `${shortenMiddle(input.txid, 8, 6)}:${input.vout}`;
   const status = signingStatus(pairs);
   // The prevout's script template tags the box like a block explorer would.
-  const kind = claim ? scriptKind(claim.scriptPubKey) : null;
+  const kind = claim && !conflict ? scriptKind(claim.scriptPubKey) : null;
   const open = selected?.kind === "input" && selected.index === index;
   return `<div class="psbted-viz-box${open ? " is-open" : ""}">
     <button type="button" class="psbted-viz-open" data-viz="input:${index}" aria-expanded="${open}" aria-label="Input ${index}, ${escapeHtml(address ?? label)}: show and edit this input's PSBT fields">
       <span class="psbted-viz-idx">#${index}</span>
       <span class="psbted-viz-id psbted-viz-in"${address ? ` title="${escapeHtml(address)}"` : ""}>${escapeHtml(label)}</span>
     </button>
-    <p class="psbted-viz-amount">${claim ? `${groupSats(claim.value)} sats` : `<span class="muted">no amount claim</span>`}</p>
+    <p class="psbted-viz-amount">${conflict ? `<span class="psbted-note-bad">conflicting claims: ${groupSats(conflict[0])} vs ${groupSats(conflict[1])} sats</span>` : claim ? `${groupSats(claim.value)} sats` : `<span class="muted">no amount claim</span>`}</p>
     <p class="psbted-viz-sub" title="spends ${escapeHtml(input.txid)}:${escapeHtml(String(input.vout))}">${kind ? `<span class="psbted-viz-kind">${escapeHtml(kind)}</span> · ` : ""}<span class="${status.tone}">${escapeHtml(status.text)}</span></p>
   </div>`;
 };

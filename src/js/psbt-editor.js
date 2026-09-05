@@ -480,7 +480,9 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
       ? doc.fee.sats === null
         ? `<span class="psbted-note-bad">${escapeHtml(doc.fee.error || "outputs exceed claimed inputs")}</span>`
         : `${escapeHtml(String(doc.fee.sats))} sats (${satsToBtc(doc.fee.sats)} BTC, from PSBT-claimed input amounts)`
-      : "unknown — some inputs carry no claimed previous-output amount";
+      : doc.fee?.error
+        ? `<span class="psbted-note-bad">${escapeHtml(doc.fee.error)}</span>`
+        : "unknown — some inputs carry no claimed previous-output amount";
     const verdict = doc.rustBitcoinError
       ? `<span class="psbted-note-warn">rust-bitcoin reports: ${escapeHtml(doc.rustBitcoinError)}</span>`
       : `<span class="psbted-note-ok">parses under rust-bitcoin</span>`;

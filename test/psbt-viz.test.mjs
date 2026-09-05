@@ -158,6 +158,27 @@ test("invalid fee reasons and an unknown outputs total render from the document"
   assert.ok(!noTotal.includes("null sats"), "null total must not render as an amount");
 });
 
+test("conflicting witness and non-witness claims render as a conflict, independent of map order (issue #324)", () => {
+  const witness = { key: "01", value: "", name: "PSBT_IN_WITNESS_UTXO", decoded: { value: "5000", scriptPubKey: "51" } };
+  const nonWitness = { key: "00", value: "", name: "PSBT_IN_NON_WITNESS_UTXO", decoded: { txid: "00".repeat(32), outputCount: 1, prevout: { vout: 1, value: "1000", scriptPubKey: "51" } } };
+  for (const pairs of [[witness, nonWitness], [nonWitness, witness]]) {
+    const html = psbtVizHtml(syntheticDoc({ inputs: [pairs] }), "mainnet");
+    assert.ok(html.includes(`conflicting claims: ${sats("5000")} vs ${sats("1000")} sats`), "conflict warning missing");
+  }
+  // The fee line shows the document's conflict reason instead of "unknown".
+  const conflicted = psbtVizHtml(syntheticDoc({
+    inputs: [[witness, nonWitness]],
+    fee: { known: false, error: "input(s) 0 declare conflicting witness and non-witness UTXO amounts" },
+  }), "mainnet");
+  assert.ok(conflicted.includes("conflicting witness and non-witness UTXO amounts"), "fee conflict reason missing");
+  // Agreeing claims resolve normally to the (verified) non-witness claim.
+  const agreed = psbtVizHtml(syntheticDoc({
+    inputs: [[{ ...witness, decoded: { value: "1000", scriptPubKey: "51" } }, nonWitness]],
+  }), "mainnet");
+  assert.ok(agreed.includes(`${sats("1000")} sats`), "agreed claim amount missing");
+  assert.ok(!agreed.includes("conflicting claims"), "agreement must not warn");
+});
+
 test("column hint lines carry the totals, unless a claim is missing", () => {
   const html = psbtVizHtml(syntheticDoc({ totalIn: 250000 }), "mainnet");
   assert.ok(html.includes(`${sats("250000")} sats claimed, not verified`), "inputs total missing");

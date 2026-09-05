@@ -251,6 +251,69 @@ test("a non-witness utxo that does not match its input's outpoint is not claimed
   assert.deepEqual(reversed.fee, { known: false });
 });
 
+test("conflicting witness and non-witness UTXO claims mark amount and fee unknown, in both map orders (issue #324)", () => {
+  // The real prevout pays 1,000 sats; a conflicting witness UTXO claims
+  // 5,000. Whichever pair serializes first must not win.
+  const le64hex = (value) => {
+    let n = BigInt(value);
+    const bytes = [];
+    for (let i = 0; i < 8; i++) { bytes.push(Number(n & 255n)); n >>= 8n; }
+    return Buffer.from(bytes).toString("hex");
+  };
+  const prev = prevTx([1000, [0x51]]);
+  const witness = (sats) => ({ key: "01", value: le64hex(sats) + "0151" }); // 5,000-sat claim, same script
+  const nonWitness = { key: "00", value: prev.hex };
+  const build = (pairs) => psbtInspectDoc(psbtBuildBytes({
+    tx: {
+      version: 2,
+      locktime: 0,
+      inputs: [{ txid: prev.txid, vout: 0, scriptSig: "", sequence: 0xffffffff }],
+      outputs: [{ value: 900, scriptPubKey: "51" }],
+    },
+    globals: [],
+    inputs: [pairs],
+    outputs: [[]],
+  }));
+  for (const ordered of [[witness(5000), nonWitness], [nonWitness, witness(5000)]]) {
+    const doc = build(ordered);
+    assert.deepEqual(doc.inputConflicts, [0]);
+    assert.equal(doc.totalIn, null);
+    assert.equal(doc.fee.known, false);
+    assert.match(doc.fee.error, /conflicting witness and non-witness UTXO amounts/);
+  }
+  // Agreement between the two declarations resolves normally to the amount.
+  const agreed = build([witness(1000), nonWitness]);
+  assert.deepEqual(agreed.inputConflicts, []);
+  assert.equal(agreed.totalIn, "1000");
+  assert.deepEqual(agreed.fee, { known: true, sats: "100" });
+  // A malformed witness declaration (amount only, no script) claims nothing —
+  // it neither resolves nor conflicts, the input simply has no claim. The
+  // build gate would reject such a value, so splice it into valid bytes.
+  const validBytes = Buffer.from(psbtBuildBytes({
+    tx: {
+      version: 2,
+      locktime: 0,
+      inputs: [{ txid: prev.txid, vout: 0, scriptSig: "", sequence: 0xffffffff }],
+      outputs: [{ value: 900, scriptPubKey: "51" }],
+    },
+    globals: [],
+    inputs: [[witness(5000), nonWitness]],
+    outputs: [[]],
+  })).toString("hex");
+  const malformedHex = validBytes.replace(
+    "01" + "01" + "0a" + le64hex(5000) + "0151",
+    "01" + "01" + "08" + le64hex(5000)
+  );
+  assert.notEqual(malformedHex, validBytes); // the splice must have happened
+  const malformed = psbtInspectDoc(unhex(malformedHex));
+  assert.match(malformed.inputs[0][0].decodeError, /witness utxo is truncated/);
+  assert.deepEqual(malformed.inputConflicts, []);
+  // The malformed declaration claims nothing, so the verified non-witness
+  // claim resolves alone: no conflict, amount known.
+  assert.equal(malformed.totalIn, "1000");
+  assert.deepEqual(malformed.fee, { known: true, sats: "100" });
+});
+
 test("hostile amount totals mark totals and fee invalid instead of wrapping (issue #367)", () => {
   // A structurally valid PSBT can claim amounts whose u64 total overflows; a
   // wrapped sum would display as a plausible total or fee. The inspector must

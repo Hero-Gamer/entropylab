@@ -4598,8 +4598,13 @@ function hodlGlobalSyncCurrentBits(targetWords = hodlTargetWordCount) {
     }
     let kind = hodlNormalizePrivateKeyKind(document.querySelector('input[name="kk"]:checked')?.value || "wif", value);
     if (kind === "hex-key") {
+      // An over-long key is invalid, not truncated: publishing its first 64
+      // characters would mirror a key the source field itself rejects, while
+      // every other source publishes nothing when invalid.
+      let digits = value.replace(/\s/g, "").replace(/^0x/i, "");
+      if (digits.length > 64) return null;
       let bits = "";
-      for (let digit of value.replace(/\s/g, "").replace(/^0x/i, "").slice(0, 64)) {
+      for (let digit of digits) {
         if (!/^[0-9a-fA-F]$/.test(digit)) break;
         bits += Number.parseInt(digit, 16).toString(2).padStart(4, "0");
       }

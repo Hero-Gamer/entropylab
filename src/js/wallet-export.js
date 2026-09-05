@@ -35,6 +35,14 @@ var hodlWalletExport = (() => {
 
   const DUMMY_LOCATOR_VERSION = 70016; // CBlockLocator::DUMMY_VERSION, little-endian in records
 
+  // Bitcoin Core keeps the chain identity in two places: the SQLite
+  // application_id (the network magic, read big-endian) and the
+  // bestblock_nomerkle locator (the chain's genesis hash). All four picker
+  // networks are listed — signet and regtest are collapsed to the testnet
+  // key/address family by the tools, but their wallet.dat metadata is
+  // chain-specific (issue #329). The signet row is the default signet;
+  // Core derives a different network magic for custom signet challenges,
+  // which this export does not support.
   const NETWORKS = {
     mainnet: {
       applicationId: 0xf9beb4d9, // network magic in natural byte order
@@ -44,8 +52,10 @@ var hodlWalletExport = (() => {
       applicationId: 0x0b110907,
       genesis: "000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943",
     },
-    // Not offered by the UI; used by the test suite to validate files with a
-    // regtest Bitcoin Core node.
+    signet: {
+      applicationId: 0x0a03cf40,
+      genesis: "00000008819873e925422c1ff0f99f7cc9bbb232af63a077a480a3633bee1ef6",
+    },
     regtest: {
       applicationId: 0xfabfb5da,
       genesis: "0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206",

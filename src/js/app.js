@@ -162,6 +162,16 @@ var hodlBase58Check = { encode: base58checkEncode, decode: base58checkDecode }, 
 function hodlWifVersionByte(e) {
   return e === "mainnet" ? 128 : 239;
 }
+// The header picker tracks Bitcoin Core's four chains (mainnet, testnet,
+// signet, regtest), and a derived wallet keeps that chain identity so the
+// wallet.dat export can write chain-specific metadata (issue #329). Extended
+// key versions, WIF bytes, and coin types form only two encoding families —
+// signet and regtest share the testnet versions — so every version lookup
+// normalizes the chain through this map. (Regtest's bcrt1… HRP is NOT part
+// of the family: the address layer takes the chain itself.)
+function hodlNetworkFamily(network) {
+  return network === "mainnet" ? "mainnet" : "testnet";
+}
 function hodlCoinTypeFromNetwork(e) {
   let index = Number(e);
   return Number.isSafeInteger(index) && index >= 0 && index <= 2147483647 ? index : e === "mainnet" ? 0 : 1;
@@ -474,7 +484,9 @@ function hodlSingleKeyWallet(e, t, r, trimBrainWallet = false) {
   } else if (r === "minikey" || hodlIsMiniKey(a)) i = hodlDecodeMiniKey(a), s = a, n.push(hodlNote("Casascius mini private key decoded via SHA-256."));
   else if (/^[5KL9c][1-9A-HJ-NP-Za-km-z]{50,51}$/.test(a)) {
     let E = hodlDecodeWif(a);
-    i = E.priv, c = E.network, n.push(hodlNote(E.compressed ? "Decoded a compressed WIF private key (starts with K or L on mainnet)." : "Decoded an uncompressed WIF private key (starts with 5 on mainnet)."));
+    // A WIF only settles the encoding family; when it matches the selected
+    // chain's family, keep the chain so regtest still renders bcrt1….
+    i = E.priv, c = hodlNetworkFamily(t) === E.network ? t : E.network, n.push(hodlNote(E.compressed ? "Decoded a compressed WIF private key (starts with K or L on mainnet)." : "Decoded an uncompressed WIF private key (starts with 5 on mainnet)."));
   } else {
     let E = a.replace(/\s/g, "").replace(/^0x/i, "");
     if (!/^[0-9a-fA-F]{64}$/.test(E)) throw hodlError("Enter a WIF key (5/K/L…), a 64-character hex private key, or a Casascius mini key (S…).");
@@ -644,7 +656,7 @@ function hodlAccountExportFamily(definition, options = {}) {
   return "x";
 }
 function hodlSerializeExtendedKey(value, network, family, isPrivate) {
-  return value ? hodlReversionExtendedKey(value, hodlExtendedKeyVersions[network][family][isPrivate ? "prv" : "pub"]) : null;
+  return value ? hodlReversionExtendedKey(value, hodlExtendedKeyVersions[hodlNetworkFamily(network)][family][isPrivate ? "prv" : "pub"]) : null;
 }
 function hodlBuildMultisigCosignerExports(root, network, accountIndex, masterFingerprint, coinType = hodlCoinTypeFromNetwork(network)) {
   return [{
@@ -692,7 +704,7 @@ function hodlBuildMultisigCosignerExports(root, network, accountIndex, masterFin
       originPath = definition.originPath || `48h/${coinType}h/${accountIndex}h/${definition.scriptIndex}h`;
     let node = root.derive(accountPath),
       publicKey = hodlSerializeExtendedKey(node.publicExtendedKey, network, "x", !1);
-    let prefix = hodlExtendedKeyVersions[network].x.pubName;
+    let prefix = hodlExtendedKeyVersions[hodlNetworkFamily(network)].x.pubName;
     return {
       ...definition,
       accountPath,
@@ -742,7 +754,7 @@ function hodlWatchOnlyDescriptorExport(receiveDescriptor, changeDescriptor, addr
   return `${hodlPublicFieldHtml("Watch-only wallet descriptor", multipath || "\u2014")}${qr}<details class="wallet-advanced"><summary>Address branch descriptors</summary>${details}</details>`;
 }
 function hodlAccountResult(node, definition, network, count, options = {}) {
-  let rawPublic = node.publicExtendedKey, rawPrivate = node.privateKey ? node.privateExtendedKey : null, family = hodlAccountExportFamily(definition, options), primaryConfig = hodlExtendedKeyVersions[network][family] || hodlExtendedKeyVersions[network].x, genericConfig = hodlExtendedKeyVersions[network].x;
+  let rawPublic = node.publicExtendedKey, rawPrivate = node.privateKey ? node.privateExtendedKey : null, family = hodlAccountExportFamily(definition, options), keyVersions = hodlExtendedKeyVersions[hodlNetworkFamily(network)], primaryConfig = keyVersions[family] || keyVersions.x, genericConfig = keyVersions.x;
   let genericPublic = hodlSerializeExtendedKey(rawPublic, network, "x", false), genericPrivate = hodlSerializeExtendedKey(rawPrivate, network, "x", true);
   let primaryPublic = hodlSerializeExtendedKey(rawPublic, network, family, false), primaryPrivate = hodlSerializeExtendedKey(rawPrivate, network, family, true);
   let origin = options.originFingerprint && options.originPath ? `[${options.originFingerprint}/${options.originPath}]` : "", branchHardened = Boolean(options.branchHardened), addressHardened = Boolean(options.addressHardened), wildcard = addressHardened ? "*'" : "*", branchStart = options.branchStart ?? 0, branchRange = options.branchRange ?? 2;
@@ -823,8 +835,8 @@ function hodlRootWalletResult(root, network, source, accountIndex, masterFingerp
     seedHex: source.seedHex,
     rootXprv: hodlSerializeExtendedKey(root.privateKey ? root.privateExtendedKey : null, network, "x", true),
     rootXpub: hodlSerializeExtendedKey(root.publicExtendedKey, network, "x", false),
-    rootPrivateLabel: hodlExtendedKeyVersions[network].x.prvName,
-    rootPublicLabel: hodlExtendedKeyVersions[network].x.pubName,
+    rootPrivateLabel: hodlExtendedKeyVersions[hodlNetworkFamily(network)].x.prvName,
+    rootPublicLabel: hodlExtendedKeyVersions[hodlNetworkFamily(network)].x.pubName,
     masterFingerprint,
     multisigCosignerExports: root.privateKey ? hodlBuildMultisigCosignerExports(root, network, accountIndex, masterFingerprint, coinType) : [],
     imported: false,
@@ -901,7 +913,7 @@ async function hodlEntropyWalletWithProgress(entropy, passphrase, network, count
 async function hodlImportedWalletWithProgress(value, network, count, accountIndex, addressStart, tracker, purposeIndex, coinType = hodlCoinTypeFromNetwork(network), hardening = hodlDefaultHardening(), branchStart = 0, branchRange = 2, derivationPlan = null) {
   let importedValue = String(value ?? "").trim(), parsed = hodlParseExtendedKey(importedValue);
   if (parsed.scope !== "singlesig") throw hodlError("{prefix} is a multisig extended key. Use it in Multi Signature, not Key Derivation.", { prefix: parsed.prefix });
-  if (parsed.network !== network) throw hodlError("This {prefix} belongs to Bitcoin {network}. Change Network to {network} before deriving it.", { prefix: parsed.prefix, network: parsed.network });
+  if (parsed.network !== hodlNetworkFamily(network)) throw hodlError("This {prefix} belongs to Bitcoin {network}. Change Network to {network} before deriving it.", { prefix: parsed.prefix, network: parsed.network });
   let node = parsed.node, mismatch = hodlSinglesigScriptMismatch(parsed, hodlSelectedScriptType()), notes = [hodlNote(parsed.isPrivate ? "Imported an extended private key. Addresses and WIF keys are derived from it." : "Imported an extended public key. This is watch-only: it can derive addresses but cannot spend.")];
   if (node.depth === 0) {
     if (!parsed.isPrivate && (derivationPlan ? derivationPlan.hasHardenedPrefix || hardening.branch || hardening.address : Object.values(hardening).some(Boolean))) throw hodlError("A root extended public key cannot derive the selected hardened path. Turn every Harden option off, import an account-level public key, or use the root xprv/tprv offline.");
@@ -1368,7 +1380,7 @@ function hodlHdWalletData(wallet) {
   if (wallet.mnemonic && wallet.passphraseUsed && wallet.passphrase) privateFields.push(hodlPrivateFieldHtml("BIP39 passphrase", wallet.passphrase));
   if (wallet.entropyHex) privateFields.push(hodlPrivateFieldHtml("BIP39 entropy hex", wallet.entropyHex));
   if (wallet.seedHex) privateFields.push(hodlPrivateFieldHtml("Master seed hex", wallet.seedHex));
-  if (wallet.rootXprv) privateFields.push(hodlPrivateFieldHtml(`Root ${wallet.rootPrivateLabel || hodlExtendedKeyVersions[wallet.network].x.prvName}`, wallet.rootXprv));
+  if (wallet.rootXprv) privateFields.push(hodlPrivateFieldHtml(`Root ${wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName}`, wallet.rootXprv));
   if (wallet.importedPrivateKey) privateFields.push(hodlPrivateFieldHtml(`Imported ${wallet.importedPrivateLabel || "extended private key"}`, wallet.importedPrivateKey));
   let hasAccountPrivate = wallet.accounts.some(hodlAccountHasPrivate), hasPrivate = privateFields.length > 0 || hasAccountPrivate;
   let privateContent = privateFields.length ? privateFields.join("") : `<p class="muted">Private account material is available in the selected script panel below; no BIP32 root private key was supplied.</p>`;
@@ -1385,7 +1397,7 @@ function hodlHdWalletData(wallet) {
   let fingerprint = wallet.masterFingerprint ? hodlPublicFieldHtml("Master fingerprint", wallet.masterFingerprint) : "";
   let parentFingerprint = !wallet.masterFingerprint && wallet.parentFingerprint ? hodlPublicFieldHtml("Encoded parent fingerprint (not a master fingerprint)", wallet.parentFingerprint) : "";
   let nodeFingerprint = !wallet.masterFingerprint && wallet.nodeFingerprint ? hodlPublicFieldHtml("Imported key fingerprint (not a master fingerprint)", wallet.nodeFingerprint) : "";
-  let rootPublic = wallet.rootXpub ? hodlPublicFieldHtml("Root {name}", wallet.rootXpub, { name: wallet.rootPublicLabel || hodlExtendedKeyVersions[wallet.network].x.pubName }) : "";
+  let rootPublic = wallet.rootXpub ? hodlPublicFieldHtml("Root {name}", wallet.rootXpub, { name: wallet.rootPublicLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.pubName }) : "";
   let importedPublic = wallet.importedPublicKey ? hodlPublicFieldHtml("Imported {name}", wallet.importedPublicKey, { name: wallet.importedPublicLabel || hodlTText("extended public key") }) : "";
   return `<section class="card wallet-data-card">
     <div class="wallet-data-intro">
@@ -1530,7 +1542,7 @@ var hodlRecoverySheetText = function(wallet, revealPrivate) {
     }
     if (wallet.entropyHex) lines.push("", "BIP39 ENTROPY HEX", wallet.entropyHex);
     if (wallet.seedHex) lines.push("", "MASTER SEED HEX (BIP39 PBKDF2, 512 bits)", wallet.seedHex);
-    if (wallet.rootXprv) lines.push("", `BIP32 ROOT ${(wallet.rootPrivateLabel || hodlExtendedKeyVersions[wallet.network].x.prvName).toUpperCase()}`, wallet.rootXprv);
+    if (wallet.rootXprv) lines.push("", `BIP32 ROOT ${(wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName).toUpperCase()}`, wallet.rootXprv);
     if (wallet.importedPrivateKey) lines.push("", `IMPORTED ${(wallet.importedPrivateLabel || "EXTENDED PRIVATE KEY").toUpperCase()}`, wallet.importedPrivateKey);
     for (let account of wallet.accounts) {
       if (!hodlAccountHasPrivate(account)) continue;
@@ -1550,7 +1562,7 @@ var hodlRecoverySheetText = function(wallet, revealPrivate) {
   if (wallet.masterFingerprint) lines.push(`Master fingerprint: ${wallet.masterFingerprint}`);
   if (wallet.parentFingerprint && !wallet.masterFingerprint) lines.push(`Encoded parent fingerprint (not a master fingerprint): ${wallet.parentFingerprint}`);
   if (wallet.nodeFingerprint && !wallet.masterFingerprint) lines.push(`Imported key fingerprint (not a master fingerprint): ${wallet.nodeFingerprint}`);
-  if (wallet.rootXpub) lines.push(`BIP32 root ${(wallet.rootPublicLabel || hodlExtendedKeyVersions[wallet.network].x.pubName).toUpperCase()}: ${wallet.rootXpub}`);
+  if (wallet.rootXpub) lines.push(`BIP32 root ${(wallet.rootPublicLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.pubName).toUpperCase()}: ${wallet.rootXpub}`);
   if (wallet.multisigCosignerExports?.length) {
     lines.push("", "MULTISIG CO-SIGNER EXPORTS", "Paste one complete value into a co-signer input. Legacy offers BIP45 without accounts and BIP87 with standardized accounts; use the same standard and account policy for every co-signer.");
     for (let item of wallet.multisigCosignerExports) lines.push(`${item.label} (${item.prefix}): ${item.value}`);
@@ -6031,7 +6043,13 @@ async function hodlCalculateKey(progress) {
   // recovery export.
   hodlWalletDatBirthday = "genesis";
   try {
-    let derivationPlan = hodlKeyMode === "key" && !hodlBrainHdActive() ? null : hodlReadDerivationPlan(), coinType = derivationPlan?.coinType ?? hodlReadCoinType(document.getElementById("network")), network = derivationPlan?.network ?? hodlNetworkFromCoinType(coinType), addressWindow = hodlKeyMode === "key" ? { start: 0, range: 1 } : hodlReadAddressWindow(), branchWindow = hodlKeyMode === "key" ? { start: 0, range: 2 } : hodlReadBranchWindow(), count = addressWindow.range, addressStart = addressWindow.start, branchStart = branchWindow.start, branchRange = branchWindow.range, passphrase = document.getElementById("pass").value, scriptType = hodlSelectedScriptType(), purpose = derivationPlan?.purpose ?? 84, account = derivationPlan?.accountIndex ?? 0, hardening = derivationPlan?.hardening ?? hodlDefaultHardening();
+    // `network` is the encoding family the tool fields settled on (from the
+    // coin type); `chain` is the picker's chain identity when it belongs to
+    // the same family, so a signet/regtest selection survives into the wallet
+    // result and its wallet.dat export (issue #329). A tool override that
+    // switches family (e.g. coin type 0' under a signet picker) drops the
+    // picker chain with it.
+    let derivationPlan = hodlKeyMode === "key" && !hodlBrainHdActive() ? null : hodlReadDerivationPlan(), coinType = derivationPlan?.coinType ?? hodlReadCoinType(document.getElementById("network")), network = derivationPlan?.network ?? hodlNetworkFromCoinType(coinType), chain = hodlNetworkFamily(hodlNetworkChoice) === network ? hodlNetworkChoice : network, addressWindow = hodlKeyMode === "key" ? { start: 0, range: 1 } : hodlReadAddressWindow(), branchWindow = hodlKeyMode === "key" ? { start: 0, range: 2 } : hodlReadBranchWindow(), count = addressWindow.range, addressStart = addressWindow.start, branchStart = branchWindow.start, branchRange = branchWindow.range, passphrase = document.getElementById("pass").value, scriptType = hodlSelectedScriptType(), purpose = derivationPlan?.purpose ?? 84, account = derivationPlan?.accountIndex ?? 0, hardening = derivationPlan?.hardening ?? hodlDefaultHardening();
     if ((hodlKeyMode !== "key" || hodlBrainHdActive()) && hodlPassphraseBip39Enabled() && passphrase) {
       let passphraseAnalysis = hodlAnalyzeBip39Passphrase(passphrase);
       if (passphraseAnalysis.invalidRanges.length || passphraseAnalysis.incomplete || passphraseAnalysis.trailingSeparator) throw hodlError("Correct the highlighted BIP39-word passphrase inconsistencies before deriving.");
@@ -6060,7 +6078,7 @@ async function hodlCalculateKey(progress) {
         hodlThrowIfFailed(validation);
         let notes = parsed.notes.slice();
         if (!rollsFinalWord) notes.push(`Selected checksum-valid final word: ${finalWord}.`);
-        hodlWalletResult = await hodlMnemonicWalletWithProgress(phrase, passphrase, network, count, {
+        hodlWalletResult = await hodlMnemonicWalletWithProgress(phrase, passphrase, chain, count, {
           notes,
           warnings: parsed.warnings
         }, account, addressStart, progress, purpose, coinType, hardening, branchStart, branchRange, derivationPlan)
@@ -6072,30 +6090,30 @@ async function hodlCalculateKey(progress) {
         if (!hodlPickedLastWord || !possible?.candidates.includes(hodlPickedLastWord)) throw hodlError("Choose one of the {n} valid final checksum words before deriving the wallet.", { n: hodlSeedConfig().candidates });
         let phrase = [...parsed.words, hodlPickedLastWord].join(" "), validation = hodlValidateTargetMnemonic(phrase, hodlTargetWordCount);
         hodlThrowIfFailed(validation);
-        hodlWalletResult = await hodlMnemonicWalletWithProgress(phrase, passphrase, network, count, { notes: parsed.notes, warnings: parsed.warnings }, account, addressStart, progress, purpose, coinType, hardening, branchStart, branchRange, derivationPlan);
+        hodlWalletResult = await hodlMnemonicWalletWithProgress(phrase, passphrase, chain, count, { notes: parsed.notes, warnings: parsed.warnings }, account, addressStart, progress, purpose, coinType, hardening, branchStart, branchRange, derivationPlan);
       } else {
         let diceValue = document.getElementById("dice").value;
         if (hodlAnalyzeDiceInput(diceValue, hodlDiceMethod, hodlTargetWordCount).coinDerivedCount) throw hodlError("Coin-button digits are entropy-equivalent only in BitBox mode. Clear them and enter fair die rolls for this conversion method.");
         let entropy = hodlDiceEntropy(diceValue, hodlDiceMethod, hodlTargetWordCount);
         hodlThrowIfFailed(entropy);
-        hodlWalletResult = await hodlEntropyWalletWithProgress(entropy, passphrase, network, count, account, addressStart, progress, purpose, coinType, hardening, branchStart, branchRange, derivationPlan);
+        hodlWalletResult = await hodlEntropyWalletWithProgress(entropy, passphrase, chain, count, account, addressStart, progress, purpose, coinType, hardening, branchStart, branchRange, derivationPlan);
       }
     } else if (hodlKeyMode === "cards") {
       let entropy = hodlSelectedCardsEntropy(hodlTargetWordCount);
       hodlThrowIfFailed(entropy);
-      hodlWalletResult = await hodlEntropyWalletWithProgress(entropy, passphrase, network, count, account, addressStart, progress, purpose, coinType, hardening, branchStart, branchRange, derivationPlan);
+      hodlWalletResult = await hodlEntropyWalletWithProgress(entropy, passphrase, chain, count, account, addressStart, progress, purpose, coinType, hardening, branchStart, branchRange, derivationPlan);
     } else if (hodlKeyMode === "hex") {
       let entropy = hodlSelectedEntropy();
       hodlThrowIfFailed(entropy);
-      hodlWalletResult = await hodlEntropyWalletWithProgress(entropy, passphrase, network, count, account, addressStart, progress, purpose, coinType, hardening, branchStart, branchRange, derivationPlan);
+      hodlWalletResult = await hodlEntropyWalletWithProgress(entropy, passphrase, chain, count, account, addressStart, progress, purpose, coinType, hardening, branchStart, branchRange, derivationPlan);
     } else if (hodlKeyMode === "seed") {
       let selected = hodlSelectedSeedInput(hodlTargetWordCount), value = selected.value;
-      if (selected.extended) hodlWalletResult = await hodlImportedWalletWithProgress(value, network, count, account, addressStart, progress, purpose, coinType, hardening, branchStart, branchRange, derivationPlan);
+      if (selected.extended) hodlWalletResult = await hodlImportedWalletWithProgress(value, chain, count, account, addressStart, progress, purpose, coinType, hardening, branchStart, branchRange, derivationPlan);
       else {
         if (hodlSeedMethod === "numbers" && !selected.parsed?.complete) throw selected.parsed?.invalidEntries.length ? hodlError("Word numbers must be between {min} and {max}.", { min: selected.parsed.minimum, max: selected.parsed.maximum }) : selected.parsed?.extraEntries.length ? hodlError("Enter exactly {words} BIP39 word numbers.", { words: hodlTargetWordCount }) : selected.parsed?.checksumInvalid ? hodlError("The entered word numbers do not have a valid BIP39 checksum.") : hodlError("Enter exactly {words} BIP39 word numbers before deriving the wallet.", { words: hodlTargetWordCount });
         let validation = hodlValidateTargetMnemonic(value, hodlTargetWordCount);
         hodlThrowIfFailed(validation);
-        hodlWalletResult = await hodlMnemonicWalletWithProgress(validation.words.join(" "), passphrase, network, count, void 0, account, addressStart, progress, purpose, coinType, hardening, branchStart, branchRange, derivationPlan);
+        hodlWalletResult = await hodlMnemonicWalletWithProgress(validation.words.join(" "), passphrase, chain, count, void 0, account, addressStart, progress, purpose, coinType, hardening, branchStart, branchRange, derivationPlan);
       }
     } else {
       let value = document.getElementById("key").value, kind = hodlNormalizePrivateKeyKind(document.querySelector("input[name=kk]:checked")?.value, value);
@@ -6106,19 +6124,19 @@ async function hodlCalculateKey(progress) {
         if (passphrase && document.getElementById("passphrase-field")?.hidden) throw hodlError("A passphrase is set but not visible for this output. Show it and confirm it, or clear it, before deriving.");
         let entropy = hodlBrainLabEntropy(hodlBrainWalletPassphrase(value, hodlBrainWalletTrimEnabled()));
         hodlThrowIfFailed(entropy);
-        hodlWalletResult = await hodlEntropyWalletWithProgress(entropy, passphrase, network, count, account, addressStart, progress, purpose, coinType, hardening, branchStart, branchRange, derivationPlan);
+        hodlWalletResult = await hodlEntropyWalletWithProgress(entropy, passphrase, chain, count, account, addressStart, progress, purpose, coinType, hardening, branchStart, branchRange, derivationPlan);
       } else {
         let trimBrainWallet = hodlBrainWalletTrimEnabled();
-        hodlAssertPrivateKeyKind(value, network, kind, trimBrainWallet);
+        hodlAssertPrivateKeyKind(value, chain, kind, trimBrainWallet);
         progress.setTotal(1);
-        hodlWalletResult = hodlSingleKeyWallet(value, network, kind, trimBrainWallet);
+        hodlWalletResult = hodlSingleKeyWallet(value, chain, kind, trimBrainWallet);
         progress.step();
       }
       // Mark brain-derived results so a revoked acknowledgement can retract
       // them from every key slot, not just the lab that produced them.
       if (kind === "brain") hodlWalletResult.brainWalletOutput = hodlBrainWalletOutput();
     }
-    if (hodlWalletResult?.network !== network) throw hodlError("The supplied key is for {have}, but Network is set to {want}.", { have: hodlWalletResult.network, want: network });
+    if (hodlNetworkFamily(hodlWalletResult?.network) !== hodlNetworkFamily(chain)) throw hodlError("The supplied key is for {have}, but Network is set to {want}.", { have: hodlWalletResult.network, want: chain });
     hodlRevealPrivate = false;
     hodlSetSelectedScriptType(scriptType);
     hodlCaptureKey();
@@ -6174,9 +6192,9 @@ function hodlAssertPrivateKeyKind(value, network, kind, trimBrainWallet = false)
   try {
     decoded = hodlDecodeWif(candidate);
   } catch {
-    throw hodlError("Enter a valid {network} WIF private key ({hint}).", { network, hint: network === "testnet" ? "9\u2026 or c\u2026" : "5\u2026, K\u2026, or L\u2026" });
+    throw hodlError("Enter a valid {network} WIF private key ({hint}).", { network, hint: hodlNetworkFamily(network) === "testnet" ? "9\u2026 or c\u2026" : "5\u2026, K\u2026, or L\u2026" });
   }
-  if (decoded.network !== network) throw hodlError("This WIF is for {have}; Network is set to {want}.", { have: decoded.network, want: network });
+  if (decoded.network !== hodlNetworkFamily(network)) throw hodlError("This WIF is for {have}; Network is set to {want}.", { have: decoded.network, want: network });
   hodlAssertPrivateKey(decoded.priv);
   return candidate;
 }
@@ -8536,7 +8554,7 @@ function hodlUseKeyForBip85(state) {
     hodlBip85Note = "Parent: " + (state.name || "Key Station key") + (result.passphraseUsed || (state.fields.pass || "").length ? " with BIP-39 passphrase (COLDCARD does the same \u2014 children differ without it)." : ".") + " Kept in page memory only.";
   } else if (result.kind === "hd" && result.rootXprv) {
     hodlBip85Root = hodlHDKey.fromExtendedKey(hodlParseExtendedKey(result.rootXprv).xkey);
-    hodlBip85Testnet = result.network === "testnet";
+    hodlBip85Testnet = hodlNetworkFamily(result.network) === "testnet";
     hodlBip85Note = "Parent: root xprv from " + (state.name || "Key Station key") + ". Kept in page memory only.";
   } else if (result.kind === "hd") throw new Error("This Key Station key is not a BIP32 root. Import the original seed or root xprv.");
   else throw new Error("BIP-85 needs an HD root. This Key Station key is a single private key.");
@@ -13500,9 +13518,12 @@ function hodlInitBetaWarningDismiss() {
 // key versions, WIF prefixes, and coin-type indexes new work defaults to.
 // Not persisted: every load starts on mainnet, the safe direction for a
 // wallet tool. A tool's own advanced fields can still override it per item.
-// The picker offers Bitcoin Core's four networks, but signet and regtest
-// share the testnet versions (coin type 1', tb1… addresses, tpub keys, 9/c
-// WIF), so the tools themselves only ever see the binary choice.
+// The picker offers Bitcoin Core's four networks. Signet and regtest share
+// the testnet key versions (coin type 1', tpub keys, 9/c WIF), so the tools'
+// own fields only ever see the binary family choice — but the chain identity
+// is kept: hodlCalculateKey stores the picker's chain on the wallet result,
+// where the wallet.dat export writes chain-specific metadata and the address
+// tables render regtest's bcrt1… HRP (issue #329).
 var hodlNetworkChoice = "mainnet"; // what the picker shows: mainnet, testnet, signet, or regtest
 var hodlNetworkDefault = "mainnet"; // what the tools derive with: mainnet or testnet
 function hodlDefaultCoinType() {

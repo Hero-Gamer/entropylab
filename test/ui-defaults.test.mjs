@@ -110,9 +110,10 @@ test("the header network picker sets the network every tool defaults to", () => 
     assert.match(markup, /<strong[^>]*>Regtest<\/strong>/);
     assert.match(markup, /xpub\/ypub\/zpub · WIF 5\/K\/L · coin type 0'/);
     assert.match(markup, /tpub\/upub\/vpub · WIF 9\/c · coin type 1'/);
-    // Signet and regtest derive with the testnet formats; the options say so.
+    // Signet shares the testnet formats; regtest shares the key formats but
+    // renders SegWit with the bcrt HRP — the options say so (issue #329).
     assert.match(markup, /Signed practice coins, no value · same formats as testnet/);
-    assert.match(markup, /Local sandbox coins · derived here with the testnet formats/);
+    assert.match(markup, /Local sandbox coins · addresses m…\/n…, 2…, bcrt1q…, bcrt1p… · tpub\/upub\/vpub · WIF 9\/c · coin type 1'/);
     // And the menu says plainly that no connection is ever made.
     assert.match(markup, /This page never connects to any network/);
   }
@@ -123,6 +124,13 @@ test("the header network picker sets the network every tool defaults to", () => 
   assert.match(appSource, /var hodlNetworkChoice = "mainnet"/);
   assert.match(appSource, /hodlNetworkChoice = \["testnet", "signet", "regtest"\]\.includes\(network\) \? network : "mainnet"/);
   assert.match(appSource, /hodlNetworkDefault = hodlNetworkChoice === "mainnet" \? "mainnet" : "testnet"/);
+  // The tools still see the binary encoding family, but the derivation keeps
+  // the picker's chain identity when it matches the family's coin type, so
+  // wallet.dat exports and bcrt rendering stay chain-true (issue #329).
+  assert.match(appSource, /function hodlNetworkFamily\(network\) \{\s*return network === "mainnet" \? "mainnet" : "testnet";/);
+  assert.match(appSource, /chain = hodlNetworkFamily\(hodlNetworkChoice\) === network \? hodlNetworkChoice : network/);
+  assert.match(appSource, /hodlMnemonicWalletWithProgress\(phrase, passphrase, chain, count,/);
+  assert.match(appSource, /hodlNetworkFamily\(hodlWalletResult\?\.network\) !== hodlNetworkFamily\(chain\)/);
   // The option names and the button's accessible name come from the locale
   // catalogs so the whole header follows the selected language.
   assert.match(appSource, /let key = \["mainnet", "testnet", "signet", "regtest"\]\.includes\(hodlNetworkChoice\) \? hodlNetworkChoice : "mainnet"/);

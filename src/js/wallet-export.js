@@ -127,15 +127,19 @@ var hodlWalletExport = (() => {
 
   const reverseHex = (hexText) => hex(hexText).reverse();
 
-  // Core's compat form renders hardened steps with ' — but only inside the
-  // [fingerprint/path] key origin. Key material must be re-encoded untouched:
-  // base58 contains both digits and "h", and the account xpub sits directly
-  // before a "/", so a body-wide substitution can corrupt the xpub itself
-  // (about 1 in 375 account xpubs end in <digit>h) and produce a DescriptorID
-  // that disagrees with the one Core recomputes at load (DBErrors::CORRUPT).
+  // Core's compat form renders every hardened step with ' and re-encodes key
+  // material untouched. Every descriptor this exporter emits carries its
+  // hardened steps only inside the [fingerprint/path] key origin (a hardened
+  // branch step moves into the origin; an address-hardened account has no
+  // public descriptor at all), so rewriting the origin is exactly right. A
+  // body-wide substitution is not: base58 contains both digits and "h", and
+  // the account xpub sits directly before a "/", so it corrupts any xpub
+  // ending in <digit>h (about 1 in 375 account keys) and produces a
+  // DescriptorID that disagrees with the one Core recomputes at load
+  // (DBErrors::CORRUPT). The fingerprint is hex, so every "h" inside the
+  // origin marks a hardened step.
   const toCompatForm = (body) =>
-    body.replace(/\[([0-9a-fA-F]{8})((?:\/\d+h?)*)\]/g, (match, fingerprint, path) =>
-      `[${fingerprint}${path.replace(/(\d)h/g, "$1'")}]`);
+    body.replace(/\[[0-9a-fA-F]{8}(?:\/\d+h?)*\]/g, (origin) => origin.replace(/h/g, "'"));
 
   const stripChecksum = (descriptor) => {
     const hash = descriptor.lastIndexOf("#");

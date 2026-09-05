@@ -338,23 +338,26 @@ test("accounts without private material stay watch-only in a private export", ()
 const XPUB_TAIL_4H = "xpub6DGDSTSv42ve3BBRALC4UVi3LdaoQjA9R2yV9RSDojTRKQTK5Jk73WKqm6v392eeF3Lxawf8gHiBpD5xBDx7HYvbkLoZ6e1Emu9fvW2M24h";
 const XPUB_TAIL_2H = "xpub6ChZ8GTJVLpepi3oLPQUHRx6H7RkwQ6bsoqvSfwTw5jZuRithtrc75Tfq7H3sa8bXkA9d35K3CdJDY5B2aTFmdFEp19AGWT7XTXDVFvCn2h";
 
+const DESCRIPTOR_PREFIX = "10" + "77616c6c657464657363726970746f72"; // length-prefixed "walletdescriptor"
+const descriptorIds = (records) =>
+  [...records.keys()].filter((key) => key.startsWith(DESCRIPTOR_PREFIX)).map((key) => key.slice(DESCRIPTOR_PREFIX.length));
+const digitHWallet = (descriptorFor) => ({
+  kind: "hd",
+  network: "mainnet",
+  accounts: [{
+    def: { id: "bip84" },
+    receiveDescriptor: descriptorFor(XPUB_TAIL_4H),
+    changeDescriptor: descriptorFor(XPUB_TAIL_2H),
+  }],
+});
+
 test("descriptor ids keep account xpubs ending in <digit>h byte-identical", () => {
   const descriptorFor = (xpub) => {
     const body = `wpkh([00000000/84h/0h/0h]${xpub}/0/*)`;
     return `${body}#${descriptorChecksum(body)}`;
   };
-  const wallet = {
-    kind: "hd",
-    network: "mainnet",
-    accounts: [{
-      def: { id: "bip84" },
-      receiveDescriptor: descriptorFor(XPUB_TAIL_4H),
-      changeDescriptor: descriptorFor(XPUB_TAIL_2H),
-    }],
-  };
-  const records = moduleRecords(wallet, false);
-  const descriptorPrefix = "10" + "77616c6c657464657363726970746f72"; // length-prefixed "walletdescriptor"
-  const ids = [...records.keys()].filter((key) => key.startsWith(descriptorPrefix)).map((key) => key.slice(descriptorPrefix.length));
+  const records = moduleRecords(digitHWallet(descriptorFor), false);
+  const ids = descriptorIds(records);
   assert.equal(ids.length, 2);
   for (const xpub of [XPUB_TAIL_4H, XPUB_TAIL_2H]) {
     // What Core computes at load: origin steps rendered with ', key material
@@ -364,9 +367,27 @@ test("descriptor ids keep account xpubs ending in <digit>h byte-identical", () =
     assert.ok(ids.includes(expectedId), `record id for ...${xpub.slice(-12)} must match Core's DescriptorID`);
   }
   // The stored descriptor string keeps the original xpub text as well.
-  const storedValues = ids.map((id) => Buffer.from(records.get(descriptorPrefix + id), "hex").toString());
+  const storedValues = ids.map((id) => Buffer.from(records.get(DESCRIPTOR_PREFIX + id), "hex").toString());
   for (const xpub of [XPUB_TAIL_4H, XPUB_TAIL_2H]) {
     assert.ok(storedValues.some((value) => value.includes(xpub)), `stored descriptor keeps ...${xpub.slice(-12)} verbatim`);
+  }
+});
+
+test("origin-less descriptors keep a <digit>h xpub byte-identical", () => {
+  // Imported account keys export without a key origin (the app does not
+  // fabricate one). With nothing to rewrite, the compat form is the body
+  // itself — the body-wide rewrite corrupted these xpubs just the same.
+  const descriptorFor = (xpub) => {
+    const body = `wpkh(${xpub}/0/*)`;
+    return `${body}#${descriptorChecksum(body)}`;
+  };
+  const records = moduleRecords(digitHWallet(descriptorFor), false);
+  const ids = descriptorIds(records);
+  assert.equal(ids.length, 2);
+  for (const xpub of [XPUB_TAIL_4H, XPUB_TAIL_2H]) {
+    const body = `wpkh(${xpub}/0/*)`;
+    const expectedId = bytesToHex(sha256(new TextEncoder().encode(`${body}#${descriptorChecksum(body)}`)));
+    assert.ok(ids.includes(expectedId), `record id for origin-less ...${xpub.slice(-12)} must hash the unchanged body`);
   }
 });
 

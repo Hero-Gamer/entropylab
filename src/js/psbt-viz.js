@@ -31,6 +31,7 @@ const hexToBytes = (hex) => {
   return out;
 };
 
+// Decode a script into a user-facing address when the script type is supported.
 const addressFor = (scriptHex, network) => {
   try {
     return addressFromScript(hexToBytes(scriptHex), network);
@@ -39,13 +40,16 @@ const addressFor = (scriptHex, network) => {
   }
 };
 
+// Keep long identifiers readable in the compact input/output boxes.
 const shortenMiddle = (text, head = 10, tail = 8) => {
   const value = String(text ?? "");
   return value.length > head + tail + 1 ? `${value.slice(0, head)}…${value.slice(-tail)}` : value;
 };
 
+// Group satoshi amounts with narrow no-break spaces for readability.
 const groupSats = (value) => String(value).replace(/\B(?=(\d{3})+(?!\d))/g, "\u202f");
 
+// Identify the common script templates used to label outputs in the diagram.
 const scriptKind = (scriptHex, asm) => {
   const hex = String(scriptHex ?? "");
   if (/^76a914[0-9a-f]{40}88ac$/i.test(hex)) return "P2PKH";
@@ -57,6 +61,9 @@ const scriptKind = (scriptHex, asm) => {
   return null;
 };
 
+// Prefer a decoded witness claim when present, but use a validated non-witness
+// prevout as the authoritative claim when both agree. A disagreement remains
+// visible so the existing fee-conflict behavior is preserved.
 const claimedPrevout = (pairs) => {
   const witness = pairs.find((pair) => pair.name === "PSBT_IN_WITNESS_UTXO" && pair.decoded);
   const nonWitness = pairs.find((pair) => pair.name === "PSBT_IN_NON_WITNESS_UTXO" && pair.decoded?.prevout);
@@ -68,6 +75,12 @@ const claimedPrevout = (pairs) => {
   return witnessClaim ?? nonWitnessClaim ?? null;
 };
 
+// Verification status is derived from the existing psbt-wasm validation:
+// a decoded non-witness prevout is only exposed after the supplied transaction
+// matches the input outpoint and the referenced output exists. This is a UI
+// projection only; no second UTXO validator is performed here. Verification
+// establishes the amount from the validated non-witness UTXO; the witness and
+// non-witness scriptPubKeys are not compared by this implementation.
 const utxoVerification = (pairs) => {
   const claim = claimedPrevout(pairs);
   if (claim?.conflict) return "mismatch";
@@ -78,6 +91,8 @@ const utxoVerification = (pairs) => {
 const SIGNING_PAIR_NAMES = ["PSBT_IN_PARTIAL_SIG", "PSBT_IN_TAP_KEY_SIG", "PSBT_IN_TAP_SCRIPT_SIG"];
 const FINAL_PAIR_NAMES = ["PSBT_IN_FINAL_SCRIPTSIG", "PSBT_IN_FINAL_SCRIPTWITNESS"];
 
+// Signing readiness is separate from UTXO verification: malformed signing
+// fields are surfaced, partial signatures are counted, and final fields win.
 const signingStatus = (pairs) => {
   const decodedOk = (pair) => pair.decoded && !pair.decodeError;
   const finals = pairs.filter((pair) => FINAL_PAIR_NAMES.includes(pair.name));
@@ -89,6 +104,7 @@ const signingStatus = (pairs) => {
   return { text: "unsigned", tone: "muted" };
 };
 
+// Render the fee summary while preserving the inspector's unknown/conflict states.
 const feeHtml = (doc) => {
   if (doc.fee?.known) {
     return doc.fee.sats === null
@@ -100,6 +116,7 @@ const feeHtml = (doc) => {
     : `<span class="muted" title="an input carries no amount claim">unknown</span>`;
 };
 
+// Render one input box, including the amount claim and its verification state.
 const inputBox = (doc, index, network, selected) => {
   const input = doc.tx.inputs[index];
   const pairs = doc.inputs[index] ?? [];
@@ -116,7 +133,7 @@ const inputBox = (doc, index, network, selected) => {
   const amountHtml = conflict
     ? `<span class="psbted-note-bad">${verificationText}: conflicting claims: ${groupSats(conflict[0])} vs ${groupSats(conflict[1])} sats</span>`
     : claim
-      ? `${groupSats(claim.value)} sats <span class="${verificationTone}" title="${verification === "verified" ? "verified from a matching non-witness UTXO" : "not verified from a matching non-witness UTXO"}">(${verificationText})</span>`
+      ? `${groupSats(claim.value)} sats <span class="${verificationTone}" title="${verification === "verified" ? "amount independently established from the validated non-witness UTXO; scriptPubKey from the validated non-witness UTXO; witness script is not compared" : "not verified from a matching non-witness UTXO"}">(${verificationText})</span>`
       : `<span class="muted">no amount claim</span> <span class="${verificationTone}" title="not verified: no matching non-witness UTXO claim">(${verificationText})</span>`;
   return `<div class="psbted-viz-box${open ? " is-open" : ""}">
     <button type="button" class="psbted-viz-open" data-viz="input:${index}" aria-expanded="${open}" aria-label="Input ${index}, ${escapeHtml(address ?? label)}: show and edit this input's PSBT fields">
@@ -128,6 +145,7 @@ const inputBox = (doc, index, network, selected) => {
   </div>`;
 };
 
+// Render one output box with its editable satoshi amount and script label.
 const outputBox = (doc, index, network, selected) => {
   const output = doc.tx.outputs[index];
   const address = addressFor(output.scriptPubKey, network);
@@ -145,9 +163,13 @@ const outputBox = (doc, index, network, selected) => {
   </div>`;
 };
 
+// Pure renderer: build the three-column transaction flow and keep input/output
+// boxes as the editing surface used by psbt-editor.js.
 export const psbtVizHtml = (doc, network, selected = null) => {
   const inputs = doc.tx.inputs.map((_, index) => inputBox(doc, index, network, selected)).join("");
   const outputs = doc.tx.outputs.map((_, index) => outputBox(doc, index, network, selected)).join("");
+  // The aggregate total is still a claim unless every input amount is known;
+  // the per-input labels provide the more precise verification state.
   const inputsHint = doc.totalIn === null
     ? "amounts as claimed by the PSBT; not verified unless a matching non-witness UTXO is present"
     : `${groupSats(doc.totalIn)} sats claimed; not verified unless a matching non-witness UTXO is present`;

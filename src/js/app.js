@@ -455,7 +455,10 @@ function hodlScriptDescriptor(e, t) {
 }
 function hodlIsMiniKey(e) {
   let t = e.trim();
-  return !t.startsWith("S") || t.length !== 22 && t.length !== 30 || !/^[A-Za-z0-9]+$/.test(t) ? false : hodlSha256(new TextEncoder().encode(t + "?"))[0] === 0;
+  // The minikey alphabet is Bitcoin Base58: the decode paths enforce it, so
+  // the auto-detect check must not accept the wider alphanumeric set (0, O,
+  // I, l are not Base58).
+  return !t.startsWith("S") || t.length !== 22 && t.length !== 30 || !/^[1-9A-HJ-NP-Za-km-z]+$/.test(t) ? false : hodlSha256(new TextEncoder().encode(t + "?"))[0] === 0;
 }
 function hodlDecodeMiniKey(e) {
   if (!hodlIsMiniKey(e)) throw hodlError("Not a valid Casascius mini private key.");
@@ -469,11 +472,11 @@ function hodlBrainWalletPassphrase(value, trimBoundaryWhitespace = false) {
 function hodlBrainWalletPrivateKey(value, trimBoundaryWhitespace = false) {
   return hodlSha256(new TextEncoder().encode(hodlBrainWalletPassphrase(value, trimBoundaryWhitespace)));
 }
-function hodlBrainLabEntropy(value) {
+function hodlBrainLabEntropy(value, trimmed = false) {
   let text = String(value ?? ""), notes = [], warnings = [];
   if (!text.length) return { ok: false, error: { key: "Enter the brain-wallet lab text." }, notes, warnings };
   let bytes = hodlSha256(new TextEncoder().encode(text)), hex = hodlHex.encode(bytes);
-  notes.push(hodlNote("SHA-256 of the exact UTF-8 text is 32 bytes of BIP39 entropy (256 bits → 24 words)."));
+  notes.push(hodlNote(trimmed ? "SHA-256 of the UTF-8 text with boundary whitespace trimmed is 32 bytes of BIP39 entropy (256 bits → 24 words)." : "SHA-256 of the exact UTF-8 text is 32 bytes of BIP39 entropy (256 bits → 24 words)."));
   warnings.push(hodlNote("Lab only. Strength is the entropy of this text, not the 24-word count."));
   warnings.push(hodlNote("SHA-256(text) is unsalted and fast. Anyone who can guess the text recovers the wallet."));
   warnings.push(hodlNote("This is not a BIP39 passphrase, and it is not a Bitcoin Core hdseed or address-key backup."));
@@ -2433,17 +2436,20 @@ function hodlAnalyzeDiceInput(value, method = hodlDiceMethod, targetWords = hodl
       index = end;
       continue;
     }
-    let isDie = normalized >= "1" && normalized <= "6", isCoin = normalized === "h" || normalized === "t", valid = false;
+    let isDie = normalized >= "1" && normalized <= "6", valid = false;
     if (method === "coldcard" || method === "coleman") {
       valid = isDie && !coinPositionSet.has(index);
       if (valid) acceptedRolls.push(normalized);
     } else if (words < config.partialWords) {
+      // BitBox: the sixth roll is the coin by die face (1–3 heads, 4–6 tails).
+      // h/t are not accepted — the derivation parser (hodlBitBoxRolls) and the
+      // input sanitizer both keep digits only, so the analyzer must agree.
       if (diceInWord < 5) {
         if (isDie && Number(normalized) <= 4) {
           valid = true;
           diceInWord += 1;
         }
-      } else if (isDie || isCoin) {
+      } else if (isDie) {
         valid = true;
         words += 1;
         diceInWord = 0;
@@ -3886,7 +3892,7 @@ function hodlSyncBrainOutput() {
     hex.className = "muted";
     return;
   }
-  let entropy = hodlBrainLabEntropy(hodlBrainWalletText(input.value));
+  let entropy = hodlBrainLabEntropy(hodlBrainWalletText(input.value), hodlBrainWalletTrimEnabled());
   hex.textContent = entropy.ok ? hodlTText("SHA-256 {hex} · 24 words appear only after {derive}.", { hex: entropy.hex, derive: hodlTText("Derive Key") }) : hodlFormatNote(entropy.error);
   hex.className = "muted" + (entropy.ok ? " ok" : " err");
 }
@@ -6125,7 +6131,7 @@ async function hodlCalculateKey(progress) {
         // The digest becomes BIP39 entropy rather than the private key itself,
         // which is a different wallet from the same text.
         if (passphrase && document.getElementById("passphrase-field")?.hidden) throw hodlError("A passphrase is set but not visible for this output. Show it and confirm it, or clear it, before deriving.");
-        let entropy = hodlBrainLabEntropy(hodlBrainWalletPassphrase(value, hodlBrainWalletTrimEnabled()));
+        let entropy = hodlBrainLabEntropy(hodlBrainWalletPassphrase(value, hodlBrainWalletTrimEnabled()), hodlBrainWalletTrimEnabled());
         hodlThrowIfFailed(entropy);
         hodlWalletResult = await hodlEntropyWalletWithProgress(entropy, passphrase, chain, count, account, addressStart, progress, purpose, coinType, hardening, branchStart, branchRange, derivationPlan);
       } else {

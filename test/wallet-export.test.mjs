@@ -320,6 +320,44 @@ test("button gating: only HD wallets with descriptors", () => {
   assert.equal(hasDescriptors(WATCH_ONLY_WALLET), true);
 });
 
+test("a receive-only wallet still exports: units cover whichever branches exist (issue #366)", () => {
+  const { hasDescriptors, hasPrivateDescriptors, walletDescriptorUnits, buildWalletRecords } = loadModule();
+  const wallet = structuredClone(WATCH_ONLY_WALLET);
+  for (const account of wallet.accounts) {
+    account.changeDescriptor = null;
+    account.changeDescriptorPriv = null;
+  }
+  assert.equal(hasDescriptors(wallet), true, "receive-only wallets must have an export");
+  const units = walletDescriptorUnits(wallet, false);
+  assert.equal(units.length, 4);
+  assert.ok(units.every((unit) => !unit.internal), "no internal-branch units");
+  const records = buildWalletRecords(wallet, false, deps, REF_CREATION_TIME);
+  const names = records.map(([key]) => new TextDecoder().decode(key.slice(1, 1 + key[0])));
+  assert.equal(names.filter((name) => name === "activeexternalspk").length, 4);
+  assert.ok(!names.includes("activeinternalspk"), "a branch that was never derived must not produce an active record");
+  assert.equal(names.filter((name) => name === "walletdescriptor").length, 4);
+  // The secrets-variant label/filename honesty helpers track real material.
+  assert.equal(hasPrivateDescriptors(wallet), false);
+  assert.equal(hasPrivateDescriptors(PRIVATE_WALLET), true);
+  // Symmetric case: a change-only wallet (custom branch start) exports too.
+  const changeOnly = structuredClone(WATCH_ONLY_WALLET);
+  for (const account of changeOnly.accounts) {
+    account.receiveDescriptor = null;
+    account.receiveDescriptorPriv = null;
+  }
+  const changeUnits = walletDescriptorUnits(changeOnly, false);
+  assert.equal(changeUnits.length, 4);
+  assert.ok(changeUnits.every((unit) => unit.internal), "no external-branch units");
+});
+
+test("the app keys the secrets label and filename to actual material (issue #366)", () => {
+  const app = read("src/js/app.js");
+  assert.match(app, /withSecrets = includePrivate && hodlWalletExport\.hasPrivateDescriptors\(hodlWalletResult\)/);
+  assert.match(app, /walletDatButtonLabel\(withSecrets\)/);
+  assert.match(app, /withSecrets = hodlRevealPrivate && hodlWalletExport\.hasPrivateDescriptors\(hodlWalletResult\)/);
+  assert.match(app, /walletDatFilename\(hodlWalletResult, withSecrets\)/);
+});
+
 test("filename announces the wallet fingerprint and watch-only vs secrets", () => {
   const { walletDatFilename } = loadModule();
   const wallet = { masterFingerprint: "73C5DA0A" };
@@ -350,13 +388,13 @@ test("template, build script, and app wiring ship the export", () => {
   assert.match(build, /wallet-export\.js/);
   assert.match(build, /JS_WALLET_EXPORT/);
   // The button renders next to #save in the wallet-data-actions row, and its
-  // label is driven by the reveal flag (Ge) at render time.
+  // label follows the material that exists, not the reveal flag alone (#366).
   assert.match(app, /id="save"[^>]*>\$\{downloadLabel\}<\/button>\s*\$\{hodlWalletDatControl\(privateSheet\)\}/);
   assert.match(app, /hodlSaveRecoveryControl\s*\(\s*\)\s*\{\s*return\s*`<div class="wallet-data-actions no-print">[^`]*\$\{hodlWalletDatControl\(\s*(?:false|!1)\s*\)\}/);
-  assert.match(app, /id="download-wallet-dat"[^>]*>\$\{hodlWalletExport\.walletDatButtonLabel\(includePrivate\)\}/);
+  assert.match(app, /id="download-wallet-dat"[^>]*>\$\{hodlWalletExport\.walletDatButtonLabel\(withSecrets\)\}/);
   assert.match(app, /hodlWalletExport\.hasDescriptors\(hodlWalletResult\)/);
-  assert.match(app, /hodlWalletExport\.buildWalletDat\(\s*hodlWalletResult\s*,\s*hodlRevealPrivate\s*,\s*hodlWalletDatDeps\(\s*\)\s*,\s*creationTime\s*\)/);
-  assert.match(app, /hodlWalletExport\.walletDatFilename\(hodlWalletResult, hodlRevealPrivate\)/);
+  assert.match(app, /hodlWalletExport\.buildWalletDat\(\s*hodlWalletResult\s*,\s*withSecrets\s*,\s*hodlWalletDatDeps\(\s*\)\s*,\s*creationTime\s*\)/);
+  assert.match(app, /hodlWalletExport\.walletDatFilename\(hodlWalletResult, withSecrets\)/);
   assert.match(app, /document\.getElementById\("download-wallet-dat"\)/);
   assert.match(css, /\.save-wallet-dat/);
 });
@@ -434,7 +472,14 @@ test("controls render the wallet.dat button next to #save only when descriptors 
   assert.match(watchHtml, /id="save"/);
   assert.match(watchHtml, /id="download-wallet-dat"[^>]*>Download watch-only wallet\.dat<\/button>/);
 
+  // The reveal flag alone must not produce a secrets label on a wallet that
+  // has no private descriptors (issue #366): watch-only stays watch-only.
   ui.setResult(WATCH_ONLY_WALLET, true);
+  const noSecretsHtml = ui.hodlPrivateDataControls("wallet-private-description");
+  assert.match(noSecretsHtml, /id="download-wallet-dat"[^>]*>Download watch-only wallet\.dat<\/button>/);
+
+  // With private descriptors present, the reveal flag yields the secrets label.
+  ui.setResult(PRIVATE_WALLET, true);
   const privateHtml = ui.hodlPrivateDataControls("wallet-private-description");
   assert.match(privateHtml, /id="download-wallet-dat"[^>]*>Download wallet\.dat with secrets \(xprvs\)<\/button>/);
 

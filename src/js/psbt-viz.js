@@ -18,7 +18,7 @@
 // Amounts on input boxes are the PSBT's own claims (witness / non-witness
 // UTXO pairs); like the rest of the editor they are not verified against the
 // chain, and the inputs column says so.
-import { Address as BtcAddress, NETWORK as BTC_MAINNET, TEST_NETWORK as BTC_TESTNET, OutScript } from "@scure/btc-signer";
+import { addressFromScript } from "./addresses.js";
 
 const escapeHtml = (text) =>
   String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -29,9 +29,14 @@ const hexToBytes = (hex) => {
   return out;
 };
 
+// One renderer for the whole app: rust-bitcoin's Address::from_script via
+// the entropylab-wasm crate, exactly what the inspector shows — exotic
+// witness programs (off-curve v1 keys, v1 ≠ 32 bytes, v2–v16) get their
+// bech32m address here too instead of diverging to a hex fallback
+// (issue #354). Unknown templates still return null and show the script hex.
 const addressFor = (scriptHex, network) => {
   try {
-    return BtcAddress(network === "testnet" ? BTC_TESTNET : BTC_MAINNET).encode(OutScript.decode(hexToBytes(scriptHex)));
+    return addressFromScript(hexToBytes(scriptHex), network);
   } catch {
     return null;
   }
@@ -61,25 +66,39 @@ const scriptKind = (scriptHex, asm) => {
   return null;
 };
 
-// The amount an input claims to spend: the witness UTXO pair when present,
-// otherwise the spent output of the non-witness UTXO's previous transaction.
-// Pairs that fail their typed decode claim nothing.
+// The amount an input claims to spend, resolved as a set so map order cannot
+// change the answer (issue #324): when both a witness UTXO and a verified
+// non-witness UTXO claim exist they must agree, otherwise the box shows a
+// conflict warning instead of picking one. The verified non-witness claim's
+// script wins the label when both are present and consistent. Pairs that
+// fail their typed decode claim nothing.
 const claimedPrevout = (pairs) => {
   const witness = pairs.find((pair) => pair.name === "PSBT_IN_WITNESS_UTXO" && pair.decoded);
-  if (witness) return { value: witness.decoded.value, scriptPubKey: witness.decoded.scriptPubKey };
   const nonWitness = pairs.find((pair) => pair.name === "PSBT_IN_NON_WITNESS_UTXO" && pair.decoded?.prevout);
-  if (nonWitness) return { value: nonWitness.decoded.prevout.value, scriptPubKey: nonWitness.decoded.prevout.scriptPubKey };
-  return null;
+  const witnessClaim = witness && { value: witness.decoded.value, scriptPubKey: witness.decoded.scriptPubKey };
+  const nonWitnessClaim = nonWitness && { value: nonWitness.decoded.prevout.value, scriptPubKey: nonWitness.decoded.prevout.scriptPubKey };
+  if (witnessClaim && nonWitnessClaim) {
+    return witnessClaim.value === nonWitnessClaim.value ? nonWitnessClaim : { conflict: [witnessClaim.value, nonWitnessClaim.value] };
+  }
+  return witnessClaim ?? nonWitnessClaim ?? null;
 };
 
-// Signing progress of one input, read off its map's pair names.
+const SIGNING_PAIR_NAMES = ["PSBT_IN_PARTIAL_SIG", "PSBT_IN_TAP_KEY_SIG", "PSBT_IN_TAP_SCRIPT_SIG"];
+const FINAL_PAIR_NAMES = ["PSBT_IN_FINAL_SCRIPTSIG", "PSBT_IN_FINAL_SCRIPTWITNESS"];
+
+// Signing progress of one input. A pair name only states the field's
+// presence; malformed bytes keep the name even when the typed decode failed,
+// so "signed"/"finalized" requires a successful decode and a decode failure
+// reads as malformed, never as progress (issue #328).
 const signingStatus = (pairs) => {
-  const names = pairs.map((pair) => pair.name);
-  if (names.includes("PSBT_IN_FINAL_SCRIPTSIG") || names.includes("PSBT_IN_FINAL_SCRIPTWITNESS")) {
-    return { text: "finalized", tone: "psbted-note-ok" };
-  }
-  const sigs = names.filter((name) => ["PSBT_IN_PARTIAL_SIG", "PSBT_IN_TAP_KEY_SIG", "PSBT_IN_TAP_SCRIPT_SIG"].includes(name)).length;
-  return sigs ? { text: `${sigs} signature${sigs === 1 ? "" : "s"}`, tone: "" } : { text: "unsigned", tone: "muted" };
+  const decodedOk = (pair) => pair.decoded && !pair.decodeError;
+  const finals = pairs.filter((pair) => FINAL_PAIR_NAMES.includes(pair.name));
+  if (finals.some(decodedOk)) return { text: "finalized", tone: "psbted-note-ok" };
+  const sigs = pairs.filter((pair) => SIGNING_PAIR_NAMES.includes(pair.name) && decodedOk(pair)).length;
+  if (sigs) return { text: `${sigs} signature${sigs === 1 ? "" : "s"}`, tone: "" };
+  const malformed = finals.length + pairs.filter((pair) => SIGNING_PAIR_NAMES.includes(pair.name)).length;
+  if (malformed) return { text: "malformed signing field", tone: "psbted-note-bad" };
+  return { text: "unsigned", tone: "muted" };
 };
 
 // sats null with every input claimed marks an invalid fee: the document's
@@ -90,27 +109,30 @@ const feeHtml = (doc) => {
       ? `<span class="psbted-note-bad">${escapeHtml(doc.fee?.error || "outputs exceed claimed inputs")}</span>`
       : `<span class="psbted-viz-feenum">${groupSats(doc.fee.sats)} sats</span> <span class="muted">(PSBT claim)</span>`;
   }
-  return `<span class="muted" title="an input carries no amount claim">unknown</span>`;
+  return doc.fee?.error
+    ? `<span class="psbted-note-bad">${escapeHtml(doc.fee.error)}</span>`
+    : `<span class="muted" title="an input carries no amount claim">unknown</span>`;
 };
 
 const inputBox = (doc, index, network, selected) => {
   const input = doc.tx.inputs[index];
   const pairs = doc.inputs[index] ?? [];
   const claim = claimedPrevout(pairs);
-  const address = claim ? addressFor(claim.scriptPubKey, network) : null;
+  const conflict = claim?.conflict;
+  const address = claim && !conflict ? addressFor(claim.scriptPubKey, network) : null;
   // Boxes stay dense: identifiers truncate mid-string (the full text is in
   // the tooltip and the button's aria-label).
-  const label = address ? shortenMiddle(address) : claim ? shortenMiddle(claim.scriptPubKey, 12, 10) : `${shortenMiddle(input.txid, 8, 6)}:${input.vout}`;
+  const label = address ? shortenMiddle(address) : claim && !conflict ? shortenMiddle(claim.scriptPubKey, 12, 10) : `${shortenMiddle(input.txid, 8, 6)}:${input.vout}`;
   const status = signingStatus(pairs);
   // The prevout's script template tags the box like a block explorer would.
-  const kind = claim ? scriptKind(claim.scriptPubKey) : null;
+  const kind = claim && !conflict ? scriptKind(claim.scriptPubKey) : null;
   const open = selected?.kind === "input" && selected.index === index;
   return `<div class="psbted-viz-box${open ? " is-open" : ""}">
     <button type="button" class="psbted-viz-open" data-viz="input:${index}" aria-expanded="${open}" aria-label="Input ${index}, ${escapeHtml(address ?? label)}: show and edit this input's PSBT fields">
       <span class="psbted-viz-idx">#${index}</span>
       <span class="psbted-viz-id psbted-viz-in"${address ? ` title="${escapeHtml(address)}"` : ""}>${escapeHtml(label)}</span>
     </button>
-    <p class="psbted-viz-amount">${claim ? `${groupSats(claim.value)} sats` : `<span class="muted">no amount claim</span>`}</p>
+    <p class="psbted-viz-amount">${conflict ? `<span class="psbted-note-bad">conflicting claims: ${groupSats(conflict[0])} vs ${groupSats(conflict[1])} sats</span>` : claim ? `${groupSats(claim.value)} sats` : `<span class="muted">no amount claim</span>`}</p>
     <p class="psbted-viz-sub" title="spends ${escapeHtml(input.txid)}:${escapeHtml(String(input.vout))}">${kind ? `<span class="psbted-viz-kind">${escapeHtml(kind)}</span> · ` : ""}<span class="${status.tone}">${escapeHtml(status.text)}</span></p>
   </div>`;
 };

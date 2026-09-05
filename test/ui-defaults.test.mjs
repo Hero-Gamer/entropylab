@@ -1486,8 +1486,10 @@ test("narrow screens keep the fixed header on one row by hiding control labels",
 
 test("PSBT amounts and fees are labeled as unverified claims", () => {
   assert.match(app, /BTC claimed/);
-  assert.match(app, /Unverified fee \(PSBT witness UTXO claims\)/);
-  assert.match(app, /Input amounts and any fee are unverified PSBT claims/);
+  assert.match(app, /Unverified fee \(PSBT previous-output claims\)/);
+  // Witness claims are unverified; non-witness claims are checked against the
+  // embedded previous transaction (issue #350). Neither touches the chain.
+  assert.match(app, /Witness-UTXO amounts are unverified PSBT claims/);
   assert.doesNotMatch(app, /Fee \(from PSBT fields\)/);
 });
 

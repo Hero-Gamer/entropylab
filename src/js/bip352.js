@@ -235,6 +235,12 @@ export function encodeSilentPaymentAddress(scanPoint, spendPoint, hrp = "sp", ve
 
 export function decodeSilentPaymentAddress(address, expectedHrp) {
   if (typeof address !== "string" || !address) throw new Error("Silent payment address is empty.");
+  // Bech32/Bech32m permit all-lowercase or all-uppercase encodings and
+  // require mixed case to be rejected — lowercasing first would launder a
+  // corrupted or crafted address into a valid one (issue #335).
+  if (address !== address.toLowerCase() && address !== address.toUpperCase()) {
+    throw new Error("A silent payment address must be all lowercase or all uppercase, not mixed case.");
+  }
   const lower = address.toLowerCase();
   const decoded = bech32mDecode(lower);
   if (!decoded) throw new Error("Not a Bech32m silent payment address.");
@@ -351,7 +357,9 @@ export function p2trAddressFromXonly(xonly, network = "mainnet") {
 
 // The prevout's scriptPubKey bytes (BIP352 input-key eligibility tests the
 // script type), not the txid/vout pair "prevout" means elsewhere.
-const vinPrevoutScript = (vin) => (vin.prevout instanceof Uint8Array ? vin.prevout : hexToBytes(typeof vin.prevout === "string" ? vin.prevout : vin.prevout.scriptPubKey.hex));
+// The prevout script of a vin, in any of the accepted shapes (raw bytes, hex
+// string, or the published-vector { scriptPubKey: { hex } } form).
+export const vinPrevoutScript = (vin) => (vin.prevout instanceof Uint8Array ? vin.prevout : hexToBytes(typeof vin.prevout === "string" ? vin.prevout : vin.prevout.scriptPubKey.hex));
 
 const normalizeVin = (vin) => ({
   txid: vin.txid,
@@ -457,7 +465,10 @@ export function createSilentPaymentOutputs(vins, recipients, { hrp = "sp" } = {}
     }
   }
   return {
-    outputs: [...new Set(outputs)],
+    // BIP352: every generated P_i stays in the transaction — multiplicity is
+    // part of the payment request and the scan progression, so the ordered
+    // list is returned as-is and never deduplicated (issue #332).
+    outputs,
     inputPubKeys: pubkeys.map((entry) => bytesToHex(pointToCompressed(entry.point))),
     inputPrivateKeySum: bytesToHex(bigToBytes32(aSum)),
     sharedSecrets,

@@ -161,11 +161,15 @@ var hodlWalletExport = (() => {
     if (!wallet || wallet.kind !== "hd" || !Array.isArray(wallet.accounts)) return [];
     const units = [];
     for (const account of wallet.accounts) {
-      if (!account?.receiveDescriptor || !account?.changeDescriptor) continue;
       const type = OUTPUT_TYPES[account.def?.id];
       if (type === undefined) continue;
       for (const branch of [0, 1]) {
-        const descriptor = branch === 0 ? account.receiveDescriptor : account.changeDescriptor;
+        // A wallet may have derived only one branch (branch range 1, or a
+        // custom branch start): export whichever branches exist rather than
+        // hiding the whole export (issue #366). Core tolerates a missing
+        // activeinternalspk record; the descriptor record carries the branch.
+        const descriptor = branch === 0 ? account?.receiveDescriptor : account?.changeDescriptor;
+        if (!descriptor) continue;
         const privateDescriptor = branch === 0 ? account.receiveDescriptorPriv : account.changeDescriptorPriv;
         const branchRows = account.addressBranches?.find((entry) => entry.branch === branch)?.rows;
         const rows = Array.isArray(branchRows) ? branchRows : branch === 0 ? account.receive : account.change;
@@ -191,6 +195,11 @@ var hodlWalletExport = (() => {
   };
 
   const hasDescriptors = (wallet) => walletDescriptorUnits(wallet, false).length > 0;
+
+  // Whether any private descriptor material actually exists — independent of
+  // the reveal toggle, so the secrets label/filename can never claim material
+  // the file does not contain (issue #366).
+  const hasPrivateDescriptors = (wallet) => walletDescriptorUnits(wallet, true).some((unit) => unit.privateDescriptor);
 
   // Builds the exact key/value rows of the `main` table.
   // deps = { sha256, checksum, base58Decode, deriveBranchBody, publicKeyForPrivate }
@@ -301,6 +310,7 @@ var hodlWalletExport = (() => {
   return {
     walletDescriptorUnits,
     hasDescriptors,
+    hasPrivateDescriptors,
     buildWalletRecords,
     buildWalletDat,
     walletDatFilename,

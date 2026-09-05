@@ -10,11 +10,17 @@ import {
   encodeSilentPaymentAddress,
   encodeSpscan,
   encodeSpspend,
+  extractInputPubKey,
   formatSpDescriptor,
   hrpForNetwork as hodlSpHrp,
+  isP2pkh,
+  isP2sh,
+  isP2tr,
+  isP2wpkh,
   p2trAddressFromXonly,
   scanSilentPaymentOutputs,
   spendPrivForOutput,
+  vinPrevoutScript,
   bytesToHex as hodlSpBytesToHex,
 } from "./bip352.js";
 import {
@@ -29,7 +35,7 @@ import { parseRawTx, extractEcdsaSignatures, inscriptionHints, isPsbtMagic, seri
 import { wasmExports as hodlWasm, withInput as hodlWasmIn, withOutput as hodlWasmOut } from "./entropylab-wasm.js";
 import { indexHdKey, indexSingleKey, matchOwnership, pathLabel } from "./ownership.js";
 import { hex as hodlHex } from "./coders.js";
-import { addressFor, addressFromScript, descriptorDerive, p2shP2wpkhScript, p2shScript, p2trKeyScript, p2wshScript } from "./addresses.js";
+import { addressFor, addressFromScript, descriptorDerive, p2pkhScript, p2shP2wpkhScript, p2shScript, p2trKeyScript, p2wpkhScript, p2wshScript } from "./addresses.js";
 import { base58checkDecode, base58checkEncode } from "./base58.js";
 import { HDKey as hodlHDKey } from "./hdkey.js";
 import { entropyToMnemonic as hodlEntropyToMnemonic, mnemonicToEntropy as hodlMnemonicToEntropy, mnemonicToSeedSync as hodlMnemonicToSeed, validateMnemonic as hodlIsValidMnemonic } from "./bip39.js";
@@ -37,6 +43,7 @@ import { wordlist as bip39English } from "./bip39-english.js";
 // The PSBT editor (its own workspace tab) drives the rust-bitcoin WASM
 // bindings in psbt-wasm.js; heavy lifting lives in psbt-editor.js.
 import { initPsbtEditor } from "./psbt-editor.js";
+import { hodlTapKeySigs, hodlTapScriptSigs, hodlTapSighashProblems } from "./psbt-schnorr.js";
 import { initQrReferences } from "./qr-references.js";
 import { renderSVG as hodlUqrRenderSvg } from "uqr";
 import { BIP39_LANGUAGE_ENGLISH, BIP85_APPS, bip85Path, deriveApplication, parseChildIndex, wipeBip85Result, wipeBytes as hodlWipeBytes } from "./bip85.js";
@@ -830,7 +837,7 @@ function hodlAccountResult(node, definition, network, count, options = {}) {
   };
 }
 function hodlRootWalletResult(root, network, source, accountIndex, masterFingerprint, accounts, coinType = hodlCoinTypeFromNetwork(network)) {
-  return {
+  let result = {
     kind: "hd",
     network,
     coinType,
@@ -850,6 +857,14 @@ function hodlRootWalletResult(root, network, source, accountIndex, masterFingerp
     warnings: source.warnings,
     accounts
   };
+  // A coin type beyond 0 (Bitcoin mainnet) or 1 (every testnet) serializes
+  // with mainnet version bytes: that is another coin's address format, and
+  // the result must say so at the output, not only in a help label
+  // (issue #357).
+  if (result.coinType !== 0 && result.coinType !== 1) {
+    result.warnings = [...(result.warnings ?? []), hodlNote("Coin type {coinType} is not Bitcoin mainnet (0) or testnet (1). The addresses, WIF keys, and SLIP-132 versions below serialize with MAINNET version bytes — they are not necessarily valid for the coin you may intend.", { coinType: result.coinType })];
+  }
+  return result;
 }
 function hodlImportedScriptDefinition(parsed) {
   if (parsed.family === "y") return hodlScriptTypes.find((definition) => definition.id === "bip49");
@@ -1318,13 +1333,17 @@ function hodlPrivateDataControls(descriptionId, scope = "wallet") {
 }
 function hodlWalletDatControl(includePrivate) {
   if (!hodlWalletExport.hasDescriptors(hodlWalletResult)) return "";
+  // The secrets variant follows the material that actually exists, not just
+  // the reveal toggle, so the label and filename never lie for an imported
+  // watch-only wallet (issue #366).
+  const withSecrets = includePrivate && hodlWalletExport.hasPrivateDescriptors(hodlWalletResult);
   // Bitcoin Core starts its automatic scan at the wallet birthday stored in
   // the descriptor records. Recovery needs genesis (creation time 0) so
   // transactions predating this export are found; "now" is only safe for
   // keys created at this moment and skips past history (faster, and reveals
   // no older activity to anyone who later sees the file). If a loaded wallet
   // looks empty, repair it with Bitcoin Core's `rescanblockchain 0`.
-  return `<label class="wallet-dat-birthday">${hodlT("Wallet birthday")} <select data-wallet-dat-birthday aria-describedby="wallet-dat-birthday-help"><option value="genesis"${hodlWalletDatBirthday === "genesis" ? " selected" : ""}>${hodlT("Recovering keys · scan from genesis")}</option><option value="now"${hodlWalletDatBirthday === "now" ? " selected" : ""}>${hodlT("New keys · created today")}</option></select></label><button class="btn secondary save-wallet-dat" id="download-wallet-dat" type="button" aria-describedby="recovery-sheet-disclosure wallet-dat-birthday-help">${hodlWalletExport.walletDatButtonLabel(includePrivate)}</button><p class="muted wallet-dat-birthday-help" id="wallet-dat-birthday-help">${hodlT("Bitcoin Core only auto-scans history back to the birthday. Choose “New keys” only for entropy created right now; recovering older keys with today's birthday can look empty until you run <code>rescanblockchain 0</code> in Bitcoin Core.")}</p>`;
+  return `<label class="wallet-dat-birthday">${hodlT("Wallet birthday")} <select data-wallet-dat-birthday aria-describedby="wallet-dat-birthday-help"><option value="genesis"${hodlWalletDatBirthday === "genesis" ? " selected" : ""}>${hodlT("Recovering keys · scan from genesis")}</option><option value="now"${hodlWalletDatBirthday === "now" ? " selected" : ""}>${hodlT("New keys · created today")}</option></select></label><button class="btn secondary save-wallet-dat" id="download-wallet-dat" type="button" aria-describedby="recovery-sheet-disclosure wallet-dat-birthday-help">${hodlWalletExport.walletDatButtonLabel(withSecrets)}</button><p class="muted wallet-dat-birthday-help" id="wallet-dat-birthday-help">${hodlT("Bitcoin Core only auto-scans history back to the birthday. Choose “New keys” only for entropy created right now; recovering older keys with today's birthday can look empty until you run <code>rescanblockchain 0</code> in Bitcoin Core.")}</p>`;
 }
 function hodlSaveRecoveryControl() {
   return `<div class="wallet-data-actions no-print"><button class="btn secondary save-recovery-sheet" id="save" type="button">${hodlT("Save watch-only sheet")}</button>${hodlWalletDatControl(false)}</div>`;
@@ -1468,9 +1487,11 @@ function hodlDownloadWalletDat() {
   // "now" is written only when the user confirms the keys are new (issue
   // #95).
   let creationTime = hodlWalletDatBirthday === "now" ? Math.floor(Date.now() / 1000) : 0;
-  let bytes = hodlWalletExport.buildWalletDat(hodlWalletResult, hodlRevealPrivate, hodlWalletDatDeps(), creationTime), blob = new Blob([bytes], { type: "application/octet-stream" }), url = URL.createObjectURL(blob), link = document.createElement("a");
+  // The secrets variant follows the material, not the toggle alone (#366).
+  let withSecrets = hodlRevealPrivate && hodlWalletExport.hasPrivateDescriptors(hodlWalletResult);
+  let bytes = hodlWalletExport.buildWalletDat(hodlWalletResult, withSecrets, hodlWalletDatDeps(), creationTime), blob = new Blob([bytes], { type: "application/octet-stream" }), url = URL.createObjectURL(blob), link = document.createElement("a");
   link.href = url;
-  link.download = hodlWalletExport.walletDatFilename(hodlWalletResult, hodlRevealPrivate);
+  link.download = hodlWalletExport.walletDatFilename(hodlWalletResult, withSecrets);
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1e3);
 }
@@ -7943,6 +7964,7 @@ function hodlTx(bytes) {
     if (message.includes("trailing")) throw new Error("Unsigned transaction contains trailing bytes.");
     if (message.includes("too many inputs")) throw new Error("Unsigned transaction has too many inputs.");
     if (message.includes("too many outputs")) throw new Error("Unsigned transaction has too many outputs.");
+    if (message.includes("too large to expand")) throw new Error("Unsigned transaction is too large to expand for inspection.");
     throw new Error("Unsigned transaction ended early.");
   }
   for (const input of tx.inputs) {
@@ -7962,7 +7984,7 @@ function hodlParsePsbt(bytes) {
   offset = globalMap.next;
   let versionEntry = globalMap.entries.find((entry) => entry.type === 251 && entry.keydata.length === 0);
   if (versionEntry) {
-    if (versionEntry.val.length !== 4 || hodlR32(versionEntry.val, 0) !== 0) throw new Error("EntropyLab currently supports PSBT v0 only.");
+    if (versionEntry.val.length !== 4 || hodlR32(versionEntry.val, 0) !== 0) throw new Error("This inspector reads PSBT v0. PSBT v2 (BIP-370) files open in the PSBT editor tab.");
   }
   let unsignedEntries = globalMap.entries.filter((entry) => entry.type === 0 && entry.keydata.length === 0);
   if (unsignedEntries.length !== 1) throw new Error("This PSBT must contain exactly one unsigned transaction.");
@@ -8008,6 +8030,21 @@ function hodlWitUtxo(entries) {
   if (scriptStart + scriptLength !== entry.val.length) throw new Error("A witness UTXO contains trailing bytes.");
   return { amount, script: entry.val.slice(scriptStart) };
 }
+// PSBT_IN_NON_WITNESS_UTXO (0x00): the full previous transaction. Unlike a
+// witness claim, this one is checkable — the embedded transaction's txid must
+// equal the input's referenced prevout and the amount is read from that
+// transaction's own output, so a lied amount cannot survive (issue #350).
+// `input` is the inspector's parsed input (wire-order txid bytes, vout).
+function hodlNonWitUtxo(entries, input) {
+  let entry = hodlFind(entries, 0).find((item) => item.keydata.length === 0);
+  if (!entry) return null;
+  let prev = parseRawTx(entry.val);
+  let txid = hodlSha256(hodlSha256(entry.val));
+  if (!hodlEq(txid, input.txid)) throw new Error("A non-witness UTXO's transaction does not match the input's previous output.");
+  let output = prev.outputs[input.vout];
+  if (!output) throw new Error("A non-witness UTXO's transaction does not contain the spent output.");
+  return { amount: output.amount, script: output.script };
+}
 function hodlPartialSigs(entries) {
   return hodlFind(entries, 2).map((entry) => {
     let signature = entry.val;
@@ -8015,8 +8052,11 @@ function hodlPartialSigs(entries) {
     return { pubkey: entry.keydata, der: signature.slice(0, -1), sighash: signature[signature.length - 1], raw: signature };
   });
 }
-function hodlTapSigs(entries) {
-  return hodlFind(entries, 19).concat(hodlFind(entries, 20));
+// Taproot signatures are analyzed parsed, not raw-counted: the sighash
+// suffix is part of the safety analysis and an unparseable Schnorr signature
+// is flagged, not silently counted (issue #333).
+function hodlTapSigsParsed(entries) {
+  return hodlTapKeySigs(entries, hodlFind).concat(hodlTapScriptSigs(entries, hodlFind));
 }
 // PSBT_IN_SIGHASH_TYPE (input type 0x03): empty keydata, four-byte
 // little-endian policy. It must be decoded before signing, and shown even
@@ -8032,18 +8072,26 @@ function hodlSighashLabel(policy) {
   let base = policy & 0x7f, baseName = base === 1 ? "SIGHASH_ALL" : base === 2 ? "SIGHASH_NONE" : base === 3 ? "SIGHASH_SINGLE" : "unknown 0x" + base.toString(16);
   return baseName + ((policy & 0x80) ? " | ANYONECANPAY" : "") + " (0x" + policy.toString(16) + ")";
 }
-// Exact SIGHASH_ALL is the only policy that commits to every displayed
-// output. Anything else, or a disagreement between the PSBT field and a
-// signature's appended byte, is blocking — no session key required.
+// Exact SIGHASH_ALL is the only policy that commits to every displayed input
+// and output. NONE/SINGLE (± ANYONECANPAY) drop output commitments and
+// ANYONECANPAY|ALL drops the other inputs; the warning names which side is
+// uncommitted (issue #333). A disagreement between the PSBT field and a
+// signature's appended byte is blocking too — no session key required.
 function hodlSighashProblems(declared, suffix) {
   let problems = [], tr = hodlT;
+  const commitment = (value) => {
+    let base = value & 0x7f;
+    if (base === 2 || base === 3) return tr("does not commit to all shown outputs");
+    if (base === 1) return tr("does not commit to all shown inputs");
+    return tr("is not a defined sighash policy");
+  };
   if (declared !== null && declared !== 1) {
-    let policy = hodlSighashLabel(declared);
-    problems.push(tr("The PSBT requests {policy}, which does not commit to all shown outputs.", { policy }));
+    let policy = hodlSighashLabel(declared), lacks = commitment(declared);
+    problems.push(tr("The PSBT requests {policy}, which {lacks}.", { policy, lacks }));
   }
   if (suffix !== null && suffix !== 1) {
-    let policy = hodlSighashLabel(suffix);
-    problems.push(tr("This signature uses {policy}, which does not commit to all shown outputs.", { policy }));
+    let policy = hodlSighashLabel(suffix), lacks = commitment(suffix);
+    problems.push(tr("This signature uses {policy}, which {lacks}.", { policy, lacks }));
   }
   if (declared !== null && suffix !== null && declared !== suffix) problems.push(tr("The PSBT-declared policy and the signature's appended sighash byte disagree."));
   return problems;
@@ -8236,18 +8284,28 @@ function hodlDerRLoose(der) {
 
 function hodlCompareNonces(rValues) {
   let reused = [],
-    possible = [];
+    possible = [],
+    crossKey = [];
   for (let first = 0; first < rValues.length; first++)
     for (let second = first + 1; second < rValues.length; second++) {
       let a = rValues[first],
         b = rValues[second];
-      if (!hodlEq(a.pubkey, b.pubkey) || !hodlEq(a.r, b.r)) continue;
+      if (!hodlEq(a.r, b.r)) continue;
+      // The claimed pubkey is attacker-controlled metadata for partial
+      // signatures: the same r under two different claimed keys must not
+      // silently skip the comparison — it is itself the red flag (issue
+      // #353). A verified signature's claimed key *is* the verified key.
+      if (!hodlEq(a.pubkey, b.pubkey)) {
+        crossKey.push([a, b]);
+        continue;
+      }
       if (a.valid && b.valid && a.sighash && b.sighash && !hodlEq(a.sighash, b.sighash)) reused.push([a, b]);
       else if (a.input !== b.input) possible.push([a, b]);
     }
   return {
     reused,
-    possible
+    possible,
+    crossKey
   }
 }
 
@@ -8559,7 +8617,10 @@ function hodlUseKeyForBip85(state) {
     } finally {
       hodlWipeBytes(seed);
     }
-    hodlBip85Testnet = false;
+    // The version bytes follow the session network on every load path: a
+    // testnet wallet must not yield mainnet-version children because it
+    // arrived as a mnemonic rather than a root xprv (issue #352).
+    hodlBip85Testnet = hodlNetworkFamily(result.network) === "testnet";
     hodlBip85Note = "Parent: " + (state.name || "Key Station key") + (result.passphraseUsed || (state.fields.pass || "").length ? " with BIP-39 passphrase (COLDCARD does the same \u2014 children differ without it)." : ".") + " Kept in page memory only.";
   } else if (result.kind === "hd" && result.rootXprv) {
     hodlBip85Root = hodlHDKey.fromExtendedKey(hodlParseExtendedKey(result.rootXprv).xkey);
@@ -9065,18 +9126,90 @@ function hodlRenderSpReceive() {
     try { hodlRenderSpReceive(); } catch (error) { document.getElementById("sp-error").textContent = error.message || String(error); }
   });
 }
+// Resolve every eligible vin's input key from the loaded SP session root —
+// never from a pasted scalar (issue #331). A vin may name its derivation
+// path explicitly ("path": "m/84'/1'/0'/0/5", plus an optional "fingerprint"
+// that must equal the session root's) or be resolved through the session
+// ownership index by its prevout script. Either way the derived key is
+// verified against the prevout script before use, and every derived node is
+// wiped after output construction.
+function hodlSpDeriveVinKeys(vins) {
+  hodlSpEnsureHd();
+  const root = hodlSpHd, network = hodlSpNetwork(), fingerprint = hodlFingerprintHex(root.fingerprint);
+  let index = null;
+  return vins.map((vin, i) => {
+    // The published BIP-352 vectors carry raw per-input scalars; the UI flow
+    // derives from the session instead. (The library function keeps vector
+    // support for the test suite.)
+    if (vin && typeof vin === "object" && "private_key" in vin) {
+      throw new Error(`Input ${i} carries a "private_key" field. The send flow derives each input's key from the loaded session — remove it (that field exists for the published BIP-352 test vectors).`);
+    }
+    // Only inputs of the eligible script types take part; anything else is
+    // skipped by the sender and needs no key.
+    const extracted = extractInputPubKey(vin);
+    if (!extracted) return vin;
+    if (vin.fingerprint !== undefined && String(vin.fingerprint).toLowerCase().replace(/^0x/, "") !== fingerprint) {
+      throw new Error(`Input ${i}: origin fingerprint ${vin.fingerprint} is not this session's ${fingerprint}.`);
+    }
+    let path = typeof vin.path === "string" && vin.path.trim() ? vin.path.trim() : null;
+    if (!path) {
+      if (!index) index = indexHdKey(root, network);
+      const hit = matchOwnership(index, vinPrevoutScript(vin));
+      if (hit.state !== "ours") {
+        throw new Error(`Input ${i}: the prevout script was not found under this session's keys. Add a "path" field (e.g. "m/84'/…") to name the input's derivation path.`);
+      }
+      path = hit.path;
+    }
+    if (!/^m(\/|$)/.test(path)) throw new Error(`Input ${i}: path must start at the session root ("m/…").`);
+    let node = null;
+    try {
+      node = root.derive(path);
+      if (!node.privateKey) throw new Error(`Input ${i}: path ${path} names a watch-only node.`);
+      // The derived key must actually produce the prevout script — the "lie"
+      // check, including the BIP-341 tweak for P2TR inputs.
+      const scriptBytes = vinPrevoutScript(vin);
+      const pubkey = node.publicKey;
+      let expected = null;
+      if (isP2pkh(scriptBytes)) expected = p2pkhScript(pubkey);
+      else if (isP2wpkh(scriptBytes)) expected = p2wpkhScript(pubkey);
+      else if (isP2sh(scriptBytes)) expected = p2shP2wpkhScript(pubkey);
+      else if (isP2tr(scriptBytes)) expected = p2trKeyScript(pubkey.slice(1));
+      if (expected && hodlSpBytesToHex(expected) !== hodlSpBytesToHex(scriptBytes)) {
+        throw new Error(`Input ${i}: the key derived at ${path} does not produce the prevout's scriptPubKey.`);
+      }
+      if (expected === null) throw new Error(`Input ${i}: unrecognized prevout script type.`);
+      return { ...vin, private_key: hodlSpBytesToHex(node.privateKey) };
+    } finally {
+      if (node) node.wipePrivateData();
+    }
+  });
+}
 function hodlRenderSpSend() {
   let parsed = hodlSpParseRecipients(document.getElementById("sp-recipients")?.value);
   let recipients = parsed.recipients;
   let hrp = hodlSpHrp(hodlSpNetwork());
   for (const recipient of recipients) decodeSilentPaymentAddress(recipient.address, hrp);
-  let result = createSilentPaymentOutputs(hodlSpParseVins(document.getElementById("sp-send-vins")?.value), recipients, { hrp });
+  let result = createSilentPaymentOutputs(hodlSpDeriveVinKeys(hodlSpParseVins(document.getElementById("sp-send-vins")?.value)), recipients, { hrp });
   if (!result.outputs.length) {
     document.getElementById("sp-out").innerHTML = `<p class="psbt-warn">No silent payment outputs. Eligible inputs may be missing, the private-key sum may be zero, or a scan-key group exceeded K<sub>max</sub> = 2323.</p>`;
     return;
   }
   let network = hodlSpNetwork();
-  document.getElementById("sp-out").innerHTML = `<p class="psbt-ok">${result.outputs.length} unique taproot output${result.outputs.length === 1 ? "" : "s"}.</p>` + (parsed.lightning ? `<p class="muted">Lightning parameters in the URI were ignored. This page does not pay invoices or offers.</p>` : "") + result.outputs.map((xonly, index) => {
+  // A URI's payment intent is surfaced, never silently dropped (issues #321,
+  // #326): requested amounts are shown for the sender to enter manually —
+  // this page builds output scripts only — and a URI that offered several
+  // payment instructions says which one was selected.
+  let notes = "";
+  if (parsed.alternatives) notes += `<p class="psbt-warn">The URI offered ${parsed.alternatives} alternative payment instructions. The first silent-payment address was selected; the rest are not paid.</p>`;
+  parsed.recipients.forEach((recipient, index) => {
+    if (recipient.amountSats !== null) {
+      notes += `<p class="psbt-warn">The URI requested ${hodlSats(BigInt(recipient.amountSats))} BTC for recipient ${index + 1} (${hodlSpEscape(recipient.address.slice(0, 20))}…). This page builds output scripts only — enter the amount yourself when funding.</p>`;
+    }
+  });
+  // BIP352 keeps every generated output, duplicates included (issue #332);
+  // say so only when a repeat actually occurs.
+  const repeated = result.outputs.length - new Set(result.outputs).size;
+  document.getElementById("sp-out").innerHTML = `<p class="psbt-ok">${result.outputs.length} taproot output${result.outputs.length === 1 ? "" : "s"}.</p>` + (repeated ? `<p class="muted">${repeated} repeated output${repeated === 1 ? "" : "s"} kept on purpose: every generated BIP352 output belongs in the transaction.</p>` : "") + notes + (parsed.lightning ? `<p class="muted">Lightning parameters in the URI were ignored. This page does not pay invoices or offers.</p>` : "") + result.outputs.map((xonly, index) => {
     let address = p2trAddressFromXonly(xonly, network);
     return `<div class="sp-output"><p class="label">Output ${index + 1}</p><p class="psbt-kv" id="sp-out-addr-${index}">${hodlSpEscape(address)}</p><p class="psbt-kv" id="sp-out-xonly-${index}">${hodlSpEscape(xonly)}</p>${hodlSpCopyButton(`sp-out-addr-${index}`, "Copy P2TR")}</div>`;
   }).join("");
@@ -9360,6 +9493,7 @@ function hodlRenderPsbt(psbt) {
     tx = psbt.tx,
     inputSum = 0n,
     knownInputs = 0,
+    conflictedInputs = [],
     html = [],
     rValues = [],
     rows = [],
@@ -9389,10 +9523,26 @@ function hodlRenderPsbt(psbt) {
   html.push(hodlOwnershipWarning(tx.outputs, network, ownershipMap));
   psbt.inputs.forEach((entries, index) => {
     let witnessUtxo = hodlWitUtxo(entries);
-    if (witnessUtxo) {
-      inputSum += witnessUtxo.amount;
-      knownInputs++;
+    // The non-witness UTXO is the checkable claim: it embeds the previous
+    // transaction, so its txid must match the input's outpoint (issue #350).
+    let nonWitnessUtxo = null, nonWitnessError = "";
+    try {
+      nonWitnessUtxo = hodlNonWitUtxo(entries, tx.inputs[index]);
+    } catch (exception) {
+      nonWitnessError = exception.message || String(exception);
     }
+    // Resolve all declarations as a set: agreeing claims count once,
+    // disagreeing claims count as nothing and are flagged, and the verified
+    // non-witness amount is preferred for display when both agree.
+    let claim = null, claimConflict = false;
+    if (witnessUtxo && nonWitnessUtxo) {
+      if (witnessUtxo.amount === nonWitnessUtxo.amount) claim = nonWitnessUtxo;
+      else claimConflict = true;
+    } else claim = witnessUtxo || nonWitnessUtxo;
+    if (claim) {
+      inputSum += claim.amount;
+      knownInputs++;
+    } else if (claimConflict) conflictedInputs.push(index);
     let declaredSighash = null, declaredSighashError = "";
     try {
       declaredSighash = hodlSighashPolicy(entries);
@@ -9400,7 +9550,7 @@ function hodlRenderPsbt(psbt) {
       declaredSighashError = exception.message || String(exception);
     }
     let declaredLabel = declaredSighashError ? "" : declaredSighash === null ? "SIGHASH_ALL (default)" : hodlSighashLabel(declaredSighash);
-    let previous = tx.inputs[index], destination = witnessUtxo ? hodlAddr(witnessUtxo.script, network) : "(previous output details unavailable)", signatures = hodlPartialSigs(entries), tapSignatures = hodlTapSigs(entries), finalized = hodlFinalized(entries);
+    let previous = tx.inputs[index], destination = claim ? hodlAddr(claim.script, network) : "(previous output details unavailable)", signatures = hodlPartialSigs(entries), tapSignatures = hodlTapSigsParsed(entries), finalized = hodlFinalized(entries), taprootish = entries.some((entry) => entry.type >= 0x13 && entry.type <= 0x18);
     if (finalized) {
       // Finalized signatures moved into the final script fields must not
       // escape repeated-nonce analysis (issue #87).
@@ -9413,7 +9563,9 @@ function hodlRenderPsbt(psbt) {
       uninspected += finalMaterial.uninspected + (finalMaterial.malformed ? 1 : 0);
     }
     tapSignatureCount += tapSignatures.length;
-    html.push("<p class='psbt-kv'><strong>Input " + index + "</strong> \xB7 " + hodlHexRev(previous.txid) + " : " + previous.vout + (witnessUtxo ? " \xB7 " + hodlSats(witnessUtxo.amount) + " BTC claimed" : "") + "<br>" + hodlEscapeHtml(destination) + "<br>" + (signatures.length + tapSignatures.length ? signatures.length + tapSignatures.length + " signature(s) present" : finalized ? "Finalized input data present" : "Not signed yet") + (declaredSighashError ? "<br>Declared sighash policy unreadable: " + hodlEscapeHtml(declaredSighashError) : "<br>Signature policy: " + hodlEscapeHtml(declaredLabel)) + "</p>");
+    html.push("<p class='psbt-kv'><strong>Input " + index + "</strong> \xB7 " + hodlHexRev(previous.txid) + " : " + previous.vout + (claim ? " \xB7 " + hodlSats(claim.amount) + " BTC claimed" : "") + "<br>" + hodlEscapeHtml(destination) + "<br>" + (signatures.length + tapSignatures.length ? signatures.length + tapSignatures.length + " signature(s) present" : finalized ? "Finalized input data present" : "Not signed yet") + (declaredSighashError ? "<br>Declared sighash policy unreadable: " + hodlEscapeHtml(declaredSighashError) : "<br>Signature policy: " + hodlEscapeHtml(declaredLabel)) + "</p>");
+    if (claimConflict) html.push("<p class='psbt-bad'><strong>Conflicting previous-output claims:</strong> input " + index + " declares " + hodlSats(witnessUtxo.amount) + " BTC in its witness UTXO but " + hodlSats(nonWitnessUtxo.amount) + " BTC in its non-witness UTXO (checked against the embedded previous transaction). Neither amount is trusted and the fee is left unknown.</p>");
+    if (nonWitnessError) html.push("<p class='psbt-bad'><strong>Non-witness UTXO problem:</strong> input " + index + ": " + hodlEscapeHtml(nonWitnessError) + " That field claims nothing.</p>");
     let inputEnvelopes = (inscriptionReport.inputs[index] && inscriptionReport.inputs[index].envelopes) || [];
     inputEnvelopes.forEach((envelope) => {
       let className = envelope.unrecognizedEven || envelope.bodyBytes > 100000 ? "psbt-bad" : "psbt-warn";
@@ -9422,10 +9574,30 @@ function hodlRenderPsbt(psbt) {
     if (declaredSighashError) {
       policyProblems++;
       html.push("<p class='psbt-bad'><strong>Policy problem:</strong> input " + index + " declares a malformed sighash policy. Do not sign until its policy is known.</p>");
-    } else if (declaredSighash !== null && declaredSighash !== 1) {
+    } else if (declaredSighash !== null && declaredSighash !== 1 && !(taprootish && declaredSighash === 0)) {
+      // SIGHASH_DEFAULT (0) is Taproot's full-commitment policy, so only
+      // ECDSA inputs treat 0 as undefined. The warning names which commitment
+      // side is missing (issue #333).
       policyProblems++;
-      html.push("<p class='psbt-bad'><strong>Policy problem:</strong> input " + index + " requests " + hodlEscapeHtml(declaredLabel) + "; that policy does not commit to all shown outputs. Do not accept the displayed outputs as what a signature will authorize.</p>");
+      let base = declaredSighash & 0x7f, lacks = base === 1 ? "does not commit to all shown inputs" : base >= 2 && base <= 3 ? "does not commit to all shown outputs" : "is not a defined sighash policy";
+      html.push("<p class='psbt-bad'><strong>Policy problem:</strong> input " + index + " requests " + hodlEscapeHtml(declaredLabel) + "; that policy " + hodlEscapeHtml(lacks) + ". Do not accept the displayed outputs as what a signature will authorize.</p>");
     }
+    // Every Schnorr signature's sighash suffix joins the safety analysis; one
+    // that does not parse under BIP341 (64 bytes, or 65 with a defined
+    // sighash byte) is a policy problem, not a countable signature.
+    tapSignatures.forEach((tapSig) => {
+      if (!tapSig.r) {
+        uninspected += 1;
+        policyIncomplete += 1;
+        policyProblems++;
+        html.push("<p class='psbt-bad'><strong>Policy problem:</strong> input " + index + " carries a Schnorr signature that is not valid under BIP341 (64 bytes, or 65 with a defined sighash byte). Do not sign until its policy is known.</p>");
+        return;
+      }
+      hodlTapSighashProblems(declaredSighash, tapSig.sighash, hodlSighashLabel).forEach((problem) => {
+        policyProblems++;
+        html.push("<p class='psbt-bad'><strong>Policy problem:</strong> input " + index + ": " + hodlEscapeHtml(problem) + " Do not sign until its policy is known.</p>");
+      });
+    });
     if (tapSignatures.length || (finalized && !signatures.length)) policyIncomplete++;
     signatures.forEach(signature => {
       let parts = hodlSigParts(signature.der),
@@ -9518,12 +9690,13 @@ function hodlRenderPsbt(psbt) {
       rows.push({ input: index, message, className, pubkey: hodlHex.encode(signature.pubkey) });
     });
   });
-  if (knownInputs === tx.inputs.length) {
+  if (conflictedInputs.length) html.push("<p class='psbt-bad'><strong>Fee unknown</strong> — input(s) " + conflictedInputs.join(", ") + " carry conflicting witness and non-witness UTXO amounts.</p>");
+  else if (knownInputs === tx.inputs.length) {
     let outputSum = tx.outputs.reduce((sum, output) => sum + output.amount, 0n), fee = inputSum - outputSum;
-    if (fee >= 0n) html.push("<p class='psbt-kv'><strong>Unverified fee (PSBT witness UTXO claims)</strong> \xB7 " + hodlSats(fee) + " BTC</p>");
+    if (fee >= 0n) html.push("<p class='psbt-kv'><strong>Unverified fee (PSBT previous-output claims)</strong> \xB7 " + hodlSats(fee) + " BTC</p>");
     else html.push("<p class='psbt-bad'><strong>Inconsistent claimed amounts:</strong> outputs exceed claimed inputs by " + hodlSats(-fee) + " BTC.</p>");
-  } else html.push("<p class='muted'>Fee unknown — some inputs do not include a claimed witness UTXO amount.</p>");
-  html.push("<p class='muted'>Input amounts and any fee are unverified PSBT claims. This tool does not check them against previous transactions or the blockchain.</p>");
+  } else html.push("<p class='muted'>Fee unknown — some inputs do not include a claimed previous-output amount.</p>");
+  html.push("<p class='muted'>Witness-UTXO amounts are unverified PSBT claims; non-witness UTXO amounts are cross-checked against the embedded previous transaction. Neither is checked against the blockchain.</p>");
   if (inscriptionReport.envelopes.length) {
     html.push("<p class='psbt-warn'><strong>" + inscriptionReport.envelopes.length + " inscription envelope" + (inscriptionReport.envelopes.length === 1 ? "" : "s") + " in this PSBT.</strong> This is what the file reveals in witness or tap-leaf scripts. EntropyLab does not number sats, fetch content from the chain, or render binary payloads.</p>");
   }
@@ -9531,19 +9704,21 @@ function hodlRenderPsbt(psbt) {
   if (transcriptError) html.push("<p class='psbt-warn'><strong>Jade anti-exfil transcript not used:</strong> " + hodlEscapeHtml(transcriptError) + "</p>");
   let {
     reused,
-    possible
+    possible,
+    crossKey
   } = hodlCompareNonces(rValues);
   if (reused.length) html.push("<p class='psbt-bad'><strong>Reused nonce detected for the same public key.</strong> The same r value appears on different message digests. If both signatures are valid, the private key can be recovered. Do not broadcast this transaction.</p>");
   else if (possible.length) html.push("<p class='psbt-warn'><strong>Possible repeated nonce for the same public key.</strong> The message digests could not both be reconstructed, so verify these signatures independently before treating this as a key leak.</p>");
+  if (crossKey.length) html.push("<p class='psbt-bad'><strong>Same r value claimed under different public keys.</strong> " + crossKey.length + " pair(s) share an r value but name different keys — a mislabeled signature field can hide real nonce reuse this way. Verify every signature against its input's key independently before signing or broadcasting.</p>");
   else if (uninspected) html.push("<p class='psbt-warn'><strong>Incomplete nonce coverage.</strong> Some ECDSA signatures could not be inspected, so this is not a clean verdict.</p>");
   else if (rValues.length >= 2) html.push("<p class='psbt-ok'>No repeated ECDSA nonce r values were found for the same public key in this PSBT.</p>");
   else if (rValues.length === 1) html.push("<p class='muted'>Only one ECDSA signature with a readable r is present. Nonce reuse cannot be judged from this file alone.</p>");
   else html.push("<p class='muted'>No ECDSA signatures with a readable r value are present, so there is no nonce to compare yet.</p>");
   if (rValues.length) html.push("<p class='psbt-kv'>r values:<br>" + rValues.map(value => hodlEscapeHtml(value.hex) + " (input " + value.input + ")").join("<br>") + "</p>");
   rows.forEach(row => html.push("<p class='" + row.className + "'><strong>Input " + row.input + "</strong> pubkey " + hodlEscapeHtml(row.pubkey.slice(0, 18)) + "\u2026 \u2014 " + hodlEscapeHtml(row.message) + "</p>"));
-  if (tapSignatureCount) html.push("<p class='muted'>This PSBT also contains " + tapSignatureCount + " Taproot / Schnorr signature(s). They are counted but their BIP340 nonces are not analyzed in this version.</p>");
-  html.push("<p class='muted'>RFC 6979 comparison currently covers SegWit v0 P2WPKH and P2WSH signatures using SIGHASH_ALL, including Bitcoin Core-style low-r grinding. Jade anti-exfil is secp256k1-zkp sign-to-contract and needs the USB host nonce plus signer opening; QR / sign_psbt Jade does not run it yet. BitBox anti-klepto is a different construction. Nonce reuse detection compares r values for the same secp256k1 point, including signatures carried by finalized scriptSig/witness fields, compressed and uncompressed encodings, and recoverable non-strict DER. A clean verdict is not issued when a signature cannot be inspected. Inscription detection reads OP_FALSE OP_IF \"ord\" envelopes in tap-leaf scripts and finalized witnesses; it does not number sats. Output ownership is derived from the session key: accounts 0\u20132, 50 receive + 50 change, all four script types. It does not talk to the chain.</p>");
-  let nonceIncomplete = uninspected || tapSignatureCount || unsupportedNonceChecks || rValues.length < 2;
+  if (tapSignatureCount) html.push("<p class='muted'>This PSBT also contains " + tapSignatureCount + " Taproot / Schnorr signature(s). Their sighash policies are checked above; their BIP340 nonces are not analyzed in this version.</p>");
+  html.push("<p class='muted'>RFC 6979 comparison currently covers SegWit v0 P2WPKH and P2WSH signatures using SIGHASH_ALL, including Bitcoin Core-style low-r grinding. Jade anti-exfil is secp256k1-zkp sign-to-contract and needs the USB host nonce plus signer opening; QR / sign_psbt Jade does not run it yet. BitBox anti-klepto is a different construction. Nonce reuse detection compares r values for the same secp256k1 point, including signatures carried by finalized scriptSig/witness fields, compressed and uncompressed encodings, and recoverable non-strict DER; the same r value claimed under two different public keys is flagged as a mislabeled field rather than skipped. A clean verdict is not issued when a signature cannot be inspected. Inscription detection reads OP_FALSE OP_IF \"ord\" envelopes in tap-leaf scripts and finalized witnesses; it does not number sats. Output ownership is derived from the session key: accounts 0\u20132, 50 receive + 50 change, all four script types. It does not talk to the chain.</p>");
+  let nonceIncomplete = uninspected || tapSignatureCount || unsupportedNonceChecks || crossKey.length || rValues.length < 2;
   let checks = [
     {
       label: "Previous outputs and fee",
@@ -9618,8 +9793,9 @@ function hodlRenderRawTx(tx) {
       valid: null
     });
   });
-  let { reused, possible } = hodlCompareNonces(rValues);
+  let { reused, possible, crossKey } = hodlCompareNonces(rValues);
   if (reused.length || possible.length) html.push("<p class='psbt-bad'><strong>Repeated nonce r for the same public key.</strong> Message digests cannot be rebuilt from a raw transaction without prevouts, so treat this as a warning and do not broadcast until the signatures are checked independently.</p>");
+  if (crossKey.length) html.push("<p class='psbt-warn'><strong>Same r value claimed under different public keys.</strong> A key association in a raw transaction is read from the script, not verified; verify these signatures independently before broadcast.</p>");
   else if (uninspected) html.push("<p class='psbt-warn'><strong>Incomplete nonce coverage.</strong> Some ECDSA signatures could not be inspected.</p>");
   else if (rValues.length >= 2) html.push("<p class='psbt-ok'>No repeated ECDSA nonce r values were found for the same public key in this transaction.</p>");
   else if (rValues.length === 1) html.push("<p class='muted'>Only one ECDSA signature with a readable r is present. Nonce reuse cannot be judged from this file alone.</p>");

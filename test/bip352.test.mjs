@@ -23,6 +23,10 @@ import {
   scanSilentPaymentOutputs,
   spendPrivForOutput,
   taggedHash,
+  inputHash,
+  serUint32,
+  scalarFromBytes,
+  Point,
   hexToBytes,
   bytesToHex,
 } from "../src/js/bip352.js";
@@ -80,12 +84,14 @@ for (const [index, vector] of vectors.entries()) {
       if (sending.expected.input_private_key_sum && result.inputPrivateKeySum && result.inputPrivateKeySum !== "0".repeat(64)) {
         assert.equal(result.inputPrivateKeySum, sending.expected.input_private_key_sum);
       }
-      const actual = new Set(result.outputs);
+      // Exact counts first, then an order-insensitive multiset match (vectors
+      // permit alternative orderings) — never a Set, which would hide a lost
+      // duplicate (issue #332).
+      const actual = result.outputs;
       const matched = sending.expected.outputs.some((candidate) => {
-        const expect = new Set(candidate);
-        return actual.size === expect.size && [...actual].every((item) => expect.has(item));
+        return actual.length === candidate.length && [...actual].sort().join(",") === [...candidate].sort().join(",");
       });
-      assert.equal(matched, true, `send outputs ${[...actual].join(",")} did not match any expected set`);
+      assert.equal(matched, true, `send outputs ${actual.join(",")} did not match any expected set`);
     }
   });
 
@@ -145,6 +151,12 @@ test("hardened BIP-352 paths refuse watch-only seeds", () => {
   const watch = HDKey.fromExtendedKey(xpub);
   assert.equal(watch.privateKey, null);
   assert.throws(() => watch.derive("m/352'/0'/0'/1'/0"));
+  // Bech32m case rules: all-uppercase is a valid encoding, mixed case is not
+  // (issue #335) — reject before any lowercasing launders it.
+  assert.deepEqual(decodeSilentPaymentAddress(address.toUpperCase(), "sp").hrp, "sp");
+  const mixed = address.slice(0, 6) + address[6].toUpperCase() + address.slice(7);
+  assert.ok(mixed !== mixed.toLowerCase() && mixed !== mixed.toUpperCase());
+  assert.throws(() => decodeSilentPaymentAddress(mixed, "sp"), /mixed case/);
 });
 
 test("BIP-392 spscan / spspend encode and wrap in sp()", () => {
@@ -225,4 +237,28 @@ test("generateLabel is deterministic", () => {
   const c = generateLabel(scan, 1);
   assert.equal(a, b);
   assert.notEqual(a, c);
+});
+
+test("deliberately coincident generated outputs are both kept (issue #332)", () => {
+  // A spend point crafted relative to another spend point and the known
+  // per-index tweaks makes two requested outputs coincide: with recipient
+  // spend P at k=0, Q = P + (t0 - t1)·G makes Q + t1·G === P + t0·G.
+  // Deduplication would silently drop one payment.
+  const sending = vectors[0].sending.find((s) => s.given.vin.length && s.expected.outputs[0].length);
+  const vins = sending.given.vin;
+  const recipient = sending.given.recipients[0];
+  const { scan, spend } = decodeSilentPaymentAddress(recipient.address, "sp");
+  const base = createSilentPaymentOutputs(vins, [recipient], { hrp: "sp" });
+  assert.equal(base.outputs.length, 1);
+  const secret = hexToBytes(base.sharedSecrets[0]);
+  const t0 = scalarFromBytes(taggedHash("BIP0352/SharedSecret", secret, serUint32(0)));
+  const t1 = scalarFromBytes(taggedHash("BIP0352/SharedSecret", secret, serUint32(1)));
+  const n = BigInt("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141"); // secp256k1 group order
+  const delta = (((t0 - t1) % n) + n) % n;
+  const crafted = spend.add(Point.BASE.multiply(delta));
+  const second = { address: encodeSilentPaymentAddress(scan, crafted, "sp"), count: 1 };
+  const result = createSilentPaymentOutputs(vins, [recipient, second], { hrp: "sp" });
+  assert.equal(result.outputs.length, 2, "both requested outputs must be returned");
+  assert.equal(result.outputs[1], result.outputs[0], "the crafted outputs coincide");
+  assert.equal(result.outputs[0], base.outputs[0], "the first output is untouched");
 });

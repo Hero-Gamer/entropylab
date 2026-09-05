@@ -15,13 +15,15 @@
 // transaction table binds), so the diagram is also the editing surface —
 // WYSIWYG.
 //
-// Amounts on input boxes are the PSBT's own claims (witness / non-witness
-// UTXO pairs); like the rest of the editor they are not verified against the
-// chain, and the inputs column says so.
+// Input amount claims are classified locally from the already-decoded PSBT
+// fields. A valid non-witness UTXO whose txid matches the input outpoint is
+// independently established by the supplied transaction bytes; a witness
+// UTXO alone remains an unverified claim. Disagreement between valid witness
+// and non-witness claims is a mismatch. No network lookup is performed.
 import { addressFromScript } from "./addresses.js";
 
 const escapeHtml = (text) =>
-  String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;").replace(/'/g, "&#39;");
 
 const hexToBytes = (hex) => {
   const out = new Uint8Array(String(hex).length / 2);
@@ -69,9 +71,9 @@ const scriptKind = (scriptHex, asm) => {
 // The amount an input claims to spend, resolved as a set so map order cannot
 // change the answer (issue #324): when both a witness UTXO and a verified
 // non-witness UTXO claim exist they must agree, otherwise the box shows a
-// conflict warning instead of picking one. The verified non-witness claim's
-// script wins the label when both are present and consistent. Pairs that
-// fail their typed decode claim nothing.
+// conflict warning instead of picking one. The non-witness claim's script
+// wins the label when both are present and consistent. Pairs that fail their
+// typed decode claim nothing.
 const claimedPrevout = (pairs) => {
   const witness = pairs.find((pair) => pair.name === "PSBT_IN_WITNESS_UTXO" && pair.decoded);
   const nonWitness = pairs.find((pair) => pair.name === "PSBT_IN_NON_WITNESS_UTXO" && pair.decoded?.prevout);
@@ -81,6 +83,18 @@ const claimedPrevout = (pairs) => {
     return witnessClaim.value === nonWitnessClaim.value ? nonWitnessClaim : { conflict: [witnessClaim.value, nonWitnessClaim.value] };
   }
   return witnessClaim ?? nonWitnessClaim ?? null;
+};
+
+// Verification is deliberately derived from the same decoded claims used by
+// the amount renderer. A non-witness claim is only exposed with `prevout`
+// when the Rust inspector has decoded it, matched its txid to this input's
+// outpoint, and found the referenced vout. This keeps the UI as a thin view
+// layer instead of duplicating transaction validation in JavaScript.
+const utxoVerification = (pairs) => {
+  const claim = claimedPrevout(pairs);
+  if (claim?.conflict) return "mismatch";
+  const hasNonWitness = pairs.some((pair) => pair.name === "PSBT_IN_NON_WITNESS_UTXO" && pair.decoded?.prevout);
+  return hasNonWitness ? "verified" : "unverified";
 };
 
 const SIGNING_PAIR_NAMES = ["PSBT_IN_PARTIAL_SIG", "PSBT_IN_TAP_KEY_SIG", "PSBT_IN_TAP_SCRIPT_SIG"];
@@ -119,6 +133,7 @@ const inputBox = (doc, index, network, selected) => {
   const pairs = doc.inputs[index] ?? [];
   const claim = claimedPrevout(pairs);
   const conflict = claim?.conflict;
+  const verification = utxoVerification(pairs);
   const address = claim && !conflict ? addressFor(claim.scriptPubKey, network) : null;
   // Boxes stay dense: identifiers truncate mid-string (the full text is in
   // the tooltip and the button's aria-label).
@@ -127,12 +142,19 @@ const inputBox = (doc, index, network, selected) => {
   // The prevout's script template tags the box like a block explorer would.
   const kind = claim && !conflict ? scriptKind(claim.scriptPubKey) : null;
   const open = selected?.kind === "input" && selected.index === index;
+  const verificationText = verification === "verified" ? "verified" : verification === "mismatch" ? "mismatch" : "unverified";
+  const verificationTone = verification === "verified" ? "psbted-note-ok" : verification === "mismatch" ? "psbted-note-bad" : "muted";
+  const amountHtml = conflict
+    ? `<span class="psbted-note-bad">${verificationText}: conflicting claims: ${groupSats(conflict[0])} vs ${groupSats(conflict[1])} sats</span>`
+    : claim
+      ? `${groupSats(claim.value)} sats <span class="${verificationTone}">(${verificationText})</span>`
+      : `<span class="muted">no amount claim</span> <span class="${verificationTone}">(${verificationText})</span>`;
   return `<div class="psbted-viz-box${open ? " is-open" : ""}">
     <button type="button" class="psbted-viz-open" data-viz="input:${index}" aria-expanded="${open}" aria-label="Input ${index}, ${escapeHtml(address ?? label)}: show and edit this input's PSBT fields">
       <span class="psbted-viz-idx">#${index}</span>
       <span class="psbted-viz-id psbted-viz-in"${address ? ` title="${escapeHtml(address)}"` : ""}>${escapeHtml(label)}</span>
     </button>
-    <p class="psbted-viz-amount">${conflict ? `<span class="psbted-note-bad">conflicting claims: ${groupSats(conflict[0])} vs ${groupSats(conflict[1])} sats</span>` : claim ? `${groupSats(claim.value)} sats` : `<span class="muted">no amount claim</span>`}</p>
+    <p class="psbted-viz-amount">${amountHtml}</p>
     <p class="psbted-viz-sub" title="spends ${escapeHtml(input.txid)}:${escapeHtml(String(input.vout))}">${kind ? `<span class="psbted-viz-kind">${escapeHtml(kind)}</span> · ` : ""}<span class="${status.tone}">${escapeHtml(status.text)}</span></p>
   </div>`;
 };
@@ -167,8 +189,8 @@ export const psbtVizHtml = (doc, network, selected = null) => {
   // Column totals ride in the hint lines; the inputs side can only total
   // when every input carries a claim (doc.totalIn is null otherwise).
   const inputsHint = doc.totalIn === null
-    ? "amounts as claimed by the PSBT, not verified"
-    : `${groupSats(doc.totalIn)} sats claimed, not verified`;
+    ? "amounts as claimed by the PSBT; verified means a matching non-witness UTXO"
+    : `${groupSats(doc.totalIn)} sats claimed; verified means a matching non-witness UTXO`;
   const txOpen = selected?.kind === "tx";
   return `<div class="psbted-viz">
   <svg class="psbted-viz-svg" aria-hidden="true" focusable="false"></svg>

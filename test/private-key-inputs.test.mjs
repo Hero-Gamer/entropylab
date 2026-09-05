@@ -54,6 +54,7 @@ const source = [
     "hodlNote",
     "hodlError",
     "hodlDecodeWif",
+    "hodlNetworkFamily",
     "hodlAssertPrivateKey",
     "hodlIsMiniKey",
     "hodlDecodeMiniKey",

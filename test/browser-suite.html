@@ -3551,6 +3551,43 @@
     assert(dat.includes("walletdescriptorkey"), "Private wallet.dat is missing spending key records");
   });
 
+  await test("the picker chain identity reaches addresses and wallet.dat metadata", async () => {
+    // Issue #329: signet and regtest share testnet's key versions, but the
+    // chain identity must survive into the derived wallet — regtest renders
+    // bcrt1… addresses, and the wallet.dat header carries each chain's own
+    // network magic (bytes 68-72 of the SQLite header).
+    const magicOf = async () => {
+      const datButton = await until(() => document.getElementById("download-wallet-dat"), "wallet.dat button");
+      state.lastBlob = null;
+      datButton.click();
+      const bytes = new Uint8Array(await (await until(() => state.lastBlob, "wallet.dat blob")).arrayBuffer());
+      return [...bytes.subarray(68, 72)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    };
+    const pick = async (network) => {
+      document.getElementById("network-picker-button").click();
+      document.querySelector(`#network-picker-menu [data-network="${network}"]`).click();
+      const derive = await until(() => !document.getElementById("go").disabled && document.getElementById("go"), `derive button on ${network}`);
+      derive.click();
+      await until(() => document.querySelector("#acct .account-address-lead p.mono:not(.muted)"), `${network} address lead`);
+    };
+
+    await pick("regtest");
+    const regtestLead = document.querySelector("#acct .account-address-lead p.mono:not(.muted)").textContent.trim();
+    assert(regtestLead.startsWith("bcrt1q"), `regtest derive rendered ${regtestLead.slice(0, 12)}… instead of bcrt1q…`);
+    assert(document.querySelector("#acct .kicker")?.textContent.includes("regtest"), "The result did not identify the regtest chain");
+    equal(await magicOf(), "fabfb5da", "wallet.dat on regtest did not carry the regtest network magic");
+
+    await pick("signet");
+    const signetLead = document.querySelector("#acct .account-address-lead p.mono:not(.muted)").textContent.trim();
+    assert(signetLead.startsWith("tb1q"), `signet derive rendered ${signetLead.slice(0, 12)}… instead of tb1q…`);
+    equal(await magicOf(), "0a03cf40", "wallet.dat on signet did not carry the default-signet network magic");
+
+    // Restore the testnet result the following tests were written against.
+    await pick("testnet");
+    assert(document.querySelector("#acct .account-address-lead p.mono:not(.muted)").textContent.trim().startsWith("tb1q"), "testnet restore did not render tb1q…");
+    equal(await magicOf(), "0b110907", "wallet.dat on testnet did not carry the testnet network magic");
+  });
+
   await test("versioned HTML export downloads the current self-contained release", async () => {
     const link = document.querySelector(".download-html");
     assert(link && link.download === currentFile, "HTML export filename is wrong");

@@ -222,6 +222,17 @@ fn push_varint(out: &mut Vec<u8>, value: u64) {
         .expect("writing to a Vec cannot fail");
 }
 
+/// Checked end offset for an untrusted compact-size length read at `off`.
+/// On wasm32 `usize` is 32 bits, so a u64 length above 4 GiB must be rejected
+/// rather than truncated by `as usize`, and the offset addition must not wrap
+/// (release builds overflow-check nothing). Returns `None` when the length is
+/// not representable or the span would exceed `total`.
+fn span_end(off: usize, len: u64, total: usize) -> Option<usize> {
+    let len = usize::try_from(len).ok()?;
+    let end = off.checked_add(len)?;
+    (end <= total).then_some(end)
+}
+
 // ── Raw map parsing ─────────────────────────────────────────────────────────
 
 struct RawPair {
@@ -235,21 +246,18 @@ fn read_map(bytes: &[u8], off: &mut usize) -> Result<Vec<RawPair>, String> {
         if pairs.len() >= MAX_PAIRS_PER_MAP {
             return Err("PSBT map has too many entries to inspect safely".into());
         }
-        let key_len = read_varint(bytes, off)? as usize;
+        let key_len = read_varint(bytes, off)?;
         if key_len == 0 {
             return Ok(pairs);
         }
-        if *off + key_len > bytes.len() {
-            return Err("PSBT ended inside a key".into());
-        }
-        let key = bytes[*off..*off + key_len].to_vec();
-        *off += key_len;
-        let value_len = read_varint(bytes, off)? as usize;
-        if *off + value_len > bytes.len() {
-            return Err("PSBT ended inside a value".into());
-        }
-        let value = bytes[*off..*off + value_len].to_vec();
-        *off += value_len;
+        let key_end = span_end(*off, key_len, bytes.len()).ok_or("PSBT ended inside a key")?;
+        let key = bytes[*off..key_end].to_vec();
+        *off = key_end;
+        let value_len = read_varint(bytes, off)?;
+        let value_end =
+            span_end(*off, value_len, bytes.len()).ok_or("PSBT ended inside a value")?;
+        let value = bytes[*off..value_end].to_vec();
+        *off = value_end;
         pairs.push(RawPair { key, value });
     }
 }
@@ -367,15 +375,16 @@ fn proprietary_json(keydata: &[u8]) -> Value {
     // <prefix compactsize><prefix><subtype 1 byte><keydata>
     let mut off = 0usize;
     let prefix_len = match read_varint(keydata, &mut off) {
-        Ok(n) => n as usize,
+        Ok(n) => n,
         Err(_) => return json!({ "error": "malformed proprietary key prefix" }),
     };
-    if off + prefix_len + 1 > keydata.len() {
-        return json!({ "error": "malformed proprietary key" });
-    }
-    let prefix = &keydata[off..off + prefix_len];
-    let subtype = keydata[off + prefix_len];
-    let rest = &keydata[off + prefix_len + 1..];
+    let prefix_end = match span_end(off, prefix_len, keydata.len()) {
+        Some(end) if end < keydata.len() => end,
+        _ => return json!({ "error": "malformed proprietary key" }),
+    };
+    let prefix = &keydata[off..prefix_end];
+    let subtype = keydata[prefix_end];
+    let rest = &keydata[prefix_end + 1..];
     let mut out = json!({
         "prefix": hex_encode(prefix),
         "subtype": subtype,
@@ -495,11 +504,11 @@ fn decode_pair(kind: &str, pair: &RawPair, tx: &Transaction, input_index: Option
                 }
                 let amount = u64::from_le_bytes(pair.value[..8].try_into().unwrap());
                 off += 8;
-                let script_len = read_varint(&pair.value, &mut off)? as usize;
-                if off + script_len != pair.value.len() {
+                let script_len = read_varint(&pair.value, &mut off)?;
+                if span_end(off, script_len, pair.value.len()) != Some(pair.value.len()) {
                     return Err("witness utxo has trailing bytes".into());
                 }
-                let script = Script::from_bytes(&pair.value[off..off + script_len]);
+                let script = Script::from_bytes(&pair.value[off..]);
                 json!({ "value": amount, "scriptPubKey": hex_encode(script.as_bytes()),
                     "asm": script.to_asm_string() })
             }
@@ -565,15 +574,22 @@ fn decode_pair(kind: &str, pair: &RawPair, tx: &Transaction, input_index: Option
             }
             ("input", 0x16) | ("output", 0x07) => {
                 let mut off = 0usize;
-                let count = read_varint(&pair.value, &mut off)? as usize;
-                if off + count * 32 + 4 > pair.value.len() {
+                let count = read_varint(&pair.value, &mut off)?;
+                // count * 32 must be checked too: a huge declared count wraps
+                // the multiplication before any bounds comparison can run.
+                let hashes_len = usize::try_from(count)
+                    .ok()
+                    .and_then(|n| n.checked_mul(32))
+                    .and_then(|l| off.checked_add(l))
+                    .filter(|end| end.checked_add(4).is_some_and(|e| e <= pair.value.len()));
+                let Some(hashes_end) = hashes_len else {
                     return Err("tap bip32 derivation is truncated".into());
-                }
-                let leaves: Vec<String> = pair.value[off..off + count * 32]
+                };
+                let leaves: Vec<String> = pair.value[off..hashes_end]
                     .chunks_exact(32)
                     .map(hex_encode)
                     .collect();
-                off += count * 32;
+                off = hashes_end;
                 let (fingerprint, path) = fingerprint_and_path(&pair.value[off..])?;
                 json!({ "xonly": hex_encode(keydata), "leafHashes": leaves,
                     "fingerprint": fingerprint, "path": path })
@@ -625,11 +641,10 @@ fn tap_tree_json(value: &[u8]) -> Result<Value, String> {
         let version = LeafVersion::from_consensus(value[off + 1])
             .map_err(|e| format!("bad leaf version: {e}"))?;
         off += 2;
-        let script_len = read_varint(value, &mut off)? as usize;
-        if off + script_len > value.len() {
-            return Err("tap tree leaf script is truncated".into());
-        }
-        let script = &value[off..off + script_len];
+        let script_len = read_varint(value, &mut off)?;
+        let script_end =
+            span_end(off, script_len, value.len()).ok_or("tap tree leaf script is truncated")?;
+        let script = &value[off..script_end];
         builder = builder
             .add_leaf_with_ver(depth, ScriptBuf::from_bytes(script.to_vec()), version)
             .map_err(|_| "tap tree leaves are not in DFS order".to_string())?;
@@ -639,7 +654,7 @@ fn tap_tree_json(value: &[u8]) -> Result<Value, String> {
             "script": hex_encode(script),
             "asm": Script::from_bytes(script).to_asm_string(),
         }));
-        off += script_len;
+        off = script_end;
     }
     TapTree::try_from(builder).map_err(|e| format!("tap tree is incomplete: {e}"))?;
     Ok(json!({ "leaves": leaves }))

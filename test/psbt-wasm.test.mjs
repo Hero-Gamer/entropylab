@@ -391,6 +391,49 @@ test("inspect rejects garbage, the invalid BIP-174 vector, and v2 files", () => 
   assert.throws(() => psbtBuildBytes(psbtEditorBuildDoc(doc)), /only PSBT v0 is supported/);
 });
 
+test("oversized compact-size lengths fail as parse errors, never as WASM traps (issue #323)", () => {
+  // On wasm32 `usize` is 32 bits: a u64 length truncated by `as usize` and an
+  // unchecked offset addition could wrap the bounds check and panic, reaching
+  // JavaScript as `RuntimeError: unreachable`. Every oversized length must
+  // instead surface as a controlled parse Error whose message matches.
+  const controlled = (hex, pattern) => {
+    let caught = null;
+    try {
+      psbtInspectDoc(unhex(hex));
+    } catch (error) {
+      caught = error;
+    }
+    assert.ok(caught, "expected a thrown parse error");
+    assert.ok(!(caught instanceof WebAssembly.RuntimeError), `trapped instead of erroring: ${caught}`);
+    assert.match(caught.message, pattern);
+  };
+  // magic + key length u64::MAX (the 14-byte input from the issue).
+  controlled("70736274ffffffffffffffffffff", /ended inside a key/);
+  // key length u32::MAX: fits a truncated usize but the offset addition wraps.
+  controlled("70736274ff" + "feffffffff", /ended inside a key/);
+  // key length u32::MAX + 1: loses its high bit under a truncating cast.
+  controlled("70736274ff" + "ff0000000001000000", /ended inside a key/);
+  // same three as value lengths: magic, key `00`, then the length.
+  controlled("70736274ff" + "0100" + "ffffffffffffffffff", /ended inside a value/);
+  controlled("70736274ff" + "0100" + "feffffffff", /ended inside a value/);
+  controlled("70736274ff" + "0100" + "ff0000000001000000", /ended inside a value/);
+});
+
+test("a taproot derivation pair with a huge leaf count decodes to an error, not a trap (issue #323)", () => {
+  // count * 32 must be a checked multiplication: u64::MAX leaves wraps it.
+  const tx =
+    "02000000" + "01" + "00".repeat(32) + "00000000" + "00" + "ffffffff" +
+    "01" + "0000000000000000" + "00" + "00000000";
+  const psbt =
+    "70736274ff" +
+    "0100" + (tx.length / 2).toString(16).padStart(2, "0") + tx + "00" +
+    "21" + "16" + "11".repeat(32) + "09" + "ffffffffffffffffff" + "00" +
+    "00";
+  const doc = psbtInspectDoc(unhex(psbt));
+  const pair = doc.inputs[0].find((p) => p.name === "PSBT_IN_TAP_BIP32_DERIVATION");
+  assert.match(pair.decodeError, /tap bip32 derivation is truncated/);
+});
+
 test("psbtBytesFromText accepts base64 and hex with whitespace", () => {
   assert.deepEqual(psbtBytesFromText(VALID_B64), VALID);
   assert.deepEqual(psbtBytesFromText(VALID_HEX.toUpperCase()), VALID);

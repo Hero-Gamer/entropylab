@@ -1478,6 +1478,9 @@ function hodlWalletDatDeps() {
       body.set(node.publicKey, 41);
       return body;
     },
+    // Hardened-branch private key records are derived from the account xprv.
+    deriveExtendedPrivateChild: (extendedKeyText, index) =>
+      hodlHDKey.fromExtendedKey(hodlReversionExtendedKey(extendedKeyText, hodlExtendedKeyVersions.mainnet.x.prv)).deriveChild(index).privateExtendedKey,
     publicKeyForPrivate: (secret) => hodlSecp256k1.getPublicKey(secret, true)
   };
 }

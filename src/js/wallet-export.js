@@ -14,7 +14,11 @@
 //   version / minversion / flags / bestblock / bestblock_nomerkle
 //   walletdescriptor      <id>  -> public descriptor string, creation time,
 //                                  next_index, range_start, range_end
-//   walletdescriptorcache <id> <pos 0> -> branch xpub (74 bytes, no version)
+//   walletdescriptorcache <id> <pos 0> -> parent xpub of the wildcard
+//                                  (74 bytes, no version): the branch child
+//                                  of the account key, or the descriptor
+//                                  root key itself for hardened-branch
+//                                  descriptors
 //   walletdescriptorkey   <id> <pubkey> -> DER private key + key hash (private only)
 //   activeexternalspk / activeinternalspk <type> -> descriptor id
 //
@@ -155,6 +159,20 @@ var hodlWalletExport = (() => {
     return match[1];
   };
 
+  // Path between a descriptor's extended key and its closing parens, reduced
+  // to the step above the wildcard: { branch, hardened } for "…/0/*" style
+  // tails, { branch: null } when the key is already at the branch level
+  // ("…/*", the hardened-branch watch-only layout, where the branch xpub is
+  // the descriptor root key).
+  const descriptorKeyTail = (descriptor, extendedKey) => {
+    const body = stripChecksum(descriptor);
+    const tail = body.slice(body.indexOf(extendedKey) + extendedKey.length).replace(/\)+$/, "");
+    if (tail === "/*") return { branch: null, hardened: false };
+    const branch = tail.match(/^\/(\d+)(['hH]?)\/\*$/);
+    if (!branch || Number(branch[1]) >= 0x80000000) throw new Error("wallet.dat export: unsupported descriptor path shape");
+    return { branch: Number(branch[1]), hardened: Boolean(branch[2]) };
+  };
+
   // One descriptor export unit per account branch: the watch-only descriptor
   // plus, when requested and available, its private key record material.
   const walletDescriptorUnits = (wallet, includePrivate) => {
@@ -212,6 +230,14 @@ var hodlWalletExport = (() => {
     const records = [];
     const push = (key, value) => records.push([key, value]);
 
+    // The 74-byte serialized node (no version bytes), as Core's descriptor
+    // cache stores it.
+    const extendedKeyBody = (extendedKey) => {
+      const raw = deps.base58Decode(extendedKey);
+      if (raw.length !== 78) throw new Error("wallet.dat export: unexpected extended key payload");
+      return raw.slice(4);
+    };
+
     push(streamString("version"), u32le(RECORD_VERSION));
     push(streamString("minversion"), u32le(RECORD_MINVERSION));
     // The wallet is only signing-capable if at least one descriptor got a
@@ -239,7 +265,15 @@ var hodlWalletExport = (() => {
       );
 
       const xpub = extractExtendedKey(stored, "watch-only");
-      const branchBody = deps.deriveBranchBody(xpub, unit.internal ? 1 : 0);
+      const tail = descriptorKeyTail(stored, xpub);
+      if (tail.hardened) throw new Error("wallet.dat export: hardened step after a public key");
+      // Core caches the parent key of the wildcard: the branch child for
+      // account-level descriptors ("…xpub/0/*"), or the descriptor root key
+      // itself when a hardened branch already moved the key to branch level
+      // ("…xpubBranch/*") — BIP32PubkeyProvider with an empty path caches
+      // its root key. Caching the wrong parent makes Core watch a different
+      // subtree than the descriptor's.
+      const branchBody = tail.branch === null ? extendedKeyBody(xpub) : deps.deriveBranchBody(xpub, tail.branch);
       if (branchBody.length !== 74) throw new Error("wallet.dat export: branch xpub body must be 74 bytes");
       push(
         concat(streamString("walletdescriptorcache"), id, u32le(0)),
@@ -247,7 +281,13 @@ var hodlWalletExport = (() => {
       );
 
       if (unit.privateDescriptor) {
-        const xprv = extractExtendedKey(unit.privateDescriptor, "spending");
+        let xprv = extractExtendedKey(unit.privateDescriptor, "spending");
+        // The key record must map the stored descriptor's root pubkey, or
+        // Core's GetExtKey finds no key for it and the wallet cannot sign.
+        // A hardened branch step means the stored root is the branch key, so
+        // derive the branch xprv; otherwise the account key signs as itself.
+        const privateTail = descriptorKeyTail(unit.privateDescriptor, xprv);
+        if (privateTail.hardened) xprv = deps.deriveExtendedPrivateChild(xprv, 0x80000000 + privateTail.branch);
         const raw = deps.base58Decode(xprv);
         if (raw.length !== 78 || raw[45] !== 0) throw new Error("wallet.dat export: unexpected extended private key payload");
         const secret = raw.slice(46, 78);

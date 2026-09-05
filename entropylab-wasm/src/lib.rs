@@ -1002,7 +1002,8 @@ pub unsafe extern "C" fn el_bech32m_decode(
 // and run on rust-bitcoin's own decoder.
 //
 // el_tx_parse emits a flat little-endian layout:
-//   u32 version | u8 segwit | u32 in_count | per input: 32-byte prev txid
+//   i32 version (the consensus-signed bit pattern; JavaScript reads it with
+//   getInt32) | u8 segwit | u32 in_count | per input: 32-byte prev txid
 //   (wire order) | u32 vout | u32 script_len + script | u32 sequence |
 //   u32 witness_count + per item (u32 len + bytes) || u32 out_count |
 //   per output: u64 amount | u32 script_len + script || u32 locktime

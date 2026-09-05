@@ -69,6 +69,16 @@ test("the unsigned BIP143 vectors parse and re-serialize byte-identically", () =
   const parsed = parseRawTx(BIP143_P2WPKH_UNSIGNED);
   assert.equal(parsed.version, 1);
   assert.equal(parsed.locktime, 0x11);
+  // Transaction versions are signed i32: wire ffffffff is version -1, and the
+  // serializer writes the same four bytes back (issue #336).
+  const negative = new Uint8Array(BIP143_P2WPKH_UNSIGNED);
+  negative.set([0xff, 0xff, 0xff, 0xff], 0);
+  const negParsed = parseRawTx(negative);
+  assert.equal(negParsed.version, -1);
+  assert.deepEqual(Array.from(serializeTx(negParsed)), Array.from(negative));
+  // Version 2 keeps its positive sign, and i32::MIN stays exact.
+  negative.set([0, 0, 0, 128], 0);
+  assert.equal(parseRawTx(negative).version, -2147483648);
   assert.equal(parsed.inputs.length, 2);
   assert.equal(parsed.inputs[0].sequence, 0xffffffee); // wire bytes eeffffff, little-endian
   assert.equal(parsed.outputs[0].amount, 112340000n);

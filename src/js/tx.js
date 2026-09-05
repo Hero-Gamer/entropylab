@@ -121,12 +121,19 @@ const layoutReader = (bytes) => {
     offset += 4;
     return value;
   };
+  // Transaction versions are signed (i32) at the consensus layer; the wire
+  // bytes are identical, but -1 must display as -1, not 4294967295 (#336).
+  const i32 = () => {
+    const value = view.getInt32(offset, true);
+    offset += 4;
+    return value;
+  };
   const take = (n) => {
     const out = bytes.slice(offset, offset + n);
     offset += n;
     return out;
   };
-  return { u32, take };
+  return { u32, i32, take };
 };
 
 // Serializes the { version, inputs, outputs, locktime } shape back to wire
@@ -175,7 +182,7 @@ export function parseRawTx(bytes) {
   if (code === -2) throw new Error("Transaction contains trailing bytes.");
   if (!body) throw new Error("Transaction ended early.");
   const r = layoutReader(body);
-  const version = r.u32();
+  const version = r.i32();
   const segwit = r.take(1)[0] === 1;
   const inputCount = r.u32();
   if (inputCount > 1e5) throw new Error("Transaction has too many inputs.");

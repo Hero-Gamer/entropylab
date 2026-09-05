@@ -516,11 +516,11 @@ pub unsafe extern "C" fn el_hd_ckd_priv(node: *const u8, index: u32, out: *mut u
     let result = 'ckd: {
         let il: &[u8] = &hmac[..32];
         let child_key = if il.iter().all(|b| *b == 0) {
-            // I_L == 0: BIP32 says retry with the next index, but we keep the
-            // parent key unchanged to match the previous JS implementation
-            // and to avoid rust-bitcoin's panic paths (statistically
-            // unreachable).
-            parent.private_key
+            // I_L == 0: BIP32 says proceed with the next value for i, and so
+            // do we — the retry verdict (statistically unreachable) goes to
+            // the caller's retry loop instead of inventing a node BIP32 never
+            // defines (issue #359).
+            break 'ckd 1;
         } else {
             let mut tweak = match SecretKey::from_slice(il) {
                 Ok(tweak) => tweak,
@@ -574,9 +574,9 @@ pub unsafe extern "C" fn el_hd_ckd_pub(node: *const u8, index: u32, out: *mut u8
     let hmac = Hmac::<sha512::Hash>::from_engine(engine);
     let il: &[u8] = &hmac[..32];
     let child_point = if il.iter().all(|b| *b == 0) {
-        // I_L == 0: same deliberate deviation as el_hd_ckd_priv — keep the
-        // parent point rather than retrying, and never panic.
-        parent.public_key
+        // I_L == 0: retry with the next index, exactly like el_hd_ckd_priv
+        // (statistically unreachable, but spec-defined — issue #359).
+        return 1;
     } else {
         let tweak = match SecretKey::from_slice(il) {
             Ok(tweak) => tweak,

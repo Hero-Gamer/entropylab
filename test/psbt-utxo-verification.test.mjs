@@ -5,21 +5,28 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { psbtVizHtml } from "../src/js/psbt-viz.js";
 
-const doc = (pairs) => ({
+const makeDoc = (inputPairs, outputValues = ["900"]) => ({
   psbtVersion: 0,
   tx: {
     version: 2,
     locktime: 0,
-    inputs: [{ txid: "11".repeat(32), vout: 0, scriptSig: "", sequence: 0 }],
-    outputs: [{ value: "900", scriptPubKey: "6a00", asm: "OP_RETURN" }],
+    inputs: inputPairs.map((pairs) => ({
+      txid: pairs.find((pair) => pair.name === "PSBT_IN_NON_WITNESS_UTXO")?.decoded?.txid ?? "11".repeat(32),
+      vout: 0,
+      scriptSig: "",
+      sequence: 0,
+    })),
+    outputs: outputValues.map((value) => ({ value, scriptPubKey: "6a00", asm: "OP_RETURN" })),
   },
   globals: [],
-  inputs: [pairs],
-  outputs: [[]],
+  inputs: inputPairs,
+  outputs: outputValues.map(() => []),
   totalIn: null,
-  totalOut: "900",
+  totalOut: outputValues.reduce((sum, value) => (BigInt(sum) + BigInt(value)).toString(), "0"),
   fee: { known: false },
 });
+
+const doc = (pairs) => makeDoc([pairs]);
 
 test("a matching non-witness UTXO without witness data remains unverified", () => {
   const pairs = [{
@@ -111,4 +118,46 @@ test("verified status explains that both claims agree on amount and script", () 
   ];
   const html = psbtVizHtml(doc(pairs), "mainnet");
   assert.ok(html.includes("amount and scriptPubKey independently established by agreement"), "verification basis was not exposed in the UI");
+});
+
+test("all inputs verified exposes an independently verified fee", () => {
+  const pairs = [
+    { name: "PSBT_IN_WITNESS_UTXO", decoded: { value: "1000", scriptPubKey: "51" } },
+    { name: "PSBT_IN_NON_WITNESS_UTXO", decoded: { txid: "11".repeat(32), outputCount: 1, prevout: { vout: 0, value: "1000", scriptPubKey: "51" } } },
+  ];
+  const html = psbtVizHtml(doc(pairs), "mainnet");
+  assert.ok(html.includes("100 sats"), "independently verified fee missing");
+  assert.ok(html.includes("(independently verified)"), "fee was not labeled independently verified");
+  assert.ok(!html.includes("(PSBT claim)"), "verified fee still used the PSBT-claim label");
+});
+
+test("an unverified input does not promote the fee to independently verified", () => {
+  const pairs = [
+    { name: "PSBT_IN_WITNESS_UTXO", decoded: { value: "1000", scriptPubKey: "51" } },
+  ];
+  const html = psbtVizHtml(doc(pairs), "mainnet");
+  assert.ok(!html.includes("(independently verified)"), "unverified input incorrectly promoted the fee");
+});
+
+test("a mismatched input does not promote the fee to independently verified", () => {
+  const pairs = [
+    { name: "PSBT_IN_WITNESS_UTXO", decoded: { value: "1000", scriptPubKey: "51" } },
+    { name: "PSBT_IN_NON_WITNESS_UTXO", decoded: { txid: "11".repeat(32), outputCount: 1, prevout: { vout: 0, value: "900", scriptPubKey: "51" } } },
+  ];
+  const html = psbtVizHtml(doc(pairs), "mainnet");
+  assert.ok(!html.includes("(independently verified)"), "mismatched input incorrectly promoted the fee");
+});
+
+test("multiple verified inputs contribute to the independently verified fee", () => {
+  const first = [
+    { name: "PSBT_IN_WITNESS_UTXO", decoded: { value: "1000", scriptPubKey: "51" } },
+    { name: "PSBT_IN_NON_WITNESS_UTXO", decoded: { txid: "11".repeat(32), outputCount: 1, prevout: { vout: 0, value: "1000", scriptPubKey: "51" } } },
+  ];
+  const second = [
+    { name: "PSBT_IN_WITNESS_UTXO", decoded: { value: "1000", scriptPubKey: "51" } },
+    { name: "PSBT_IN_NON_WITNESS_UTXO", decoded: { txid: "22".repeat(32), outputCount: 1, prevout: { vout: 0, value: "1000", scriptPubKey: "51" } } },
+  ];
+  const html = psbtVizHtml(makeDoc([first, second], ["1500"]), "mainnet");
+  assert.ok(html.includes("500 sats"), "fee did not aggregate all verified inputs");
+  assert.ok(html.includes("(independently verified)"), "aggregate verified fee was not labeled independently verified");
 });

@@ -11,8 +11,8 @@
 // build is kept below, marked stale. The unsigned transaction pair (global
 // key 00) is regenerated from the transaction section on every build, so it
 // is never edited directly.
-import { Address as BtcAddress, NETWORK as BTC_MAINNET, TEST_NETWORK as BTC_TESTNET, OutScript } from "@scure/btc-signer";
 import { renderSVG as renderQrSvg } from "uqr";
+import { addressFromScript } from "./addresses.js";
 import { psbtInspectDoc, psbtBuildBytes, psbtWasmReady } from "./psbt-wasm.js";
 import { comparePsbtDocs } from "./psbt-diff.js";
 import { expandableHtml, EXPAND_LIMIT, initExpandable } from "./expandable.js";
@@ -98,9 +98,13 @@ const shorten = (hex, head = 10, tail = 6) => {
   return text.length > head + tail + 2 ? text.slice(0, head) + "…" + text.slice(-tail) : text;
 };
 
+// Script → address rendering goes through rust-bitcoin (the same
+// addressFromScript the inspector uses), so the editor, the diagram, and the
+// inspector never diverge on exotic witness programs (issue #354); unknown
+// templates return null and the caller falls back to the script hex/asm.
 const addressFor = (scriptHex, network) => {
   try {
-    return BtcAddress(network === "testnet" ? BTC_TESTNET : BTC_MAINNET).encode(OutScript.decode(hexToBytes(scriptHex)));
+    return addressFromScript(hexToBytes(scriptHex), network);
   } catch {
     return null;
   }

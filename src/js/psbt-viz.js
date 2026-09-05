@@ -18,7 +18,7 @@
 // Amounts on input boxes are the PSBT's own claims (witness / non-witness
 // UTXO pairs); like the rest of the editor they are not verified against the
 // chain, and the inputs column says so.
-import { Address as BtcAddress, NETWORK as BTC_MAINNET, TEST_NETWORK as BTC_TESTNET, OutScript } from "@scure/btc-signer";
+import { addressFromScript } from "./addresses.js";
 
 const escapeHtml = (text) =>
   String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -29,9 +29,14 @@ const hexToBytes = (hex) => {
   return out;
 };
 
+// One renderer for the whole app: rust-bitcoin's Address::from_script via
+// the entropylab-wasm crate, exactly what the inspector shows — exotic
+// witness programs (off-curve v1 keys, v1 ≠ 32 bytes, v2–v16) get their
+// bech32m address here too instead of diverging to a hex fallback
+// (issue #354). Unknown templates still return null and show the script hex.
 const addressFor = (scriptHex, network) => {
   try {
-    return BtcAddress(network === "testnet" ? BTC_TESTNET : BTC_MAINNET).encode(OutScript.decode(hexToBytes(scriptHex)));
+    return addressFromScript(hexToBytes(scriptHex), network);
   } catch {
     return null;
   }

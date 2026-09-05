@@ -8,6 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { psbtInspectDoc } from "../src/js/psbt-wasm.js";
 import { psbtVizHtml } from "../src/js/psbt-viz.js";
+import { addressFromScript } from "../src/js/addresses.js";
 
 // BIP-174 valid vector 2 (same file as in test/psbt-wasm.test.mjs): two
 // inputs — a finalized P2PKH scriptSig with no amount claim and a nested
@@ -198,6 +199,29 @@ test("conflicting witness and non-witness claims render as a conflict, independe
   }), "mainnet");
   assert.ok(agreed.includes(`${sats("1000")} sats`), "agreed claim amount missing");
   assert.ok(!agreed.includes("conflicting claims"), "agreement must not warn");
+});
+
+test("exotic witness programs render as bech32m addresses, matching the inspector (issue #354)", () => {
+  // The diagram and the inspector share one renderer (rust-bitcoin via
+  // addressFromScript), so scripts that used to fall back to hex here —
+  // v1 programs ≠ 32 bytes, v2–v16 programs — show their address instead.
+  const programs = [
+    "51024e73", // BIP-433 P2A: the one exotic case that always worked
+    "5120" + "02".padStart(64, "0"), // v1, off-curve x-only key (x=2 has no curve point)
+    "5110" + "22".repeat(16), // v1, 16-byte program
+    "5202" + "3333", // v2, 2-byte program
+    "5220" + "44".repeat(32), // v2, 32-byte program
+  ];
+  const doc = syntheticDoc();
+  doc.tx.outputs = programs.map((scriptPubKey) => ({ value: "1", scriptPubKey, asm: "" }));
+  doc.outputs = programs.map(() => []);
+  const html = psbtVizHtml(doc, "mainnet");
+  assert.ok(html.includes("bc1pfeessrawgf"), "P2A address missing");
+  for (const program of programs) {
+    const address = addressFromScript(new Uint8Array(program.match(/../g).map((b) => parseInt(b, 16))), "mainnet");
+    assert.ok(address, `expected an address for ${program}`);
+    assert.ok(html.includes(address), `${address} not rendered for ${program}`);
+  }
 });
 
 test("column hint lines carry the totals, unless a claim is missing", () => {

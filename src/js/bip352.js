@@ -457,7 +457,10 @@ export function createSilentPaymentOutputs(vins, recipients, { hrp = "sp" } = {}
     }
   }
   return {
-    outputs: [...new Set(outputs)],
+    // BIP352: every generated P_i stays in the transaction — multiplicity is
+    // part of the payment request and the scan progression, so the ordered
+    // list is returned as-is and never deduplicated (issue #332).
+    outputs,
     inputPubKeys: pubkeys.map((entry) => bytesToHex(pointToCompressed(entry.point))),
     inputPrivateKeySum: bytesToHex(bigToBytes32(aSum)),
     sharedSecrets,

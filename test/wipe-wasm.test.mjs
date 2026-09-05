@@ -139,7 +139,7 @@ test("the JS facades wipe their secret byte buffers (source guard)", () => {
   assert.equal((bip39.match(/phrase\.fill\(0\)/g) || []).length, 3, "every encoded phrase buffer must be wiped");
   const bip85 = read("src/js/bip85.js");
   assert.match(bip85, /child\.wipePrivateData\(\)/, "deriveBip85Entropy must wipe the derived child node");
-  assert.ok((bip85.match(/wipeBytes\(digest\)/g) || []).length >= 4, "every BIP-85 HMAC digest must be wiped");
+  assert.ok((bip85.match(/wipeBytes\(digest\)/g) || []).length >= 6, "every BIP-85 HMAC digest must be wiped");
   const hdkey = read("src/js/hdkey.js");
   assert.match(hdkey, /if \(child !== this\) child\.wipePrivateData\(\);/, "derive must wipe intermediate path nodes");
   assert.match(hdkey, /input\.fill\(0\)/, "deriveChild must wipe the packed parent node");

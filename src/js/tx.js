@@ -67,6 +67,17 @@ export function scriptPushes(script) {
       i += length;
       continue;
     }
+    if (op === 0x4e) {
+      // PUSHDATA4: without this branch the scanner walks inside the pushed
+      // data and can surface DER-looking bytes as phantom signatures.
+      if (i + 4 > script.length) break;
+      const length = (script[i] | (script[i + 1] << 8) | (script[i + 2] << 16) | (script[i + 3] << 24)) >>> 0;
+      i += 4;
+      if (i + length > script.length) break;
+      pushes.push(script.slice(i, i + length));
+      i += length;
+      continue;
+    }
   }
   return pushes;
 }

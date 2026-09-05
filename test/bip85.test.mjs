@@ -188,3 +188,18 @@ test("wiping a result discards secret bytes", () => {
   assert.notEqual(hexCoder.encode(copy), hexCoder.encode(derived.entropy));
   wipeBytes(copy);
 });
+
+test("password results hold a wipeable copy, not the live HMAC (audit #365)", () => {
+  // The password apps encode all 64 HMAC bytes; the digest is wiped at derive
+  // time like the other four apps, and the result's own copy still wipes.
+  for (const derive of [derivePwdBase64, derivePwdBase85]) {
+    let derived = derive(root, { index: 0 });
+    assert.equal(derived.entropy.length, 64);
+    wipeBip85Result(derived);
+    assert.equal(derived.secret, "");
+    assert.equal(derived.entropyHex, "");
+    assert.ok(derived.entropy.every((b) => b === 0));
+  }
+  // And the digest wipe at derive time must not clobber the result.
+  assert.equal(derivePwdBase64(root, { length: 21, index: 0 }).secret, "dKLoepugzdVJvdL56ogNV");
+});

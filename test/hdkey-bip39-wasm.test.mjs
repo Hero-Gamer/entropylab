@@ -59,6 +59,18 @@ test("BIP32 differential: private and public derivation match @scure/bip32", () 
   }
 });
 
+test("BIP32 path grammar accepts h, H, and ' as the hardened marker (audit #365)", () => {
+  // The UI path parsers accept all three notations and normalize to ' before
+  // calling derive; a direct call with h or H must not throw.
+  const root = HDKey.fromMasterSeed(hexToBytes("000102030405060708090a0b0c0d0e0f"));
+  const prime = root.derive("m/84'/0'/0'");
+  for (const path of ["m/84h/0h/0h", "m/84H/0H/0H", "m/84h/0'/0H"]) {
+    const node = root.derive(path);
+    assert.equal(node.privateExtendedKey, prime.privateExtendedKey, path);
+  }
+  assert.throws(() => root.derive("m/84p"), /invalid child index/);
+});
+
 test("BIP32 watch-only: neutered derivation matches scure on normal paths", () => {
   const oursRoot = HDKey.fromMasterSeed(hexToBytes("000102030405060708090a0b0c0d0e0f"));
   const theirsRoot = ScureHDKey.fromMasterSeed(hexToBytes("000102030405060708090a0b0c0d0e0f"));

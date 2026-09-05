@@ -91,6 +91,18 @@ test("brain-wallet lab hashes exact UTF-8 text as 256-bit BIP39 entropy", () => 
   assert.match(result.warnings.join(" "), /not mean it is the same wallet/);
 });
 
+test("the lab note says when the hashed text was trimmed (audit #365)", () => {
+  // The HD derive path hashes the passphrase after trimming when the trim
+  // option is on, so the note must not claim the exact text was hashed.
+  const exact = lab.hodlBrainLabEntropy("phrase");
+  assert.match(exact.notes.join(" "), /SHA-256 of the exact UTF-8 text/);
+  const trimmed = lab.hodlBrainLabEntropy("phrase", true);
+  assert.match(trimmed.notes.join(" "), /with boundary whitespace trimmed/);
+  assert.doesNotMatch(trimmed.notes.join(" "), /exact UTF-8 text/);
+  // The HD derive call passes the live trim flag through to the note.
+  assert.match(app, /hodlBrainLabEntropy\(hodlBrainWalletPassphrase\(value, hodlBrainWalletTrimEnabled\(\)\), hodlBrainWalletTrimEnabled\(\)\)/);
+});
+
 test("brain-wallet lab rejects empty text and keeps private-key hashing separate", () => {
   assert.equal(lab.hodlBrainLabEntropy("").ok, false);
   const text = "correct horse battery staple";

@@ -1983,8 +1983,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .recovery-download-disclosure {
   flex: 1 1 100%; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5;
 }
-.wallet-dat-birthday { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
-.wallet-dat-birthday select { width: auto; margin: 0; }
+.wallet-dat-birthday { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; flex-wrap: wrap; }
+/* The birthday select's longest option is wider than a narrow phone layout;
+   let it shrink and clip — the full wording is in the help line below. */
+.wallet-dat-birthday select { width: auto; margin: 0; min-width: 0; max-width: 100%; }
 .wallet-dat-birthday-help { flex: 1 1 100%; margin: 0; font-size: 12px; }
 .wallet-dat-birthday-help code { font-family: var(--mono); }
 .recovery-download-disclosure strong { color: var(--fg); }

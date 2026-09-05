@@ -242,11 +242,13 @@ const expectedUnits = (wallet, includePrivate) => {
   const units = [];
   if (!wallet || wallet.kind !== "hd" || !Array.isArray(wallet.accounts)) return units;
   for (const account of wallet.accounts) {
-    if (!account?.receiveDescriptor || !account?.changeDescriptor) continue;
     const type = OUTPUT_TYPES[account.def?.id];
     if (type === undefined) continue;
     for (const branch of [0, 1]) {
-      const descriptor = branch === 0 ? account.receiveDescriptor : account.changeDescriptor;
+      const descriptor = branch === 0 ? account?.receiveDescriptor : account?.changeDescriptor;
+      // Per-branch coverage (issue #366): a wallet may have derived only one
+      // branch; whichever branches exist are exported.
+      if (!descriptor) continue;
       const privateDescriptor = branch === 0 ? account.receiveDescriptorPriv : account.changeDescriptorPriv;
       units.push({
         type,
@@ -522,8 +524,29 @@ const CREATION_TIMES = [0, 1, 1700000000, 0xffffffff];
       note("skipped:unknown-type");
     }
     if (chance(0.15)) {
-      accounts.push({ def: { id: types[0] }, receiveDescriptor: accounts[0].receiveDescriptor });
-      note("skipped:missing-descriptor");
+      // An account with no descriptors at all is still skipped entirely.
+      accounts.push({ def: { id: types[0] }, receiveDescriptor: null, changeDescriptor: null });
+      note("skipped:no-descriptors");
+    }
+    if (chance(0.15)) {
+      // A single-branch account of a type not already present exports its one
+      // branch (issue #366): partial coverage, not a hidden export.
+      const spare = TYPE_ORDER.find((type) => !types.includes(type));
+      if (spare) {
+        const poolEntry = POOL[coin][PURPOSE[spare]];
+        const letter = DEFAULT_LETTER[spare] === "x" && family === "test" ? "t"
+          : DEFAULT_LETTER[spare] === "y" && family === "test" ? "u"
+          : DEFAULT_LETTER[spare] === "z" && family === "test" ? "v"
+          : DEFAULT_LETTER[spare];
+        const xpub = extendedKey(poolEntry.node, network, letter, false);
+        const origin = `[00000000/${PURPOSE[spare]}h/${coin}h/0h]`;
+        accounts.push({
+          def: { id: spare },
+          receiveDescriptor: `${WRAP[spare](`${origin}${xpub}/0/*`)}#${descriptorChecksum(WRAP[spare](`${origin}${xpub}/0/*`))}`,
+          changeDescriptor: null,
+        });
+        note("partial:single-branch");
+      }
     }
     corpus.push({ wallet: { kind: "hd", network, accounts }, includePrivate, creationTime: pick(CREATION_TIMES), label });
   }
@@ -569,7 +592,7 @@ test("the corpus covers every generator flavor", () => {
     "origin:standard", "origin:none", "origin:bare", "origin:single", "origin:mixed", "origin:uppercase", "origin:deep",
     "odd-version-letter", "mutated-header", "no-checksum",
     "private-export", "watch-only-export", "private-descriptor", "private-missing",
-    "skipped:unknown-type", "skipped:missing-descriptor",
+    "skipped:unknown-type", "skipped:no-descriptors", "partial:single-branch",
     "rows:branches", "rows:branches-partial", "rows:legacy", "rows:none", "rows:invalid-filtered", "rows:clamp",
     "digit-h-tail",
   ]) {

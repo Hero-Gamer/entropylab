@@ -831,7 +831,7 @@ function hodlAccountResult(node, definition, network, count, options = {}) {
   };
 }
 function hodlRootWalletResult(root, network, source, accountIndex, masterFingerprint, accounts, coinType = hodlCoinTypeFromNetwork(network)) {
-  return {
+  let result = {
     kind: "hd",
     network,
     coinType,
@@ -851,6 +851,14 @@ function hodlRootWalletResult(root, network, source, accountIndex, masterFingerp
     warnings: source.warnings,
     accounts
   };
+  // A coin type beyond 0 (Bitcoin mainnet) or 1 (every testnet) serializes
+  // with mainnet version bytes: that is another coin's address format, and
+  // the result must say so at the output, not only in a help label
+  // (issue #357).
+  if (result.coinType !== 0 && result.coinType !== 1) {
+    result.warnings = [...(result.warnings ?? []), hodlNote("Coin type {coinType} is not Bitcoin mainnet (0) or testnet (1). The addresses, WIF keys, and SLIP-132 versions below serialize with MAINNET version bytes — they are not necessarily valid for the coin you may intend.", { coinType: result.coinType })];
+  }
+  return result;
 }
 function hodlImportedScriptDefinition(parsed) {
   if (parsed.family === "y") return hodlScriptTypes.find((definition) => definition.id === "bip49");

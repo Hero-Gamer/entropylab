@@ -178,6 +178,31 @@ test("descriptorDerive verifies a supplied #checksum and refuses multipath", () 
   assert.throws(() => descriptorDerive(body, 0, "regtest"), /Unknown Bitcoin network/);
 });
 
+test("descriptorDerive refuses hardened steps on public keys instead of trapping", async () => {
+  // rust-miniscript escalates public keys with hardened steps to a panic,
+  // which with panic=abort is an unrecoverable WASM trap; the facade rejects
+  // them first, matching Bitcoin Core's acceptance rules.
+  const XPUB = "xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ";
+  for (const descriptor of [
+    `wpkh(${XPUB}/0')`,
+    `wpkh(${XPUB}/0h/*)`,
+    `wpkh(${XPUB}/*h)`,
+    `wpkh(${XPUB}/*')`,
+    `wsh(sortedmulti(2,${XPUB}/0'/*,${XPUB}/*))`,
+    `pk(${bytesToHex(G_COMPRESSED)}/0')`,
+    `tr(${bytesToHex(G_COMPRESSED.slice(1))}/0h)`,
+  ]) assert.throws(() => descriptorDerive(descriptor, 0, "mainnet"), /hardened/, descriptor);
+  // The same xpub without hardened steps derives normally, including one
+  // whose base58 body itself ends in <digit>h before the path separator.
+  const XPUB_TAIL_4H = "xpub6DGDSTSv42ve3BBRALC4UVi3LdaoQjA9R2yV9RSDojTRKQTK5Jk73WKqm6v392eeF3Lxawf8gHiBpD5xBDx7HYvbkLoZ6e1Emu9fvW2M24h";
+  assert.match(descriptorDerive(`wpkh(${XPUB}/0/*)`, 0, "mainnet").address, /^bc1q/);
+  assert.match(descriptorDerive(`wpkh(${XPUB_TAIL_4H}/0/*)`, 0, "mainnet").address, /^bc1q/);
+  // Private keys are exempt: their hardened steps are derived privately.
+  const { HDKey } = await import("../src/js/hdkey.js");
+  const root = HDKey.fromMasterSeed(new Uint8Array(32).fill(7));
+  assert.match(descriptorDerive(`wpkh(${root.privateExtendedKey}/0'/*)`, 0, "mainnet").address, /^bc1q/);
+});
+
 test("base58check and coders match @scure/base", async () => {
   const { createBase58check, hex: scureHex, base64: scureBase64 } = await import("@scure/base");
   const { sha256 } = await import("../src/js/hashes.js");

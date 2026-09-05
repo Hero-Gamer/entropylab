@@ -78,14 +78,22 @@ const claimedPrevout = (pairs) => {
   return witnessClaim ?? nonWitnessClaim ?? null;
 };
 
-// Signing progress of one input, read off its map's pair names.
+const SIGNING_PAIR_NAMES = ["PSBT_IN_PARTIAL_SIG", "PSBT_IN_TAP_KEY_SIG", "PSBT_IN_TAP_SCRIPT_SIG"];
+const FINAL_PAIR_NAMES = ["PSBT_IN_FINAL_SCRIPTSIG", "PSBT_IN_FINAL_SCRIPTWITNESS"];
+
+// Signing progress of one input. A pair name only states the field's
+// presence; malformed bytes keep the name even when the typed decode failed,
+// so "signed"/"finalized" requires a successful decode and a decode failure
+// reads as malformed, never as progress (issue #328).
 const signingStatus = (pairs) => {
-  const names = pairs.map((pair) => pair.name);
-  if (names.includes("PSBT_IN_FINAL_SCRIPTSIG") || names.includes("PSBT_IN_FINAL_SCRIPTWITNESS")) {
-    return { text: "finalized", tone: "psbted-note-ok" };
-  }
-  const sigs = names.filter((name) => ["PSBT_IN_PARTIAL_SIG", "PSBT_IN_TAP_KEY_SIG", "PSBT_IN_TAP_SCRIPT_SIG"].includes(name)).length;
-  return sigs ? { text: `${sigs} signature${sigs === 1 ? "" : "s"}`, tone: "" } : { text: "unsigned", tone: "muted" };
+  const decodedOk = (pair) => pair.decoded && !pair.decodeError;
+  const finals = pairs.filter((pair) => FINAL_PAIR_NAMES.includes(pair.name));
+  if (finals.some(decodedOk)) return { text: "finalized", tone: "psbted-note-ok" };
+  const sigs = pairs.filter((pair) => SIGNING_PAIR_NAMES.includes(pair.name) && decodedOk(pair)).length;
+  if (sigs) return { text: `${sigs} signature${sigs === 1 ? "" : "s"}`, tone: "" };
+  const malformed = finals.length + pairs.filter((pair) => SIGNING_PAIR_NAMES.includes(pair.name)).length;
+  if (malformed) return { text: "malformed signing field", tone: "psbted-note-bad" };
+  return { text: "unsigned", tone: "muted" };
 };
 
 // sats null with every input claimed marks an invalid fee: the document's

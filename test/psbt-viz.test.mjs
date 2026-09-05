@@ -87,8 +87,9 @@ test("OP_RETURN outputs get the data-carrier tag instead of an address", () => {
   assert.ok(!html.includes("psbted-viz-out"), "an OP_RETURN box must not pose as an address");
 });
 
-test("signing progress counts partial and taproot signatures", () => {
-  const pairs = (names) => names.map((name) => ({ key: "02", value: "", name }));
+test("signing progress counts successfully decoded partial and taproot signatures (issue #328)", () => {
+  // A pair name alone no longer counts: the typed decode must have succeeded.
+  const pairs = (names) => names.map((name) => ({ key: "02", value: "", name, decoded: { signature: "ab" } }));
   const doc = syntheticDoc({
     inputs: [[], pairs(["PSBT_IN_PARTIAL_SIG", "PSBT_IN_PARTIAL_SIG"]), pairs(["PSBT_IN_TAP_KEY_SIG"]), pairs(["PSBT_IN_FINAL_SCRIPTWITNESS"])],
   });
@@ -98,6 +99,26 @@ test("signing progress counts partial and taproot signatures", () => {
   assert.ok(html.includes("2 signatures"), "partial signatures not counted");
   assert.ok(html.includes("1 signature"), "taproot key signature not counted");
   assert.ok(html.includes("finalized"), "final witness not reported");
+});
+
+test("malformed signing fields read as malformed, never as signed or finalized (issue #328)", () => {
+  // Names survive failed decodes; the status must not. A field that fails its
+  // typed decode is presence without validity.
+  const bad = (name) => ({ key: "02", value: "", name, decoded: null, decodeError: "truncated" });
+  const doc = syntheticDoc({
+    inputs: [
+      [bad("PSBT_IN_PARTIAL_SIG")],
+      [bad("PSBT_IN_FINAL_SCRIPTSIG")],
+      // A good signature alongside a malformed one still counts the good one.
+      [{ key: "02", value: "", name: "PSBT_IN_PARTIAL_SIG", decoded: { signature: "ab" } }, bad("PSBT_IN_TAP_SCRIPT_SIG")],
+    ],
+  });
+  doc.tx.inputs = [0, 1, 2].map((vout) => ({ txid: "11".repeat(32), vout, scriptSig: "", sequence: 0 }));
+  const html = psbtVizHtml(doc, "mainnet");
+  assert.ok(!html.includes("finalized"), "malformed final scriptSig was labeled finalized");
+  assert.ok(!html.includes("2 signatures"), "malformed signatures were counted");
+  assert.equal(html.match(/malformed signing field/g).length, 2, "malformed fields not flagged");
+  assert.ok(html.includes("1 signature"), "the one decodable signature should still count");
 });
 
 test("the selected box is marked open and expanded, the rest are not", () => {

@@ -582,6 +582,35 @@ test("the builder enforces the same 5 MB cap as the inspector (issue #355)", () 
   assert.throws(() => rebuild(over), /rebuilt PSBT is too large/);
 });
 
+test("malformed signing fields keep their names but carry decode errors, never a decode (issue #328)", () => {
+  // One input map with an empty partial signature, a 63-byte taproot key
+  // signature, a truncated final witness, and a decodable final scriptSig.
+  const tx =
+    "02000000" + "01" + "00".repeat(32) + "00000000" + "00" + "ffffffff" +
+    "01" + "0000000000000000" + "0151" + "00000000";
+  const psbt =
+    "70736274ff" + "0100" + "3d" + tx + "00" +
+    "22" + "02" + "02".repeat(33) + "00" + // partial sig, empty value
+    "01" + "13" + "3f" + "5a".repeat(63) + // taproot key sig, 63 bytes
+    "01" + "08" + "01" + "03" + // final witness: count 3, then nothing
+    "01" + "07" + "01" + "51" + // final scriptSig: OP_TRUE, decodes
+    "00" + "00";
+  const doc = psbtInspectDoc(unhex(psbt));
+  const byName = (name) => doc.inputs[0].find((p) => p.name === name);
+  for (const [name, error] of [
+    ["PSBT_IN_PARTIAL_SIG", /partial signature is empty/],
+    ["PSBT_IN_TAP_KEY_SIG", /taproot signature must be 64 or 65 bytes/],
+    ["PSBT_IN_FINAL_SCRIPTWITNESS", /final witness does not decode/],
+  ]) {
+    assert.equal(byName(name).decoded, null, `${name} must not decode`);
+    assert.match(byName(name).decodeError, error, `${name} must name its decode failure`);
+  }
+  // Any byte string is a script, so a final scriptSig "decodes" — presence
+  // plus parseability is all the diagram claims for it.
+  assert.ok(byName("PSBT_IN_FINAL_SCRIPTSIG").decoded);
+  assert.ok(!byName("PSBT_IN_FINAL_SCRIPTSIG").decodeError);
+});
+
 test("psbtBytesFromText accepts base64 and hex with whitespace", () => {
   assert.deepEqual(psbtBytesFromText(VALID_B64), VALID);
   assert.deepEqual(psbtBytesFromText(VALID_HEX.toUpperCase()), VALID);

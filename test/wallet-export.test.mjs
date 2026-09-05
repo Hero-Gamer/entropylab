@@ -180,7 +180,33 @@ const deriveBranchBody = (xpubText, branch) => {
 };
 const publicKeyForPrivate = (secret) => serPub(pointMul(BigInt("0x" + bytesToHex(secret))));
 
-const deps = { sha256, checksum: descriptorChecksum, base58Decode: b58checkDecode, deriveBranchBody, publicKeyForPrivate };
+// Reference private derivation (test-local), for hardened-branch fixtures.
+const hmac512 = (key, data) => new Uint8Array(createHmac("sha512", key).update(data).digest());
+const masterFromSeed = (seed) => {
+  const I = hmac512(new TextEncoder().encode("Bitcoin seed"), seed);
+  return { secret: new Uint8Array(I.subarray(0, 32)), chain: new Uint8Array(I.subarray(32)), depth: 0, fp: new Uint8Array(4), child: 0 };
+};
+const pubkeyOf = (node) => serPub(pointMul(BigInt("0x" + bytesToHex(node.secret))));
+const ckdPriv = (node, index) => {
+  const indexBytes = bigintBytes(BigInt(index >>> 0), 4);
+  const data = index >= 0x80000000
+    ? Uint8Array.from([0, ...node.secret, ...indexBytes])
+    : Uint8Array.from([...pubkeyOf(node), ...indexBytes]);
+  const I = hmac512(node.chain, data);
+  const secret = bigintBytes((BigInt("0x" + bytesToHex(node.secret)) + BigInt("0x" + bytesToHex(I.subarray(0, 32)))) % ORDER_N, 32);
+  return { secret, chain: new Uint8Array(I.subarray(32)), depth: node.depth + 1, fp: ripemd160(sha256(pubkeyOf(node))).subarray(0, 4), child: index >>> 0 };
+};
+const serializeNode = (node, version, isPrivate) => b58checkEncode(Uint8Array.from([
+  ...bigintBytes(BigInt(version), 4), node.depth, ...node.fp, ...bigintBytes(BigInt(node.child), 4), ...node.chain,
+  ...(isPrivate ? [0, ...node.secret] : pubkeyOf(node)),
+]));
+const deriveExtendedPrivateChild = (xprvText, index) => {
+  const raw = b58checkDecode(xprvText);
+  const child = ckdPriv({ secret: raw.slice(46, 78), chain: raw.slice(13, 45), depth: raw[4], fp: raw.slice(5, 9), child: 0 }, index);
+  return serializeNode(child, Buffer.from(raw.slice(0, 4)).readUInt32BE(0), true);
+};
+
+const deps = { sha256, checksum: descriptorChecksum, base58Decode: b58checkDecode, deriveBranchBody, deriveExtendedPrivateChild, publicKeyForPrivate };
 
 // --- reference wallets ------------------------------------------------------
 
@@ -324,6 +350,66 @@ test("accounts without private material stay watch-only in a private export", ()
   const fallback = moduleRecords(WATCH_ONLY_WALLET, true);
   assert.deepEqual([...fallback.keys()].sort(), [...watchOnly.keys()].sort());
   for (const key of watchOnly.keys()) assert.equal(fallback.get(key), watchOnly.get(key));
+});
+
+// Regression for the Harden branch option: the watch-only descriptor is
+// "wpkh([fp/84h/0h/0h/0h]xpubBranch/*)" — the branch xpub IS the descriptor
+// root key. Core caches the root key itself when the path after it is empty
+// (BIP32PubkeyProvider) and looks the root pubkey up in walletdescriptorkey.
+// Deriving branch 0/1 of that key for the cache made Core watch a different
+// subtree, and recording the account key left the spending variant unable to
+// sign (root pubkey lookup misses in m_map_keys).
+test("hardened-branch descriptors cache and sign with the descriptor root key", () => {
+  const seed = new Uint8Array(32);
+  seed[31] = 1;
+  const master = masterFromSeed(seed);
+  const fp = bytesToHex(ripemd160(sha256(pubkeyOf(master))).subarray(0, 4));
+  let account = master;
+  for (const step of [84, 0, 0]) account = ckdPriv(account, (step | 0x80000000) >>> 0);
+  const accountXprv = serializeNode(account, 0x0488ade4, true);
+  const branch = (b) => ckdPriv(account, (b | 0x80000000) >>> 0);
+  const branchXpub = (b) => serializeNode(branch(b), 0x0488b21e, false);
+  const descriptorFor = (b) => {
+    const body = `wpkh([${fp}/84h/0h/0h/${b}h]${branchXpub(b)}/*)`;
+    return `${body}#${descriptorChecksum(body)}`;
+  };
+  const privateDescriptorFor = (b) => {
+    const body = `wpkh([${fp}/84h/0h/0h]${accountXprv}/${b}'/*)`;
+    return `${body}#${descriptorChecksum(body)}`;
+  };
+  const wallet = {
+    kind: "hd",
+    network: "mainnet",
+    accounts: [{
+      def: { id: "bip84" },
+      receiveDescriptor: descriptorFor(0),
+      changeDescriptor: descriptorFor(1),
+      receiveDescriptorPriv: privateDescriptorFor(0),
+      changeDescriptorPriv: privateDescriptorFor(1),
+    }],
+  };
+
+  // Watch-only: the cache parent is the branch xpub itself (raw 74-byte body).
+  const watch = moduleRecords(wallet, false);
+  const cachePrefix = "15" + "77616c6c657464657363726970746f726361636865"; // \x15walletdescriptorcache
+  const caches = [...watch.entries()].filter(([key]) => key.startsWith(cachePrefix)).map(([, value]) => value);
+  assert.equal(caches.length, 2);
+  for (const b of [0, 1]) {
+    const expected = "4a" + bytesToHex(b58checkDecode(branchXpub(b)).slice(4));
+    assert.ok(caches.includes(expected), `cache parent for branch ${b} is the descriptor root key itself`);
+  }
+
+  // Spending: each key record maps the branch pubkey to the branch secret.
+  const spending = moduleRecords(wallet, true);
+  const keyRecords = [...spending.entries()].filter(([key]) => key.includes("77616c6c657464657363726970746f726b6579"));
+  assert.equal(keyRecords.length, 2);
+  for (const b of [0, 1]) {
+    const pubkey = bytesToHex(pubkeyOf(branch(b)));
+    const record = keyRecords.find(([key]) => key.endsWith("21" + pubkey));
+    assert.ok(record, `key record for branch ${b} names the branch pubkey`);
+    const secret = bytesToHex(branch(b).secret);
+    assert.ok(record[1].startsWith("d6") && record[1].includes(secret), `key record for branch ${b} carries the branch secret`);
+  }
 });
 
 test("generated watch-only wallet.dat verifies with real SQLite", { skip: !PYTHON_SQLITE }, () => {

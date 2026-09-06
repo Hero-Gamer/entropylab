@@ -1,9 +1,9 @@
 //! Offline BIP-322 verification for EntropyLab.
-//! Cryptographic verification is delegated to rust-bitcoin/bip322 0.0.11.
+//! Cryptographic verification is delegated to rust-bitcoin/bip322 0.0.12.
 
 use bip322::{
     tagged_hash, verify_full_encoded, verify_legacy_encoded, verify_pof_encoded,
-    verify_simple_encoded, BIP322_TAG, PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE,
+    verify_simple_encoded, BIP322_TAG, PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE, Verification,
 };
 use bitcoin::{psbt::raw::Key, psbt::Psbt, Address};
 use serde_json::{json, Value};
@@ -30,6 +30,7 @@ fn result_json(
     challenge_type: Value,
     time_locks: Option<Value>,
     pof_claims: Option<Value>,
+    pof_message: Option<Value>,
     error: Option<&str>,
 ) -> String {
     let mut result = serde_json::Map::new();
@@ -43,6 +44,9 @@ fn result_json(
     if let Some(value) = pof_claims {
         result.insert("pof_claims".into(), value);
     }
+    if let Some(value) = pof_message {
+        result.insert("signed_message_0x09".into(), value);
+    }
     if let Some(value) = error {
         result.insert("error".into(), json!(value));
     }
@@ -55,6 +59,7 @@ fn invalid(prefix: &str, error: &str) -> String {
         prefix,
         Value::Null,
         Value::Null,
+        None,
         None,
         None,
         Some(error),
@@ -78,7 +83,6 @@ fn classify_challenge(address: &Address) -> &'static str {
     }
 }
 
-/// BIP-322 proof-of-funds applies this restriction to the PSBT 0x09 message.
 fn valid_pof_message(message: &str) -> Result<(), &'static str> {
     let bytes = message.as_bytes();
     if bytes.len() < 2 || bytes.len() > MAX_MESSAGE_BYTES {
@@ -113,25 +117,59 @@ fn parse_signature(signature: &str) -> (&str, &str, bool) {
     }
 }
 
-fn time_lock_state(tx: &bitcoin::Transaction) -> (bool, Value) {
-    let locktime = tx.lock_time.to_consensus_u32();
-    let absolute_active = tx.is_lock_time_enabled() && locktime != 0;
-    let relative: Vec<u32> = tx
-        .input
-        .iter()
-        .filter(|input| input.sequence.is_relative_lock_time())
-        .map(|input| input.sequence.to_consensus_u32())
-        .filter(|seq| *seq & 0x0000ffff != 0)
-        .collect();
-    let active = absolute_active || !relative.is_empty();
-    (
-        active,
-        json!({
-            "nLockTime": locktime,
-            "nSequence": relative,
-            "active": active
-        }),
-    )
+fn verification_state(verification: &Verification) -> (&'static str, Option<Value>) {
+    match verification {
+        Verification::Inconclusive => ("inconclusive", None),
+        Verification::Valid { time, age } => {
+            let lock_time = time.to_consensus_u32();
+            let relative = age.to_consensus_u32();
+            let active = !time.is_zero() || age.is_relative_lock_time();
+            (
+                if active { "inconclusive" } else { "valid" },
+                Some(json!({
+                    "nLockTime": lock_time,
+                    "nSequence": relative,
+                    "active": active,
+                    "T": lock_time,
+                    "S": relative
+                })),
+            )
+        }
+    }
+}
+
+fn pof_details(psbt: &Psbt) -> (Option<String>, Vec<Value>) {
+    let message_key = Key {
+        type_value: PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE,
+        key: vec![],
+    };
+    let message = psbt
+        .unknown
+        .get(&message_key)
+        .and_then(|bytes| std::str::from_utf8(bytes).ok())
+        .map(str::to_owned);
+
+    let mut claims = Vec::with_capacity(psbt.inputs.len().saturating_sub(1));
+    for (index, input) in psbt.inputs.iter().enumerate().skip(1) {
+        let outpoint = &psbt.unsigned_tx.input[index].previous_output;
+        let amount_sat = input
+            .witness_utxo
+            .as_ref()
+            .map(|txout| txout.value.to_sat())
+            .or_else(|| {
+                input
+                    .non_witness_utxo
+                    .as_ref()
+                    .and_then(|tx| tx.output.get(outpoint.vout as usize))
+                    .map(|txout| txout.value.to_sat())
+            });
+        claims.push(json!({
+            "outpoint": outpoint.to_string(),
+            "amount_sat": amount_sat,
+            "label": "unverified claim from finalized PSBT — does NOT prove unspent, completeness, exclusive ownership"
+        }));
+    }
+    (message, claims)
 }
 
 fn verify(message: &str, address_text: &str, signature: &str) -> String {
@@ -162,6 +200,7 @@ fn verify(message: &str, address_text: &str, signature: &str) -> String {
                 None,
                 None,
                 None,
+                None,
             );
         }
     }
@@ -172,105 +211,75 @@ fn verify(message: &str, address_text: &str, signature: &str) -> String {
         }
     }
 
-    let verified = match requested_prefix {
-        "smp" => verify_simple_encoded(address_text, message, encoded).is_ok(),
-        "ful" => verify_full_encoded(address_text, message, encoded).is_ok(),
-        "pof" => {
-            let bytes = match base64::Engine::decode(
-                &base64::engine::general_purpose::STANDARD,
-                encoded,
-            ) {
-                Ok(bytes) => bytes,
-                Err(_) => return invalid("pof", "invalid proof-of-funds PSBT encoding"),
-            };
-            let psbt = match Psbt::deserialize(&bytes) {
-                Ok(psbt) => psbt,
-                Err(_) => return invalid("pof", "invalid proof-of-funds PSBT"),
-            };
-            let message_key = Key {
-                type_value: PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE,
-                key: vec![],
-            };
-            let Some(generic_message) = psbt.unknown.get(&message_key) else {
-                return invalid("pof", "proof-of-funds PSBT has no generic signed message (0x09)");
-            };
-            if generic_message.as_slice() != message.as_bytes() {
-                return invalid(
-                    "pof",
-                    "PSBT generic signed message (0x09) does not match the supplied message",
-                );
-            }
-            let mut prevouts = Vec::with_capacity(psbt.inputs.len().saturating_sub(1));
-            for (index, input) in psbt.inputs.iter().enumerate().skip(1) {
-                if let Some(txout) = &input.witness_utxo {
-                    prevouts.push(txout.clone());
-                    continue;
-                }
-                let Some(tx) = &input.non_witness_utxo else {
-                    return invalid(
-                        "pof",
-                        "proof-of-funds input lacks a witness_utxo or non_witness_utxo",
-                    );
-                };
-                let outpoint = &psbt.unsigned_tx.input[index].previous_output;
-                let Some(txout) = tx.output.get(outpoint.vout as usize) else {
-                    return invalid("pof", "non_witness_utxo does not contain its referenced output");
-                };
-                prevouts.push(txout.clone());
-            }
-            verify_pof_encoded(address_text, message, encoded).is_ok()
-        }
-        _ => false,
+    let verification = match requested_prefix {
+        "smp" => verify_simple_encoded(address_text, message, encoded),
+        "ful" => verify_full_encoded(address_text, message, encoded),
+        "pof" => verify_pof_encoded(address_text, message, encoded),
+        _ => return invalid(requested_prefix, "unsupported BIP-322 signature variant"),
     };
 
-    if !verified {
-        return result_json(
-            "invalid",
-            requested_prefix,
-            json!(message_hash),
-            json!(challenge_type),
-            None,
-            if requested_prefix == "pof" {
-                Some(json!({
-                    "verified_amounts": false,
-                    "claim_source": "finalized_psbt",
-                    "unspent": "not_checked"
-                }))
-            } else {
-                None
-            },
-            Some("BIP-322 proof verification failed"),
-        );
-    }
-
-    let locks = if requested_prefix == "ful" {
-        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, encoded)
-            .ok()
-            .and_then(|bytes| Psbt::deserialize(&bytes).ok())
-            .map(|psbt| time_lock_state(&psbt.unsigned_tx))
+    let pof_data = if requested_prefix == "pof" {
+        let bytes = match base64::Engine::decode(
+            &base64::engine::general_purpose::STANDARD,
+            encoded,
+        ) {
+            Ok(bytes) => bytes,
+            Err(_) => return invalid("pof", "invalid proof-of-funds PSBT encoding"),
+        };
+        match Psbt::deserialize(&bytes) {
+            Ok(psbt) => {
+                let (message_0x09, claims) = pof_details(&psbt);
+                if message_0x09.as_deref() != Some(message) {
+                    return invalid(
+                        "pof",
+                        "PSBT generic signed message (0x09) does not match the supplied message",
+                    );
+                }
+                Some((message_0x09, claims))
+            }
+            Err(_) => return invalid("pof", "invalid proof-of-funds PSBT"),
+        }
     } else {
         None
     };
-    let state = locks
-        .as_ref()
-        .filter(|(active, _)| *active)
-        .map_or("valid", |_| "inconclusive");
+
+    let verification = match verification {
+        Ok(value) => value,
+        Err(_) => {
+            return result_json(
+                "invalid",
+                requested_prefix,
+                json!(message_hash),
+                json!(challenge_type),
+                None,
+                pof_data.as_ref().map(|(_, claims)| json!({
+                    "verified_amounts": false,
+                    "claim_source": "finalized_psbt",
+                    "unspent": "not_checked",
+                    "claims": claims,
+                    "privacy_warning": "PSBT data may reveal UTXOs, scripts, pubkeys, and derivation hints; do not paste it into online services."
+                })),
+                pof_data.as_ref().and_then(|(message, _)| message.as_ref().map(|value| json!(value))),
+                Some("BIP-322 proof verification failed"),
+            );
+        }
+    };
+
+    let (state, time_locks) = verification_state(&verification);
     result_json(
         state,
         requested_prefix,
         json!(message_hash),
         json!(challenge_type),
-        locks.map(|(_, value)| value),
-        if requested_prefix == "pof" {
-            Some(json!({
-                "verified_amounts": false,
-                "claim_source": "finalized_psbt",
-                "unspent": "not_checked",
-                "privacy_warning": "PSBT data may reveal UTXOs, scripts, pubkeys, and derivation hints; do not paste it into online services."
-            }))
-        } else {
-            None
-        },
+        time_locks,
+        pof_data.as_ref().map(|(_, claims)| json!({
+            "verified_amounts": false,
+            "claim_source": "finalized_psbt",
+            "unspent": "not_checked",
+            "claims": claims,
+            "privacy_warning": "PSBT data may reveal UTXOs, scripts, pubkeys, and derivation hints; do not paste it into online services."
+        })),
+        pof_data.as_ref().and_then(|(message, _)| message.as_ref().map(|value| json!(value))),
         None,
     )
 }

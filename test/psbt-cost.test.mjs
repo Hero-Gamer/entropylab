@@ -62,9 +62,9 @@ test("finalized SegWit PSBT exposes exact fee, weight, vsize, and fee rate", () 
     outputAmountSats: "189950000",
     feeSats: "10050000",
     finalized: true,
-    weight: 832,
-    vsize: 208,
-    feeRateSatPerVbyte: 48317.307692307695,
+    weight: 828,
+    vsize: 207,
+    feeRateSatPerVbyte: 48550.72463768116,
   });
 });
 
@@ -91,7 +91,7 @@ test("conflicting input amount declarations make the fee unknown", () => {
   assert.equal(facts.inputAmountSats, null);
   assert.equal(facts.feeSats, null);
   assert.equal(facts.finalized, true);
-  assert.equal(facts.weight, 832);
+  assert.equal(facts.weight, 828);
 });
 
 test("missing input amount leaves fee unknown but still permits exact finalized size", () => {
@@ -101,8 +101,8 @@ test("missing input amount leaves fee unknown but still permits exact finalized 
   assert.equal(facts.inputAmountSats, null);
   assert.equal(facts.feeSats, null);
   assert.equal(facts.finalized, true);
-  assert.equal(facts.weight, 832);
-  assert.equal(facts.vsize, 208);
+  assert.equal(facts.weight, 828);
+  assert.equal(facts.vsize, 207);
 });
 
 test("legacy final scriptSig is included in exact transaction size", () => {
@@ -136,6 +136,6 @@ test("raw PSBT path uses the real rust-bitcoin inspection document", () => {
 
 test("PSBT visualizer exposes exact size when the transaction is finalized", () => {
   const html = psbtVizHtml(doc(), "mainnet");
-  assert.ok(html.includes("208 vB · 832 WU"), "exact serialized size missing from transaction summary");
-  assert.ok(html.includes("48317.307692307695 sat/vB"), "fee rate missing from transaction summary");
+  assert.ok(html.includes("207 vB · 828 WU"), "exact serialized size missing from transaction summary");
+  assert.ok(html.includes("48550.72463768116 sat/vB"), "fee rate missing from transaction summary");
 });

@@ -18,6 +18,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Repair temporary UI patch script
+        run: node scripts/303-ui-patch-fix.mjs
       - name: Apply temporary UI patch
         run: node scripts/303-ui-patch.mjs
       - name: Apply temporary Rust compatibility patch

@@ -10,6 +10,10 @@ const P2WPKH = "bc1qqthe0hz8klx90e7stf6shclhsvqd5ly96pn53v";
 const P2WPKH_MESSAGE = "2V6TUTMSH4VQ3Z7WZWKYD7DFNH";
 const P2WPKH_SIGNATURE = "AkgwRQIhALC6hdfxNy1n45d7UXSskRBdfZW0Al259E1kDMpipdYkAiAJPfZqb+WurZuf1apU5xeE6Igui9dvt5tihQLDvxlY1AEhAqbnruyo677ktQjio7XOchO3w51Dh9AbRVngha5jtNfT";
 
+const P2WSH = "bc1qw6g0rgrpuxvj4edkwtvzpmt3c5m08mhp8nuk3mrk4erufvlczp5ssdscjd";
+const P2WSH_MESSAGE = "G7ZTXXOVJFHGDD6XYJAGBAMT5A";
+const P2WSH_SIGNATURE = "BABIMEUCIQCKl1f9Cj26k0fFWE48+O4ibhYJYPytbDZWJRaaG9BybwIgCbk+3BViWkpuu2RI+41dwtlQ/m/01G860pTFCzDFfokBSDBFAiEA0O77DJsaM7IO+Ht06sp3umzXB64CNNOwf2isZuPfdmwCIGlggOwRSkXsqlPhE1gMdd5hf7ycL33Orfrr4v/XnMGSAUdSIQNsu/OwZurHvJMoiJoSAmmCHLoqIc5Wblh+rek+7rhASCECgYVkUspeAxwRfM6v4GRBhN/gGxTfpPqZuOlBIYZxTJZSrg==";
+
 const FULL_ADDRESS = "bc1qrqtlzcq86850yzgsyq9sssawx2qxlx5yq3xpkd";
 const FULL_MESSAGE = "KLE5MMJBTNF4AVZXIO3GIL5UWF";
 const FULL_SIGNATURE = "AgAAAAABAUrfzHHOLAKmgCIFSTT3krp+cQxj1BDPBN4GBg3tRmFXAAAAAADgBwAAAQAAAAAAAAAAAWoCSDBFAiEAjYj85zyhQKa9DbMO0reDwdhkNwKJkF3q2qFcijXDgMUCIAaQ75s3fwqrCeYIUJugLvhxZFxQIVquGN90vIKCW3QLASEDMurnDzvc0zABUwVwCADfGXoDx/M3SQnYt7e3IHDoU3PgBwAA";
@@ -45,6 +49,13 @@ test("BIP-322 simple verifies an official P2WPKH vector", async () => {
   assert.equal(verified.state, "valid");
   assert.equal(verified.prefix, "smp");
   assert.equal(verified.challenge_type, "p2wpkh");
+});
+
+test("BIP-322 simple verifies an official P2WSH vector", async () => {
+  const verified = await result(P2WSH_MESSAGE, P2WSH, P2WSH_SIGNATURE);
+  assert.equal(verified.state, "valid");
+  assert.equal(verified.prefix, "smp");
+  assert.equal(verified.challenge_type, "p2wsh");
 });
 
 test("BIP-322 full verifies an official PSBT vector", async () => {

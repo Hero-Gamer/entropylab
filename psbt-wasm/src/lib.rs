@@ -24,6 +24,7 @@
 //! above 2^53 would silently round to the nearest f64 and an edited document
 //! would re-serialize the rounded amount (issue #351).
 
+mod bip322_verifier;
 use bitcoin::bip32::{ChildNumber, DerivationPath, Xpub};
 use bitcoin::consensus::encode::{self, Decodable, Encodable};
 use bitcoin::locktime::absolute::LockTime;

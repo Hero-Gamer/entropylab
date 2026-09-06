@@ -117,6 +117,28 @@ test("the editor renders the structural controls for inputs and outputs", () => 
   assert.match(editor, /draft\.tx\.outputs\.splice\(index, 1\);\s*\n\s*draft\.outputs\.splice\(index, 1\)/);
 });
 
+test("the pair-delete handler binds pair buttons only, not the element deletes", () => {
+  // Regression: the row deletes (data-txin-del/data-txout-del) and the
+  // diagram close button share the psbted-del styling class with the pair
+  // deletes. Binding the pair-delete handler to the bare class double-fired
+  // it with an undefined data-kind — its TypeError surfaced as a spurious
+  // error banner and the freshly built result was falsely marked stale.
+  const editor = read("src/js/psbt-editor.js");
+  assert.match(editor, /querySelectorAll\("\.psbted-del\[data-kind\]"\)/);
+  assert.doesNotMatch(editor, /querySelectorAll\("\.psbted-del"\)/);
+});
+
+test("a rejected structural edit rolls back the signing anchor and stale flag with the document", () => {
+  // Regression (issues #325, #360): rebuild() clears the signing anchor
+  // before its build can fail, so a rollback that restores only the document
+  // left a signed document anchored to nothing — the next accepted
+  // transaction edit kept signing pairs committing to the pre-edit
+  // transaction — and the restored, building document was marked stale.
+  const editor = read("src/js/psbt-editor.js");
+  assert.match(editor, /const backup = doc, backupAnchor = pristineTx, wasStale = stale;/);
+  assert.match(editor, /doc = backup;\s*\n\s*pristineTx = backupAnchor;\s*\n\s*stale = wasStale;/);
+});
+
 test("dropSigningPairs removes exactly the transaction-committing fields (issues #325, #360)", () => {
   const doc = fixtureDoc();
   doc.inputs[0].push(

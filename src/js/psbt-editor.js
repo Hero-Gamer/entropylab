@@ -809,6 +809,15 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
       }
     }
     if (!selector) return null;
+    // The output sats field exists twice per output — in the diagram box and
+    // in the transaction table row — so a bare data-attribute selector is
+    // ambiguous and querySelector would always return the diagram's field,
+    // stealing focus mid-edit. Qualify a duplicated selector by the edited
+    // element's classes.
+    if (out.querySelectorAll(selector).length > 1) {
+      const classes = [...el.classList];
+      if (classes.length) selector = `${el.tagName.toLowerCase()}.${classes.join(".")}${selector}`;
+    }
     return { selector, start: el.selectionStart, end: el.selectionEnd };
   };
 
@@ -862,16 +871,26 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
   // Structural edits (add/remove pair) validate immediately: apply to a copy,
   // rebuild, and only keep the change when rust-bitcoin accepts the result.
   const mutate = (fn) => {
-    const backup = doc;
+    const backup = doc, backupAnchor = pristineTx, wasStale = stale;
     const draft = structuredClone(doc);
     try {
       fn(draft);
       doc = draft;
       rebuild();
     } catch (exception) {
+      // Roll back the whole pre-edit state, not just the document. rebuild()
+      // cleared the signing anchor before its build failed, but the restored
+      // document still carries its signing pairs — without the anchor the
+      // next accepted transaction edit would keep pairs committing to the
+      // pre-edit transaction (issues #325, #360). The restored fields are
+      // exactly the last valid build (or the poison they already were), so
+      // the rejection must not mark them stale either.
       doc = backup;
+      pristineTx = backupAnchor;
+      stale = wasStale;
       render();
-      showBuildError(exception);
+      setError(exception.message || String(exception));
+      renderResult();
     }
   };
 
@@ -1016,7 +1035,12 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
         liveRebuild();
       })
     );
-    out.querySelectorAll(".psbted-del").forEach((button) =>
+    // Pair-delete buttons only: the tx-element deletes and the diagram close
+    // button share the psbted-del styling class but carry no data-kind and
+    // have their own handlers — binding them here double-fires a pair delete
+    // with no kind (a TypeError surfaces as a spurious error banner and the
+    // fresh build is falsely marked stale).
+    out.querySelectorAll(".psbted-del[data-kind]").forEach((button) =>
       button.addEventListener("click", () => {
         const { kind, map, pair } = button.dataset;
         mutate((draft) => {

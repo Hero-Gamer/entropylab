@@ -2474,6 +2474,62 @@
     assert(!document.getElementById("psbted-copy-b64").disabled, "copy stayed disabled after a clean rebuild");
     assert(!document.getElementById("psbted-download").disabled, "download stayed disabled after a clean rebuild");
     assert(document.querySelector("#psbted-qr-code svg"), "QR did not resume after a clean rebuild");
+    // Structural edits round-trip too: add an input and an output, delete
+    // them again. The row delete buttons share the psbted-del styling class
+    // with the pair deletes; the pair handler must not fire for them (it
+    // threw and falsely marked the fresh build stale).
+    document.querySelector("[data-tx-add='input']").click();
+    await until(() => document.querySelectorAll("[data-txin]").length === 3, "added input row");
+    equal(document.getElementById("psbted-error").textContent, "", "add input failed");
+    document.querySelector("[data-tx-add='output']").click();
+    await until(() => document.querySelectorAll(".psbted-txouts tbody tr").length === 3, "added output row");
+    equal(document.getElementById("psbted-error").textContent, "", "add output failed");
+    document.querySelector("[data-txout-del='2']").click();
+    await until(() => document.querySelectorAll(".psbted-txouts tbody tr").length === 2, "deleted output row");
+    equal(document.getElementById("psbted-error").textContent, "", "output delete raised a spurious error");
+    assert(!document.getElementById("psbted-stale-note"), "a clean delete was marked stale");
+    document.querySelector("[data-txin-del='2']").click();
+    await until(() => document.querySelectorAll("[data-txin]").length === 2, "deleted input row");
+    equal(document.getElementById("psbted-error").textContent, "", "input delete raised a spurious error");
+    assert(!document.getElementById("psbted-stale-note"), "a clean delete was marked stale");
+    assert(document.getElementById("psbted-result-b64").value.startsWith("cHNidP8B"), "result missing after structural edits");
+    // Focus stays in the table's sats field while typing: the diagram's sats
+    // field shares the data-txout-val attribute, so the restore selector
+    // must be qualified by the edited element, not resolve to the diagram.
+    const tableValue = document.querySelector("td input.psbted-num[data-txout-val='0']");
+    tableValue.focus();
+    input(tableValue, "199903000");
+    await until(() => outText().includes("199903000") || document.getElementById("psbted-error").textContent, "live rebuild from the table field");
+    equal(document.getElementById("psbted-error").textContent, "", "table-field rebuild failed");
+    equal(document.activeElement, document.querySelector("td input.psbted-num[data-txout-val='0']"), "focus left the table field while typing");
+    // A rejected structural edit rolls back the WHOLE pre-edit state (issues
+    // #325/#360): the signing anchor and the signing pairs survive together,
+    // so a later accepted transaction edit still drops the pairs, and the
+    // restored fields are the last valid build — not stale. The PSBT below
+    // is test/fixtures/psbt/p2wpkh-1in-2out.b64 minus output 1 (removed at
+    // the pipeline level, so input 0 keeps its partial signature).
+    const signedOneOut = "cHNidP8BAFICAAAAARERERERERERERERERERERERERERERERERERERERERERAAAAAAD/////AcBcFQAAAAAAFgAUBq/Ua839Iu+UrBIqoR8kEkSjfswAAAAATwEEiLIeAhI0VngAAACAzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMwCeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gMEjRWeFQAAIAAAACAAAEBHwA/FwAAAAAAFgAUdR526BmRltRUlBxF0bOjI/FDO9YiAgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmEcwRAIgERERERERERERERERERERERERERERERERERERERERERECICIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAQEDBAEAAAAiBgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmBgSNFZ4VAAAgAAAAIAAAACAAAAAAAAAAAAAAA==";
+    input(box, signedOneOut);
+    document.getElementById("psbted-load").click();
+    await until(() => document.getElementById("psbted-result-b64")?.value.startsWith("cHNidP8B"), "signed one-output PSBT loads and builds");
+    assert(vizText().includes("1 signature"), "partial signature missing after load");
+    const signedBuild = document.getElementById("psbted-result-b64").value;
+    // Deleting the only output is rejected (bad-txns-vout-empty); the
+    // rollback restores the building document, its pairs, and its anchor.
+    document.querySelector("[data-txout-del='0']").click();
+    await until(() => document.getElementById("psbted-error").textContent, "last-output delete rejection");
+    assert(document.getElementById("psbted-error").textContent.includes("vout-empty"), "unexpected rejection for the last-output delete");
+    equal(document.querySelectorAll(".psbted-txouts tbody tr").length, 1, "the rejected delete removed the output row");
+    assert(vizText().includes("1 signature"), "signing pairs lost on rollback");
+    assert(!document.getElementById("psbted-stale-note"), "the restored, building document was marked stale");
+    assert(!document.getElementById("psbted-copy-b64").disabled, "export disabled on the restored, building document");
+    equal(document.getElementById("psbted-result-b64").value, signedBuild, "the restored document is not the last valid build");
+    // The anchor survived the rollback: an accepted transaction edit drops
+    // the pairs that committed to the pre-edit transaction.
+    input(document.getElementById("psbted-tx-locktime"), "500000");
+    await until(() => document.getElementById("psbted-error").textContent === "" && document.getElementById("psbted-result-b64").value !== signedBuild, "locktime rebuild after rollback");
+    assert(!vizText().includes("signature"), "stale partial signature survived a transaction edit after a rejected structural edit");
+    assert(!document.getElementById("psbted-stale-note"), "stale note after a clean rebuild");
     input(box, '<img src=x onerror="window.__browserTestInjected=true">');
     document.getElementById("psbted-load").click();
     await until(() => document.getElementById("psbted-error").textContent, "editor rejection");

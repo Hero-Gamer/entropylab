@@ -2136,3 +2136,14 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   background: color-mix(in oklab, var(--accent) 9%, var(--surface)); color: inherit;
   font: inherit; line-height: 1.2; outline: 0;
 }
+
+/* BIP-322 verifier state and detail styling. */
+.bip322-state { display: inline-flex; align-items: center; width: fit-content; margin: 1rem 0 .75rem; padding: .35rem .65rem; border: 1px solid var(--border); border-radius: 999px; font-weight: 700; }
+.bip322-state[data-state="valid"] { border-color: var(--ok); color: var(--ok); }
+.bip322-state[data-state="inconclusive"] { border-color: var(--warn); color: var(--warn); }
+.bip322-state[data-state="invalid"] { border-color: var(--danger); color: var(--danger); }
+.bip322-details { display: grid; grid-template-columns: minmax(9rem, max-content) 1fr; gap: .4rem .9rem; margin: .75rem 0; }
+.bip322-details dt { font-weight: 700; color: var(--muted); }
+.bip322-details dd { margin: 0; overflow-wrap: anywhere; }
+.bip322-warning { margin: .75rem 0; padding: .75rem; border: 1px solid var(--warn); border-radius: 10px; }
+.bip322-claims { margin: .75rem 0; padding-left: 1.25rem; }

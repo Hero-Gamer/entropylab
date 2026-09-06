@@ -44,6 +44,7 @@ import { wordlist as bip39English } from "./bip39-english.js";
 // The PSBT editor (its own workspace tab) drives the rust-bitcoin WASM
 // bindings in psbt-wasm.js; heavy lifting lives in psbt-editor.js.
 import { initPsbtEditor } from "./psbt-editor.js";
+import { verifyBip322 } from "./bip322.js";
 import { hodlTapKeySigs, hodlTapScriptSigs, hodlTapSighashProblems } from "./psbt-schnorr.js";
 import { initQrReferences } from "./qr-references.js";
 import { renderSVG as hodlUqrRenderSvg } from "uqr";
@@ -8440,6 +8441,89 @@ function hodlUseActiveKeyForPsbt() {
   hodlPsbtSource = "active";
   hodlPsbtSessionSpec = state.name ? { key: "Session key from {name}. Kept in page memory only.", vars: { name: state.name } } : { key: "Session key from the active key. Kept in page memory only." };
 }
+function hodlInitBip322() {
+  let message = document.getElementById("bip322-message");
+  let address = document.getElementById("bip322-address");
+  let signature = document.getElementById("bip322-signature");
+  let verify = document.getElementById("bip322-verify");
+  let result = document.getElementById("bip322-result");
+  if (!message || !address || !signature || !verify || !result) return;
+  let render = (data) => {
+    result.replaceChildren();
+    let state = document.createElement("p");
+    state.className = "bip322-state";
+    state.textContent = data.state === "inconclusive" && data.time_locks?.active ? "Inconclusive (T,S)" : data.state === "valid" ? "Valid" : data.state === "inconclusive" ? "Inconclusive" : "Invalid";
+    state.dataset.state = data.state;
+    result.append(state);
+    if (data.error) {
+      let error = document.createElement("p");
+      error.className = "err";
+      error.textContent = data.error;
+      result.append(error);
+    }
+    let fields = [
+      ["Prefix", data.prefix],
+      ["Message hash", data.message_hash],
+      ["Challenge type", data.challenge_type],
+      ["0x09 message", data.signed_message_0x09],
+      ["nLockTime (T)", data.time_locks?.T ?? data.time_locks?.nLockTime],
+      ["nSequence (S)", data.time_locks?.S ?? data.time_locks?.nSequence],
+    ];
+    let dl = document.createElement("dl");
+    dl.className = "bip322-details";
+    for (let [label, value] of fields) {
+      if (value == null) continue;
+      let dt = document.createElement("dt");
+      dt.textContent = label;
+      let dd = document.createElement("dd");
+      dd.textContent = String(value);
+      dl.append(dt, dd);
+    }
+    result.append(dl);
+    if (data.prefix === "legacy" && data.state === "valid") {
+      let banner = document.createElement("aside");
+      banner.className = "bip322-warning";
+      banner.textContent = "Legacy P2PKH-only, deprecated — BIP-137 / Electrum style, not generic";
+      result.append(banner);
+    }
+    if (data.prefix === "pof" && data.state !== "invalid") {
+      let banner = document.createElement("aside");
+      banner.className = "bip322-warning";
+      banner.textContent = "Cryptographically valid offline — unspent NOT checked, cluster would leak if pasted online";
+      result.append(banner);
+      if (Array.isArray(data.pof_claims?.claims)) {
+        let claims = document.createElement("ul");
+        claims.className = "bip322-claims";
+        for (let claim of data.pof_claims.claims) {
+          let item = document.createElement("li");
+          let amount = claim.amount_sat == null ? "amount unavailable" : String(claim.amount_sat) + " sats";
+          item.textContent = String(claim.outpoint) + " · " + amount + " · " + String(claim.label);
+          claims.append(item);
+        }
+        result.append(claims);
+      }
+    }
+  };
+  verify.onclick = async () => {
+    result.replaceChildren();
+    let busy = document.createElement("p");
+    busy.className = "muted";
+    busy.textContent = "Verifying locally…";
+    result.append(busy);
+    verify.disabled = true;
+    try {
+      render(await verifyBip322(message.value, address.value, signature.value));
+    } catch (error) {
+      result.replaceChildren();
+      let failure = document.createElement("p");
+      failure.className = "err";
+      failure.textContent = error instanceof Error ? error.message : String(error);
+      result.append(failure);
+    } finally {
+      verify.disabled = false;
+    }
+  };
+}
 function hodlInitPsbt() {
   let go = document.getElementById("psbt-go");
   if (!go) return;
@@ -11296,14 +11380,16 @@ function hodlShowWorkspace(id) {
   document.getElementById("bip85-manager").hidden = id !== "bip85";
   document.getElementById("msig-manager").hidden = id !== "msig";
   document.getElementById("sp-manager").hidden = id !== "sp";
+  document.getElementById("bip322-manager").hidden = id !== "bip322";
   document.getElementById("calc-card").hidden = true;
   document.getElementById("msig-card").hidden = true;
   document.getElementById("bip85-card").hidden = id !== "bip85";
   document.getElementById("sp-card").hidden = id !== "sp";
+  document.getElementById("bip322-card").hidden = id !== "bip322";
   document.getElementById("vanity-card").hidden = id !== "vanity";
   // The context block sits outside its tool's card, so it is shown and hidden
   // with the card rather than by it.
-  ["bip85", "sp", "msig", "calc", "vanity"].forEach((tool) => {
+  ["bip85", "sp", "msig", "calc", "vanity", "bip322"].forEach((tool) => {
     document.getElementById(`${tool}-tool-intro`).hidden = id !== tool;
   });
   hodlSyncPsbtTool();
@@ -11427,7 +11513,7 @@ function hodlInitDefaultTabStates() {
 }
 // Each tool carries a full name and a short one. Narrow screens show the
 // short form so more tools stay on screen instead of off the right edge.
-var hodlWorkspaceTabs = [["calc", "Keys", "Keys"], ["vanity", "Vanity", "Vanity"], ["bip85", "BIP-85", "BIP85"], ["msig", "Multi Signature", "MultiSig"], ["sp", "Silent Payments", "SP"], ["psbt", "PSBT", "PSBT"], ["journal", "Journal", "Journal"]];
+var hodlWorkspaceTabs = [["calc", "Keys", "Keys"], ["vanity", "Vanity", "Vanity"], ["bip85", "BIP-85", "BIP85"], ["msig", "Multi Signature", "MultiSig"], ["sp", "Silent Payments", "SP"], ["psbt", "PSBT", "PSBT"], ["bip322", "BIP-322", "BIP322"], ["journal", "Journal", "Journal"]];
 var hodlPsbtTool = "nonce";
 function hodlSyncPsbtTool() {
   let visible = hodlWorkspace === "psbt",
@@ -13716,6 +13802,7 @@ function hodlInitWorkspace() {
   hodlInitJournalNotebook();
   hodlInitMsig();
   hodlInitPsbt();
+  hodlInitBip322();
   initPsbtEditor({ networkDefault: () => hodlNetworkDefault });
   hodlInitBip85();
   hodlInitVanity();

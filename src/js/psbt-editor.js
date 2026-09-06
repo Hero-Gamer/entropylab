@@ -302,11 +302,13 @@ export const dropSigningPairs = (doc) => {
 const UTXO_CLAIM_TYPES = new Set(["00", "01"]);
 
 // Everything the input maps' signatures commit to, as one comparable string:
-// the unsigned transaction plus each input's UTXO declarations (key and value
-// only — the decoded/name fields are presentation).
+// the unsigned transaction plus each input's UTXO declarations. Both sides
+// pass through the build projection — psbtEditorBuildDoc's tx, key/value-only
+// pairs — so presentation fields (output asm, pair name/decoded) cannot move
+// the anchor without changing a byte the builder would write.
 export const signingAnchor = (doc) =>
   JSON.stringify([
-    doc.tx,
+    psbtEditorBuildDoc(doc).tx,
     doc.inputs.map((map) => map.filter((pair) => UTXO_CLAIM_TYPES.has(pair.key.slice(0, 2))).map((pair) => [pair.key, pair.value])),
   ]);
 
@@ -885,13 +887,20 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
   // rebuild, and only keep the change when rust-bitcoin accepts the result.
   const mutate = (fn) => {
     const backup = doc;
+    const backupAnchor = pristineTx;
     const draft = structuredClone(doc);
     try {
       fn(draft);
       doc = draft;
       rebuild();
     } catch (exception) {
+      // Roll the anchor back with the document: rebuild() drops the draft's
+      // signing pairs and clears the anchor before the fallible build, so
+      // restoring the signed backup without its anchor would let a later
+      // UTXO/transaction edit keep signatures it no longer commits to
+      // (issue #325).
       doc = backup;
+      pristineTx = backupAnchor;
       render();
       showBuildError(exception);
     }

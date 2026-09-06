@@ -173,6 +173,63 @@ test("the signing anchor covers UTXO declarations, not just the transaction (iss
   }
 });
 
+test("the signing anchor ignores decorative transaction fields (issue #325)", () => {
+  const doc = fixtureDoc();
+  const anchor = signingAnchor(doc);
+  // `asm` is derived from scriptPubKey at inspection and the builder never
+  // reads it, so editing only asm must not move the anchor — the same rule
+  // the pair maps already apply to their name/decoded fields.
+  doc.tx.outputs[0].asm = "OP_TRUE";
+  assert.equal(signingAnchor(doc), anchor);
+  // What the builder does read (value, scriptPubKey) still moves it.
+  doc.tx.outputs[0].scriptPubKey = "51";
+  assert.notEqual(signingAnchor(doc), anchor);
+});
+
+test("a rejected structural edit rolls the signing anchor back with the document (issue #325)", () => {
+  // Mirrors the editor's rebuild()/mutate() closures. rebuild() drops the
+  // draft's signing pairs and clears the anchor before the fallible build;
+  // when the build rejects, mutate() must restore the anchor together with
+  // the document, or a later UTXO edit would keep signatures it no longer
+  // commits to while export re-enables.
+  let doc = fixtureDoc();
+  let pristineTx = null;
+  const rebuildDoc = () => {
+    if (pristineTx !== null && signingAnchor(doc) !== pristineTx) {
+      dropSigningPairs(doc);
+      pristineTx = null;
+    }
+    doc = psbtInspectDoc(psbtBuildBytes(psbtEditorBuildDoc(doc)));
+    pristineTx = signingAnchor(doc);
+  };
+  const mutateDoc = (fn) => {
+    const backup = doc;
+    const backupAnchor = pristineTx;
+    const draft = structuredClone(doc);
+    try {
+      fn(draft);
+      doc = draft;
+      rebuildDoc();
+    } catch {
+      doc = backup;
+      pristineTx = backupAnchor;
+    }
+  };
+  rebuildDoc(); // the load flow anchors the fresh document
+  const anchor = pristineTx;
+  // A duplicate UTXO declaration is rejected by rust-bitcoin; the failed
+  // rebuild had already cleared the anchor before the build threw.
+  const claim = doc.inputs[0].find((pair) => pair.key === "01").value;
+  mutateDoc((draft) => draft.inputs[0].push({ key: "01", value: claim }));
+  assert.equal(pristineTx, anchor, "rollback restores the anchor");
+  assert.ok(doc.inputs[0].some((pair) => pair.key.slice(0, 2) === "02"), "rollback restores the signature");
+  // The follow-up UTXO-claim edit must still drop the signature.
+  const pair = doc.inputs[0].find((p) => p.key === "01");
+  pair.value = pair.value.slice(0, -1) + (pair.value.endsWith("0") ? "1" : "0");
+  rebuildDoc();
+  assert.ok(!doc.inputs[0].some((p) => p.key.slice(0, 2) === "02"), "the post-rollback edit drops the signature");
+});
+
 test("the editor drops signing material when the anchor changes (issues #325, #360)", () => {
   const editor = read("src/js/psbt-editor.js");
   // The rebuild compares against the transaction and UTXO declarations the
@@ -180,6 +237,10 @@ test("the editor drops signing material when the anchor changes (issues #325, #3
   assert.match(editor, /pristineTx !== null && signingAnchor\(doc\) !== pristineTx/);
   assert.match(editor, /dropSigningPairs\(doc\)/);
   assert.match(editor, /pristineTx = signingAnchor\(doc\)/);
+  // mutate() snapshots the anchor with the document and restores both on
+  // rollback, so a rejected structural edit cannot orphan the signatures.
+  assert.match(editor, /const backup = doc;\s*\n\s*const backupAnchor = pristineTx;/);
+  assert.match(editor, /doc = backup;\s*\n\s*pristineTx = backupAnchor;/);
   // Loads and wipes re-anchor so a fresh document's pairs are never stripped.
   assert.ok((editor.match(/pristineTx = null/g) || []).length >= 3, "load, load-failure, and wipe all reset the anchor");
 });

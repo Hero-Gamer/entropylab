@@ -22,8 +22,12 @@ use miniscript::descriptor::{checksum, DescriptorPublicKey, DescriptorSecretKey,
 use miniscript::{Descriptor, ForEachKey};
 use std::str::FromStr;
 
+/// App-built descriptors are under 2 KB; capping the input bounds parse
+/// recursion depth ahead of rust-miniscript's own limits.
 const MAX_DESCRIPTOR_BYTES: usize = 16_384;
 
+/// Parses a BIP380 key expression (hex key, xpub/xprv with optional origin
+/// and path, or WIF) and reduces secrets to their public half.
 fn parse_key_expression(text: &str) -> Result<DescriptorPublicKey, String> {
     match DescriptorSecretKey::from_str(text) {
         Ok(secret) => secret
@@ -33,6 +37,9 @@ fn parse_key_expression(text: &str) -> Result<DescriptorPublicKey, String> {
     }
 }
 
+/// The compressed encoding of one sortedmulti_a participant's key at child
+/// `index`: fixed path steps are applied, and a trailing `/*` derives the
+/// child at `index`.
 fn participant_public_key(key: &DescriptorPublicKey, index: u32) -> Result<[u8; 33], String> {
     match key {
         DescriptorPublicKey::Single(single) => match single.key {
@@ -43,6 +50,7 @@ fn participant_public_key(key: &DescriptorPublicKey, index: u32) -> Result<[u8; 
                 Ok(pk.inner.serialize())
             }
             SinglePubKey::XOnly(xpk) => {
+                // An x-only key is its even-y lift (BIP340), compressed form.
                 let mut bytes = [0u8; 33];
                 bytes[0] = 0x02;
                 bytes[1..].copy_from_slice(&xpk.serialize());
@@ -54,13 +62,13 @@ fn participant_public_key(key: &DescriptorPublicKey, index: u32) -> Result<[u8; 
             for step in xkey.derivation_path.as_ref() {
                 node = node
                     .ckd_pub(ctx(), *step)
-                    .map_err(|_| "cannot derive a hardened step from an xpub participant".into())?;
+                    .map_err(|_| "cannot derive a hardened step from an xpub participant".to_string())?;
             }
             match xkey.wildcard {
                 Wildcard::None => {}
                 Wildcard::Unhardened => {
-                    let child = ChildNumber::from_normal_idx(index)
-                        .map_err(|_| "derivation index out of range".to_string())?;
+                    let child =
+                        ChildNumber::from_normal_idx(index).map_err(|_| "derivation index out of range".to_string())?;
                     node = node
                         .ckd_pub(ctx(), child)
                         .map_err(|_| "participant key derivation failed".to_string())?;
@@ -86,6 +94,8 @@ fn hex_lower(bytes: &[u8]) -> String {
     out
 }
 
+/// Splits an argument list on its top-level commas (origin brackets carry
+/// no commas, but the depth counting keeps the rule obvious).
 fn split_top_level(args: &str) -> Vec<&str> {
     let mut out = Vec::new();
     let mut depth = 0usize;
@@ -105,6 +115,10 @@ fn split_top_level(args: &str) -> Vec<&str> {
     out
 }
 
+/// sortedmulti_a(k, keys…) — the tapscript sorted multisig — is not
+/// implemented by rust-miniscript (multi_a is, sortedmulti only for
+/// sh/wsh), so the keys are derived here, sorted as x-only bytes, and the
+/// expression rewritten to the multi_a it denotes.
 fn rewrite_sorted_multi_a(args: &str, index: u32) -> Result<String, String> {
   let parts = split_top_level(args);
   if parts.len() < 2 {
@@ -135,6 +149,10 @@ fn rewrite_sorted_multi_a(args: &str, index: u32) -> Result<String, String> {
   Ok(out)
 }
 
+/// Replaces every `sortedmulti_a(...)` in `body` with the multi_a it denotes
+/// (keys derived at child `index`, then sorted as x-only bytes). The fragment
+/// must sit in argument position (after '(', ',', '{', or ':'); the resulting
+/// string is validated by rust-miniscript afterwards.
 fn substitute_sorted_multi_a(body: &str, index: u32) -> Result<String, String> {
     let mut out = body.to_owned();
     let mut cursor = 0usize;
@@ -179,7 +197,7 @@ struct Derived {
 
 fn derive_miniscript(body: &str, index: u32, network: Network) -> Result<Derived, String> {
     let (descriptor, secrets) = Descriptor::parse_descriptor(ctx(), body).map_err(|e| format!("invalid descriptor: {}", e))?;
-    drop(secrets);
+    drop(secrets); // parsed xprv/WIF keys; only their public halves are used
     if descriptor.is_multipath() {
         return Err("a multipath descriptor denotes several wallets; derive one branch at a time".into());
     }
@@ -193,7 +211,11 @@ fn derive_miniscript(body: &str, index: u32, network: Network) -> Result<Derived
         keys.push(*key);
         true
     });
-    Ok(Derived { address, script_pubkey, keys })
+    Ok(Derived {
+        address,
+        script_pubkey,
+        keys,
+    })
 }
 
 fn derive_descriptor(body: &str, index: u32, network: Network) -> Result<Derived, String> {
@@ -203,6 +225,8 @@ fn derive_descriptor(body: &str, index: u32, network: Network) -> Result<Derived
     if !body.contains("sortedmulti_a(") {
         return derive_miniscript(body, index, network);
     }
+    // sortedmulti_a() is tapscript-only; anything else containing it is
+    // rejected outright.
     if !body.starts_with("tr(") {
         return Err("sortedmulti_a() is only allowed inside tr() expressions".into());
     }
@@ -212,6 +236,12 @@ fn derive_descriptor(body: &str, index: u32, network: Network) -> Result<Derived
     result
 }
 
+/// Checks concrete public keys across every BIP-389 materialized branch.
+///
+/// The result record is:
+/// `OK\nexpanded_count\nchild_index\nfinding_count` followed by one line per
+/// finding: `compressed_pubkey_hex:branch/key_position,...`.
+/// Invalid descriptors return an error without exposing parser error text.
 fn descriptor_duplicate_check(body: &str, child_index: u32) -> Result<String, String> {
     if body.is_empty() || body.len() > MAX_DESCRIPTOR_BYTES {
         return Err("descriptor length out of range".into());
@@ -249,7 +279,12 @@ fn descriptor_duplicate_check(body: &str, child_index: u32) -> Result<String, St
         .collect();
     findings.sort_by(|a, b| a.0.cmp(&b.0));
 
-    let mut record = format!("OK\n{}\n{}\n{}", single_descriptors.len(), child_index, findings.len());
+    let mut record = format!(
+        "OK\n{}\n{}\n{}",
+        single_descriptors.len(),
+        child_index,
+        findings.len()
+    );
     for (key, positions) in findings {
         record.push('\n');
         record.push_str(&hex_lower(&key));
@@ -264,6 +299,9 @@ fn descriptor_duplicate_check(body: &str, child_index: u32) -> Result<String, St
     Ok(record)
 }
 
+/// An informational duplicate-key check for multipath descriptors.
+/// Child index is explicit because multipath expansion resolves finite
+/// `<a;b>` dimensions but ranged `/*` remains after expansion.
 #[no_mangle]
 pub unsafe extern "C" fn el_desc_duplicate_check(
     desc: *const u8,
@@ -297,6 +335,10 @@ pub unsafe extern "C" fn el_desc_duplicate_check(
     len
 }
 
+/// Evaluates a descriptor at child `index` and writes the record
+/// `address\nscriptPubKeyHex\nkeyHex,keyHex,...` (address empty when the
+/// template has none). Returns the record length, -1 on any parse/derivation
+/// failure, or -2 when `cap` is too small.
 #[no_mangle]
 pub unsafe extern "C" fn el_desc_derive(
     desc: *const u8,
@@ -320,13 +362,17 @@ pub unsafe extern "C" fn el_desc_derive(
     };
     let derived = match derive_descriptor(body, index, network) {
         Ok(derived) => derived,
+        // Error text can embed the failing fragment, and the input may carry
+        // xprv/WIF material: wipe before returning the bare -1 sentinel.
         Err(mut error) => {
             wipe_string(&mut error);
             return -1;
         }
     };
     let mut record = String::new();
-    if let Some(address) = derived.address { record.push_str(&address); }
+    if let Some(address) = derived.address {
+        record.push_str(&address);
+    }
     record.push('\n');
     for byte in derived.script_pubkey.as_bytes() {
         record.push(char::from_digit((byte >> 4) as u32, 16).unwrap_or('0'));
@@ -334,7 +380,9 @@ pub unsafe extern "C" fn el_desc_derive(
     }
     record.push('\n');
     for (i, key) in derived.keys.iter().enumerate() {
-        if i > 0 { record.push(','); }
+        if i > 0 {
+            record.push(',');
+        }
         for byte in key.inner.serialize() {
             record.push(char::from_digit((byte >> 4) as u32, 16).unwrap_or('0'));
             record.push(char::from_digit((byte & 15) as u32, 16).unwrap_or('0'));
@@ -350,21 +398,31 @@ pub unsafe extern "C" fn el_desc_derive(
     len
 }
 
-const VK: [&str; 3] = [
-    "02F9308A019258C31049344F85F89D5229B531C845836F99B08601F113BCE036F9",
-    "03DFF1D77F2A671C5F36183726DB2341BE58FEAE1DA2DECED843240F7B502BA659",
-    "023590A94E768F8E1815C2F24B4D80A8E3149316C3518CE7B7AD338368D038CA66",
-];
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
     const NET: Network = Network::Bitcoin;
 
     fn script_hex(body: &str, index: u32) -> String {
         let derived = derive_descriptor(body, index, NET).expect("descriptor derives");
-        derived.script_pubkey.as_bytes().iter().map(|b| format!("{:02x}", b)).collect()
+        derived
+            .script_pubkey
+            .as_bytes()
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect()
     }
+
+    // -- rust-miniscript-backed multisig ---------------------------------------
+
+    // Three fixed test keys (the published BIP67-style vector keys, also used
+    // by the app's multisig vectors).
+    const VK: [&str; 3] = [
+        "02F9308A019258C31049344F85F89D5229B531C845836F99B08601F113BCE036F9",
+        "03DFF1D77F2A671C5F36183726DB2341BE58FEAE1DA2DECED843240F7B502BA659",
+        "023590A94E768F8E1815C2F24B4D80A8E3149316C3518CE7B7AD338368D038CA66",
+    ];
 
     #[test]
     fn duplicate_check_detects_later_multipath_branch() {
@@ -411,7 +469,11 @@ mod tests {
     fn multisig_descriptors_derive_through_miniscript() {
         let inner = format!("sortedmulti(2,{},{},{})", VK[0].to_lowercase(), VK[1].to_lowercase(), VK[2].to_lowercase());
         for (wrapper, prefix) in [("sh", "a914"), ("wsh", "0020"), ("sh(wsh", "a914")] {
-            let body = if wrapper == "sh(wsh" { format!("sh(wsh({}))", inner) } else { format!("{}({})", wrapper, inner) };
+            let body = if wrapper == "sh(wsh" {
+                format!("sh(wsh({}))", inner)
+            } else {
+                format!("{}({})", wrapper, inner)
+            };
             let derived = derive_descriptor(&body, 0, NET).expect("multisig derives");
             assert!(derived.script_pubkey.as_bytes().starts_with(&[0xa9, 0x14]) == prefix.starts_with("a9"));
             assert!(derived.address.is_some());
@@ -433,15 +495,26 @@ mod tests {
         ];
         let desc = format!("tr({},sortedmulti_a(2,{}))", nums, keys.join(","));
         let derived = derive_descriptor(&desc, 0, NET).expect("sortedmulti_a derives");
-        assert_eq!(derived.address.as_deref(), Some("bc1pm5jn9xnjz3v9xm7jjw2yheajy92pps5fdazdpfnmvzfymu787hhs2vktyy"));
+        assert_eq!(
+            derived.address.as_deref(),
+            Some("bc1pm5jn9xnjz3v9xm7jjw2yheajy92pps5fdazdpfnmvzfymu787hhs2vktyy")
+        );
+        // Key order must not matter for sortedmulti_a...
         let mut shuffled = keys;
         shuffled.reverse();
         let desc_rev = format!("tr({},sortedmulti_a(2,{}))", nums, shuffled.join(","));
         assert_eq!(script_hex(&desc, 0), script_hex(&desc_rev, 0));
+        // ...but must be preserved by multi_a.
         let listed = format!("tr({},multi_a(2,{}))", nums, shuffled.join(","));
         assert_ne!(script_hex(&desc, 0), script_hex(&listed, 0));
+        // testnet rendering uses the same script.
         let testnet = derive_descriptor(&desc, 0, Network::Testnet).expect("testnet derives");
-        assert_eq!(testnet.address.as_deref(), Some("tb1pm5jn9xnjz3v9xm7jjw2yheajy92pps5fdazdpfnmvzfymu787hhsayqy7t"));
+        assert_eq!(
+            testnet.address.as_deref(),
+            Some("tb1pm5jn9xnjz3v9xm7jjw2yheajy92pps5fdazdpfnmvzfymu787hhsayqy7t")
+        );
+        // Signet shares the testnet encodings; regtest keeps the script but
+        // switches the bech32 HRP to bcrt (issue #329).
         let signet = derive_descriptor(&desc, 0, Network::Signet).expect("signet derives");
         assert_eq!(signet.address.as_deref(), testnet.address.as_deref());
         let regtest = derive_descriptor(&desc, 0, Network::Regtest).expect("regtest derives");
@@ -451,8 +524,12 @@ mod tests {
 
     #[test]
     fn ranged_xpub_descriptor_matches_bip86_vector() {
+        // BIP86's own test key: tr(xpub.../0/*) at index 0 is the published address.
         let body = "tr(xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ/0/*)";
         let derived = derive_descriptor(body, 0, NET).expect("bip86 descriptor");
-        assert_eq!(derived.address.as_deref(), Some("bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr"));
+        assert_eq!(
+            derived.address.as_deref(),
+            Some("bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr")
+        );
     }
 }

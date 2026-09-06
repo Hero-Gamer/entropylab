@@ -871,16 +871,26 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
   // Structural edits (add/remove pair) validate immediately: apply to a copy,
   // rebuild, and only keep the change when rust-bitcoin accepts the result.
   const mutate = (fn) => {
-    const backup = doc;
+    const backup = doc, backupAnchor = pristineTx, wasStale = stale;
     const draft = structuredClone(doc);
     try {
       fn(draft);
       doc = draft;
       rebuild();
     } catch (exception) {
+      // Roll back the whole pre-edit state, not just the document. rebuild()
+      // cleared the signing anchor before its build failed, but the restored
+      // document still carries its signing pairs — without the anchor the
+      // next accepted transaction edit would keep pairs committing to the
+      // pre-edit transaction (issues #325, #360). The restored fields are
+      // exactly the last valid build (or the poison they already were), so
+      // the rejection must not mark them stale either.
       doc = backup;
+      pristineTx = backupAnchor;
+      stale = wasStale;
       render();
-      showBuildError(exception);
+      setError(exception.message || String(exception));
+      renderResult();
     }
   };
 

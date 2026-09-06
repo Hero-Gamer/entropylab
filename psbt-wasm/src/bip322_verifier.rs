@@ -147,16 +147,12 @@ fn verify(message: &str, address_text: &str, signature: &str) -> String {
     let challenge_type = classify_challenge(&address).to_string();
     let message_hash = hex_encode(&tagged_hash(BIP322_TAG, message));
 
-    // The issue's legacy form is intentionally unprefixed. It is unambiguous
-    // enough for P2PKH because the 65-byte recoverable signature cannot be a
-    // valid BIP-322 witness encoding. Do not make a legacy attempt for other
-    // address types.
     if !explicit_prefix && address.script_pubkey().is_p2pkh() {
         if verify_legacy_encoded(address_text, message, encoded).is_ok() {
             return result_json(
                 "valid",
                 "legacy",
-                json!(message_hash),
+                Value::Null,
                 json!(challenge_type),
                 None,
                 None,
@@ -232,6 +228,7 @@ fn verify(message: &str, address_text: &str, signature: &str) -> String {
             if requested_prefix == "pof" {
                 Some(json!({
                     "verified_amounts": false,
+                    "claim_source": "finalized_psbt",
                     "unspent": "not_checked"
                 }))
             } else {
@@ -244,9 +241,7 @@ fn verify(message: &str, address_text: &str, signature: &str) -> String {
     let locks = if requested_prefix == "ful" {
         base64::Engine::decode(&base64::engine::general_purpose::STANDARD, encoded)
             .ok()
-            .and_then(|bytes| {
-                bitcoin::consensus::deserialize::<bitcoin::Transaction>(&bytes).ok()
-            })
+            .and_then(|bytes| bitcoin::consensus::deserialize::<bitcoin::Transaction>(&bytes).ok())
             .map(|tx| time_lock_state(&tx))
     } else {
         None
@@ -263,7 +258,8 @@ fn verify(message: &str, address_text: &str, signature: &str) -> String {
         locks.map(|(_, value)| value),
         if requested_prefix == "pof" {
             Some(json!({
-                "verified_amounts": true,
+                "verified_amounts": false,
+                "claim_source": "finalized_psbt",
                 "unspent": "not_checked",
                 "privacy_warning": "PSBT data may reveal UTXOs, scripts, pubkeys, and derivation hints; do not paste it into online services."
             }))

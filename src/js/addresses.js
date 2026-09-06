@@ -19,9 +19,10 @@ import { wasmExports as wasm, withInput, withOutput } from "./entropylab-wasm.js
 
 const textDecoder = new TextDecoder();
 const textEncoder = new TextEncoder();
-const SCRIPT_CAP = 4096; // every script the app builds is far smaller
-const ADDRESS_CAP = 128; // a v1 bech32m address is <= 74 chars for known templates
-const DESCRIPTOR_CAP = 4096; // address + scriptPubKey hex + 15 multisig keys is ~1.2 KB
+const SCRIPT_CAP = 4096;
+const ADDRESS_CAP = 128;
+const DESCRIPTOR_CAP = 4096;
+const DUPLICATE_DESCRIPTOR_CAP = 8192;
 
 const netOf = (network) => {
   if (network === "mainnet") return 0;
@@ -35,7 +36,6 @@ const assertBytes = (bytes, what) => {
   if (!(bytes instanceof Uint8Array)) throw new Error(`${what} must be a Uint8Array.`);
 };
 
-// Runs `fn(ptr, len, out, cap)` with `input` copied into WASM memory.
 const scriptCall = (input, fn) => withInput(input, (p) => withOutput(SCRIPT_CAP, (out) => fn(p, input.length, out, SCRIPT_CAP)));
 
 export const p2pkhScript = (pubkey) => {
@@ -59,7 +59,6 @@ export const p2shP2wpkhScript = (pubkey) => {
   return script;
 };
 
-// BIP86 key-path-only Taproot output (internal key tweaked with no tree).
 export const p2trKeyScript = (xonly) => {
   assertBytes(xonly, "x-only key");
   if (xonly.length !== 32) throw new Error("Taproot internal key must be 32 bytes.");
@@ -68,7 +67,6 @@ export const p2trKeyScript = (xonly) => {
   return script;
 };
 
-// P2TR output with a single-leaf tapscript tree (the multisig Taproot case).
 export const p2trLeafScript = (xonly, leaf) => {
   assertBytes(xonly, "x-only key");
   assertBytes(leaf, "Taproot leaf script");
@@ -80,7 +78,6 @@ export const p2trLeafScript = (xonly, leaf) => {
   return script;
 };
 
-// P2SH scriptPubKey wrapping an arbitrary redeem script.
 export const p2shScript = (script) => {
   assertBytes(script, "Redeem script");
   const out = scriptCall(script, (p, len, o, cap) => wasm().el_spk_p2sh(p, len, o, cap));
@@ -88,7 +85,6 @@ export const p2shScript = (script) => {
   return out;
 };
 
-// P2WSH scriptPubKey for an arbitrary witness script.
 export const p2wshScript = (script) => {
   assertBytes(script, "Witness script");
   const out = scriptCall(script, (p, len, o, cap) => wasm().el_spk_p2wsh(p, len, o, cap));
@@ -106,7 +102,6 @@ const concatKeys = (keys, size, what) => {
   return out;
 };
 
-// Bare multisig redeem script: OP_m <keys..> OP_n OP_CHECKMULTISIG.
 export const multisigScript = (m, pubkeys) => {
   const packed = concatKeys(pubkeys, 33, "Multisig public key");
   const script = withInput(packed, (p) => withOutput(SCRIPT_CAP, (out) => wasm().el_script_multisig(m, p, packed.length, out, SCRIPT_CAP)));
@@ -114,7 +109,6 @@ export const multisigScript = (m, pubkeys) => {
   return script;
 };
 
-// Taproot multisig leaf: <pk1> OP_CHECKSIG <pk2> OP_CHECKSIGADD .. <m> OP_NUMEQUAL.
 export const multisigTrScript = (m, xonlyKeys) => {
   const packed = concatKeys(xonlyKeys, 32, "Multisig x-only key");
   const script = withInput(packed, (p) => withOutput(SCRIPT_CAP, (out) => wasm().el_script_multisig_tr(m, p, packed.length, out, SCRIPT_CAP)));
@@ -122,8 +116,6 @@ export const multisigTrScript = (m, xonlyKeys) => {
   return script;
 };
 
-// Renders a scriptPubKey as an address, or returns null for unknown
-// templates (the caller shows the script hex, as before).
 export const addressFromScript = (script, network) => {
   assertBytes(script, "Script");
   const net = netOf(network);
@@ -133,21 +125,6 @@ export const addressFromScript = (script, network) => {
   return out ? textDecoder.decode(out) : null;
 };
 
-// Evaluates an output descriptor at a child index: the address (null when
-// the template has none, e.g. bare scripts), the scriptPubKey hex, and the
-// derived participant keys (compressed hex, descriptor order; multisig
-// sortedmulti/multi_a keys are pre-sort). Multipath (<0;1>) descriptors are
-// refused: one call derives one output — pass a single branch. A present
-// #checksum is verified by the crate. Throws on any parse or derivation
-// failure, exactly like the script builders above return null/throw.
-//
-// rust-miniscript 13.x escalates public keys that keep hardened derivation
-// steps (xpub…/0', xpub…/*h, or a bare hex key with a hardened step) to a
-// panic, which with panic=abort is an unrecoverable WASM trap rather than
-// the documented -1. Bitcoin Core rejects the same descriptors (hardened
-// steps need private key material), so refuse them here, where an error can
-// still be thrown. Extended private keys are exempt: the crate derives their
-// hardened steps privately first.
 const DESCRIPTOR_PUBLIC_KEY = /(?:xpub|tpub|ypub|upub|zpub|vpub|Ypub|Zpub|Upub|Vpub)[1-9A-HJ-NP-Za-km-z]{90,}|(?:02|03)[0-9a-fA-F]{64}|04[0-9a-fA-F]{128}|[0-9a-fA-F]{64}(?![0-9a-fA-F])/g;
 const hardenedPublicKeyStep = (text) => {
   for (const match of text.matchAll(DESCRIPTOR_PUBLIC_KEY)) {
@@ -156,6 +133,7 @@ const hardenedPublicKeyStep = (text) => {
   }
   return false;
 };
+
 export const descriptorDerive = (descriptor, index, network) => {
   if (!Number.isSafeInteger(index) || index < 0 || index > 2147483647) throw new Error("Descriptor derivation index must be 0 to 2,147,483,647.");
   if (hardenedPublicKeyStep(String(descriptor ?? ""))) throw new Error("Public descriptor keys cannot carry hardened derivation steps.");
@@ -169,8 +147,60 @@ export const descriptorDerive = (descriptor, index, network) => {
   return { address: address || null, scriptHex, pubkeys: keys ? keys.split(",") : [] };
 };
 
-// One-call helpers for the four single-signature templates, mirroring how the
-// app used scure's p2pkh/p2sh(p2wpkh)/p2wpkh/p2tr .address getters.
+/**
+ * Checks a descriptor's concrete public keys across every materialized
+ * BIP-389 multipath branch. Multipath dimensions are expanded by Rust;
+ * wildcard derivation remains concrete at `childIndex` for this v1 check.
+ */
+export const descriptorDuplicateCheck = (descriptor, childIndex = 0) => {
+  if (!Number.isSafeInteger(childIndex) || childIndex < 0 || childIndex > 2147483647) {
+    throw new Error("Descriptor derivation index must be 0 to 2,147,483,647.");
+  }
+
+  const bytes = textEncoder.encode(String(descriptor ?? ""));
+  const record = withInput(bytes, (p) =>
+    withOutput(DUPLICATE_DESCRIPTOR_CAP, (out) =>
+      wasm().el_desc_duplicate_check(p, bytes.length, childIndex, out, DUPLICATE_DESCRIPTOR_CAP)
+    )
+  );
+
+  if (!record) throw new Error("Invalid output descriptor or invalid multipath expression.");
+
+  const lines = textDecoder.decode(record).split("\n");
+  if (lines.length < 4 || lines[0] !== "OK") throw new Error("Invalid duplicate-key analysis result.");
+
+  const expandedCount = Number(lines[1]);
+  const returnedChildIndex = Number(lines[2]);
+  const findingCount = Number(lines[3]);
+  if (!Number.isSafeInteger(expandedCount) || expandedCount < 1 ||
+      returnedChildIndex !== childIndex || !Number.isSafeInteger(findingCount) ||
+      findingCount < 0 || lines.length !== 4 + findingCount) {
+    throw new Error("Invalid duplicate-key analysis result.");
+  }
+
+  const findings = lines.slice(4).map((line) => {
+    const separator = line.indexOf(":");
+    if (separator <= 0) throw new Error("Invalid duplicate-key analysis result.");
+    const publicKey = line.slice(0, separator);
+    if (!/^(02|03)[0-9a-f]{64}$/i.test(publicKey)) throw new Error("Invalid duplicate-key analysis result.");
+    const occurrences = line.slice(separator + 1).split(",").map((entry) => {
+      const match = /^(\d+)\/(\d+)$/.exec(entry);
+      if (!match) throw new Error("Invalid duplicate-key analysis result.");
+      return { branch: Number(match[1]), keyPosition: Number(match[2]) };
+    });
+    if (occurrences.length < 2) throw new Error("Invalid duplicate-key analysis result.");
+    return { publicKey: publicKey.toLowerCase(), occurrences };
+  });
+
+  return {
+    isValid: true,
+    expandedCount,
+    childIndex,
+    hasDuplicate: findings.length > 0,
+    findings,
+  };
+};
+
 export const addressFor = (scriptType, pubkey, network) => {
   switch (scriptType) {
     case "p2pkh":

@@ -19,9 +19,10 @@
 // UTXO pairs); like the rest of the editor they are not verified against the
 // chain, and the inputs column says so.
 import { addressFromScript } from "./addresses.js";
+import { psbtCostFactsFromDoc } from "./psbt-cost.js";
 
 const escapeHtml = (text) =>
-  String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;").replace(/'/g, "&#39;");
 
 const hexToBytes = (hex) => {
   const out = new Uint8Array(String(hex).length / 2);
@@ -114,17 +115,23 @@ const feeHtml = (doc) => {
     : `<span class="muted" title="an input carries no amount claim">unknown</span>`;
 };
 
+const costHtml = (doc) => {
+  const facts = psbtCostFactsFromDoc(doc);
+  if (!facts.finalized) {
+    return `<span class="muted" title="exact transaction size requires final scriptSig/scriptWitness for every input">size unknown — final transaction not reconstructable</span>`;
+  }
+  const rate = facts.feeRateSatPerVbyte === null ? "" : ` · ${facts.feeRateSatPerVbyte} sat/vB`;
+  return `<span title="exact serialized transaction size">${facts.vsize} vB · ${facts.weight} WU</span>${rate}`;
+};
+
 const inputBox = (doc, index, network, selected) => {
   const input = doc.tx.inputs[index];
   const pairs = doc.inputs[index] ?? [];
   const claim = claimedPrevout(pairs);
   const conflict = claim?.conflict;
   const address = claim && !conflict ? addressFor(claim.scriptPubKey, network) : null;
-  // Boxes stay dense: identifiers truncate mid-string (the full text is in
-  // the tooltip and the button's aria-label).
   const label = address ? shortenMiddle(address) : claim && !conflict ? shortenMiddle(claim.scriptPubKey, 12, 10) : `${shortenMiddle(input.txid, 8, 6)}:${input.vout}`;
   const status = signingStatus(pairs);
-  // The prevout's script template tags the box like a block explorer would.
   const kind = claim && !conflict ? scriptKind(claim.scriptPubKey) : null;
   const open = selected?.kind === "input" && selected.index === index;
   return `<div class="psbted-viz-box${open ? " is-open" : ""}">
@@ -142,8 +149,6 @@ const outputBox = (doc, index, network, selected) => {
   const address = addressFor(output.scriptPubKey, network);
   const kind = scriptKind(output.scriptPubKey, output.asm);
   const label = address ? shortenMiddle(address) : kind === "OP_RETURN" ? "OP_RETURN" : shortenMiddle(output.scriptPubKey, 12, 10) || "(empty script)";
-  // The sub-line adds what the label does not already say: the script
-  // template for addressed outputs, the asm for data-carrier/raw scripts.
   const sub = address ? (kind ?? "script") : shortenMiddle(output.asm || output.scriptPubKey, 24, 12) || "script";
   const open = selected?.kind === "output" && selected.index === index;
   return `<div class="psbted-viz-box${open ? " is-open" : ""}">
@@ -164,8 +169,6 @@ const outputBox = (doc, index, network, selected) => {
 export const psbtVizHtml = (doc, network, selected = null) => {
   const inputs = doc.tx.inputs.map((_, index) => inputBox(doc, index, network, selected)).join("");
   const outputs = doc.tx.outputs.map((_, index) => outputBox(doc, index, network, selected)).join("");
-  // Column totals ride in the hint lines; the inputs side can only total
-  // when every input carries a claim (doc.totalIn is null otherwise).
   const inputsHint = doc.totalIn === null
     ? "amounts as claimed by the PSBT, not verified"
     : `${groupSats(doc.totalIn)} sats claimed, not verified`;
@@ -184,6 +187,7 @@ export const psbtVizHtml = (doc, network, selected = null) => {
         <span class="psbted-viz-txline"><strong>PSBT v${escapeHtml(String(doc.psbtVersion))}</strong> · unsigned tx</span>
         <span class="psbted-viz-txline muted">version ${escapeHtml(String(doc.tx.version))} · locktime ${escapeHtml(String(doc.tx.locktime))}</span>
         <span class="psbted-viz-txline">fee ${feeHtml(doc)}</span>
+        <span class="psbted-viz-txline">${costHtml(doc)}</span>
       </button>
       <div class="psbted-viz-arrow" aria-hidden="true"></div>
     </div>

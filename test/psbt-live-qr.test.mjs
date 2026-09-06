@@ -84,6 +84,14 @@ test("stale builds disable every export boundary, not just the styling (issue #3
   assert.match(editor, /\$\{stale \? "" : escapeHtml\(b64\)\}/);
   assert.match(editor, /\$\{stale \? "" : escapeHtml\(hex\)\}/);
   assert.match(editor, /area\.value = ""/);
+  // value= alone leaves the bytes in the DOM: textContent (defaultValue)
+  // must go too, so no copy of the stale bytes stays in the document.
+  assert.match(editor, /area\.textContent = ""/);
+  // Disabled only blocks user activation — a synthetic dispatchEvent still
+  // fires a disabled button's handlers, so all four export handlers guard
+  // on stale themselves instead of trusting the attribute.
+  const guarded = editor.match(/\$\("psbted-(?:copy-b64|copy-hex|download|reload)"\)\.onclick = \(\) => \{\s*\n\s*if \(stale\) return;/g) || [];
+  assert.equal(guarded.length, 4, "every export handler must refuse to run while stale");
 });
 
 test("the result panel renders the QR block and its animation plumbing", () => {

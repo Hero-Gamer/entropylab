@@ -644,15 +644,26 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
         <p class="muted" id="psbted-qr-note">${stale ? "QR unavailable until the fields build again." : ""}</p>
       </div>`;
     if (stale) return;
-    $("psbted-copy-b64").onclick = () => navigator.clipboard?.writeText(b64).catch(() => {});
-    $("psbted-copy-hex").onclick = () => navigator.clipboard?.writeText(hex).catch(() => {});
+    // Every handler re-checks stale: the keystroke path only disables these
+    // buttons, and a synthetic dispatchEvent still fires a disabled button's
+    // handlers, which close over the last valid build's bytes (issue #320).
+    $("psbted-copy-b64").onclick = () => {
+      if (stale) return;
+      navigator.clipboard?.writeText(b64).catch(() => {});
+    };
+    $("psbted-copy-hex").onclick = () => {
+      if (stale) return;
+      navigator.clipboard?.writeText(hex).catch(() => {});
+    };
     $("psbted-reload").onclick = () => {
+      if (stale) return;
       text.value = b64;
       loadFromText();
     };
     // The binary download round-trips with wallet software: Sparrow and
     // Coldcard read the .psbt file this produces.
     $("psbted-download").onclick = () => {
+      if (stale) return;
       const url = URL.createObjectURL(new Blob([resultBytes], { type: "application/octet-stream" }));
       const link = document.createElement("a");
       link.href = url;
@@ -705,7 +716,13 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
     }
     for (const id of ["psbted-result-b64", "psbted-result-hex"]) {
       const area = document.getElementById(id);
-      if (area) area.value = "";
+      if (area) {
+        // value= alone leaves the bytes in the DOM text (textContent /
+        // defaultValue); both go, so no copy of the stale bytes stays in
+        // the document at all.
+        area.value = "";
+        area.textContent = "";
+      }
     }
     clearInterval(qrTimer);
     qrTimer = null;

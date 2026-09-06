@@ -2468,6 +2468,25 @@
     }
     assert(!document.querySelector("#psbted-qr-code svg"), "stale bytes still animated as QR");
     assert(outText().includes("last valid build"), "stale note missing");
+    // The byte text itself leaves the screen: a disabled, readonly textarea's
+    // content is still selectable and copyable in Firefox.
+    equal(document.getElementById("psbted-result-b64").value, "", "stale base64 stayed selectable on screen");
+    equal(document.getElementById("psbted-result-hex").value, "", "stale hex stayed selectable on screen");
+    // Nor does the DOM keep a copy: value= alone leaves the bytes in the
+    // textarea's textContent/defaultValue.
+    equal(document.getElementById("psbted-result-b64").textContent, "", "stale base64 stayed in the DOM text");
+    equal(document.getElementById("psbted-result-hex").textContent, "", "stale hex stayed in the DOM text");
+    // Disabled only blocks user activation — a synthetic click still fires
+    // the retained handlers, and the stale guard must keep the bytes off
+    // the clipboard.
+    let copied = null;
+    const clipboard = navigator.clipboard;
+    const writeText = clipboard.writeText;
+    clipboard.writeText = (value) => { copied = value; return Promise.resolve(); };
+    document.getElementById("psbted-copy-b64").dispatchEvent(new MouseEvent("click"));
+    document.getElementById("psbted-copy-hex").dispatchEvent(new MouseEvent("click"));
+    clipboard.writeText = writeText;
+    equal(copied, null, "a synthetic click exported the stale bytes");
     // Typing back to a buildable value re-enables every export control.
     input(document.querySelector("[data-txout-val='0']"), "199902000");
     await until(() => document.getElementById("psbted-error").textContent === "" && document.getElementById("psbted-result-b64").value.includes("cHNidP8B"), "rebuild after stale");

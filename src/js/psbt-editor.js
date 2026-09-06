@@ -622,35 +622,48 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
     const b64 = base64Encode(resultBytes);
     const hex = bytesToHex(resultBytes);
     box.classList.toggle("psbted-stale", stale);
-    // While the displayed fields do not build, the last valid bytes stay
-    // visible for reference but must not cross an export boundary: every
-    // copy/download/reload control and the QR are disabled (issue #320).
+    // While the displayed fields do not build, the last valid build must not
+    // cross an export boundary: every copy/download/reload control and the QR
+    // are disabled — and the byte text is blanked, because a disabled,
+    // readonly textarea's content is still selectable and copyable in Firefox
+    // (issue #320).
     const gated = stale ? " disabled" : "";
     box.innerHTML = `
       ${stale ? `<p class="psbted-note-warn" id="psbted-stale-note">The fields do not build right now — this is the last valid build. Export is unavailable until they build again.</p>` : ""}
       <p class="psbt-ok">Rebuilt PSBT parses under rust-bitcoin; its unsigned transaction passes consensus sanity checks (${resultBytes.length} bytes).</p>
-      <label class="field">Edited PSBT (base64)<textarea id="psbted-result-b64" readonly spellcheck="false"${gated}>${escapeHtml(b64)}</textarea></label>
+      <label class="field">Edited PSBT (base64)<textarea id="psbted-result-b64" readonly spellcheck="false"${gated}>${stale ? "" : escapeHtml(b64)}</textarea></label>
       <div class="row psbt-actions">
         <button class="btn secondary" id="psbted-copy-b64" type="button"${gated}>Copy base64</button>
         <button class="btn secondary" id="psbted-copy-hex" type="button"${gated}>Copy hex</button>
         <button class="btn secondary" id="psbted-download" type="button"${gated}>Download .psbt</button>
         <button class="btn secondary" id="psbted-reload" type="button"${gated}>Load edited PSBT into the editor</button>
       </div>
-      <label class="field">Edited PSBT (hex)<textarea id="psbted-result-hex" readonly spellcheck="false"${gated}>${escapeHtml(hex)}</textarea></label>
+      <label class="field">Edited PSBT (hex)<textarea id="psbted-result-hex" readonly spellcheck="false"${gated}>${stale ? "" : escapeHtml(hex)}</textarea></label>
       <div class="psbted-qr-block">
         <div class="qr psbted-qr" id="psbted-qr-code"></div>
         <p class="muted" id="psbted-qr-note">${stale ? "QR unavailable until the fields build again." : ""}</p>
       </div>`;
     if (stale) return;
-    $("psbted-copy-b64").onclick = () => navigator.clipboard?.writeText(b64).catch(() => {});
-    $("psbted-copy-hex").onclick = () => navigator.clipboard?.writeText(hex).catch(() => {});
+    // Every handler re-checks stale: the keystroke path only disables these
+    // buttons, and a synthetic dispatchEvent still fires a disabled button's
+    // handlers, which close over the last valid build's bytes (issue #320).
+    $("psbted-copy-b64").onclick = () => {
+      if (stale) return;
+      navigator.clipboard?.writeText(b64).catch(() => {});
+    };
+    $("psbted-copy-hex").onclick = () => {
+      if (stale) return;
+      navigator.clipboard?.writeText(hex).catch(() => {});
+    };
     $("psbted-reload").onclick = () => {
+      if (stale) return;
       text.value = b64;
       loadFromText();
     };
     // The binary download round-trips with wallet software: Sparrow and
     // Coldcard read the .psbt file this produces.
     $("psbted-download").onclick = () => {
+      if (stale) return;
       const url = URL.createObjectURL(new Blob([resultBytes], { type: "application/octet-stream" }));
       const link = document.createElement("a");
       link.href = url;
@@ -686,10 +699,11 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
   };
 
   // Marks the intact result panel as the last valid build — used when a
-  // keystroke left the fields in a state that does not build, so the text of
-  // the last good build stays visible instead of vanishing. The export
-  // controls and QR are disabled: stale bytes must not cross an export
-  // boundary while the fields say something else (issue #320).
+  // keystroke left the fields in a state that does not build. The export
+  // controls and QR are disabled and the byte text is blanked: stale bytes
+  // must not cross an export boundary while the fields say something else,
+  // and a disabled, readonly textarea's content is still selectable and
+  // copyable in Firefox, so disabling alone is not a boundary (issue #320).
   const markResultStale = () => {
     const box = document.getElementById("psbted-result");
     if (!box || !resultBytes) return;
@@ -699,6 +713,16 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
     else box.insertAdjacentHTML("afterbegin", '<p class="psbted-note-warn" id="psbted-stale-note">The fields do not build right now — this is the last valid build. Export is unavailable until they build again.</p>');
     for (const id of ["psbted-copy-b64", "psbted-copy-hex", "psbted-download", "psbted-reload", "psbted-result-b64", "psbted-result-hex"]) {
       document.getElementById(id)?.setAttribute("disabled", "");
+    }
+    for (const id of ["psbted-result-b64", "psbted-result-hex"]) {
+      const area = document.getElementById(id);
+      if (area) {
+        // value= alone leaves the bytes in the DOM text (textContent /
+        // defaultValue); both go, so no copy of the stale bytes stays in
+        // the document at all.
+        area.value = "";
+        area.textContent = "";
+      }
     }
     clearInterval(qrTimer);
     qrTimer = null;

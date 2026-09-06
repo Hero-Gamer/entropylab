@@ -78,6 +78,20 @@ test("stale builds disable every export boundary, not just the styling (issue #3
   // The keystroke path applies the same gating to the already-rendered panel.
   assert.match(editor, /for \(const id of \["psbted-copy-b64", "psbted-copy-hex", "psbted-download", "psbted-reload", "psbted-result-b64", "psbted-result-hex"\]\)/);
   assert.match(editor, /qr\.removeAttribute\("aria-label"\)/);
+  // And the byte text itself leaves the screen in both paths: disabling is
+  // not a boundary, since Firefox lets a disabled, readonly textarea's
+  // content be selected and copied.
+  assert.match(editor, /\$\{stale \? "" : escapeHtml\(b64\)\}/);
+  assert.match(editor, /\$\{stale \? "" : escapeHtml\(hex\)\}/);
+  assert.match(editor, /area\.value = ""/);
+  // value= alone leaves the bytes in the DOM: textContent (defaultValue)
+  // must go too, so no copy of the stale bytes stays in the document.
+  assert.match(editor, /area\.textContent = ""/);
+  // Disabled only blocks user activation — a synthetic dispatchEvent still
+  // fires a disabled button's handlers, so all four export handlers guard
+  // on stale themselves instead of trusting the attribute.
+  const guarded = editor.match(/\$\("psbted-(?:copy-b64|copy-hex|download|reload)"\)\.onclick = \(\) => \{\s*\n\s*if \(stale\) return;/g) || [];
+  assert.equal(guarded.length, 4, "every export handler must refuse to run while stale");
 });
 
 test("the result panel renders the QR block and its animation plumbing", () => {

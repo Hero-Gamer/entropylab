@@ -17,6 +17,11 @@ const P2WSH_SIGNATURE = "BABIMEUCIQCKl1f9Cj26k0fFWE48+O4ibhYJYPytbDZWJRaaG9BybwI
 const FULL_ADDRESS = "bc1qrqtlzcq86850yzgsyq9sssawx2qxlx5yq3xpkd";
 const FULL_MESSAGE = "KLE5MMJBTNF4AVZXIO3GIL5UWF";
 const FULL_SIGNATURE = "AgAAAAABAUrfzHHOLAKmgCIFSTT3krp+cQxj1BDPBN4GBg3tRmFXAAAAAADgBwAAAQAAAAAAAAAAAWoCSDBFAiEAjYj85zyhQKa9DbMO0reDwdhkNwKJkF3q2qFcijXDgMUCIAaQ75s3fwqrCeYIUJugLvhxZFxQIVquGN90vIKCW3QLASEDMurnDzvc0zABUwVwCADfGXoDx/M3SQnYt7e3IHDoU3PgBwAA";
+const FUTURE_VERSION_SIGNATURE = "AwAAAAABAUrfzHHOLAKmgCIFSTT3krp+cQxj1BDPBN4GBg3tRmFXAAAAAADgBwAAAQAAAAAAAAAAAWoCSDBFAiEAjYj85zyhQKa9DbMO0reDwdhkNwKJkF3q2qFcijXDgMUCIAaQ75s3fwqrCeYIUJugLvhxZFxQIVquGN90vIKCW3QLASEDMurnDzvc0zABUwVwC...";
+
+const LEGACY_ADDRESS = "14vV3aCHBeStb5bkenkNHbe2YAFinYdXgc";
+const LEGACY_MESSAGE = "Hello World";
+const LEGACY_SIGNATURE = "IPg+QjkJZe3tgZttQ9tb8q3Me93e1VQbu2zYrYRjpWgFyxHArrut7BGI4yNvkywSXxs74wSG1zVF+qsYrj0iLy0=";
 
 const result = (message, address, signature) => verifyBip322(message, address, signature);
 
@@ -34,8 +39,24 @@ test("canonical smp/ prefix verifies the same witness", async () => {
   assert.equal(verified.prefix, "smp");
 });
 
+test("prefixless signature assumes simple variant", async () => {
+  const verified = await result(P2TR_MESSAGE, P2TR, P2TR_SIGNATURE);
+  assert.equal(verified.prefix, "smp");
+});
+
 test("legacy colon prefix is not accepted as a BIP-322 prefix", async () => {
   const verified = await result(P2TR_MESSAGE, P2TR, `smp:${P2TR_SIGNATURE}`);
+  assert.equal(verified.state, "invalid");
+});
+
+test("malformed explicit prefix is rejected", async () => {
+  const verified = await result(P2TR_MESSAGE, P2TR, `wat/${P2TR_SIGNATURE}`);
+  assert.equal(verified.state, "invalid");
+  assert.equal(verified.prefix, "unknown");
+});
+
+test("wrong address invalidates a valid witness", async () => {
+  const verified = await result(P2TR_MESSAGE, "bc1p0v6x0v6x0v6x0v6x0v6x0v6x0v6x0v6x0v6x0v6x0v6x0v6x0", P2TR_SIGNATURE);
   assert.equal(verified.state, "invalid");
 });
 
@@ -58,12 +79,33 @@ test("BIP-322 simple verifies an official P2WSH vector", async () => {
   assert.equal(verified.challenge_type, "p2wsh");
 });
 
-test("BIP-322 full verifies an official PSBT vector", async () => {
+test("BIP-322 full verifies an official transaction vector", async () => {
   const verified = await result(FULL_MESSAGE, FULL_ADDRESS, `ful/${FULL_SIGNATURE}`);
   assert.equal(verified.state, "valid");
   assert.equal(verified.prefix, "ful");
   assert.equal(verified.challenge_type, "p2wpkh");
   assert.equal(verified.time_locks.active, false);
+  assert.equal(verified.time_locks.T, 0);
+  assert.equal(verified.time_locks.S, 0);
+});
+
+test("future full transaction version is inconclusive", async () => {
+  const verified = await result(FULL_MESSAGE, FULL_ADDRESS, `ful/${FUTURE_VERSION_SIGNATURE}`);
+  assert.equal(verified.state, "inconclusive");
+  assert.equal(verified.prefix, "ful");
+});
+
+test("legacy BIP-137 P2PKH signature verifies only through prefixless fallback", async () => {
+  const verified = await result(LEGACY_MESSAGE, LEGACY_ADDRESS, LEGACY_SIGNATURE);
+  assert.equal(verified.state, "valid");
+  assert.equal(verified.prefix, "legacy");
+  assert.equal(verified.challenge_type, "p2pkh");
+  assert.equal(verified.message_hash, null);
+});
+
+test("legacy signature cannot be forced through smp", async () => {
+  const verified = await result(LEGACY_MESSAGE, LEGACY_ADDRESS, `smp/${LEGACY_SIGNATURE}`);
+  assert.equal(verified.state, "invalid");
 });
 
 test("pof rejects a non-ASCII message before PSBT verification", async () => {
@@ -71,4 +113,10 @@ test("pof rejects a non-ASCII message before PSBT verification", async () => {
   assert.equal(verified.state, "invalid");
   assert.equal(verified.prefix, "pof");
   assert.match(verified.error, /ASCII/);
+});
+
+test("pof rejects malformed PSBT input", async () => {
+  const verified = await result("proof", P2TR, "pof/not-a-psbt");
+  assert.equal(verified.state, "invalid");
+  assert.equal(verified.prefix, "pof");
 });

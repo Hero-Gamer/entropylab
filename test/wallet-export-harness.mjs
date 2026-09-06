@@ -157,7 +157,19 @@ export const deriveBranchBody = (xpubText, branch) => {
 };
 export const publicKeyForPrivate = (secret) => serPub(pointMul(BigInt("0x" + bytesToHex(secret))));
 
-export const deps = { sha256, checksum: descriptorChecksum, base58Decode: b58checkDecode, deriveBranchBody, publicKeyForPrivate };
+// Reference for the module's deriveExtendedPrivateChild dep: one hardened
+// CKDpriv step below the decoded extended key, re-serialized with the same
+// version bytes. The module only requests hardened children (branch steps).
+export const deriveExtendedPrivateChild = (xprvText, index) => {
+  const raw = b58checkDecode(xprvText);
+  const child = hdDeriveHardened(
+    { secret: raw.slice(46, 78), chaincode: raw.slice(13, 45), depth: raw[4] },
+    index - 0x80000000,
+  );
+  return serializeExtendedKey(child, Buffer.from(raw.slice(0, 4)).readUInt32BE(0), true);
+};
+
+export const deps = { sha256, checksum: descriptorChecksum, base58Decode: b58checkDecode, deriveBranchBody, deriveExtendedPrivateChild, publicKeyForPrivate };
 
 // BIP32 private derivation from a seed, for generating fuzz account keys.
 // Hardened steps only — that is all a wallet.dat account path uses.

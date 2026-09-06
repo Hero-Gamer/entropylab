@@ -49,6 +49,8 @@ import {
   deps,
   deriveBranchBody,
   descriptorChecksum,
+  hdDeriveHardened,
+  hdMasterFromSeed,
   hdNodeFrom,
   hexToBytes,
   loadModule,
@@ -60,6 +62,7 @@ import {
   read,
   ripemd160,
   serPub,
+  serializeExtendedKey,
   sha256,
   sqliteReadBack,
   unserPub,
@@ -228,6 +231,66 @@ test("origin-less descriptors keep a <digit>h xpub byte-identical", () => {
     const body = `wpkh(${xpub}/0/*)`;
     const expectedId = bytesToHex(sha256(new TextEncoder().encode(`${body}#${descriptorChecksum(body)}`)));
     assert.ok(ids.includes(expectedId), `record id for origin-less ...${xpub.slice(-12)} must hash the unchanged body`);
+  }
+});
+
+// Regression for the Harden branch option: the watch-only descriptor is
+// "wpkh([fp/84h/0h/0h/0h]xpubBranch/*)" — the branch xpub IS the descriptor
+// root key. Core caches the root key itself when the path after it is empty
+// (BIP32PubkeyProvider) and looks the root pubkey up in walletdescriptorkey.
+// Deriving branch 0/1 of that key for the cache made Core watch a different
+// subtree, and recording the account key left the spending variant unable to
+// sign (root pubkey lookup misses in m_map_keys).
+test("hardened-branch descriptors cache and sign with the descriptor root key", () => {
+  const seed = new Uint8Array(32);
+  seed[31] = 1;
+  const master = hdMasterFromSeed(seed);
+  const fp = bytesToHex(ripemd160(sha256(publicKeyForPrivate(master.secret))).subarray(0, 4));
+  let account = master;
+  for (const step of [84, 0, 0]) account = hdDeriveHardened(account, step);
+  const accountXprv = serializeExtendedKey(account, 0x0488ade4, true);
+  const branch = (b) => hdDeriveHardened(account, b);
+  const branchXpub = (b) => serializeExtendedKey(branch(b), 0x0488b21e, false);
+  const descriptorFor = (b) => {
+    const body = `wpkh([${fp}/84h/0h/0h/${b}h]${branchXpub(b)}/*)`;
+    return `${body}#${descriptorChecksum(body)}`;
+  };
+  const privateDescriptorFor = (b) => {
+    const body = `wpkh([${fp}/84h/0h/0h]${accountXprv}/${b}'/*)`;
+    return `${body}#${descriptorChecksum(body)}`;
+  };
+  const wallet = {
+    kind: "hd",
+    network: "mainnet",
+    accounts: [{
+      def: { id: "bip84" },
+      receiveDescriptor: descriptorFor(0),
+      changeDescriptor: descriptorFor(1),
+      receiveDescriptorPriv: privateDescriptorFor(0),
+      changeDescriptorPriv: privateDescriptorFor(1),
+    }],
+  };
+
+  // Watch-only: the cache parent is the branch xpub itself (raw 74-byte body).
+  const watch = moduleRecords(wallet, false, REF_CREATION_TIME);
+  const cachePrefix = "15" + "77616c6c657464657363726970746f726361636865"; // \x15walletdescriptorcache
+  const caches = [...watch.entries()].filter(([key]) => key.startsWith(cachePrefix)).map(([, value]) => value);
+  assert.equal(caches.length, 2);
+  for (const b of [0, 1]) {
+    const expected = "4a" + bytesToHex(b58checkDecode(branchXpub(b)).slice(4));
+    assert.ok(caches.includes(expected), `cache parent for branch ${b} is the descriptor root key itself`);
+  }
+
+  // Spending: each key record maps the branch pubkey to the branch secret.
+  const spending = moduleRecords(wallet, true, REF_CREATION_TIME);
+  const keyRecords = [...spending.entries()].filter(([key]) => key.includes("77616c6c657464657363726970746f726b6579"));
+  assert.equal(keyRecords.length, 2);
+  for (const b of [0, 1]) {
+    const pubkey = bytesToHex(publicKeyForPrivate(branch(b).secret));
+    const record = keyRecords.find(([key]) => key.endsWith("21" + pubkey));
+    assert.ok(record, `key record for branch ${b} names the branch pubkey`);
+    const secret = bytesToHex(branch(b).secret);
+    assert.ok(record[1].startsWith("d6") && record[1].includes(secret), `key record for branch ${b} carries the branch secret`);
   }
 });
 

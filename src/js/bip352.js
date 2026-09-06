@@ -24,12 +24,26 @@ const hexToBytes = (hex) => {
   return out;
 };
 const bytesToHex = (bytes) => [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
-const bytesToBig = (bytes) => BigInt("0x" + bytesToHex(bytes));
+// Avoid immutable hex intermediates for sender scalars. BigInts themselves
+// cannot be wiped; callers must still erase the byte buffers they own.
+const bytesToBig = (bytes) => {
+  let value = 0n;
+  for (const byte of bytes) value = (value << 8n) | BigInt(byte);
+  return value;
+};
 const bigToBytes32 = (value) => {
-  if (value < 0n) throw new Error("Negative scalar.");
-  const hex = value.toString(16).padStart(64, "0");
-  if (hex.length > 64) throw new Error("Scalar does not fit in 32 bytes.");
-  return hexToBytes(hex);
+  if (value < 0n || value >= (1n << 256n)) throw new Error("Scalar does not fit in 32 bytes.");
+  const bytes = new Uint8Array(32);
+  for (let i = 31; i >= 0; i--) {
+    bytes[i] = Number(value & 255n);
+    value >>= 8n;
+  }
+  return bytes;
+};
+const publicKeyForScalar = (scalar) => {
+  const bytes = bigToBytes32(scalar);
+  try { return secp256k1.getPublicKey(bytes, true); }
+  finally { bytes.fill(0); }
 };
 const equalBytes = (a, b) => {
   if (a.length !== b.length) return false;
@@ -370,17 +384,42 @@ const normalizeVin = (vin) => ({
   private_key: vin.private_key,
 });
 
+// BIP-352 spends a taproot input with "the private key corresponding to the
+// taproot output key (i.e. the tweaked private key)": the BIP-341 key-path
+// tweak of the even-Y internal key. Supplying the raw internal key instead
+// produces outputs the recipient can never detect.
+export function taprootOutputPrivateKey(secret) {
+  const internal = scalarFromBytes(secret instanceof Uint8Array ? secret : hexToBytes(secret));
+  const even = pointHasEvenY(Point.fromBytes(publicKeyForScalar(internal))) ? internal : ORDER - internal;
+  const xonly = pointToXOnly(Point.fromBytes(publicKeyForScalar(even)));
+  // BIP-341 permits a zero tweak, but not a hash >= the group order.
+  const tweakBytes = taggedHash("TapTweak", xonly);
+  let tweak;
+  try { tweak = bytesToBig(tweakBytes); }
+  finally { tweakBytes.fill(0); }
+  if (tweak >= ORDER) throw new Error("Taproot key-path tweak is out of range.");
+  const output = (even + tweak) % ORDER;
+  if (output === 0n) throw new Error("Taproot key-path tweak produced an invalid key.");
+  return bigToBytes32(output);
+}
+
 export function eligibleInputKeys(vins) {
   const pubkeys = [];
   const privkeys = [];
-  for (const raw of vins) {
+  for (const [index, raw] of vins.entries()) {
     const vin = normalizeVin(raw);
     const extracted = extractInputPubKey(vin);
     if (!extracted) continue;
     pubkeys.push(extracted);
     if (vin.private_key) {
+      const scalar = scalarFromBytes(typeof vin.private_key === "string" ? hexToBytes(vin.private_key) : vin.private_key);
+      const suppliedPoint = Point.fromBytes(publicKeyForScalar(scalar));
+      const matches = extracted.isTaproot
+        ? equalBytes(pointToXOnly(suppliedPoint), pointToXOnly(extracted.point))
+        : equalBytes(pointToCompressed(suppliedPoint), pointToCompressed(extracted.point));
+      if (!matches) throw new Error(`Input ${index} private key does not match its eligible input public key.`);
       privkeys.push({
-        scalar: scalarFromBytes(typeof vin.private_key === "string" ? hexToBytes(vin.private_key) : vin.private_key),
+        scalar,
         isTaproot: extracted.isTaproot,
       });
     }
@@ -388,7 +427,8 @@ export function eligibleInputKeys(vins) {
   return { pubkeys, privkeys };
 }
 
-export function createSilentPaymentOutputs(vins, recipients, { hrp = "sp" } = {}) {
+// The UI opts out of the vector API's secret scalar-sum diagnostic.
+export function createSilentPaymentOutputs(vins, recipients, { hrp = "sp", includePrivateKeySum = true } = {}) {
   if (vins.some((vin) => isFutureSegwit(vinPrevoutScript(vin)))) {
     throw new Error("BIP-352 v0 cannot send with an input that spends a future SegWit version.");
   }
@@ -398,7 +438,7 @@ export function createSilentPaymentOutputs(vins, recipients, { hrp = "sp" } = {}
   const negated = privkeys.map(({ scalar, isTaproot }) => {
     let k = scalar;
     if (isTaproot) {
-      const pub = Point.fromBytes(secp256k1.getPublicKey(bigToBytes32(k), true));
+      const pub = Point.fromBytes(publicKeyForScalar(k));
       if (!pointHasEvenY(pub)) k = ORDER - k;
     }
     return k;
@@ -409,7 +449,7 @@ export function createSilentPaymentOutputs(vins, recipients, { hrp = "sp" } = {}
     return {
       outputs: [],
       inputPubKeys: pubkeys.map((entry) => bytesToHex(pointToCompressed(entry.point))),
-      inputPrivateKeySum: "0".repeat(64),
+      inputPrivateKeySum: includePrivateKeySum ? "0".repeat(64) : null,
       sharedSecrets: [],
     };
   }
@@ -438,7 +478,7 @@ export function createSilentPaymentOutputs(vins, recipients, { hrp = "sp" } = {}
     return {
       outputs: [],
       inputPubKeys: pubkeys.map((entry) => bytesToHex(pointToCompressed(entry.point))),
-      inputPrivateKeySum: bytesToHex(bigToBytes32(aSum)),
+      inputPrivateKeySum: includePrivateKeySum ? bytesToHex(bigToBytes32(aSum)) : null,
       sharedSecrets: null,
     };
   }
@@ -470,7 +510,7 @@ export function createSilentPaymentOutputs(vins, recipients, { hrp = "sp" } = {}
     // list is returned as-is and never deduplicated (issue #332).
     outputs,
     inputPubKeys: pubkeys.map((entry) => bytesToHex(pointToCompressed(entry.point))),
-    inputPrivateKeySum: bytesToHex(bigToBytes32(aSum)),
+    inputPrivateKeySum: includePrivateKeySum ? bytesToHex(bigToBytes32(aSum)) : null,
     sharedSecrets,
   };
 }
@@ -548,7 +588,7 @@ export function spendPrivForOutput(spendPriv, tweak) {
   const t = tweak instanceof Uint8Array ? scalarFromBytes(tweak) : typeof tweak === "string" ? scalarFromBytes(hexToBytes(tweak)) : tweak;
   let full = (spend + t) % ORDER;
   if (full === 0n) throw new Error("Spend key + tweak is zero.");
-  const pub = Point.fromBytes(secp256k1.getPublicKey(bigToBytes32(full), true));
+  const pub = Point.fromBytes(publicKeyForScalar(full));
   if (!pointHasEvenY(pub)) full = ORDER - full;
   return bigToBytes32(full);
 }

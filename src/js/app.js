@@ -20,6 +20,7 @@ import {
   p2trAddressFromXonly,
   scanSilentPaymentOutputs,
   spendPrivForOutput,
+  taprootOutputPrivateKey,
   vinPrevoutScript,
   bytesToHex as hodlSpBytesToHex,
 } from "./bip352.js";
@@ -1478,6 +1479,9 @@ function hodlWalletDatDeps() {
       body.set(node.publicKey, 41);
       return body;
     },
+    // Hardened-branch private key records are derived from the account xprv.
+    deriveExtendedPrivateChild: (extendedKeyText, index) =>
+      hodlHDKey.fromExtendedKey(hodlReversionExtendedKey(extendedKeyText, hodlExtendedKeyVersions.mainnet.x.prv)).deriveChild(index).privateExtendedKey,
     publicKeyForPrivate: (secret) => hodlSecp256k1.getPublicKey(secret, true)
   };
 }
@@ -4640,8 +4644,13 @@ function hodlGlobalSyncCurrentBits(targetWords = hodlTargetWordCount) {
     }
     let kind = hodlNormalizePrivateKeyKind(document.querySelector('input[name="kk"]:checked')?.value || "wif", value);
     if (kind === "hex-key") {
+      // An over-long key is invalid, not truncated: publishing its first 64
+      // characters would mirror a key the source field itself rejects, while
+      // every other source publishes nothing when invalid.
+      let digits = value.replace(/\s/g, "").replace(/^0x/i, "");
+      if (digits.length > 64) return null;
       let bits = "";
-      for (let digit of value.replace(/\s/g, "").replace(/^0x/i, "").slice(0, 64)) {
+      for (let digit of digits) {
         if (!/^[0-9a-fA-F]$/.test(digit)) break;
         bits += Number.parseInt(digit, 16).toString(2).padStart(4, "0");
       }
@@ -5777,11 +5786,13 @@ function hodlBindKeyFields() {
     document.getElementById("network")?.addEventListener("change", apply);
     let trim = document.getElementById("brain-wallet-trim");
     if (trim) trim.onchange = () => {
+      // Trimming changes the hashed bytes, so it changes the wallet: retract
+      // the displayed result and re-sync the mirrored representations, like
+      // every other entropy-affecting control.
       if (state) state.brainWalletTrim = trim.checked;
-      hodlSyncBrainOutput();
-      hodlRenderPrivateKeyInputState(key);
-      hodlSyncKeyClearButton();
-      hodlSyncDeriveButton();
+      hodlInvalidateLiveKeyResult();
+      hodlGlobalSyncFromCurrentInput();
+      refreshBrain();
     };
     apply();
   }
@@ -9131,65 +9142,91 @@ function hodlRenderSpReceive() {
 // path explicitly ("path": "m/84'/1'/0'/0/5", plus an optional "fingerprint"
 // that must equal the session root's) or be resolved through the session
 // ownership index by its prevout script. Either way the derived key is
-// verified against the prevout script before use, and every derived node is
-// wiped after output construction.
+// verified against the prevout script before use. Nodes are wiped immediately;
+// returned byte copies are wiped after sending or any partial-resolution failure.
+// BIP-352 BigInts remain immutable, GC-managed values: this is not full erasure.
 function hodlSpDeriveVinKeys(vins) {
   hodlSpEnsureHd();
   const root = hodlSpHd, network = hodlSpNetwork(), fingerprint = hodlFingerprintHex(root.fingerprint);
   let index = null;
-  return vins.map((vin, i) => {
-    // The published BIP-352 vectors carry raw per-input scalars; the UI flow
-    // derives from the session instead. (The library function keeps vector
-    // support for the test suite.)
-    if (vin && typeof vin === "object" && "private_key" in vin) {
-      throw new Error(`Input ${i} carries a "private_key" field. The send flow derives each input's key from the loaded session — remove it (that field exists for the published BIP-352 test vectors).`);
-    }
-    // Only inputs of the eligible script types take part; anything else is
-    // skipped by the sender and needs no key.
-    const extracted = extractInputPubKey(vin);
-    if (!extracted) return vin;
-    if (vin.fingerprint !== undefined && String(vin.fingerprint).toLowerCase().replace(/^0x/, "") !== fingerprint) {
-      throw new Error(`Input ${i}: origin fingerprint ${vin.fingerprint} is not this session's ${fingerprint}.`);
-    }
-    let path = typeof vin.path === "string" && vin.path.trim() ? vin.path.trim() : null;
-    if (!path) {
-      if (!index) index = indexHdKey(root, network);
-      const hit = matchOwnership(index, vinPrevoutScript(vin));
-      if (hit.state !== "ours") {
-        throw new Error(`Input ${i}: the prevout script was not found under this session's keys. Add a "path" field (e.g. "m/84'/…") to name the input's derivation path.`);
+  const derived = [];
+  let complete = false;
+  try {
+    const resolved = vins.map((vin, i) => {
+      // The published BIP-352 vectors carry raw per-input scalars; the UI flow
+      // derives from the session instead. (The library function keeps vector
+      // support for the test suite.)
+      if (vin && typeof vin === "object" && "private_key" in vin) {
+        throw new Error(`Input ${i} carries a "private_key" field. The send flow derives each input's key from the loaded session — remove it (that field exists for the published BIP-352 test vectors).`);
       }
-      path = hit.path;
-    }
-    if (!/^m(\/|$)/.test(path)) throw new Error(`Input ${i}: path must start at the session root ("m/…").`);
-    let node = null;
-    try {
-      node = root.derive(path);
-      if (!node.privateKey) throw new Error(`Input ${i}: path ${path} names a watch-only node.`);
-      // The derived key must actually produce the prevout script — the "lie"
-      // check, including the BIP-341 tweak for P2TR inputs.
-      const scriptBytes = vinPrevoutScript(vin);
-      const pubkey = node.publicKey;
-      let expected = null;
-      if (isP2pkh(scriptBytes)) expected = p2pkhScript(pubkey);
-      else if (isP2wpkh(scriptBytes)) expected = p2wpkhScript(pubkey);
-      else if (isP2sh(scriptBytes)) expected = p2shP2wpkhScript(pubkey);
-      else if (isP2tr(scriptBytes)) expected = p2trKeyScript(pubkey.slice(1));
-      if (expected && hodlSpBytesToHex(expected) !== hodlSpBytesToHex(scriptBytes)) {
-        throw new Error(`Input ${i}: the key derived at ${path} does not produce the prevout's scriptPubKey.`);
+      // Only inputs of the eligible script types take part; anything else is
+      // skipped by the sender and needs no key.
+      const extracted = extractInputPubKey(vin);
+      if (!extracted) return vin;
+      if (vin.fingerprint !== undefined && String(vin.fingerprint).toLowerCase().replace(/^0x/, "") !== fingerprint) {
+        throw new Error(`Input ${i}: origin fingerprint ${vin.fingerprint} is not this session's ${fingerprint}.`);
       }
-      if (expected === null) throw new Error(`Input ${i}: unrecognized prevout script type.`);
-      return { ...vin, private_key: hodlSpBytesToHex(node.privateKey) };
-    } finally {
-      if (node) node.wipePrivateData();
-    }
-  });
+      let path = typeof vin.path === "string" && vin.path.trim() ? vin.path.trim() : null;
+      if (!path) {
+        if (!index) index = indexHdKey(root, network);
+        const hit = matchOwnership(index, vinPrevoutScript(vin));
+        if (hit.state !== "ours") {
+          throw new Error(`Input ${i}: the prevout script was not found under this session's keys. Add a "path" field (e.g. "m/84'/…") to name the input's derivation path.`);
+        }
+        path = hit.path;
+      }
+      if (!/^m(\/|$)/.test(path)) throw new Error(`Input ${i}: path must start at the session root ("m/…").`);
+      let node = null;
+      try {
+        node = root.derive(path);
+        if (!node.privateKey) throw new Error(`Input ${i}: path ${path} names a watch-only node.`);
+        // The derived key must actually produce the prevout script — the "lie"
+        // check, including the BIP-341 tweak for P2TR inputs.
+        const scriptBytes = vinPrevoutScript(vin);
+        const pubkey = node.publicKey;
+        let expected = null;
+        if (isP2pkh(scriptBytes)) expected = p2pkhScript(pubkey);
+        else if (isP2wpkh(scriptBytes)) expected = p2wpkhScript(pubkey);
+        else if (isP2sh(scriptBytes)) expected = p2shP2wpkhScript(pubkey);
+        else if (isP2tr(scriptBytes)) expected = p2trKeyScript(pubkey.slice(1));
+        if (expected && hodlSpBytesToHex(expected) !== hodlSpBytesToHex(scriptBytes)) {
+          throw new Error(`Input ${i}: the key derived at ${path} does not produce the prevout's scriptPubKey.`);
+        }
+        if (expected === null) throw new Error(`Input ${i}: unrecognized prevout script type.`);
+        // BIP-352 spends a taproot input with the key of its output key, so the
+        // P2TR case injects the BIP-341-tweaked scalar; anything less would
+        // produce outputs the recipient can never detect.
+        const privateKey = isP2tr(scriptBytes) ? taprootOutputPrivateKey(node.privateKey) : new Uint8Array(node.privateKey);
+        const resolved = { ...vin, private_key: privateKey };
+        derived.push(resolved);
+        return resolved;
+      } finally {
+        if (node) node.wipePrivateData();
+      }
+    });
+    complete = true;
+    return resolved;
+  } finally {
+    if (!complete) hodlSpWipeVinKeys(derived);
+  }
+}
+function hodlSpWipeVinKeys(vins) {
+  for (const vin of vins) {
+    if (vin?.private_key instanceof Uint8Array) vin.private_key.fill(0);
+  }
 }
 function hodlRenderSpSend() {
   let parsed = hodlSpParseRecipients(document.getElementById("sp-recipients")?.value);
   let recipients = parsed.recipients;
   let hrp = hodlSpHrp(hodlSpNetwork());
   for (const recipient of recipients) decodeSilentPaymentAddress(recipient.address, hrp);
-  let result = createSilentPaymentOutputs(hodlSpDeriveVinKeys(hodlSpParseVins(document.getElementById("sp-send-vins")?.value)), recipients, { hrp });
+  let keyedVins = [], result;
+  try {
+    keyedVins = hodlSpDeriveVinKeys(hodlSpParseVins(document.getElementById("sp-send-vins")?.value));
+    result = createSilentPaymentOutputs(keyedVins, recipients, { hrp, includePrivateKeySum: false });
+  } finally {
+    hodlSpWipeVinKeys(keyedVins);
+  }
   if (!result.outputs.length) {
     document.getElementById("sp-out").innerHTML = `<p class="psbt-warn">No silent payment outputs. Eligible inputs may be missing, the private-key sum may be zero, or a scan-key group exceeded K<sub>max</sub> = 2323.</p>`;
     return;
@@ -9502,10 +9539,14 @@ function hodlRenderPsbt(psbt) {
     uninspected = 0,
     policyProblems = 0,
     policyIncomplete = 0,
-    unsupportedNonceChecks = 0;
+    unsupportedNonceChecks = 0,
+    feeInconsistent = 0;
   let inscriptionReport = { inputs: [], envelopes: [] }, inscriptionScanIncomplete = false;
   try {
     inscriptionReport = inspectPsbtInscriptions(psbt);
+    // Malformed witnesses and truncated scripts are coverage gaps: the
+    // summary must not claim a completed inscription scan over them.
+    if (inscriptionReport.incomplete) inscriptionScanIncomplete = true;
   } catch {
     inscriptionReport = { inputs: [], envelopes: [] };
     inscriptionScanIncomplete = true;
@@ -9562,8 +9603,12 @@ function hodlRenderPsbt(psbt) {
       signatures = signatures.concat(finalMaterial.signatures);
       uninspected += finalMaterial.uninspected + (finalMaterial.malformed ? 1 : 0);
     }
-    tapSignatureCount += tapSignatures.length;
-    html.push("<p class='psbt-kv'><strong>Input " + index + "</strong> \xB7 " + hodlHexRev(previous.txid) + " : " + previous.vout + (claim ? " \xB7 " + hodlSats(claim.amount) + " BTC claimed" : "") + "<br>" + hodlEscapeHtml(destination) + "<br>" + (signatures.length + tapSignatures.length ? signatures.length + tapSignatures.length + " signature(s) present" : finalized ? "Finalized input data present" : "Not signed yet") + (declaredSighashError ? "<br>Declared sighash policy unreadable: " + hodlEscapeHtml(declaredSighashError) : "<br>Signature policy: " + hodlEscapeHtml(declaredLabel)) + "</p>");
+    // Only a Schnorr signature that parses under BIP341 counts as present: an
+    // unparseable one is flagged as a policy problem below, not silently
+    // counted (issue #333).
+    let parsedTapSignatures = tapSignatures.reduce((count, tapSig) => count + (tapSig.r ? 1 : 0), 0);
+    tapSignatureCount += parsedTapSignatures;
+    html.push("<p class='psbt-kv'><strong>Input " + index + "</strong> \xB7 " + hodlHexRev(previous.txid) + " : " + previous.vout + (claim ? " \xB7 " + hodlSats(claim.amount) + " BTC claimed" : "") + "<br>" + hodlEscapeHtml(destination) + "<br>" + (signatures.length + parsedTapSignatures ? signatures.length + parsedTapSignatures + " signature(s) present" : finalized ? "Finalized input data present" : "Not signed yet") + (declaredSighashError ? "<br>Declared sighash policy unreadable: " + hodlEscapeHtml(declaredSighashError) : "<br>Signature policy: " + hodlEscapeHtml(declaredLabel)) + "</p>");
     if (claimConflict) html.push("<p class='psbt-bad'><strong>Conflicting previous-output claims:</strong> input " + index + " declares " + hodlSats(witnessUtxo.amount) + " BTC in its witness UTXO but " + hodlSats(nonWitnessUtxo.amount) + " BTC in its non-witness UTXO (checked against the embedded previous transaction). Neither amount is trusted and the fee is left unknown.</p>");
     if (nonWitnessError) html.push("<p class='psbt-bad'><strong>Non-witness UTXO problem:</strong> input " + index + ": " + hodlEscapeHtml(nonWitnessError) + " That field claims nothing.</p>");
     let inputEnvelopes = (inscriptionReport.inputs[index] && inscriptionReport.inputs[index].envelopes) || [];
@@ -9694,7 +9739,10 @@ function hodlRenderPsbt(psbt) {
   else if (knownInputs === tx.inputs.length) {
     let outputSum = tx.outputs.reduce((sum, output) => sum + output.amount, 0n), fee = inputSum - outputSum;
     if (fee >= 0n) html.push("<p class='psbt-kv'><strong>Unverified fee (PSBT previous-output claims)</strong> \xB7 " + hodlSats(fee) + " BTC</p>");
-    else html.push("<p class='psbt-bad'><strong>Inconsistent claimed amounts:</strong> outputs exceed claimed inputs by " + hodlSats(-fee) + " BTC.</p>");
+    else {
+      feeInconsistent = 1;
+      html.push("<p class='psbt-bad'><strong>Inconsistent claimed amounts:</strong> outputs exceed claimed inputs by " + hodlSats(-fee) + " BTC.</p>");
+    }
   } else html.push("<p class='muted'>Fee unknown — some inputs do not include a claimed previous-output amount.</p>");
   html.push("<p class='muted'>Witness-UTXO amounts are unverified PSBT claims; non-witness UTXO amounts are cross-checked against the embedded previous transaction. Neither is checked against the blockchain.</p>");
   if (inscriptionReport.envelopes.length) {
@@ -9722,10 +9770,12 @@ function hodlRenderPsbt(psbt) {
   let checks = [
     {
       label: "Previous outputs and fee",
-      state: "incomplete",
-      detail: knownInputs === tx.inputs.length
-        ? "Amounts and fee were calculated from PSBT-provided witness UTXO claims, but those claims were not checked against previous transactions or the blockchain."
-        : "One or more inputs have no witness UTXO amount, and available PSBT claims were not checked against previous transactions or the blockchain.",
+      state: feeInconsistent ? "problem" : "incomplete",
+      detail: feeInconsistent
+        ? "The claimed output amounts exceed the claimed input amounts, so the PSBT's own claims are inconsistent; claims were not checked against previous transactions or the blockchain."
+        : knownInputs === tx.inputs.length
+          ? "Amounts and fee were calculated from PSBT-provided witness UTXO claims, but those claims were not checked against previous transactions or the blockchain."
+          : "One or more inputs have no witness UTXO amount, and available PSBT claims were not checked against previous transactions or the blockchain.",
     },
     {
       label: "SIGHASH policy",

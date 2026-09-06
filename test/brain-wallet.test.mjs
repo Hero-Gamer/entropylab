@@ -66,6 +66,14 @@ test("exact mode accepts whitespace while trim mode rejects an empty result", ()
   assert.throws(() => helpers.hodlBrainWalletPassphrase(""), /Enter the brain-wallet recovery passphrase/);
 });
 
+test("the trim toggle invalidates the displayed result and re-syncs mirrors", () => {
+  // Trimming changes the hashed bytes — a different wallet — so the handler
+  // must retract the live result and re-run the cross-method sync, like the
+  // sibling brain-wallet controls.
+  const handler = app.match(/getElementById\("brain-wallet-trim"\)[\s\S]{0,600}?hodlInvalidateLiveKeyResult\(\)[\s\S]{0,200}?hodlGlobalSyncFromCurrentInput\(\)/);
+  assert.ok(handler, "trim onchange invalidates and re-syncs");
+});
+
 const lab = new Function(
   "hodlSha256",
   "hodlHex",

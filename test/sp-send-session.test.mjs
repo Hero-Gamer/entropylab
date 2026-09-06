@@ -21,6 +21,9 @@ import {
   isP2sh,
   isP2tr,
   isP2wpkh,
+  scanSilentPaymentOutputs,
+  taprootOutputPrivateKey,
+  spendPrivForOutput,
   vinPrevoutScript,
   bytesToHex,
 } from "../src/js/bip352.js";
@@ -50,16 +53,20 @@ const SESSION = HDKey.fromMasterSeed(SEED); // fingerprint 73c5da0a
 const OWNED_SCRIPT = "51203b82b2b2a9185315da6f80da5f06d0440d8a5e1457fa93387c2d919c86ec8786";
 
 // Drive the app's resolver with the module globals it reads faked in.
-const hodlSpDeriveVinKeys = new Function(
+const makeResolver = (tweak = taprootOutputPrivateKey) => new Function(
   "indexHdKey", "matchOwnership", "extractInputPubKey", "vinPrevoutScript",
   "isP2pkh", "isP2sh", "isP2tr", "isP2wpkh",
   "p2pkhScript", "p2shP2wpkhScript", "p2trKeyScript", "p2wpkhScript",
-  `${loadSlice("hodlFingerprintHex")}; ${loadSlice("hodlSpDeriveVinKeys")}; return hodlSpDeriveVinKeys;`,
+  "taprootOutputPrivateKey",
+  `${loadSlice("hodlFingerprintHex")}; ${loadSlice("hodlSpWipeVinKeys")}; ${loadSlice("hodlSpDeriveVinKeys")}; return hodlSpDeriveVinKeys;`,
 )(
   indexHdKey, matchOwnership, extractInputPubKey, vinPrevoutScript,
   isP2pkh, isP2sh, isP2tr, isP2wpkh,
   p2pkhScript, p2shP2wpkhScript, p2trKeyScript, p2wpkhScript,
+  tweak,
 );
+const hodlSpDeriveVinKeys = makeResolver();
+const hodlSpWipeVinKeys = new Function(`${loadSlice("hodlSpWipeVinKeys")}; return hodlSpWipeVinKeys;`)();
 
 const vinOf = (scriptHex, extra = {}) => ({
   txid: "00".repeat(32),
@@ -81,16 +88,19 @@ const setup = () => {
 test("an owned input resolves through the ownership index, and the derived key matches the prevout", () => {
   setup();
   const [resolved] = hodlSpDeriveVinKeys([vinOf(OWNED_SCRIPT)]);
-  assert.ok(resolved.private_key, "no key injected");
-  const pub = secp256k1.getPublicKey(hexToBytes_(resolved.private_key), true);
-  // The derived key really does produce the prevout script (BIP-341 tweak).
-  assert.equal(bytesToHex(p2trKeyScript(pub.slice(1))), OWNED_SCRIPT);
+  assert.ok(resolved.private_key instanceof Uint8Array);
+  assert.equal(resolved.private_key.length, 32);
+  const pub = secp256k1.getPublicKey(resolved.private_key, true);
+  // The injected key is the key of the taproot OUTPUT key (BIP-341 tweaked,
+  // as BIP-352 sending requires): its x-only public key is the prevout
+  // program itself, which is what the recipient extracts from the input.
+  assert.equal(bytesToHex(pub.slice(1)), OWNED_SCRIPT.slice(4));
   // Same result via an explicit path.
   const [byPath] = hodlSpDeriveVinKeys([vinOf(OWNED_SCRIPT, { path: "m/86'/1'/0'/0/0" })]);
-  assert.equal(byPath.private_key, resolved.private_key);
+  assert.deepEqual(byPath.private_key, resolved.private_key);
   // And the fingerprint guard accepts the session's own fingerprint.
   const [byOrigin] = hodlSpDeriveVinKeys([vinOf(OWNED_SCRIPT, { path: "m/86'/1'/0'/0/0", fingerprint: "73c5da0a" })]);
-  assert.equal(byOrigin.private_key, resolved.private_key);
+  assert.deepEqual(byOrigin.private_key, resolved.private_key);
 });
 
 test("session derivation refuses pasted scalars, foreign origins, and unowned scripts (issue #331)", () => {
@@ -116,6 +126,39 @@ test("a session-resolved send equals the same inputs keyed by hand (vector-mode 
   assert.equal(bySession.outputs.length, 1);
 });
 
+test("a session send spending a tweaked P2TR input is detectable by the recipient", () => {
+  // Regression: the injected key must be the key of the taproot OUTPUT key
+  // (BIP-341 tweaked) — the raw internal key produced outputs scanning could
+  // never find (silent funds loss), and the input-key match check rejects it.
+  setup();
+  const [resolved] = hodlSpDeriveVinKeys([vinOf(OWNED_SCRIPT)]);
+  const keys = deriveSilentPaymentKeys(SEED, { coinType: 1, account: 0 });
+  const recipient = encodeSilentPaymentAddress(keys.scanPoint, keys.spendPoint, "tsp");
+  const send = createSilentPaymentOutputs([resolved], [{ address: recipient, count: 1 }], { hrp: "tsp" });
+  assert.equal(send.outputs.length, 1);
+  const scan = scanSilentPaymentOutputs({
+    scanPriv: keys.scanPriv,
+    spendPub: keys.spendPoint,
+    vins: [vinOf(OWNED_SCRIPT)],
+    outputs: send.outputs,
+    labels: [],
+  });
+  assert.equal(scan.outputs.length, 1, "the recipient cannot detect the output: the input key is not the output key's");
+  const spend = spendPrivForOutput(keys.spendPriv, scan.outputs[0].priv_key_tweak);
+  try { assert.equal(bytesToHex(secp256k1.getPublicKey(spend, true).slice(1)), send.outputs[0]); }
+  finally { spend.fill(0); hodlSpWipeVinKeys([resolved]); }
+  // Current rock already rejects the old untweaked input. Keep that guard;
+  // a pre-guard sender would use the internal public key in its ECDH sum.
+  const node = SESSION.derive("m/86'/1'/0'/0/0");
+  try {
+    assert.throws(() => createSilentPaymentOutputs([vinOf(OWNED_SCRIPT, {private_key: node.privateKey})], [{address: recipient}], {hrp:"tsp"}), /does not match/);
+    // Emulate the old sender's internal-key ECDH via a synthetic internal-key
+    // prevout; scan against the REAL tweaked prevout, which must find nothing.
+    const old = createSilentPaymentOutputs([vinOf("5120" + bytesToHex(node.publicKey.slice(1)), {private_key: node.privateKey})], [{address: recipient}], {hrp:"tsp"});
+    assert.equal(scanSilentPaymentOutputs({scanPriv:keys.scanPriv, spendPub:keys.spendPoint, vins:[vinOf(OWNED_SCRIPT)], outputs:old.outputs}).outputs.length, 0);
+  } finally { node.wipePrivateData(); }
+});
+
 // The library keeps raw private_key support for the published BIP-352
 // vectors — the separation the issue asks for is the UI rejecting them.
 test("the shell copy points at session-derived inputs, not pasted keys", () => {
@@ -124,6 +167,72 @@ test("the shell copy points at session-derived inputs, not pasted keys", () => {
   assert.match(shell, /derived from the loaded session key/);
 });
 
-function hexToBytes_(hex) {
-  return new Uint8Array(hex.match(/../g).map((b) => parseInt(b, 16)));
-}
+
+
+test("partial resolution wipes earlier copies and leaves the session usable", () => {
+  setup(); const copies=[];
+  const resolve=makeResolver(key=>{const copy=taprootOutputPrivateKey(key);copies.push(copy);return copy;});
+  assert.throws(()=>resolve([vinOf(OWNED_SCRIPT),vinOf(OWNED_SCRIPT,{fingerprint:"deadbeef"})]),/not this session/);
+  assert.equal(copies.length,1);
+  assert.ok(copies[0].every(b=>b===0));
+  const resolved=resolve([vinOf(OWNED_SCRIPT)]);
+  assert.ok(resolved[0].private_key.some(b=>b!==0));
+  hodlSpWipeVinKeys(resolved);
+  assert.ok(copies.every(copy=>copy.every(b=>b===0)));
+});
+
+test("UI construction wipes byte keys on success and throw, and suppresses the scalar sum", () => {
+  setup();
+  for(const fail of [false,true]){
+    let saved;
+    const render=new Function("hodlSpParseRecipients","hodlSpHrp","decodeSilentPaymentAddress","hodlSpParseVins","hodlSpDeriveVinKeys","hodlSpWipeVinKeys","createSilentPaymentOutputs",
+      `${loadSlice("hodlRenderSpSend")}; return hodlRenderSpSend;`)(
+      ()=>({recipients:[]}),()=>"tsp",()=>{},()=>[vinOf(OWNED_SCRIPT)],hodlSpDeriveVinKeys,hodlSpWipeVinKeys,
+      (vins,recipients,options)=>{saved=vins;assert.equal(options.includePrivateKeySum,false);if(fail)throw new Error("construction failed");return {outputs:[]};});
+    const original=document.getElementById;document.getElementById=id=>id==="sp-out"?{}:original(id);
+    if(fail)assert.throws(render,/construction failed/);else render();
+    assert.ok(saved[0].private_key.every(b=>b===0));
+  }
+});
+
+test("non-Taproot session scalars retain their exact bytes", () => {
+  setup();
+  const path="m/84'/1'/0'/0/0", node=SESSION.derive(path), pub=node.publicKey;
+  try {
+    for(const [script,scriptSig,witness] of [
+      [p2pkhScript(pub),"21"+bytesToHex(pub),""],
+      [p2wpkhScript(pub),"","0121"+bytesToHex(pub)],
+      [p2shP2wpkhScript(pub),"16"+bytesToHex(p2wpkhScript(pub)),"0121"+bytesToHex(pub)],
+    ]){
+      const vins=hodlSpDeriveVinKeys([vinOf(bytesToHex(script),{path,scriptSig,txinwitness:witness})]);
+      assert.deepEqual(vins[0].private_key,node.privateKey);
+      hodlSpWipeVinKeys(vins);
+    }
+  } finally {node.wipePrivateData();}
+});
+
+test("UI send mode never returns the private scalar sum", () => {
+  setup();const vins=hodlSpDeriveVinKeys([vinOf(OWNED_SCRIPT)]);
+  const keys=deriveSilentPaymentKeys(SEED,{coinType:1});const address=encodeSilentPaymentAddress(keys.scanPoint,keys.spendPoint,"tsp");
+  try{
+    for(const count of [1,2324]){
+      const result=createSilentPaymentOutputs(vins,[{address,count}],{hrp:"tsp",includePrivateKeySum:false});
+      assert.equal(result.inputPrivateKeySum,null);
+    }
+  }finally{hodlSpWipeVinKeys(vins);}
+});
+
+test("P2TR tweak matches BIP-86 output scripts for both internal parities", () => {
+  const parities = new Set();
+  for (const n of [1, 6]) {
+    const secret = new Uint8Array(32); secret[31] = n;
+    const pub = secp256k1.getPublicKey(secret, true);
+    parities.add(pub[0]);
+    const tweaked = taprootOutputPrivateKey(secret);
+    try {
+      assert.equal(bytesToHex(secp256k1.getPublicKey(tweaked, true).slice(1)), bytesToHex(p2trKeyScript(pub.slice(1))).slice(4));
+      assert.equal(secret[31], n, "tweaking must not mutate the caller's key");
+    } finally { secret.fill(0); tweaked.fill(0); }
+  }
+  assert.deepEqual([...parities].sort(), [2, 3]);
+});

@@ -186,6 +186,20 @@ const referenceDescriptorId = (stored) => {
   return bytesToHex(sha256(utf8(`${compat}#${descriptorChecksum(compat)}`)));
 };
 
+// The cache body Core derives for a descriptor: the parent of the wildcard,
+// taken from the descriptor TEXT — the branch child for "…xpub/b/*", or the
+// root key itself for "…xpubBranch/*" (the hardened-branch layout). The branch
+// slot the wallet assigns the descriptor to is irrelevant: Core's
+// BIP32PubkeyProvider reads the path from the descriptor string.
+const referenceCacheBody = (descriptor, xpub) => {
+  const body = descriptor.replace(/#[a-z0-9]*$/, "");
+  const tail = body.slice(body.indexOf(xpub) + xpub.length).replace(/\)+$/, "");
+  if (tail === "/*") return b58checkDecode(xpub).slice(4);
+  const branch = tail.match(/^\/(\d+)\/\*$/);
+  assert.ok(branch, `corpus descriptor tail must be /b/* or /*: ${descriptor}`);
+  return fuzzDeps.deriveBranchBody(xpub, Number(branch[1]));
+};
+
 // Bitcoin CompactSize decoding, written against the Core documentation (the
 // module encodes; this suite only ever decodes).
 const readCompactSize = (bytes, offset) => {
@@ -348,8 +362,8 @@ const verifyWalletRecords = (label, wallet, includePrivate, creationTime) => {
     assert.equal(bodyLength, 74, `${at}: cache body length`);
     assert.equal(
       bytesToHex(cache.value.slice(bodyOffset, bodyOffset + 74)),
-      bytesToHex(fuzzDeps.deriveBranchBody(unit.xpub, unit.internal ? 1 : 0)),
-      `${at}: cache body is the independently derived branch xpub`,
+      bytesToHex(referenceCacheBody(unit.descriptor, unit.xpub)),
+      `${at}: cache body is the independently derived parent of the descriptor's wildcard`,
     );
     assert.equal(cache.value.length, bodyOffset + 74, `${at}: cache value length`);
 

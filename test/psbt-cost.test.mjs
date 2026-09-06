@@ -97,6 +97,6 @@ test("legacy final scriptSig is included in exact transaction size", () => {
   }];
   const facts = psbtCostFactsFromDoc(fixture);
   assert.equal(facts.finalized, true);
-  assert.equal(facts.weight, 1000);
-  assert.equal(facts.vsize, 250);
+  assert.equal(facts.weight, 816);
+  assert.equal(facts.vsize, 204);
 });

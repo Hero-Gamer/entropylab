@@ -218,7 +218,7 @@ fn verify(message: &str, address_text: &str, signature: &str) -> String {
                 };
                 prevouts.push(txout.clone());
             }
-            verify_pof_encoded(address_text, message, encoded, &prevouts).is_ok()
+            verify_pof_encoded(address_text, message, encoded).is_ok()
         }
         _ => false,
     };

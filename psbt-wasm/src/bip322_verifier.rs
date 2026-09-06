@@ -2,10 +2,10 @@
 //! Cryptographic verification is delegated to rust-bitcoin/bip322 0.0.11.
 
 use bip322::{
-    create_to_spend, tagged_hash, verify_full_encoded, verify_legacy_encoded,
-    verify_pof_encoded, verify_simple_encoded, BIP322_TAG, PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE,
+    tagged_hash, verify_full_encoded, verify_legacy_encoded, verify_pof_encoded,
+    verify_simple_encoded, BIP322_TAG, PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE,
 };
-use bitcoin::{psbt::raw::Key, psbt::Psbt, Address, Sequence};
+use bitcoin::{psbt::raw::Key, psbt::Psbt, Address};
 use serde_json::{json, Value};
 use std::str::FromStr;
 
@@ -241,8 +241,8 @@ fn verify(message: &str, address_text: &str, signature: &str) -> String {
     let locks = if requested_prefix == "ful" {
         base64::Engine::decode(&base64::engine::general_purpose::STANDARD, encoded)
             .ok()
-            .and_then(|bytes| bitcoin::consensus::deserialize::<bitcoin::Transaction>(&bytes).ok())
-            .map(|tx| time_lock_state(&tx))
+            .and_then(|bytes| Psbt::deserialize(&bytes).ok())
+            .map(|psbt| time_lock_state(&psbt.unsigned_tx))
     } else {
         None
     };

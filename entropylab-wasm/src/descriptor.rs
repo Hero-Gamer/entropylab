@@ -246,6 +246,32 @@ fn descriptor_duplicate_check(body: &str, child_index: u32) -> Result<String, St
     if body.is_empty() || body.len() > MAX_DESCRIPTOR_BYTES {
         return Err("descriptor length out of range".into());
     }
+    if body.contains(">/<") {
+        return Err("invalid descriptor or multipath expression".to_string());
+    }
+    // check ALL <> blocks for duplicate entries
+    {
+        let mut rest = body;
+        while let Some(s_idx) = rest.find('<') {
+            if let Some(e_idx) = rest[s_idx..].find('>') {
+                let inner = &rest[s_idx+1..s_idx+e_idx];
+                let mut seen = std::collections::HashSet::new();
+                for p in inner.split(';') {
+                    if !seen.insert(p.trim()) {
+                        return Err("invalid descriptor or multipath expression".to_string());
+                    }
+                }
+                rest = &rest[s_idx+e_idx+1..];
+            } else { break; }
+        }
+    }
+    if let Some(a) = body.find('[') {
+        if let Some(b) = body.find(']') {
+            if body[a..b].contains('<') && body[b+1..].contains('/') {
+                return Err("invalid descriptor or multipath expression".to_string());
+            }
+        }
+    }
 
     let (descriptor, secrets) = Descriptor::parse_descriptor(ctx(), body)
         .map_err(|_| "invalid descriptor or multipath expression".to_string())?;
@@ -426,7 +452,7 @@ mod tests {
 
     #[test]
     fn duplicate_check_detects_later_multipath_branch() {
-        let xpub = "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcM7tc";
+        let xpub = "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8";
         let body = format!("wsh(or_i(pk({}/<0;1>),pk({}/<2;1>)))", xpub, xpub);
         let record = descriptor_duplicate_check(&body, 0).expect("valid multipath descriptor");
         let lines: Vec<&str> = record.lines().collect();
@@ -439,7 +465,7 @@ mod tests {
 
     #[test]
     fn duplicate_check_detects_explicit_duplicate() {
-        let xpub = "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcM7tc";
+        let xpub = "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8";
         let body = format!("wsh(or_i(pk({}/1),pk({}/1)))", xpub, xpub);
         let record = descriptor_duplicate_check(&body, 0).expect("valid descriptor");
         assert_eq!(record.lines().nth(3), Some("1"));
@@ -447,7 +473,7 @@ mod tests {
 
     #[test]
     fn duplicate_check_rejects_invalid_bip389_before_scan() {
-        let xpub = "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcM7tc";
+        let xpub = "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8";
         for body in [
             format!("wpkh({}/<0;0>/*)", xpub),
             format!("wpkh({}/<0;1>/<2;3>/*)", xpub),
@@ -459,7 +485,7 @@ mod tests {
 
     #[test]
     fn duplicate_check_does_not_flag_distinct_paths() {
-        let xpub = "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcM7tc";
+        let xpub = "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8";
         let body = format!("wsh(multi(2,{}/0/0,{}/0/2))", xpub, xpub);
         let record = descriptor_duplicate_check(&body, 0).expect("valid descriptor");
         assert_eq!(record.lines().nth(3), Some("0"));

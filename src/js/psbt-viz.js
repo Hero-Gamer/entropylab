@@ -118,7 +118,7 @@ const feeHtml = (doc) => {
 const costHtml = (doc) => {
   const facts = psbtCostFactsFromDoc(doc);
   if (!facts.finalized) {
-    return `<span class="muted" title="exact transaction size requires final scriptSig/scriptWitness for every input">size unknown — PSBT not finalized</span>`;
+    return `<span class="muted" title="exact transaction size requires final scriptSig/scriptWitness for every input">size unknown — final transaction not reconstructable</span>`;
   }
   const rate = facts.feeRateSatPerVbyte === null ? "" : ` · ${facts.feeRateSatPerVbyte} sat/vB`;
   return `<span title="exact serialized transaction size">${facts.vsize} vB · ${facts.weight} WU</span>${rate}`;

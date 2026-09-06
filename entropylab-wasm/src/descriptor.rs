@@ -22,12 +22,8 @@ use miniscript::descriptor::{checksum, DescriptorPublicKey, DescriptorSecretKey,
 use miniscript::{Descriptor, ForEachKey};
 use std::str::FromStr;
 
-/// App-built descriptors are under 2 KB; capping the input bounds parse
-/// recursion depth ahead of rust-miniscript's own limits.
 const MAX_DESCRIPTOR_BYTES: usize = 16_384;
 
-/// Parses a BIP380 key expression (hex key, xpub/xprv with optional origin
-/// and path, or WIF) and reduces secrets to their public half.
 fn parse_key_expression(text: &str) -> Result<DescriptorPublicKey, String> {
     match DescriptorSecretKey::from_str(text) {
         Ok(secret) => secret
@@ -37,9 +33,6 @@ fn parse_key_expression(text: &str) -> Result<DescriptorPublicKey, String> {
     }
 }
 
-/// The compressed encoding of one sortedmulti_a participant's key at child
-/// `index`: fixed path steps are applied, and a trailing `/*` derives the
-/// child at `index`.
 fn participant_public_key(key: &DescriptorPublicKey, index: u32) -> Result<[u8; 33], String> {
     match key {
         DescriptorPublicKey::Single(single) => match single.key {
@@ -61,13 +54,13 @@ fn participant_public_key(key: &DescriptorPublicKey, index: u32) -> Result<[u8; 
             for step in xkey.derivation_path.as_ref() {
                 node = node
                     .ckd_pub(ctx(), *step)
-                    .map_err(|_| "cannot derive a hardened step from an xpub participant".to_string())?;
+                    .map_err(|_| "cannot derive a hardened step from an xpub participant".into())?;
             }
             match xkey.wildcard {
                 Wildcard::None => {}
                 Wildcard::Unhardened => {
-                    let child =
-                        ChildNumber::from_normal_idx(index).map_err(|_| "derivation index out of range".to_string())?;
+                    let child = ChildNumber::from_normal_idx(index)
+                        .map_err(|_| "derivation index out of range".to_string())?;
                     node = node
                         .ckd_pub(ctx(), child)
                         .map_err(|_| "participant key derivation failed".to_string())?;
@@ -200,11 +193,7 @@ fn derive_miniscript(body: &str, index: u32, network: Network) -> Result<Derived
         keys.push(*key);
         true
     });
-    Ok(Derived {
-        address,
-        script_pubkey,
-        keys,
-    })
+    Ok(Derived { address, script_pubkey, keys })
 }
 
 fn derive_descriptor(body: &str, index: u32, network: Network) -> Result<Derived, String> {
@@ -223,12 +212,6 @@ fn derive_descriptor(body: &str, index: u32, network: Network) -> Result<Derived
     result
 }
 
-/// Checks concrete public keys across every BIP-389 materialized branch.
-///
-/// The result record is:
-/// `OK\nexpanded_count\nchild_index\nfinding_count` followed by one line per
-/// finding: `compressed_pubkey_hex:branch/key_position,...`.
-/// Invalid descriptors return -1 without exposing parser error text.
 fn descriptor_duplicate_check(body: &str, child_index: u32) -> Result<String, String> {
     if body.is_empty() || body.len() > MAX_DESCRIPTOR_BYTES {
         return Err("descriptor length out of range".into());
@@ -249,7 +232,6 @@ fn descriptor_duplicate_check(body: &str, child_index: u32) -> Result<String, St
         let concrete = single
             .derived_descriptor(ctx(), child_index)
             .map_err(|_| "descriptor cannot be derived at this index".to_string())?;
-
         let mut key_position = 0usize;
         concrete.for_each_key(|key| {
             occurrences
@@ -267,33 +249,21 @@ fn descriptor_duplicate_check(body: &str, child_index: u32) -> Result<String, St
         .collect();
     findings.sort_by(|a, b| a.0.cmp(&b.0));
 
-    let mut record = format!(
-        "OK\n{}\n{}\n{}",
-        single_descriptors.len(),
-        child_index,
-        findings.len()
-    );
-
+    let mut record = format!("OK\n{}\n{}\n{}", single_descriptors.len(), child_index, findings.len());
     for (key, positions) in findings {
         record.push('\n');
         record.push_str(&hex_lower(&key));
         record.push(':');
         for (i, (branch, key_position)) in positions.iter().enumerate() {
-            if i > 0 {
-                record.push(',');
-            }
+            if i > 0 { record.push(','); }
             record.push_str(&branch.to_string());
             record.push('/');
             record.push_str(&key_position.to_string());
         }
     }
-
     Ok(record)
 }
 
-/// An informational duplicate-key check for multipath descriptors.
-/// Child index is explicit because multipath expansion resolves finite
-/// `<a;b>` dimensions but ranged `/*` remains after expansion.
 #[no_mangle]
 pub unsafe extern "C" fn el_desc_duplicate_check(
     desc: *const u8,
@@ -327,10 +297,6 @@ pub unsafe extern "C" fn el_desc_duplicate_check(
     len
 }
 
-/// Evaluates a descriptor at child `index` and writes the record
-/// `address\nscriptPubKeyHex\nkeyHex,keyHex,...` (address empty when the
-/// template has none). Returns the record length, -1 on any parse/derivation
-/// failure, or -2 when `cap` is too small.
 #[no_mangle]
 pub unsafe extern "C" fn el_desc_derive(
     desc: *const u8,
@@ -360,9 +326,7 @@ pub unsafe extern "C" fn el_desc_derive(
         }
     };
     let mut record = String::new();
-    if let Some(address) = derived.address {
-        record.push_str(&address);
-    }
+    if let Some(address) = derived.address { record.push_str(&address); }
     record.push('\n');
     for byte in derived.script_pubkey.as_bytes() {
         record.push(char::from_digit((byte >> 4) as u32, 16).unwrap_or('0'));
@@ -370,9 +334,7 @@ pub unsafe extern "C" fn el_desc_derive(
     }
     record.push('\n');
     for (i, key) in derived.keys.iter().enumerate() {
-        if i > 0 {
-            record.push(',');
-        }
+        if i > 0 { record.push(','); }
         for byte in key.inner.serialize() {
             record.push(char::from_digit((byte >> 4) as u32, 16).unwrap_or('0'));
             record.push(char::from_digit((byte & 15) as u32, 16).unwrap_or('0'));
@@ -388,20 +350,20 @@ pub unsafe extern "C" fn el_desc_derive(
     len
 }
 
+const VK: [&str; 3] = [
+    "02F9308A019258C31049344F85F89D5229B531C845836F99B08601F113BCE036F9",
+    "03DFF1D77F2A671C5F36183726DB2341BE58FEAE1DA2DECED843240F7B502BA659",
+    "023590A94E768F8E1815C2F24B4D80A8E3149316C3518CE7B7AD338368D038CA66",
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
     const NET: Network = Network::Bitcoin;
 
     fn script_hex(body: &str, index: u32) -> String {
         let derived = derive_descriptor(body, index, NET).expect("descriptor derives");
-        derived
-            .script_pubkey
-            .as_bytes()
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect()
+        derived.script_pubkey.as_bytes().iter().map(|b| format!("{:02x}", b)).collect()
     }
 
     #[test]
@@ -440,7 +402,7 @@ mod tests {
     #[test]
     fn duplicate_check_does_not_flag_distinct_paths() {
         let xpub = "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcM7tc";
-        let body = format!("wsh(multi(2,{}/0/0,{} /0/2))", xpub, xpub).replace("{} ", "{}");
+        let body = format!("wsh(multi(2,{}/0/0,{}/0/2))", xpub, xpub);
         let record = descriptor_duplicate_check(&body, 0).expect("valid descriptor");
         assert_eq!(record.lines().nth(3), Some("0"));
     }
@@ -449,11 +411,7 @@ mod tests {
     fn multisig_descriptors_derive_through_miniscript() {
         let inner = format!("sortedmulti(2,{},{},{})", VK[0].to_lowercase(), VK[1].to_lowercase(), VK[2].to_lowercase());
         for (wrapper, prefix) in [("sh", "a914"), ("wsh", "0020"), ("sh(wsh", "a914")] {
-            let body = if wrapper == "sh(wsh" {
-                format!("sh(wsh({}))", inner)
-            } else {
-                format!("{}({})", wrapper, inner)
-            };
+            let body = if wrapper == "sh(wsh" { format!("sh(wsh({}))", inner) } else { format!("{}({})", wrapper, inner) };
             let derived = derive_descriptor(&body, 0, NET).expect("multisig derives");
             assert!(derived.script_pubkey.as_bytes().starts_with(&[0xa9, 0x14]) == prefix.starts_with("a9"));
             assert!(derived.address.is_some());
@@ -498,9 +456,3 @@ mod tests {
         assert_eq!(derived.address.as_deref(), Some("bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr"));
     }
 }
-
-const VK: [&str; 3] = [
-    "02F9308A019258C31049344F85F89D5229B531C845836F99B08601F113BCE036F9",
-    "03DFF1D77F2A671C5F36183726DB2341BE58FEAE1DA2DECED843240F7B502BA659",
-    "023590A94E768F8E1815C2F24B4D80A8E3149316C3518CE7B7AD338368D038CA66",
-];

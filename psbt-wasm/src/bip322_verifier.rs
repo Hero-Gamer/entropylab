@@ -106,6 +106,8 @@ fn parse_signature(signature: &str) -> (&str, &str, bool) {
         ("ful", rest, true)
     } else if let Some(rest) = signature.strip_prefix("pof/") {
         ("pof", rest, true)
+    } else if signature.contains('/') {
+        ("unknown", signature, true)
     } else {
         ("smp", signature, false)
     }
@@ -134,6 +136,9 @@ fn time_lock_state(tx: &bitcoin::Transaction) -> (bool, Value) {
 
 fn verify(message: &str, address_text: &str, signature: &str) -> String {
     let (requested_prefix, encoded, explicit_prefix) = parse_signature(signature);
+    if requested_prefix == "unknown" {
+        return invalid("unknown", "unknown BIP-322 signature prefix");
+    }
     if address_text.len() > MAX_ADDRESS_BYTES {
         return invalid(requested_prefix, "address is too long");
     }

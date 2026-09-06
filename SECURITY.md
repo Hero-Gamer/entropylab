@@ -70,6 +70,12 @@ material. Its security posture rests on the following model:
 - Wallet security depends on the quality and secrecy of the entropy, seed
   phrase, passphrase, or private key supplied by the user, and on the
   integrity of the machine it runs on.
+- Silent Payment sender inputs use BIP-341 tweaked output-key scalars for
+  P2TR key-path spends. Session-derived sender keys are handed over as byte
+  buffers and wiped on success, construction failure, and partial resolution
+  failure. The UI suppresses the vector API's private-key-sum diagnostic.
+  Immutable BigInts and internal curve-library representations still depend
+  on garbage collection; this is best-effort cleanup, not guaranteed erasure.
 - Silent Payments (BIP-352) support is a calculator: it derives reusable
   addresses, sender outputs, and spend tweaks from user-supplied keys and
   pasted transaction data. It does not connect to a node, Electrum server, or

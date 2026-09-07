@@ -2,8 +2,9 @@
 // the wrapper picks the script type, multi/sortedmulti picks the key order,
 // and the threshold plus one key expression per co-signer fill the quorum and
 // the fields. The #checksum is verified, private keys are refused, and shapes
-// the form cannot reproduce (a fixed derivation path, a non-NUMS Taproot
-// internal key) fail with directions.
+// the form cannot reproduce (a fixed derivation path, a trailing path deeper
+// than the receive/change branch step, a non-NUMS Taproot internal key) fail
+// with directions.
 // Run with: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -107,7 +108,7 @@ test("sh, sh(wsh), and bare multi wrappers map to script kinds", () => {
   const nested = hodlParseMsigDescriptor(hodlDescriptorWithChecksum(`sh(wsh(multi(2,${keyA}/0/*,${keyB}/0/*)))`));
   assert.equal(nested.kind, "p2sh-p2wsh");
   assert.equal(nested.sorted, false);
-  const legacy = hodlParseMsigDescriptor(hodlDescriptorWithChecksum(`sh(multi(1,${keyA}))`));
+  const legacy = hodlParseMsigDescriptor(hodlDescriptorWithChecksum(`sh(multi(1,${keyA}/0/*))`));
   assert.equal(legacy.kind, "p2sh");
   assert.equal(legacy.m, 1);
   assert.equal(legacy.n, 1);
@@ -126,6 +127,57 @@ test("a present checksum is verified, not just stripped", () => {
 test("multipath suffixes strip like plain branch wildcards", () => {
   const parsed = hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/<0;1>/*,${keyB}/<0;1>/*))`);
   assert.deepEqual(parsed.keys, [keyA, keyB]);
+});
+
+// Issue #389: the import used to drop every trailing step, so a descriptor
+// whose keys ended in /0/20/* imported as …/0/* — the displayed and exported
+// wallet silently differed from the imported one. Every shape the form cannot
+// reproduce exactly must now be refused instead of rewritten.
+test("a trailing path beyond the branch step is refused, not dropped (issue #389)", () => {
+  assert.throws(
+    () => hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/0/20/*,${keyB}/0/20/*))`),
+    /\/0\/20\/\*.*cannot reproduce|would change the wallet/,
+  );
+  // A branch the default receive/change window never derives.
+  assert.throws(
+    () => hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/5/*,${keyB}/5/*))`),
+    /would change the wallet/,
+  );
+  // A multipath that reaches past the change branch.
+  assert.throws(
+    () => hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/<0;2>/*,${keyB}/<0;2>/*))`),
+    /would change the wallet/,
+  );
+  // No branch step at all: the tool always derives one below the key.
+  assert.throws(
+    () => hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/*,${keyB}/*))`),
+    /would change the wallet/,
+  );
+  // A fixed key with no wildcard names one address the form never derives.
+  assert.throws(
+    () => hodlParseMsigDescriptor(`sh(multi(1,${keyA}))`),
+    /no derivation|cannot reproduce/,
+  );
+});
+
+test("reproducible tails still import: receive, change, and the receive/change multipath", () => {
+  for (const tail of ["/0/*", "/1/*", "/<0;1>/*", "/<1;0>/*"]) {
+    const parsed = hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}${tail},${keyB}${tail}))`);
+    assert.deepEqual(parsed.keys, [keyA, keyB], `tail ${tail}`);
+  }
+});
+
+test("a BIP45 cosigner step ahead of the branch wildcard still imports", () => {
+  const bip45A = `[${fingerprint}/45h]${nodeA.publicExtendedKey}`;
+  const bip45B = `[${fingerprint}/45h]${nodeB.publicExtendedKey}`;
+  // sh(multi) over 45-purpose origins: /0/0/* is cosigner 0, receive branch —
+  // exactly what the BIP45 compose re-derives.
+  const parsed = hodlParseMsigDescriptor(`sh(sortedmulti(1,${bip45A}/0/0/*,${bip45B}/0/<0;1>/*))`);
+  assert.deepEqual(parsed.keys, [bip45A, bip45B]);
+  // A cosigner index other than 0 is not what the tool derives.
+  assert.throws(() => hodlParseMsigDescriptor(`sh(sortedmulti(1,${bip45A}/1/0/*,${bip45B}/0/0/*))`), /would change the wallet/);
+  // And the cosigner step does not excuse a deeper path.
+  assert.throws(() => hodlParseMsigDescriptor(`sh(sortedmulti(1,${bip45A}/0/0/20/*,${bip45B}/0/0/*))`), /would change the wallet/);
 });
 
 test("an extended private key in the descriptor is refused", () => {

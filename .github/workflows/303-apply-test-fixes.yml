@@ -1,0 +1,79 @@
+name: Apply BIP-322 test fixes
+
+on:
+  push:
+    branches:
+      - feat/303-bip322-verifier
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message != 'test: update BIP-322 test enumerations'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply exact test updates and remove temporary scripts
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          ui = Path('test/ui-defaults.test.mjs')
+          text = ui.read_text()
+          replacements = [
+              ('All seven tools ship in the static markup, each with a full name and the',
+               'All eight tools ship in the static markup, each with a full name and the'),
+              ('["Keys", "Keys"], ["Vanity", "Vanity"], ["BIP-85", "BIP85"], ["Multi Signature", "MultiSig"], ["Silent Payments", "SP"], ["PSBT", "PSBT"], ["Journal", "Journal"]',
+               '["Keys", "Keys"], ["Vanity", "Vanity"], ["BIP-85", "BIP85"], ["Multi Signature", "MultiSig"], ["Silent Payments", "SP"], ["PSBT", "PSBT"], ["BIP-322", "BIP322"], ["Journal", "Journal"]'),
+              ('["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "Journal"]',
+               '["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "Journal", "BIP-322"]'),
+              ('["bip85", "sp", "msig", "calc", "vanity"].forEach',
+               '["bip85", "sp", "msig", "calc", "vanity", "bip322"].forEach'),
+          ]
+          for old, new in replacements:
+              count = text.count(old)
+              expected = 1 if old.startswith('All seven') else 2 if old.startswith('["Keys", "Keys"') else 1
+              if count != expected:
+                  raise SystemExit(f'ui replacement expected {expected}, found {count}: {old[:80]}')
+              text = text.replace(old, new)
+          ui.write_text(text)
+
+          browser = Path('test/browser-suite.html')
+          text = browser.read_text()
+          old = 'assert(tabs.length === 7, `Expected seven tool tabs, found ${tabs.length}`);'
+          new = 'assert(tabs.length === 8, `Expected eight tool tabs, found ${tabs.length}`);'
+          if text.count(old) != 1:
+              raise SystemExit('browser tab-count replacement did not match exactly once')
+          text = text.replace(old, new)
+          old = '["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "Journal"]'
+          new = '["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "BIP-322", "Journal"]'
+          if text.count(old) != 1:
+              raise SystemExit('browser names replacement did not match exactly once')
+          text = text.replace(old, new)
+          browser.write_text(text)
+
+          for name in [
+              'scripts/303-style-fix.mjs',
+              'scripts/303-style-patch.mjs',
+              'scripts/303-ui-patch-fix.mjs',
+              'scripts/303-ui-patch.mjs',
+          ]:
+              p = Path(name)
+              if p.exists():
+                  p.unlink()
+          PY
+      - name: Verify the final diff is limited to the intended changes
+        run: |
+          git diff --check
+          git diff -- test/ui-defaults.test.mjs test/browser-suite.html scripts/303-style-fix.mjs scripts/303-style-patch.mjs scripts/303-ui-patch-fix.mjs scripts/303-ui-patch.mjs
+      - name: Commit and push
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add test/ui-defaults.test.mjs test/browser-suite.html scripts/303-style-fix.mjs scripts/303-style-patch.mjs scripts/303-ui-patch-fix.mjs scripts/303-ui-patch.mjs
+          git commit -m 'test: update BIP-322 test enumerations'
+          git push origin HEAD:feat/303-bip322-verifier
+          git rm .github/workflows/303-apply-test-fixes.yml
+          git commit -m 'chore: remove temporary test-fix workflow'
+          git push origin HEAD:feat/303-bip322-verifier

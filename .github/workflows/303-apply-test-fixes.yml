@@ -76,3 +76,4 @@ jobs:
           git rm .github/workflows/303-apply-test-fixes.yml
           git commit -m 'chore: remove temporary test-fix workflow'
           git push origin HEAD:feat/303-bip322-verifier
+# Temporary workflow; self-removes after the patch commit.

@@ -88,16 +88,7 @@ jobs:
           PY
           cd psbt-wasm
           cargo update
-          cargo test
-          cd ..
-          npm ci
-          npm run build:wasm
-          npm test -- test/bip322.test.mjs
-          npm run build
-          npm run verify
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add psbt-wasm/Cargo.toml psbt-wasm/Cargo.lock psbt-wasm/src/lib.rs psbt-wasm/src/bip322_verifier.rs src/js/psbt-wasm.js src/js/psbt-wasm-b64.js src/js/bip322.js test/bip322.test.mjs src/js/app.js src/shell.html src/css/styles.css package.json
-          git diff --cached --check
-          git commit -m 'feat(#303): add offline BIP-322 verifier' || true
-          git push origin HEAD:wip/303-bip322-clean-rebuild
+          echo '--- bip322 0.0.11 API ---'
+          grep -nE 'pub enum Verification|pub fn verify_(simple|full|pof)(_encoded)?' ~/.cargo/registry/src/*/bip322-0.0.11/src/verify.rs
+          sed -n '80,115p' ~/.cargo/registry/src/*/bip322-0.0.11/src/verify.rs
+          exit 1

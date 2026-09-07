@@ -22,17 +22,10 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import subprocess, re
-
           def old(path):
               return subprocess.check_output(["git", "show", f"origin/feat/303-bip322-verifier:{path}"]).decode()
-
-          # New #303 source/test files are copied from the already-reviewed WIP
-          # implementation; existing current-rock files are patched in place.
           for path in ["src/js/bip322.js", "test/bip322.test.mjs", "psbt-wasm/src/bip322_verifier.rs"]:
               Path(path).write_text(old(path))
-
-          # Cargo manifest: use the exact dependency version already resolved
-          # by the prior implementation; the lockfile is regenerated below.
           cargo = Path("psbt-wasm/Cargo.toml")
           text = cargo.read_text()
           if 'bip322 = "=0.0.12"' not in text:
@@ -40,30 +33,19 @@ jobs:
           elif 'base64 = "=0.23.0"' not in text:
               text = text.replace('bitcoin = { version = "=0.32.102", default-features = false, features = ["std"] }', 'base64 = "=0.23.0"\nbitcoin = { version = "=0.32.102", default-features = false, features = ["std"] }')
           cargo.write_text(text)
-
-          # Keep current rock's PSBT-v2/lib.rs intact; add only the module hook.
           lib = Path("psbt-wasm/src/lib.rs")
           text = lib.read_text()
           if 'mod bip322_verifier;' not in text:
               marker = 'use bitcoin::bip32::{ChildNumber, DerivationPath, Xpub};'
               text = text.replace(marker, 'mod bip322_verifier;\n\n' + marker, 1)
           lib.write_text(text)
-
-          # Extend the existing WASM facade without replacing current PSBT
-          # behavior. The old branch contains the two-call wrapper; extract
-          # only that block and append it to current rock.
           wasm = Path("src/js/psbt-wasm.js")
           current = wasm.read_text()
           prior = old("src/js/psbt-wasm.js")
           marker = 'export const bip322WasmVerify'
           if marker not in current:
-              idx = prior.index(marker)
-              block = prior[idx:]
-              current += '\n\n' + block
+              current += '\n\n' + prior[prior.index(marker):]
               wasm.write_text(current)
-
-          # App integration: extract only the BIP-322 initializer from the old
-          # branch, then patch the current workspace switcher around it.
           app = Path("src/js/app.js")
           current = app.read_text()
           prior = old("src/js/app.js")
@@ -82,44 +64,29 @@ jobs:
           current = current.replace('["bip85", "sp", "msig", "calc", "vanity"].forEach((tool) => {', '["bip85", "sp", "msig", "calc", "vanity", "bip322"].forEach((tool) => {', 1)
           current = current.replace('  hodlInitSp();\n}', '  hodlInitSp();\n  hodlInitBip322();\n}', 1)
           app.write_text(current)
-
-          # Shell: add only the BIP-322 content block. Current rock generates
-          # workspace tabs dynamically, so do not copy the old static tab row.
           shell = Path("src/shell.html")
           current = shell.read_text()
           prior = old("src/shell.html")
           if 'id="bip322-card"' not in current:
               start = prior.index('    <div class="tool-intro" id="bip322-tool-intro"')
               end = prior.index('    <div class="tool-intro" id="journal-tool-intro"', start)
-              block = prior[start:end]
-              anchor = '    <div class="tool-intro" id="journal-tool-intro"'
-              current = current.replace(anchor, block + anchor, 1)
+              current = current.replace('    <div class="tool-intro" id="journal-tool-intro"', prior[start:end] + '    <div class="tool-intro" id="journal-tool-intro"', 1)
           shell.write_text(current)
-
-          # CSS: carry only BIP-322 selectors, not the old stylesheet.
           css = Path("src/css/styles.css")
           current = css.read_text()
           if '.bip322-state' not in current:
               prior_css = old("src/css/styles.css")
-              rules = []
-              for m in re.finditer(r'[^{}]+\{[^{}]*\}', prior_css):
-                  rule = m.group(0)
-                  if '.bip322' in rule:
-                      rules.append(rule.strip())
+              rules = [m.group(0).strip() for m in re.finditer(r'[^{}]+\{[^{}]*\}', prior_css) if '.bip322' in m.group(0)]
               current += '\n\n/* BIP-322 verifier */\n' + '\n'.join(rules) + '\n'
           css.write_text(current)
-
-          # Test script registration.
           package = Path("package.json")
           text = package.read_text()
           if 'test/bip322.test.mjs' not in text:
               text = text.replace('test/i18n.test.mjs"', 'test/i18n.test.mjs test/bip322.test.mjs"', 1)
           package.write_text(text)
           PY
-
-          # Resolve the new Rust dependency against the current rock lockfile.
           cd psbt-wasm
-          cargo update -p bip322 --precise 0.0.12
+          cargo update
           cargo test
           cd ..
           npm ci
@@ -127,7 +94,6 @@ jobs:
           npm test -- test/bip322.test.mjs
           npm run build
           npm run verify
-
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add psbt-wasm/Cargo.toml psbt-wasm/Cargo.lock psbt-wasm/src/lib.rs psbt-wasm/src/bip322_verifier.rs src/js/psbt-wasm.js src/js/psbt-wasm-b64.js src/js/bip322.js test/bip322.test.mjs src/js/app.js src/shell.html src/css/styles.css package.json

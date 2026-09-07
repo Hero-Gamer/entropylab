@@ -9,6 +9,7 @@ jobs:
   rebuild:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,8 +29,8 @@ jobs:
               Path(path).write_text(old(path))
           cargo = Path("psbt-wasm/Cargo.toml")
           text = cargo.read_text()
-          if 'bip322 = "=0.0.12"' not in text:
-              text = text.replace('bitcoin = { version = "=0.32.102", default-features = false, features = ["std"] }', 'base64 = "=0.23.0"\nbitcoin = { version = "=0.32.102", default-features = false, features = ["std"] }\nbip322 = "=0.0.12"')
+          if 'bip322 = "=0.0.11"' not in text:
+              text = text.replace('bitcoin = { version = "=0.32.102", default-features = false, features = ["std"] }', 'base64 = "=0.23.0"\nbitcoin = { version = "=0.32.102", default-features = false, features = ["std"] }\nbip322 = "=0.0.11"')
           elif 'base64 = "=0.23.0"' not in text:
               text = text.replace('bitcoin = { version = "=0.32.102", default-features = false, features = ["std"] }', 'base64 = "=0.23.0"\nbitcoin = { version = "=0.32.102", default-features = false, features = ["std"] }')
           cargo.write_text(text)

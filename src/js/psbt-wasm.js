@@ -29,6 +29,7 @@ let wasm = null; // WebAssembly exports; set by init below.
 
 const isNode = typeof process !== "undefined" && !!(process.versions && process.versions.node);
 if (isNode) {
+  // Node has no synchronous-compilation size limit; tests stay synchronous.
   wasm = new WebAssembly.Instance(new WebAssembly.Module(wasmBytes), {}).exports;
 }
 export const psbtWasmReady = isNode
@@ -40,7 +41,10 @@ export const psbtWasmReady = isNode
 const requireReady = () => {
   if (!wasm) throw new Error("PSBT WebAssembly is not initialized yet; await psbtWasmReady.");
 };
+// The WASM heap can grow during a call, detaching earlier views; take a fresh
+// view of the whole buffer whenever memory is touched.
 const heap = () => new Uint8Array(wasm.memory.buffer);
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -56,6 +60,8 @@ const lastError = () => {
   }
 };
 
+// Copies `input` into WASM memory, runs `fn(inPtr, inLen, outPtr, outCap)`
+// with the two-call capacity convention, and returns the produced bytes.
 const call = (input, fn) => {
   requireReady();
   const inPtr = wasm.psbt_alloc(input.length);
@@ -76,18 +82,20 @@ const call = (input, fn) => {
   }
 };
 
+// Parses a PSBT (raw bytes) into the editor document. Throws on malformed
+// input; the error message comes from the Rust side.
 export const psbtInspectDoc = (bytes) => {
   if (!(bytes instanceof Uint8Array) || !bytes.length) throw new Error("PSBT must be a non-empty byte array.");
   return JSON.parse(decoder.decode(call(bytes, wasm.psbt_inspect)));
 };
 
+// Rebuilds PSBT bytes from a (possibly edited) editor document. Throws when
+// the result would not parse as a PSBT under rust-bitcoin.
 export const psbtBuildBytes = (doc) => {
   if (!doc || typeof doc !== "object") throw new Error("editor document must be an object.");
   return call(encoder.encode(JSON.stringify(doc)), wasm.psbt_build);
 };
 
-// BIP-322 uses the same PSBT WASM instance. The Rust side exposes only a
-// verifier: no signing primitive crosses this boundary.
 export const bip322WasmVerify = (message, address, signature) => {
   requireReady();
   const messageBytes = encoder.encode(message);

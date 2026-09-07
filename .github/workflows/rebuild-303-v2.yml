@@ -1,0 +1,143 @@
+name: Rebuild BIP-322 #303 v2
+
+on:
+  push:
+    branches: [wip/303-final]
+
+permissions:
+  contents: write
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Hero-Gamer/entropylab
+          ref: rock
+          fetch-depth: 0
+      - name: Reconstruct clean #303 tree
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git remote add upstream https://github.com/OogaBoogaX/entropylab.git
+          git fetch upstream rock --prune
+          git checkout -B feat/303-bip322-clean add7db38efb973b0e6e1e89e8015cf7ef6034e90
+          git fetch origin feat/303-bip322-verifier
+          git checkout origin/feat/303-bip322-verifier -- psbt-wasm/src/bip322_verifier.rs src/js/bip322.js test/bip322.test.mjs
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess
+          def old(path): return subprocess.check_output(['git','show',f'origin/feat/303-bip322-verifier:{path}'], text=True)
+          # Cargo dependencies: retain current pins, add only BIP-322 dependencies.
+          p=Path('psbt-wasm/Cargo.toml'); s=p.read_text()
+          if 'bip322 = ' not in s: s=s.replace('[dependencies]', '[dependencies]\nbip322 = "=0.0.12"\nbase64 = "=0.23.0"', 1)
+          p.write_text(s)
+          # lib.rs: recover the exact old BIP-322 module declaration and wasm export.
+          p=Path('psbt-wasm/src/lib.rs'); s=p.read_text(); o=old('psbt-wasm/src/lib.rs')
+          if 'mod bip322_verifier;' not in s: s='mod bip322_verifier;\n'+s
+          m=re.search(r'(?ms)#\[wasm_bindgen\]\s*pub fn bip322_verify\s*\(.*?\n\}',o)
+          if not m: raise SystemExit('missing bip322_verify export in old lib.rs')
+          if 'pub fn bip322_verify' not in s: s=s.rstrip()+'\n\n'+m.group(0)+'\n'
+          p.write_text(s)
+          # psbt-wasm.js: copy the exact old wrapper function, preserving the current loader.
+          p=Path('src/js/psbt-wasm.js'); s=p.read_text(); o=old('src/js/psbt-wasm.js')
+          m=re.search(r'(?ms)(?:export\s+)?(?:async\s+)?function\s+bip322WasmVerify\s*\(.*?\n\}',o)
+          if not m:
+              m=re.search(r'(?ms)export\s+const\s+bip322WasmVerify\s*=.*?;\n',o)
+          if not m: raise SystemExit('missing bip322WasmVerify wrapper in old psbt-wasm.js')
+          if 'bip322WasmVerify' not in s: s=s.rstrip()+'\n\n'+m.group(0)+'\n'
+          p.write_text(s)
+          # app.js: merge initializer, import, tab, visibility and boot call.
+          p=Path('src/js/app.js'); s=p.read_text(); o=old('src/js/app.js')
+          m=re.search(r'(?ms)^function hodlInitBip322\(\) \{.*?(?=^function |^var |^let |^const |\Z)',o)
+          if not m: raise SystemExit('missing hodlInitBip322')
+          fn=m.group(0).rstrip()+'\n'
+          if 'function hodlInitBip322()' not in s: s=s.replace('function hodlShowWorkspace(',fn+'\nfunction hodlShowWorkspace(',1)
+          if 'import { verifyBip322 } from "./bip322.js";' not in s:
+              lines=s.splitlines(True); i=0
+              while i<len(lines) and (lines[i].startswith('import ') or not lines[i].strip()): i+=1
+              lines.insert(i,'import { verifyBip322 } from "./bip322.js";\n'); s=''.join(lines)
+          if '["bip322", "BIP-322", "BIP322"]' not in s:
+              s=s.replace('["journal", "Journal", "JOURNAL"]','["journal", "Journal", "JOURNAL"], ["bip322", "BIP-322", "BIP322"]',1)
+          if 'document.getElementById("bip322-manager").hidden' not in s:
+              marker='document.getElementById("key-manager").hidden'; pos=s.find(marker); e=s.find('\n',pos)
+              if pos<0: raise SystemExit('key-manager visibility block missing')
+              s=s[:e+1]+'  document.getElementById("bip322-manager").hidden = !visible;\n'+s[e+1:]
+          if 'document.getElementById("bip322-card").hidden' not in s:
+              marker='document.getElementById("calc-card").hidden'; pos=s.find(marker); e=s.find('\n',pos)
+              if pos<0: raise SystemExit('calc-card visibility block missing')
+              s=s[:e+1]+'  document.getElementById("bip322-card").hidden = !visible;\n'+s[e+1:]
+          if 'hodlInitBip322();' not in s: s=s.replace('  hodlInitSp();','  hodlInitSp();\n  hodlInitBip322();',1)
+          if '"bip322", "bip85", "sp", "msig", "calc", "vanity"' not in s:
+              s=s.replace('["bip85", "sp", "msig", "calc", "vanity"]','["bip322", "bip85", "sp", "msig", "calc", "vanity"]',1)
+          p.write_text(s)
+          # shell.html: extract the actual div-based tool block used by the old branch.
+          p=Path('src/shell.html'); s=p.read_text(); o=old('src/shell.html')
+          if 'id="bip322-tool-intro"' not in s:
+              starts=['<div class="tool-intro" id="bip322-tool-intro"','<div id="bip322-tool-intro"','<section id="bip322-tool-intro"']
+              start=next((o.find(x) for x in starts if o.find(x)>=0),-1)
+              if start<0: raise SystemExit('BIP-322 shell block missing')
+              ends=['<div class="tool-intro" id="journal-tool-intro"','<div id="journal-tool-intro"','<section id="journal-tool-intro"']
+              end=next((o.find(x,start) for x in ends if o.find(x,start)>=0),-1)
+              if end<0: raise SystemExit('journal shell boundary missing')
+              block=o[start:end]; marker=next((x for x in ends if x in s),None)
+              if not marker: raise SystemExit('current journal shell boundary missing')
+              s=s.replace(marker,block+'\n'+marker,1)
+          p.write_text(s)
+          # CSS: carry only old BIP-322 selectors.
+          p=Path('src/css/styles.css'); s=p.read_text(); o=old('src/css/styles.css')
+          if 'bip322' not in s.lower():
+              rules=re.findall(r'(?ms)([^{}]*(?:bip322|bip-322)[^{}]*\{[^{}]*\})',o,re.I)
+              if not rules: raise SystemExit('BIP-322 CSS missing')
+              p.write_text(s.rstrip()+'\n\n/* BIP-322 verifier */\n'+'\n'.join(rules)+'\n')
+          PY
+          git diff --check
+          git status --short
+      - name: Setup Node and Rust
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.0'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Install dependencies
+        run: npm ci
+      - name: Build WASM
+        run: npm run build:wasm
+      - name: Build application
+        run: npm run build
+      - name: Test
+        shell: bash
+        run: npm test 2>&1 | tee npm-test.log
+      - name: Verify
+        shell: bash
+        run: npm run verify 2>&1 | tee npm-verify.log
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rebuild-303-v2-failure-logs
+          path: |
+            npm-test.log
+            npm-verify.log
+            src/js/app.js
+            src/shell.html
+            src/js/psbt-wasm.js
+            psbt-wasm/src/lib.rs
+            psbt-wasm/Cargo.toml
+            test/bip322.test.mjs
+          if-no-files-found: ignore
+      - name: Commit clean feature
+        if: success()
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name "bip322-builder"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(bip322): add offline generic signed message verifier (#303)"
+          git push origin feat/303-bip322-clean --force
+          echo "FINAL_SHA=$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          git diff --stat add7db38efb973b0e6e1e89e8015cf7ef6034e90^..HEAD >> "$GITHUB_STEP_SUMMARY"

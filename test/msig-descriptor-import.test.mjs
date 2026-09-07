@@ -195,11 +195,16 @@ test("co-signer keys that name different branches are refused (issue #389)", () 
   );
 });
 
-test("multipath element order and the one-element multipath are not branch disagreements", () => {
-  const reordered = hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/<0;1>/*,${keyB}/<1;0>/*))`);
-  assert.deepEqual(reordered.keys, [keyA, keyB]);
+test("the one-element multipath folds, but multipath element order IS a branch disagreement (issue #389)", () => {
+  // <0> and /0 expand identically, so those spellings agree.
   const spelledOut = hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/<0>/*,${keyB}/0/*))`);
   assert.deepEqual(spelledOut.keys, [keyA, keyB]);
+  // BIP-389 expands multipath wildcards positionally: <0;1> beside <1;0>
+  // pairs A/0 with B/1 and A/1 with B/0 — no shared branch reproduces it.
+  assert.throws(
+    () => hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/<0;1>/*,${keyB}/<1;0>/*))`),
+    /different branches/,
+  );
 });
 
 test("an accepted import reconstructs the descriptor's own addresses (rust-miniscript)", async () => {
@@ -217,6 +222,18 @@ test("an accepted import reconstructs the descriptor's own addresses (rust-minis
   const original = descriptorDerive(`wsh(sortedmulti(2,${xkeyA}/0/*,${xkeyB}/1/*))`, 0, "mainnet").address;
   assert.notEqual(descriptorDerive(`wsh(sortedmulti(2,${xkeyA}/0/*,${xkeyB}/0/*))`, 0, "mainnet").address, original, "all-receive reconstruction");
   assert.notEqual(descriptorDerive(`wsh(sortedmulti(2,${xkeyA}/1/*,${xkeyB}/1/*))`, 0, "mainnet").address, original, "all-change reconstruction");
+  // The reversed-multipath bypass too: <0;1> beside <1;0> expands in lockstep
+  // to (A/0,B/1) and (A/1,B/0) — neither shared-branch reconstruction reaches
+  // either original expansion.
+  const reversedPairs = [
+    descriptorDerive(`wsh(sortedmulti(2,${xkeyA}/0/*,${xkeyB}/1/*))`, 0, "mainnet").address,
+    descriptorDerive(`wsh(sortedmulti(2,${xkeyA}/1/*,${xkeyB}/0/*))`, 0, "mainnet").address,
+  ];
+  const shared = [
+    descriptorDerive(`wsh(sortedmulti(2,${xkeyA}/0/*,${xkeyB}/0/*))`, 0, "mainnet").address,
+    descriptorDerive(`wsh(sortedmulti(2,${xkeyA}/1/*,${xkeyB}/1/*))`, 0, "mainnet").address,
+  ];
+  for (const reconstructed of shared) for (const expansion of reversedPairs) assert.notEqual(reconstructed, expansion);
 });
 
 test("a BIP45 cosigner step ahead of the branch wildcard still imports", () => {

@@ -6548,8 +6548,11 @@ function hodlMsigDescriptorKeyText(expr, index) {
   if (!branches || branches.some((branch) => Number(branch) > 1)) throw new Error(label + "the descriptor derives this key through /" + steps.join("/") + ", which the form cannot reproduce: it derives only the receive and change branches (/0/*, /1/*, or /<0;1>/*) below each key. Importing it would change the wallet.");
   // The branch choice, canonicalized for the cross-key check in
   // hodlParseMsigDescriptor: a sole step and a one-element multipath are the
-  // same branch, and multipath element order carries no meaning.
-  return { key, branch: branches.map((branch) => Number(branch)).sort((a, b) => a - b).join(";") };
+  // same branch. Multipath element ORDER is preserved — BIP-389 expands
+  // multipath wildcards positionally, so <0;1> beside <1;0> pairs the
+  // branches differently (A/0 with B/1, A/1 with B/0), not a shared branch
+  // the form can reproduce (issue #389).
+  return { key, branch: branches.map((branch) => Number(branch)).join(";") };
 }
 function hodlParseMsigDescriptor(raw) {
   let text = String(raw ?? "").trim();

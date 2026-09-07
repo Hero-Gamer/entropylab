@@ -33,10 +33,16 @@ test("BIP-322 simple verifies an official P2TR vector", async () => {
   assert.match(verified.message_hash, /^[0-9a-f]{64}$/);
 });
 
-test("canonical smp/ prefix verifies the same witness", async () => {
-  const verified = await result(P2TR_MESSAGE, P2TR, `smp/${P2TR_SIGNATURE}`);
+test("canonical smp prefix verifies the same witness", async () => {
+  const verified = await result(P2TR_MESSAGE, P2TR, `smp${P2TR_SIGNATURE}`);
   assert.equal(verified.state, "valid");
   assert.equal(verified.prefix, "smp");
+});
+
+test("slash-separated smp prefix is rejected", async () => {
+  const verified = await result(P2TR_MESSAGE, P2TR, `smp/${P2TR_SIGNATURE}`);
+  assert.equal(verified.state, "invalid");
+  assert.equal(verified.prefix, "unknown");
 });
 
 test("prefixless signature assumes simple variant", async () => {
@@ -80,7 +86,7 @@ test("BIP-322 simple verifies an official P2WSH vector", async () => {
 });
 
 test("BIP-322 full verifies an official transaction vector", async () => {
-  const verified = await result(FULL_MESSAGE, FULL_ADDRESS, `ful/${FULL_SIGNATURE}`);
+  const verified = await result(FULL_MESSAGE, FULL_ADDRESS, `ful${FULL_SIGNATURE}`);
   assert.equal(verified.state, "valid");
   assert.equal(verified.prefix, "ful");
   assert.equal(verified.challenge_type, "p2wpkh");
@@ -90,7 +96,7 @@ test("BIP-322 full verifies an official transaction vector", async () => {
 });
 
 test("future full transaction version is inconclusive", async () => {
-  const verified = await result(FULL_MESSAGE, FULL_ADDRESS, `ful/${FUTURE_VERSION_SIGNATURE}`);
+  const verified = await result(FULL_MESSAGE, FULL_ADDRESS, `ful${FUTURE_VERSION_SIGNATURE}`);
   assert.equal(verified.state, "inconclusive");
   assert.equal(verified.prefix, "ful");
 });
@@ -104,7 +110,7 @@ test("legacy BIP-137 P2PKH signature verifies only through prefixless fallback",
 });
 
 test("legacy signature cannot be forced through smp", async () => {
-  const verified = await result(LEGACY_MESSAGE, LEGACY_ADDRESS, `smp/${LEGACY_SIGNATURE}`);
+  const verified = await result(LEGACY_MESSAGE, LEGACY_ADDRESS, `smp${LEGACY_SIGNATURE}`);
   assert.equal(verified.state, "invalid");
 });
 
@@ -116,7 +122,7 @@ test("pof rejects a non-ASCII message before PSBT verification", async () => {
 });
 
 test("pof rejects malformed PSBT input", async () => {
-  const verified = await result("proof", P2TR, "pof/not-a-psbt");
+  const verified = await result("proof", P2TR, "pofnot-a-psbt");
   assert.equal(verified.state, "invalid");
   assert.equal(verified.prefix, "pof");
 });

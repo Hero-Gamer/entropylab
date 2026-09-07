@@ -6542,8 +6542,14 @@ function hodlMsigDescriptorKeyText(expr, index) {
   if (!steps.length) throw new Error(label + "the descriptor fixes this key with no derivation to import. The tool always derives the receive and change branches below each co-signer key, so it cannot reproduce this descriptor.");
   let tail = steps.slice(0, -1);
   // BIP45 keys carry their cosigner index (always 0 here) ahead of the branch
-  // step; the BIP45 compose re-adds it, so it is decoration like the branch.
-  if (/^45h?$/.test(parsed.origin?.path.split("/")[0] || "") && tail.length > 1 && tail[0] === "0") tail = tail.slice(1);
+  // step, and the BIP45 compose ALWAYS re-adds it: a 45-purpose key rebuilds
+  // as key/0/<branch>/*. So the cosigner step is required, not optional —
+  // treating a bare /0/* as branch 0 accepted sh(sortedmulti(2,A/0/*,B/0/0/*))
+  // and rebuilt A as A/0/0/*, a different wallet (issue #389).
+  if (/^45h?$/.test(parsed.origin?.path.split("/")[0] || "")) {
+    if (tail.length !== 2 || tail[0] !== "0") throw new Error(label + "the descriptor derives this BIP45 key through /" + steps.join("/") + ", which the form cannot reproduce: it derives BIP45 keys through co-signer index 0 and then the receive and change branches (/0/0/*, /0/1/*, or /0/<0;1>/*). Importing it would change the wallet.");
+    tail = tail.slice(1);
+  }
   let branches = tail.length === 1 ? (tail[0].startsWith("<") ? tail[0].slice(1, -1).split(";") : [tail[0]]) : null;
   if (!branches || branches.some((branch) => Number(branch) > 1)) throw new Error(label + "the descriptor derives this key through /" + steps.join("/") + ", which the form cannot reproduce: it derives only the receive and change branches (/0/*, /1/*, or /<0;1>/*) below each key. Importing it would change the wallet.");
   // The branch choice, canonicalized for the cross-key check in

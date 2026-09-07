@@ -57,7 +57,9 @@ jobs:
           if 'function hodlInitBip322()' not in current:
               start = prior.index('function hodlInitBip322()')
               end = prior.index('\nfunction ', start + 1)
-              current = current[:current.index('function hodlShowWorkspace')] + prior[start:end] + current[current.index('function hodlShowWorkspace'):]
+              marker = 'function hodlShowWorkspace'
+              pos = current.index(marker)
+              current = current[:pos] + prior[start:end] + current[pos:]
           old_tabs = 'var hodlWorkspaceTabs = [["calc", "workspace.key", "workspace.keyShort"], ["vanity", "workspace.vanity", "workspace.vanityShort"], ["bip85", "workspace.bip85", "workspace.bip85Short"], ["msig", "workspace.msig", "workspace.msigShort"], ["sp", "workspace.sp", "workspace.spShort"], ["psbt", "workspace.psbt", "workspace.psbtShort"], ["journal", "workspace.journal", "workspace.journalShort"]];'
           new_tabs = old_tabs[:-2] + ', ["bip322", "BIP-322", "BIP322"]' + old_tabs[-2:]
           if '"bip322", "BIP-322", "BIP322"' not in current:
@@ -88,6 +90,10 @@ jobs:
               text = text.replace('test/i18n.test.mjs"', 'test/i18n.test.mjs test/bip322.test.mjs"', 1)
           package.write_text(text)
           PY
+          git add src/js/bip322.js test/bip322.test.mjs psbt-wasm/src/bip322_verifier.rs psbt-wasm/Cargo.toml psbt-wasm/src/lib.rs src/js/psbt-wasm.js src/js/app.js src/shell.html src/css/styles.css package.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore(#303): checkpoint reconstructed verifier' || true
           cd psbt-wasm
           cargo update
           cargo test
@@ -97,15 +103,9 @@ jobs:
           npm test -- test/bip322.test.mjs
           npm run build
           npm run verify
-
-          # Final private-branch gate: remove all temporary worker/trigger files,
-          # build a commit whose parent is exactly current upstream rock, and
-          # force-update only the user's private WIP branch to that clean commit.
           rm -f .github/workflows/303-clean-rebuild.yml 303-run-trigger*.txt
           git add -A
           git diff --cached --check
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           base=$(git rev-parse origin/rock)
           tree=$(git write-tree)
           clean=$(printf '%s\n\n%s\n' 'feat(#303): add offline BIP-322 verifier' 'Reconstructed on current upstream rock; validated before exposing the branch as PR-ready.')

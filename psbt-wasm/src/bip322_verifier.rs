@@ -1,5 +1,5 @@
 //! Offline BIP-322 verification for EntropyLab.
-//! Cryptographic verification is delegated to rust-bitcoin/bip322 0.0.12.
+//! Cryptographic verification is delegated to rust-bitcoin/bip322 0.0.11.
 
 use bip322::{
     tagged_hash, verify_full_encoded, verify_legacy_encoded, verify_pof_encoded,
@@ -100,21 +100,34 @@ fn valid_pof_message(message: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
-/// Final BIP-322 prefixes use `/`, not `:`. A prefixless input is the simple
-/// variant for compatibility with pre-1.0 implementations. Legacy BIP-137 is
-/// tried separately for a P2PKH address when the prefix is absent.
+/// Parse the BIP-322 variant prefix without changing the encoded signature.
+///
+/// Canonical signatures are `smp<base64>`, `ful<base64>`, or `pof<base64>`.
+/// Prefixless input is treated as the simple variant for backwards
+/// compatibility. The old `smp/...` form is deliberately rejected: `/` is
+/// part of the base64 alphabet and is not a BIP-322 prefix separator.
 fn parse_signature(signature: &str) -> (&str, &str, bool) {
-    if let Some(rest) = signature.strip_prefix("smp/") {
-        ("smp", rest, true)
-    } else if let Some(rest) = signature.strip_prefix("ful/") {
-        ("ful", rest, true)
-    } else if let Some(rest) = signature.strip_prefix("pof/") {
-        ("pof", rest, true)
-    } else if signature.contains('/') {
-        ("unknown", signature, true)
-    } else {
-        ("smp", signature, false)
+    if signature.starts_with("smp/") || signature.starts_with("ful/") || signature.starts_with("pof/") {
+        return ("unknown", signature, true);
     }
+    if signature.starts_with("smp") {
+        return ("smp", &signature[3..], true);
+    }
+    if signature.starts_with("ful") {
+        return ("ful", &signature[3..], true);
+    }
+    if signature.starts_with("pof") {
+        return ("pof", &signature[3..], true);
+    }
+    if signature.len() >= 4
+        && signature.as_bytes()[0].is_ascii_alphabetic()
+        && signature.as_bytes()[1].is_ascii_alphabetic()
+        && signature.as_bytes()[2].is_ascii_alphabetic()
+        && signature.as_bytes()[3] == b'/'
+    {
+        return ("unknown", signature, true);
+    }
+    ("smp", signature, false)
 }
 
 fn verification_state(verification: &Verification) -> (&'static str, Option<Value>) {
@@ -212,9 +225,9 @@ fn verify(message: &str, address_text: &str, signature: &str) -> String {
     }
 
     let verification = match requested_prefix {
-        "smp" => verify_simple_encoded(address_text, message, encoded),
-        "ful" => verify_full_encoded(address_text, message, encoded),
-        "pof" => verify_pof_encoded(address_text, message, encoded),
+        "smp" => verify_simple_encoded(address_text, message, signature),
+        "ful" => verify_full_encoded(address_text, message, signature),
+        "pof" => verify_pof_encoded(address_text, message, signature),
         _ => return invalid(requested_prefix, "unsupported BIP-322 signature variant"),
     };
 

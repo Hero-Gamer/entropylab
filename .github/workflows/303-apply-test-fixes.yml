@@ -27,15 +27,14 @@ jobs:
               ('["Keys", "Keys"], ["Vanity", "Vanity"], ["BIP-85", "BIP85"], ["Multi Signature", "MultiSig"], ["Silent Payments", "SP"], ["PSBT", "PSBT"], ["Journal", "Journal"]',
                '["Keys", "Keys"], ["Vanity", "Vanity"], ["BIP-85", "BIP85"], ["Multi Signature", "MultiSig"], ["Silent Payments", "SP"], ["PSBT", "PSBT"], ["BIP-322", "BIP322"], ["Journal", "Journal"]'),
               ('["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "Journal"]',
-               '["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "Journal", "BIP-322"]'),
+               '["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "BIP-322", "Journal"]'),
               ('["bip85", "sp", "msig", "calc", "vanity"].forEach',
                '["bip85", "sp", "msig", "calc", "vanity", "bip322"].forEach'),
           ]
           for old, new in replacements:
               count = text.count(old)
-              expected = 1 if old.startswith('All seven') else 2 if old.startswith('["Keys", "Keys"') else 1
-              if count != expected:
-                  raise SystemExit(f'ui replacement expected {expected}, found {count}: {old[:80]}')
+              if count != 1:
+                  raise SystemExit(f'ui replacement expected 1, found {count}: {old[:80]}')
               text = text.replace(old, new)
           ui.write_text(text)
 

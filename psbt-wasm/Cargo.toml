@@ -14,7 +14,9 @@ crate-type = ["cdylib"]
 # the FFI for rust-bitcoin's PSBT (BIP-174) types. "std" keeps consensus and
 # PSBT encode/decode; serde_json is the interchange format across the WASM
 # boundary (the JS side only ever sees PSBT bytes or UTF-8 JSON).
+base64 = "=0.23.0"
 bitcoin = { version = "=0.32.102", default-features = false, features = ["std"] }
+bip322 = "=0.0.12"
 serde_json = { version = "=1.0.151", default-features = false, features = ["alloc"] }
 
 [profile.release]

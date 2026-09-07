@@ -61,6 +61,7 @@
         <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="Multi Signature"><span class="workspace-tab-full">Multi Signature</span><span class="workspace-tab-short">MultiSig</span></button>
         <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="Silent Payments"><span class="workspace-tab-full">Silent Payments</span><span class="workspace-tab-short">SP</span></button>
         <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="PSBT"><span class="workspace-tab-full">PSBT</span><span class="workspace-tab-short">PSBT</span></button>
+        <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="BIP-322"><span class="workspace-tab-full">BIP-322</span><span class="workspace-tab-short">BIP322</span></button>
         <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="Journal"><span class="workspace-tab-full">Journal</span><span class="workspace-tab-short">Journal</span></button>
       </div>
     </nav>
@@ -647,6 +648,20 @@ words, pick one of the checksum words.</span></span>
       </section>
       <p class="muted">Fees and input amounts shown here are unverified PSBT claims; the editor does not check them against previous transactions or the blockchain. Nothing is signed or broadcast.</p>
     </section>
+    <div class="tool-intro" id="bip322-tool-intro" hidden>
+        <div class="kicker">Verify offline. Sign elsewhere.</div>
+        <h2>BIP-322 signed message verifier.</h2>
+        <p class="muted tool-intro-note">Verify smp/ful/pof and legacy P2PKH signatures entirely offline. EntropyLab never signs, broadcasts, fetches, or checks the chain. Proof-of-funds amounts are unverified claims only.</p>
+      </div>
+      <section class="key-manager no-print" id="bip322-manager" hidden></section>
+      <section class="card no-print" id="bip322-card" role="tabpanel" hidden>
+        <label class="field">Message<textarea id="bip322-message" rows="4" autocomplete="off" spellcheck="false" placeholder="Enter the exact message"></textarea></label>
+        <label class="field">Address<input id="bip322-address" type="text" autocomplete="off" spellcheck="false" placeholder="Bitcoin address"></label>
+        <label class="field">Signature<textarea id="bip322-signature" rows="8" autocomplete="off" spellcheck="false" placeholder="smp/... · ful/... · pof/... · or legacy base64"></textarea></label>
+        <div class="row"><button class="btn" id="bip322-verify" type="button">Verify offline</button></div>
+        <div id="bip322-result" aria-live="polite"></div>
+        <p class="muted">No network access is used. This verifier does not sign or broadcast. Proof-of-funds cannot establish that UTXOs are unspent, complete, or exclusively owned.</p>
+      </section>
     <div class="tool-intro" id="journal-tool-intro" hidden>
         <div class="kicker">Your rolls, on paper you control.</div>
         <h2>Entropy Journal</h2>

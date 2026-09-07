@@ -167,13 +167,65 @@ test("reproducible tails still import: receive, change, and the receive/change m
   }
 });
 
+const bip45A = `[${fingerprint}/45h]${nodeA.publicExtendedKey}`;
+const bip45B = `[${fingerprint}/45h]${nodeB.publicExtendedKey}`;
+// Plain-xpub twins of keyA/keyB for the rust-miniscript round-trip (the crate
+// does not read SLIP-132 versions).
+const xkeyA = `[${fingerprint}/48h/0h/0h/2h]${nodeA.publicExtendedKey}`;
+const xkeyB = `[${fingerprint}/48h/0h/1h/2h]${nodeB.publicExtendedKey}`;
+
+// Issue #389 follow-up: the per-key tail check alone accepted
+// wsh(sortedmulti(2,A/0/*,B/1/*)) — the form derives ONE shared branch window
+// below every key, so both reconstructions (all keys on /0/*, or all on /1/*)
+// derive different addresses than the imported descriptor.
+test("co-signer keys that name different branches are refused (issue #389)", () => {
+  assert.throws(
+    () => hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/0/*,${keyB}/1/*))`),
+    /different branches.*would change the wallet/,
+  );
+  // A sole branch step beside a receive/change multipath disagrees the same way.
+  assert.throws(
+    () => hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/0/*,${keyB}/<0;1>/*))`),
+    /different branches/,
+  );
+  // The BIP45 cosigner step does not hide a branch disagreement.
+  assert.throws(
+    () => hodlParseMsigDescriptor(`sh(sortedmulti(1,${bip45A}/0/0/*,${bip45B}/0/1/*))`),
+    /different branches/,
+  );
+});
+
+test("multipath element order and the one-element multipath are not branch disagreements", () => {
+  const reordered = hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/<0;1>/*,${keyB}/<1;0>/*))`);
+  assert.deepEqual(reordered.keys, [keyA, keyB]);
+  const spelledOut = hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/<0>/*,${keyB}/0/*))`);
+  assert.deepEqual(spelledOut.keys, [keyA, keyB]);
+});
+
+test("an accepted import reconstructs the descriptor's own addresses (rust-miniscript)", async () => {
+  const { descriptorDerive } = await import("../src/js/addresses.js");
+  // The tool derives imported keys through its own /branch/* suffix; both
+  // branches of a <0;1> import must land on the descriptor's expansions.
+  const parsed = hodlParseMsigDescriptor(`wsh(sortedmulti(2,${xkeyA}/<0;1>/*,${xkeyB}/<0;1>/*))`);
+  for (const branch of [0, 1]) {
+    const reconstructed = `wsh(sortedmulti(2,${parsed.keys.map((key) => `${key}/${branch}/*`).join(",")}))`;
+    const expansion = `wsh(sortedmulti(2,${xkeyA}/${branch}/*,${xkeyB}/${branch}/*))`;
+    assert.equal(descriptorDerive(reconstructed, 3, "mainnet").address, descriptorDerive(expansion, 3, "mainnet").address, `branch ${branch}`);
+  }
+  // …and the mixed-branch shape guarded against really was a different
+  // wallet under either shared-branch reconstruction.
+  const original = descriptorDerive(`wsh(sortedmulti(2,${xkeyA}/0/*,${xkeyB}/1/*))`, 0, "mainnet").address;
+  assert.notEqual(descriptorDerive(`wsh(sortedmulti(2,${xkeyA}/0/*,${xkeyB}/0/*))`, 0, "mainnet").address, original, "all-receive reconstruction");
+  assert.notEqual(descriptorDerive(`wsh(sortedmulti(2,${xkeyA}/1/*,${xkeyB}/1/*))`, 0, "mainnet").address, original, "all-change reconstruction");
+});
+
 test("a BIP45 cosigner step ahead of the branch wildcard still imports", () => {
-  const bip45A = `[${fingerprint}/45h]${nodeA.publicExtendedKey}`;
-  const bip45B = `[${fingerprint}/45h]${nodeB.publicExtendedKey}`;
   // sh(multi) over 45-purpose origins: /0/0/* is cosigner 0, receive branch —
   // exactly what the BIP45 compose re-derives.
-  const parsed = hodlParseMsigDescriptor(`sh(sortedmulti(1,${bip45A}/0/0/*,${bip45B}/0/<0;1>/*))`);
+  const parsed = hodlParseMsigDescriptor(`sh(sortedmulti(1,${bip45A}/0/0/*,${bip45B}/0/0/*))`);
   assert.deepEqual(parsed.keys, [bip45A, bip45B]);
+  const bothBranches = hodlParseMsigDescriptor(`sh(sortedmulti(1,${bip45A}/0/<0;1>/*,${bip45B}/0/<0;1>/*))`);
+  assert.deepEqual(bothBranches.keys, [bip45A, bip45B]);
   // A cosigner index other than 0 is not what the tool derives.
   assert.throws(() => hodlParseMsigDescriptor(`sh(sortedmulti(1,${bip45A}/1/0/*,${bip45B}/0/0/*))`), /would change the wallet/);
   // And the cosigner step does not excuse a deeper path.

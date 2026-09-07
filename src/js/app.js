@@ -6484,9 +6484,9 @@ function hodlParseMultisigCosigner(raw) {
 // #checksum is verified when present and every key is validated by the same
 // path a hand-pasted co-signer key takes. Anything the form cannot reproduce
 // — a fixed derivation path after a key, a trailing path deeper than the one
-// receive/change branch step the tool derives itself, an extended private
-// key, a Taproot internal key other than the BIP341 NUMS point — is refused
-// with directions.
+// receive/change branch step the tool derives itself, co-signer keys that
+// disagree on that branch, an extended private key, a Taproot internal key
+// other than the BIP341 NUMS point — is refused with directions.
 function hodlSplitDescriptorArgs(text) {
   let args = [], depth = 0, start = 0;
   for (let i = 0; i < text.length; i++) {
@@ -6546,7 +6546,10 @@ function hodlMsigDescriptorKeyText(expr, index) {
   if (/^45h?$/.test(parsed.origin?.path.split("/")[0] || "") && tail.length > 1 && tail[0] === "0") tail = tail.slice(1);
   let branches = tail.length === 1 ? (tail[0].startsWith("<") ? tail[0].slice(1, -1).split(";") : [tail[0]]) : null;
   if (!branches || branches.some((branch) => Number(branch) > 1)) throw new Error(label + "the descriptor derives this key through /" + steps.join("/") + ", which the form cannot reproduce: it derives only the receive and change branches (/0/*, /1/*, or /<0;1>/*) below each key. Importing it would change the wallet.");
-  return key;
+  // The branch choice, canonicalized for the cross-key check in
+  // hodlParseMsigDescriptor: a sole step and a one-element multipath are the
+  // same branch, and multipath element order carries no meaning.
+  return { key, branch: branches.map((branch) => Number(branch)).sort((a, b) => a - b).join(";") };
 }
 function hodlParseMsigDescriptor(raw) {
   let text = String(raw ?? "").trim();
@@ -6587,7 +6590,12 @@ function hodlParseMsigDescriptor(raw) {
   let m = Number(args[0]), exprs = args.slice(1);
   if (exprs.length > hodlMsigSliderLimit) throw new Error("This descriptor lists " + exprs.length + " keys; the tool builds at most " + hodlMsigSliderLimit + ".");
   if (m > exprs.length) throw new Error("The threshold of " + m + " exceeds the " + exprs.length + " keys listed.");
-  return { m, n: exprs.length, sorted, kind, keys: exprs.map(hodlMsigDescriptorKeyText) };
+  let parsedKeys = exprs.map(hodlMsigDescriptorKeyText);
+  // The form derives ONE shared branch window below every key, so a
+  // descriptor whose keys name different branches (/0/* beside /1/*) imports
+  // as a different wallet under either shared branch (issue #389 follow-up).
+  if (new Set(parsedKeys.map((entry) => entry.branch)).size > 1) throw new Error("The descriptor derives its co-signer keys through different branches, but the form derives one shared receive/change branch below every key — importing it would change the wallet.");
+  return { m, n: exprs.length, sorted, kind, keys: parsedKeys.map((entry) => entry.key) };
 }
 // The Import button only runs on a fresh form: it stays disabled while any
 // co-signer field holds text (importing would have to overwrite it) or the

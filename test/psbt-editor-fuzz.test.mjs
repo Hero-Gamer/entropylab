@@ -304,15 +304,16 @@ const valueOk = (text, doc, index) => {
   return total <= MAX_MONEY;
 };
 
-// …and prevouts must be unique (bad-txns-inputs-duplicate): an edit that
-// points a second input at an existing outpoint is rejected. The candidate
-// values are passed explicitly — the doc may still hold the invalid text the
-// candidate would replace, so comparing against the doc's current value could
-// never see the candidate (a repair loop would spin forever on it).
+// …and prevouts must be non-null and unique (bad-txns-prevout-null /
+// bad-txns-inputs-duplicate). The candidate values are passed explicitly —
+// the doc may still hold the invalid text the candidate would replace, so
+// comparing against the doc's current value could never see the candidate (a
+// repair loop would spin forever on it).
 const outpointFree = (doc, index, txid, vout) => {
   const candidateTxid = String(txid).toLowerCase();
   if (!integerText(String(vout))) return true; // moot on an unbuildable doc
   const candidateVout = String(Number(BigInt(String(vout))));
+  if (candidateTxid === "0".repeat(64) && candidateVout === String(U32_MAX)) return false;
   for (const [at, other] of doc.tx.inputs.entries()) {
     if (at === index || !integerText(String(other.vout))) continue; // a mid-edit poison compares as no duplicate
     if (String(other.txid).toLowerCase() === candidateTxid && String(Number(BigInt(String(other.vout)))) === candidateVout) return false;
@@ -913,6 +914,24 @@ test("an unbuildable field blocks structural edits until repaired", () => {
   assert.ok(recovered, "deleting the poisoned element was rejected");
   assert.equal(state.poisoned, null, "deleting the poisoned element did not recover the document");
   assert.equal(state.doc.tx.inputs.length, inputsBefore, "the poisoned input survived its own delete");
+});
+
+test("the field oracle rejects and repairs both ways of creating a null prevout", () => {
+  const zeroTxid = "0".repeat(64);
+
+  const byVout = { doc: structuredClone(HEALTHY.doc), poisoned: null, anchor: JSON.stringify(HEALTHY.doc.tx) };
+  writeField(byVout, "null prevout setup txid", fieldTargets(byVout).find((target) => target.kind === "txid"), zeroTxid);
+  writeField(byVout, "null prevout through vout", fieldTargets(byVout).find((target) => target.kind === "vout"), "4294967295");
+  assert.equal(byVout.poisoned?.kind, "vout", "the null-prevout vout was not rejected");
+  writeField(byVout, "repair null-prevout vout", fieldTargets(byVout).find((target) => target.kind === "vout"), "0");
+  assert.equal(byVout.poisoned, null, "the null-prevout vout did not repair");
+
+  const byTxid = { doc: structuredClone(HEALTHY.doc), poisoned: null, anchor: JSON.stringify(HEALTHY.doc.tx) };
+  writeField(byTxid, "null prevout setup vout", fieldTargets(byTxid).find((target) => target.kind === "vout"), "4294967295");
+  writeField(byTxid, "null prevout through txid", fieldTargets(byTxid).find((target) => target.kind === "txid"), zeroTxid);
+  assert.equal(byTxid.poisoned?.kind, "txid", "the null-prevout txid was not rejected");
+  writeField(byTxid, "repair null-prevout txid", fieldTargets(byTxid).find((target) => target.kind === "txid"), "0123456789abcdef".repeat(4));
+  assert.equal(byTxid.poisoned, null, "the null-prevout txid did not repair");
 });
 
 // The fuzzer guards itself: with a dead pool or a swallowed oracle these

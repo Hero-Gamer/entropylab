@@ -6278,10 +6278,11 @@ function hodlParseKeyOrigin(raw) {
   if (tokens.includes("*") && tokens[tokens.length - 1] !== "*") throw hodlError("A wildcard * is only allowed as the last trailing path step.");
   let hadWildcard = tokens[tokens.length - 1] === "*";
   if (hadWildcard) tokens.pop();
-  // BIP45 account keys carry their cosigner branch (always 0 here) as the
+  // A BIP45 descriptor carries its cosigner branch (always 0 here) as the
   // first trailing step; the descriptor compose re-adds it, so it is
-  // decoration like the branch marker.
-  if (/^45h?$/.test(path.split("/")[0] || "") && tokens.length && /^\d+[hH']?$/.test(tokens[0])) tokens.shift();
+  // decoration like the branch marker. A manually appended child path has
+  // no wildcard and must be honored in full.
+  if (hadWildcard && /^45h?$/.test(path.split("/")[0] || "") && tokens.length && /^\d+[hH']?$/.test(tokens[0])) tokens.shift();
   if (tokens.filter((token) => token.startsWith("<")).length > 1) throw hodlError("Only one multipath step like <0;1> is supported in a trailing path.");
   let multipathAt = tokens.findIndex((token) => token.startsWith("<"));
   if (multipathAt > 0 && tokens.slice(0, multipathAt).some((token) => !/^\d+[hH']?$/.test(token))) throw hodlError("A multipath step like <0;1> must follow plain number steps.");
@@ -11328,7 +11329,7 @@ function hodlRestoreMsig() {
   hodlFillKeys(state.fields.xpubs || []);
   hodlSetMsigThresholdLock(Boolean(state.fields.thresholdLocked));
   if (state.fields.thresholdLocked && descriptorStatus) {
-    descriptorStatus.textContent = hodlTText("Imported descriptor controls this multisig policy.");
+    descriptorStatus.textContent = hodlTText("Imported descriptor locks this multisig quorum.");
     descriptorStatus.className = "hint ok";
     descriptorStatus.hidden = false;
     descriptorStatus.dataset.result = "1";

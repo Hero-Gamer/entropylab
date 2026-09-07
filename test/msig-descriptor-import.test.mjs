@@ -347,6 +347,7 @@ test("a successful descriptor import locks its m-of-n policy until the multisig 
   assert.ok(reset.includes("hodlSetMsigThresholdLock(false)"), "clearing the multisig restores manual quorum selection");
   assert.ok(capture.includes("state.fields.thresholdLocked"), "the imported lock is captured with its multisig tab");
   assert.ok(restore.includes("Boolean(state.fields.thresholdLocked)"), "the imported lock returns when its multisig tab is restored");
+  assert.ok(restore.includes("Imported descriptor locks this multisig quorum."), "the restored status describes the quorum lock without implying every policy control is locked");
 });
 
 test("the import button disables while any co-signer field holds text", () => {

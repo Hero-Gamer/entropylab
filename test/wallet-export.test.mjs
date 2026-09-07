@@ -705,6 +705,21 @@ const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),
 // Boots a fresh node for the chain, runs `body(cli)` where
 // cli(...rpcArgs) returns the parsed JSON result (asserting success), and
 // always shuts the node down again.
+const waitForChainNodeExit = (pidFile, exists = existsSync, sleep = sleepSync, attempts = 300) => {
+  for (let waited = 0; waited < attempts; waited++) {
+    if (!exists(pidFile)) return true;
+    sleep(100);
+  }
+  return !exists(pidFile);
+};
+
+test("Core fixture cleanup stops at the PID-file boundary", () => {
+  let checks = 0, sleeps = 0;
+  assert.equal(waitForChainNodeExit("fixture.pid", () => ++checks < 3, () => sleeps++, 5), true);
+  assert.equal(sleeps, 2);
+  assert.equal(waitForChainNodeExit("fixture.pid", () => true, () => {}, 2), false);
+});
+
 const withChainNode = async (network, body) => {
   const fixture = CHAIN_FIXTURES[network];
   const port = await freePort();
@@ -723,16 +738,10 @@ const withChainNode = async (network, body) => {
     await body((args, options) => cli(args, options), join(datadir, fixture.subdir, "wallets"));
   } finally {
     spawnSync("bitcoin-cli", [...cliArgs, "stop"], { stdio: "pipe" });
-    // stop returns before the process exits, and RPC can go quiet while a
-    // final chain-state flush is still in progress. Bitcoin Core removes its
-    // PID file at the actual shutdown boundary, so wait for that instead.
-    for (let waited = 0; waited < 300; waited++) {
-      if (!existsSync(pidFile)) break;
-      sleepSync(100);
-    }
-    // macOS can keep a just-closed chain subdirectory briefly busy after the
-    // RPC endpoint disappears. Let rmSync retry ENOTEMPTY/EBUSY instead of
-    // turning successful wallet validation into a cleanup-only test failure.
+    // RPC can go quiet before the final chain-state flush. Core removes its
+    // PID file at the real shutdown boundary, so never delete the temporary
+    // datadir while that PID marker says the process may still be alive.
+    if (!waitForChainNodeExit(pidFile)) throw new Error(`bitcoind did not exit within 30 seconds; left its temporary datadir intact at ${datadir}`);
     rmSync(datadir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 };

@@ -16,7 +16,7 @@ crate-type = ["cdylib"]
 # boundary (the JS side only ever sees PSBT bytes or UTF-8 JSON).
 base64 = "=0.23.0"
 bitcoin = { version = "=0.32.102", default-features = false, features = ["std"] }
-bip322 = "=0.0.12"
+bip322 = "=0.0.11"
 serde_json = { version = "=1.0.151", default-features = false, features = ["alloc"] }
 
 [profile.release]

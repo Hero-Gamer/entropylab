@@ -382,16 +382,6 @@ words, pick one of the checksum words.</span></span>
         <button class="btn secondary" id="msig-edit-inputs" type="button">Edit input</button>
       </div>
       <div class="msig-lab" id="msig-lab">
-      <div class="station-key-source msig-station-key-source">
-        <p class="label">Bring in a key from Key Station</p>
-        <div class="session-key-picker" id="msig-session-keys" role="group" aria-label="Compatible Key Station keys" hidden></div>
-        <p class="field-note">Choose a compatible HD-root key from this session, or paste a co-signer extended public key below.</p>
-        <label class="choice msig-key-reuse-toggle">
-          <input id="msig-reuse-session-keys" type="checkbox">
-          <span><strong>Allow key reuse</strong><span class="desc">Keep selected Key Station keys available for more than one co-signer input. Reused keys need different derivation paths.</span></span>
-        </label>
-        <p class="field-note" id="msig-session-key-status" aria-live="polite"></p>
-      </div>
       <div class="msig-threshold-labels">
         <label for="msig-m-number"><span>Signatures needed to spend (m)</span><input class="msig-threshold-number" id="msig-m-number" type="number" min="1" max="15" step="1" value="2" inputmode="numeric" aria-describedby="msig-threshold-help"></label>
         <label for="msig-n-number"><span>Total signing keys (n)</span><input class="msig-threshold-number" id="msig-n-number" type="number" min="1" max="15" step="1" value="3" inputmode="numeric" aria-describedby="msig-threshold-help"></label>
@@ -417,6 +407,10 @@ words, pick one of the checksum words.</span></span>
         <button class="btn secondary" id="msig-descriptor-import" type="button" disabled aria-disabled="true">Import descriptor</button>
         <p class="hint" id="msig-descriptor-status" role="status" hidden></p>
       </details>
+      <label class="choice msig-key-reuse-toggle">
+        <input id="msig-reuse-session-keys" type="checkbox">
+        <span><strong>Allow key reuse</strong><span class="desc">Keep selected Key Station keys available for more than one co-signer input. Reused keys need different derivation paths.</span></span>
+      </label>
       <div id="msig-keys" class="msig-keys"><label class="field">Co-signer 1 multisig extended public key<textarea id="msig-x-0" placeholder="[fingerprint/48h/0h/0h/2h]xpub…" autocomplete="off" spellcheck="false"></textarea></label><label class="field">Co-signer 2 multisig extended public key<textarea id="msig-x-1" placeholder="[fingerprint/48h/0h/0h/2h]xpub…" autocomplete="off" spellcheck="false"></textarea></label><label class="field">Co-signer 3 multisig extended public key<textarea id="msig-x-2" placeholder="[fingerprint/48h/0h/0h/2h]xpub…" autocomplete="off" spellcheck="false"></textarea></label></div>
       <p class="hint" id="msig-key-order-status" hidden></p>
       <p class="hint" id="msig-hint"></p>

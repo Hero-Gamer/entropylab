@@ -3264,14 +3264,13 @@
     await until(() => !document.getElementById("key-manager").hidden, "key workspace after SP Station test");
   });
 
-  await test("MS Station restores its Key Station import section and safely controls key reuse", async () => {
+  await test("MS Station offers Key Station keys per co-signer and safely controls key reuse", async () => {
     document.querySelector('#workspace [data-workspace="msig"]').click();
     await until(() => !document.getElementById("msig-manager").hidden, "MS Station");
-    const globalPicker = document.getElementById("msig-session-keys");
     const reuseToggle = document.getElementById("msig-reuse-session-keys");
-    assert(globalPicker, "MS Station is missing the global Key Station picker");
+    assert(!document.getElementById("msig-session-keys"), "MS Station still has the redundant global Key Station picker");
+    assert(!document.querySelector(".msig-station-key-source"), "MS Station still has the redundant Key Station import section");
     assert(reuseToggle && !reuseToggle.checked, "MS Station key reuse was not opt-in");
-    assert(document.querySelector(".msig-station-key-source .label")?.textContent.includes("Bring in a key from Key Station"), "MS Station is missing the restored key import heading");
     let rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
     assert(rows.length >= 2, "MS Station did not start with at least two co-signer rows");
     const rowOption = (row) => row.querySelector(".msig-session-keys .msig-session-key");
@@ -3279,24 +3278,20 @@
     rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
     assert(rows.every((row) => rowOption(row)), "A co-signer row did not offer the compatible Key Station key");
 
-    const globalOption = globalPicker.querySelector(".session-key-option");
-    assert(globalOption, "MS Station did not offer the compatible key in its global picker");
-    globalOption.click();
+    rowOption(rows[0]).click();
     rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
     const first = document.getElementById("msig-x-0");
-    assert(first.value.trim(), "The global Key Station picker did not populate the first co-signer row");
+    assert(first.value.trim(), "The first co-signer's Key Station picker did not populate its input");
     const identity = document.querySelector("#msig-keys .msig-key-row .msig-key-ident");
     assert(identity && !identity.hidden, "The selected key identity was not shown above its co-signer input");
     rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
     assert(rowOption(rows[0]).classList.contains("active"), "The picked key was not marked active on the first row");
     assert(!rowOption(rows[1]), "An assigned key remained available on another row while reuse was off");
-    assert(globalPicker.hidden, "An assigned key remained in the global picker while reuse was off");
 
     // Opting into reuse keeps the key selectable on every row. Picking it
     // again offers a derivation path so its descriptor public keys differ.
     reuseToggle.click();
     rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
-    assert(!globalPicker.hidden && globalPicker.querySelector(".session-key-option"), "Enabling reuse did not restore the global key choice");
     const second = document.getElementById("msig-x-1");
     const secondOption = rowOption(rows[1]);
     assert(secondOption, "Enabling reuse did not restore the assigned key on another co-signer row");

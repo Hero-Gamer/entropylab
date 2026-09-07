@@ -3017,6 +3017,11 @@
     assert(!document.getElementById("error").textContent, "Wallet derivation failed");
     const mobileResult = document.querySelector(".key-result");
     mobileResult.style.width = "220px";
+    const tablePrivateValue = mobileResult.querySelector(".table-private-field-value.secret-placeholder");
+    assert(
+      tablePrivateValue?.querySelector(".secret-placeholder-label")?.offsetParent === tablePrivateValue,
+      "The hidden WIF label escaped its horizontally scrolling table",
+    );
     assert(
       mobileResult.scrollWidth <= mobileResult.clientWidth,
       `Derived wallet widened a mobile layout to ${mobileResult.scrollWidth}px from ${mobileResult.clientWidth}px`,

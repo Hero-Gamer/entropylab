@@ -626,7 +626,7 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
 .table-private-field-value { display: inline-grid; white-space: nowrap; }
 .private-field-value:not(.secret-placeholder),
 .table-private-field-value:not(.secret-placeholder) { color: var(--blue); }
-.secret-placeholder { display: grid; min-width: 0; max-width: 100%; color: var(--muted); }
+.secret-placeholder { position: relative; display: grid; min-width: 0; max-width: 100%; color: var(--muted); }
 .secret-placeholder > .secret-placeholder-mask,
 .secret-placeholder > .secret-placeholder-message { grid-area: 1 / 1; }
 .secret-placeholder-mask { min-width: 0; max-width: 100%; visibility: hidden; overflow-wrap: anywhere; word-break: break-all; user-select: none; }

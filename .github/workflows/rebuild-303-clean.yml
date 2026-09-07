@@ -1,6 +1,9 @@
 name: Rebuild BIP-322 #303 clean
 
 on:
+  push:
+    branches:
+      - wip/303-final
   workflow_dispatch:
 
 permissions:
@@ -23,6 +26,7 @@ jobs:
           set -euxo pipefail
           git remote add upstream https://github.com/OogaBoogaX/entropylab.git
           git fetch upstream rock --prune
+          test "$(git rev-parse upstream/rock)" = "add7db38efb973b0e6e1e89e8015cf7ef6034e90"
           git checkout -B feat/303-bip322-clean add7db38efb973b0e6e1e89e8015cf7ef6034e90
           git fetch origin feat/303-bip322-verifier
           git status --short
@@ -37,18 +41,18 @@ jobs:
             src/js/bip322.js \
             test/bip322.test.mjs
 
-      - name: Inspect current and old UI integration points
+      - name: Inspect integration points
         shell: bash
         run: |
           set -euxo pipefail
-          echo '--- current workspace/tab references ---'
-          grep -n -E 'hodlWorkspaceTabs|hodlShowWorkspace|hodlInitWorkspace|data-workspace|tool-tabs|Expected.*tabs|Expected.*tools' src/js/app.js src/shell.html test/ui-defaults.test.mjs test/browser-suite.html | head -n 240 || true
+          echo '--- current workspace integration ---'
+          grep -n -E 'hodlWorkspaceTabs|hodlShowWorkspace|hodlInitWorkspace|data-workspace|tool-tabs|Expected.*tabs|Expected.*tools' src/js/app.js src/shell.html test/ui-defaults.test.mjs test/browser-suite.html | head -n 300 || true
           echo '--- old BIP-322 symbols ---'
-          git show origin/feat/303-bip322-verifier:src/js/app.js | grep -n -E 'hodlInitBip322|bip322-manager|bip322-card|bip322-tool-intro|bip322' | head -n 240 || true
+          git show origin/feat/303-bip322-verifier:src/js/app.js | grep -n -E 'hodlInitBip322|bip322-manager|bip322-card|bip322-tool-intro|bip322' | head -n 300 || true
           echo '--- old shell BIP-322 symbols ---'
-          git show origin/feat/303-bip322-verifier:src/shell.html | grep -n -E 'bip322|BIP-322' | head -n 240 || true
+          git show origin/feat/303-bip322-verifier:src/shell.html | grep -n -E 'bip322|BIP-322' | head -n 300 || true
           echo '--- old CSS BIP-322 symbols ---'
-          git show origin/feat/303-bip322-verifier:src/css/styles.css | grep -n -E 'bip322|bip-322' | head -n 240 || true
+          git show origin/feat/303-bip322-verifier:src/css/styles.css | grep -n -E 'bip322|bip-322' | head -n 300 || true
 
       - name: Merge #303 into current UI without replacing current files
         shell: bash
@@ -61,8 +65,7 @@ jobs:
           def old(path):
               return subprocess.check_output(['git','show',f'origin/feat/303-bip322-verifier:{path}'], text=True)
 
-          # app.js: extract the BIP-322 initializer from the old branch and insert it
-          # into the current file, then make only the required tab/visibility/init edits.
+          # app.js
           p = Path('src/js/app.js')
           cur = p.read_text()
           old_app = old('src/js/app.js')
@@ -76,8 +79,6 @@ jobs:
                   raise SystemExit('Could not locate hodlShowWorkspace in current app.js')
               cur = cur.replace(marker, fn + '\n' + marker, 1)
           if 'import { verifyBip322 } from "./bip322.js";' not in cur:
-              marker = 'import '
-              # Preserve the existing import style and insert after the import block.
               lines = cur.splitlines(True)
               idx = 0
               while idx < len(lines) and (lines[idx].startswith('import ') or not lines[idx].strip()):
@@ -85,25 +86,19 @@ jobs:
               lines.insert(idx, 'import { verifyBip322 } from "./bip322.js";\n')
               cur = ''.join(lines)
           if '["bip322", "BIP-322", "BIP322"]' not in cur:
-              target = '["journal", "Journal", "JOURNAL"]'
-              if target not in cur:
-                  # Fall back to the final tab entry in the workspace array.
-                  mm = re.search(r'(var hodlWorkspaceTabs = \[.*?)(\];)', cur, re.S)
-                  if not mm:
-                      raise SystemExit('Could not locate hodlWorkspaceTabs')
-                  body = mm.group(1)
-                  body = body.rstrip() + ', ["bip322", "BIP-322", "BIP322"]'
-                  cur = cur[:mm.start(1)] + body + cur[mm.end(1):]
-              else:
-                  cur = cur.replace(target, target + ', ["bip322", "BIP-322", "BIP322"]', 1)
-          # Add BIP-322 manager/card handling next to the other workspace visibility logic.
+              mm = re.search(r'(var hodlWorkspaceTabs = \[.*?\]);', cur, re.S)
+              if not mm:
+                  raise SystemExit('Could not locate hodlWorkspaceTabs')
+              array = mm.group(1)
+              insert_at = array.rfind(']')
+              array = array[:insert_at] + ', ["bip322", "BIP-322", "BIP322"]' + array[insert_at:]
+              cur = cur[:mm.start(1)] + array + cur[mm.end(1):]
           if 'bip322-manager' not in cur:
               marker = 'document.getElementById("key-manager").hidden'
               pos = cur.find(marker)
               if pos == -1:
                   raise SystemExit('Could not locate key-manager visibility block')
               line_end = cur.find('\n', pos)
-              line = cur[pos:line_end]
               cur = cur[:line_end+1] + '  document.getElementById("bip322-manager").hidden = !visible;\n' + cur[line_end+1:]
           if 'bip322-card' not in cur:
               marker = 'document.getElementById("calc-card").hidden'
@@ -112,33 +107,32 @@ jobs:
                   raise SystemExit('Could not locate calc-card visibility block')
               line_end = cur.find('\n', pos)
               cur = cur[:line_end+1] + '  document.getElementById("bip322-card").hidden = !visible;\n' + cur[line_end+1:]
-          if '"bip322", "sp", "msig", "calc", "vanity"' not in cur and '"bip322"' not in cur[cur.find('function hodlShowWorkspace'):cur.find('function hodlShowWorkspace')+5000]:
-              cur = cur.replace('["bip85", "sp", "msig", "calc", "vanity"]', '["bip322", "bip85", "sp", "msig", "calc", "vanity"]', 1)
           if 'hodlInitBip322();' not in cur:
               marker = '  hodlInitSp();'
               if marker not in cur:
                   raise SystemExit('Could not locate hodlInitSp in workspace init')
               cur = cur.replace(marker, marker + '\n  hodlInitBip322();', 1)
+          # Ensure intro visibility includes BIP-322 by locating the actual list in the current function.
+          if '"bip322"' not in cur[cur.find('function hodlShowWorkspace'):cur.find('function hodlShowWorkspace')+7000]:
+              old_list = '["bip85", "sp", "msig", "calc", "vanity"]'
+              if old_list in cur:
+                  cur = cur.replace(old_list, '["bip322", "bip85", "sp", "msig", "calc", "vanity"]', 1)
           p.write_text(cur)
 
-          # shell.html: copy only the old BIP-322 intro/manager/card block. The current
-          # workspace tabs are generated dynamically by app.js, so no static tab markup is copied.
+          # shell.html
           p = Path('src/shell.html')
           cur = p.read_text()
           old_shell = old('src/shell.html')
-          if 'id="bip322-tool-intro"' not in cur:
-              start = old_shell.find('<section id="bip322-tool-intro"')
-              if start == -1:
-                  start = old_shell.find('<div id="bip322-tool-intro"')
+          if 'bip322-tool-intro' not in cur:
+              starts = ['<section id="bip322-tool-intro"', '<div id="bip322-tool-intro"']
+              start = next((old_shell.find(x) for x in starts if old_shell.find(x) != -1), -1)
               if start == -1:
                   raise SystemExit('Could not locate BIP-322 intro block in old shell.html')
-              # Include through the next top-level tool intro/card boundary.
-              end = old_shell.find('<section id="journal-tool-intro"', start)
-              if end == -1:
-                  end = old_shell.find('<section id="journal-card"', start)
-              if end == -1:
-                  raise SystemExit('Could not locate insertion boundary in old shell.html')
-              block = old_shell[start:end]
+              boundaries = ['<section id="journal-tool-intro"', '<section id="journal-card"']
+              ends = [old_shell.find(x, start) for x in boundaries if old_shell.find(x, start) != -1]
+              if not ends:
+                  raise SystemExit('Could not locate shell insertion boundary')
+              block = old_shell[start:min(ends)]
               marker = '<section id="journal-tool-intro"'
               if marker not in cur:
                   marker = '<section id="journal-card"'
@@ -147,26 +141,74 @@ jobs:
               cur = cur.replace(marker, block + '\n' + marker, 1)
           p.write_text(cur)
 
-          # CSS: append only selectors containing bip322/bip-322 from the old branch.
-          # If no old CSS rules exist, fail rather than inventing styling.
+          # styles.css
           p = Path('src/css/styles.css')
           cur = p.read_text()
           if 'bip322' not in cur.lower():
               old_css = old('src/css/styles.css')
+              # Extract complete simple CSS rules whose selector contains BIP-322.
               rules = re.findall(r'(?ms)([^{}]*?(?:bip322|bip-322)[^{}]*\{[^{}]*\})', old_css, re.I)
               if not rules:
                   raise SystemExit('Could not locate BIP-322 CSS rules in old styles.css')
               p.write_text(cur.rstrip() + '\n\n/* BIP-322 verifier */\n' + '\n'.join(rules) + '\n')
 
-          # package.json: add the focused test to test:ci only if not already present.
+          # package.json
           p = Path('package.json')
           cur = p.read_text()
           if 'test/bip322.test.mjs' not in cur:
-              cur = cur.replace('"test:ci": "', '"test:ci": "node --test test/bip322.test.mjs && ', 1)
+              marker = '"test:ci": "'
+              if marker not in cur:
+                  raise SystemExit('Could not locate test:ci script')
+              cur = cur.replace(marker, marker + 'node --test test/bip322.test.mjs && ', 1)
               p.write_text(cur)
           PY
 
-      - name: Configure Rust and Node
+      - name: Pin bip322 0.0.12 and wire WASM
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess
+
+          old_lib = subprocess.check_output(['git','show','origin/feat/303-bip322-verifier:psbt-wasm/src/lib.rs'], text=True)
+          old_wrap = subprocess.check_output(['git','show','origin/feat/303-bip322-verifier:src/js/psbt-wasm.js'], text=True)
+          p = Path('psbt-wasm/Cargo.toml')
+          cur = p.read_text()
+          if 'bip322 = ' not in cur:
+              # Insert beside the existing Bitcoin dependencies.
+              marker = 'bitcoin = '
+              pos = cur.find(marker)
+              if pos == -1:
+                  raise SystemExit('Could not locate bitcoin dependency in Cargo.toml')
+              end = cur.find('\n', pos)
+              cur = cur[:end+1] + 'bip322 = "=0.0.12"\n' + cur[end+1:]
+              p.write_text(cur)
+
+          p = Path('psbt-wasm/src/lib.rs')
+          cur = p.read_text()
+          if 'mod bip322_verifier;' not in cur:
+              cur = 'mod bip322_verifier;\n' + cur
+          # Copy only the old wasm export function(s) whose names are BIP-322 related.
+          for name in re.findall(r'(?m)^pub fn ([A-Za-z0-9_]*bip322[A-Za-z0-9_]*)', old_lib):
+              if name not in cur:
+                  m = re.search(rf'(?ms)^pub fn {re.escape(name)}\b.*?(?=^pub fn |\Z)', old_lib)
+                  if m:
+                      cur += '\n' + m.group(0).rstrip() + '\n'
+          p.write_text(cur)
+
+          p = Path('src/js/psbt-wasm.js')
+          cur = p.read_text()
+          if 'bip322WasmVerify' not in cur:
+              m = re.search(r'(?ms)(?:^|\n)(?:export )?(?:const|function) bip322WasmVerify\b.*?(?=\n(?:export )?(?:const|function) |\Z)', old_wrap)
+              if not m:
+                  raise SystemExit('Could not locate bip322WasmVerify wrapper in old psbt-wasm.js')
+              block = m.group(0).lstrip('\n')
+              cur = cur.rstrip() + '\n\n' + block.rstrip() + '\n'
+              p.write_text(cur)
+          PY
+
+      - name: Setup Node and Rust
         uses: actions/setup-node@v4
         with:
           node-version: '20.19.0'
@@ -175,8 +217,13 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          rustup show
+          if [ -f psbt-wasm/rust-toolchain.toml ]; then
+            rustup toolchain install "$(awk -F'"' '/channel[[:space:]]*=/{print $2; exit}' psbt-wasm/rust-toolchain.toml)"
+            rustup default "$(awk -F'"' '/channel[[:space:]]*=/{print $2; exit}' psbt-wasm/rust-toolchain.toml)"
+          fi
           rustup target add wasm32-unknown-unknown
+          rustc --version
+          cargo --version
 
       - name: Install dependencies
         shell: bash
@@ -211,20 +258,14 @@ jobs:
             npm-test.log
             npm-verify.log
             package.json
+            psbt-wasm/Cargo.toml
+            psbt-wasm/src/lib.rs
             src/js/app.js
+            src/js/psbt-wasm.js
             src/shell.html
             src/css/styles.css
             test/bip322.test.mjs
           if-no-files-found: ignore
-
-      - name: Review diff before commit
-        if: success()
-        shell: bash
-        run: |
-          set -euxo pipefail
-          git diff --check
-          git status --short
-          git diff --stat add7db38efb973b0e6e1e89e8015cf7ef6034e90..HEAD -- . ':!entropylab.html'
 
       - name: Commit clean feature
         if: success()
@@ -238,5 +279,4 @@ jobs:
           git commit -m "feat(bip322): add offline generic signed message verifier (#303)"
           git push origin feat/303-bip322-clean --force
           echo "FINAL_SHA=$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
-          echo "DIFF_STAT" >> "$GITHUB_STEP_SUMMARY"
           git diff --stat add7db38efb973b0e6e1e89e8015cf7ef6034e90^..HEAD >> "$GITHUB_STEP_SUMMARY"

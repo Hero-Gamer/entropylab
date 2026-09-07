@@ -30,9 +30,13 @@
   --scrollbar-track: #0a0a0a;
   --scrollbar-thumb: #4a4a4a;
   --scrollbar-thumb-hover: #626262;
+  /* UI spacing rhythm: control = label/help adjacency, component = peer
+   * controls and actions, section = distinct blocks inside a card, intro =
+   * context before a tool, major/lede = page-level seams. */
   --space-control: 8px;
   --space-component: 16px;
   --space-section: 20px;
+  --space-intro: 24px;
   --space-major: 32px; /* seams between the page's major sections */
   --space-lede: 48px; /* the widest seam: where the pitch ends and the tool begins */
   --site-header-height: 52px; /* .header-button height plus 6px above and below */
@@ -106,6 +110,14 @@ button:not(:disabled):active * { color: inherit !important; }
 .wrap { max-width: 1000px; margin: 0 auto; padding: calc(var(--site-header-height) + 20px) 16px 0; }
 .kicker { font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 20px; margin: 16px 0; }
+/* Shared tool shell. Cards own their edge padding; children own only the space
+   between components, so adding a new first or last block cannot double it. */
+.tool-card > :first-child { margin-top: 0; }
+.tool-card > :last-child { margin-bottom: 0; }
+.tool-section { margin: var(--space-section) 0; }
+.tool-card > .tool-section:first-child { margin-top: 0; }
+.tool-card > :first-child > .tool-section:first-child { margin-top: 0; }
+.tool-card > .tool-section:last-child { margin-bottom: 0; }
 /* Major seam above the closing Sources card. It collapses with the previous
    card's 16px, so the larger value wins rather than the two adding up. The seam
    below the marketing card lives on #workspace and is deliberately wider. */
@@ -968,6 +980,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .hint { font-size: 13px; margin: var(--space-control) 0 0; }
 .hint.bad { color: var(--danger); }
 .hint.ok { color: var(--ok); }
+.hint.neutral { color: var(--muted); }
 .hint:empty, .err:empty { display: none; }
 /* The tool switcher keeps every tool on screen, in the same folder-tab shape
    the Keys section uses for its dynamic key tabs. It scrolls rather than
@@ -1031,7 +1044,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 /* The tool's context sits on the panel's own ground above the card, so the
    grey surface starts at the controls rather than at the explanation. */
-.tool-intro { margin: 0 0 24px; }
+.tool-intro { margin: 0 0 var(--space-intro); }
 .tool-intro[hidden] { display: none; }
 .tool-intro h2 { margin: 5px 0 8px; }
 .tool-intro > .muted { max-width: 760px; margin: 0; }
@@ -1073,15 +1086,16 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-result-main { min-width: 0; max-width: 100%; margin-top: 8px; padding: 16px 16px 20px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); }
 .key-result .wallet-result-messages { margin: 0 0 16px; }
 .account-receive-section { margin-top: 0; }
-.station-key-source { margin: 0 0 20px; }
-#sp-modes + .station-key-source { margin-top: 20px; }
 .station-key-source > .label { margin: 0 0 8px; }
-.station-key-source > .field-note { display: block; margin: 8px 0 0; }
+.station-key-source > .field-note { display: block; margin: var(--space-control) 0 0; }
 .msig-key-reuse-toggle { margin-top: var(--space-section); }
-.session-key-picker { display: flex; flex-wrap: wrap; gap: 8px; }
+.session-key-picker {
+  display: flex; flex-wrap: nowrap; gap: 8px; max-width: 100%;
+  overflow-x: auto; overflow-y: hidden; overscroll-behavior-inline: contain; scrollbar-width: thin;
+}
 .session-key-picker[hidden] { display: none; }
 .session-key-option {
-  display: inline-flex; align-items: center; gap: 8px;
+  display: inline-flex; flex: 0 0 auto; align-items: center; gap: 8px;
   min-height: 44px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px;
   background: var(--surface-2); color: var(--fg); font-family: var(--mono); font-size: 13px; cursor: pointer;
 }
@@ -1097,27 +1111,31 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .session-key-check { display: none; width: 16px; height: 16px; color: var(--selection-accent); }
 .session-key-check svg { display: block; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 .session-key-option.active .session-key-check { display: inline-flex; }
-.msig-session-keys { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
+.msig-session-keys {
+  display: flex; flex-wrap: nowrap; gap: 8px; max-width: 100%; margin: 0 0 8px;
+  overflow-x: auto; overflow-y: hidden; overscroll-behavior-inline: contain; scrollbar-width: thin;
+}
 .msig-session-keys[hidden] { display: none; }
 .msig-session-key {
-  display: inline-flex; align-items: center; gap: 8px;
+  display: inline-flex; flex: 0 0 auto; align-items: center; gap: 8px;
   min-height: 44px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px;
   background: var(--surface-2); color: var(--fg); font-family: var(--mono); font-size: 13px; cursor: pointer;
 }
-.msig-session-key.active { border-color: var(--accent); color: var(--fg); }
-.msig-key-reuse {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 0;
-  padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
-  background: color-mix(in oklab, var(--surface-2) 70%, var(--bg));
+.msig-session-key.active {
+  background: var(--selection-accent); color: var(--selection-fg); border-color: var(--selection-accent);
+  box-shadow: inset 0 2px 4px rgb(0 0 0 / 30%);
 }
-.msig-key-reuse[hidden] { display: none; }
-.msig-key-reuse-note { flex: 1 1 100%; margin: 0; }
-.msig-key-reuse-control { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
-.msig-key-reuse-path { width: 90px; font-family: var(--mono); }
-.msig-key-ident { display: inline-flex; align-items: center; gap: 8px; margin: 0; }
-.msig-key-ident[hidden] { display: none; }
-.msig-key-ident-fp { font-family: var(--mono); font-size: 13px; letter-spacing: 0.04em; }
-#msig-keys .msig-key-row > .field { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.msig-session-key.active * { color: inherit; }
+.msig-session-key.active .key-tab-lifehash {
+  box-shadow: 0 0 0 2px rgb(0 0 0 / 82%), 0 3px 8px rgb(0 0 0 / 70%);
+}
+.msig-session-key.unavailable { opacity: 0.45; filter: grayscale(0.55); cursor: not-allowed; }
+.msig-origin-fields { display: grid; grid-template-columns: minmax(150px, .7fr) minmax(0, 2fr); gap: var(--space-component); }
+.msig-origin-fields .field { min-width: 0; margin-top: 0; }
+.msig-master-fingerprint, .msig-full-path { font-family: var(--mono); }
+.msig-path-components { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-component); }
+.msig-path-component { margin-top: 0; }
+.msig-path-component .derivation-index-control { margin-top: var(--space-control); }
 .workspace-panel > :first-child { margin-top: 0; }
 .workspace-panel > :last-child { margin-bottom: 0; }
 /* Inside the panel a card closes on its own bottom edge. Whatever follows
@@ -1176,7 +1194,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 #journal-card:not([hidden]), #journal-notes-card:not([hidden]), #journal-keymanager-card:not([hidden]), #journal-state-card:not([hidden]), #journal-log-card:not([hidden]) { margin-top: 0; border-radius: 0 0 20px 20px; position: relative; z-index: 1; }
 #journal-locked-panel[hidden], #journal-work-panel[hidden], #journal-create-panel[hidden], #journal-open-panel[hidden], #journal-editor[hidden], #journal-view[hidden] { display: none; }
 .journal-intro { margin: var(--space-control) 0 0; }
-.journal-global-actions { align-items: center; margin-top: var(--space-component); }
+.journal-global-actions { align-items: center; }
 .journal-global-actions .journal-download-action { display: inline-flex; align-items: center; gap: 6px; }
 .journal-status { display: flex; align-items: center; gap: 14px; margin-bottom: var(--space-component); }
 .journal-status-lifehash { width: 48px; height: 48px; border-radius: 8px; image-rendering: pixelated; flex: 0 0 auto; }
@@ -1208,7 +1226,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .journal-create-ready { display: inline-flex; align-items: center; gap: 7px; color: var(--ok); font-size: 13px; font-weight: 700; }
 .journal-create-ready[hidden] { display: none; }
 .journal-create-ready-arrow { display: inline-block; font-size: 18px; line-height: 1; }
-.journal-section-intro { margin: 0 0 24px; }
+.journal-section-intro { margin: 0 0 var(--space-intro); }
 .journal-section-intro h2 { margin: 5px 0 8px; }
 .journal-section-intro > .muted { max-width: 760px; margin: 0; }
 #journal-tool-tabs .key-tab:disabled,
@@ -1287,7 +1305,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .journal-notes-copy.is-visible, .journal-notes-copy:hover, .journal-notes-copy:focus-visible { opacity: 1; pointer-events: auto; }
 .journal-notes-copy.is-copied, .journal-notes-copy.is-copied:not(:disabled):hover { color: var(--ok); }
 @media (prefers-reduced-motion: reduce) { .journal-notes-copy { transition: none; } }
-.journal-file-actions { margin-top: var(--space-component); }
 .journal-download-options { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; min-width: 0; }
 .journal-encrypt-option { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 700; cursor: pointer; }
 .journal-encrypt-option input { margin: 0; accent-color: var(--ok); }
@@ -1363,7 +1380,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* The selected key, restated where the grind reads from it: which key, what
    kind, and its starting passphrase verbatim. */
 .vanity-source {
-  margin: 0 0 var(--space-section); padding: 14px 16px 16px;
+  padding: 14px 16px 16px;
   border: 1px solid color-mix(in oklab, var(--selection-accent) 45%, var(--border)); border-radius: 12px;
   background: color-mix(in oklab, var(--selection-accent) 6%, var(--surface));
 }
@@ -1591,6 +1608,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-form > .label + .muted { margin-top: 0; }
 .key-form > .label + textarea { margin-top: 0; }
 .key-form > .muted:empty, .key-form > #last-words:empty { display: none; }
+.last-word-options { margin-top: var(--space-control); }
 #calc-card > .key-form + .field { margin-top: var(--space-section); }
 .master-fingerprint-preview {
   display: flex; flex-wrap: wrap; align-items: center; gap: 12px; max-width: 680px; margin-top: var(--space-component);
@@ -1689,7 +1707,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .msig-purpose-warning { color: var(--danger); }
 .msig-script-warning { color: var(--danger); }
 @media (max-width: 520px) {
-  .key-settings-row { grid-template-columns: minmax(0, 1fr); }
+  .key-settings-row, .msig-origin-fields, .msig-path-components { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 520px) {
   .master-fingerprint-preview { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
@@ -1717,7 +1735,8 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   cursor: not-allowed; opacity: .45; border-color: color-mix(in oklab, var(--danger) 30%, var(--border));
   background: color-mix(in oklab, var(--danger) 6%, var(--surface-2)); color: color-mix(in oklab, var(--danger) 55%, var(--muted));
 }
-.current-item-actions { align-items: center; width: 100%; margin-top: var(--space-component); }
+.tool-actions { margin-top: var(--space-component); }
+.current-item-actions { align-items: center; width: 100%; }
 .current-item-actions .clear-current-action { margin-inline-start: auto; }
 .btn.primary[data-derivation-state="running"],
 .btn.primary[data-derivation-state="stopping"] {
@@ -1741,9 +1760,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .derive-progress-label svg { display: block; width: 14px; height: 14px; }
 @media (prefers-reduced-motion: reduce) { .derive-progress-bar { transition: none; } }
 .msig-keys textarea { min-height: 72px; }
-/* The Paste descriptor panel is the multisig tool's details/summary
-   expandable, styled like the derivation tool's Advanced block. */
-.msig-import { margin-top: var(--space-section); padding-top: var(--space-component); border-top: 1px solid var(--border); }
+/* Descriptor import comes before manual policy setup: importing establishes
+   the policy, while skipping it leaves the quorum controls editable. */
+.msig-import { margin: 0 0 var(--space-section); padding: 0 0 var(--space-component); border-bottom: 1px solid var(--border); }
 .msig-import summary { width: fit-content; color: var(--muted); font-weight: 700; cursor: pointer; }
 .msig-import summary:hover { color: var(--fg); }
 .msig-import summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 3px; }
@@ -1822,17 +1841,39 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   transform: translateX(-50%); background: var(--border);
 }
 .msig-threshold-help { margin: 12px 0 0; text-align: center; }
+.msig-threshold-control:disabled,
+.msig-threshold-labels:has(.msig-threshold-number:disabled) { opacity: .58; }
+.msig-threshold-control:disabled .msig-threshold-slider { pointer-events: none; cursor: not-allowed; }
+.msig-threshold-lock { text-align: center; }
  .msig-keys { display: grid; gap: var(--space-component); margin-top: var(--space-section); }
  .msig-keys .field { margin-top: 0; }
  .msig-key-order-status[hidden] { display: none; }
- .msig-advanced { margin: 0; }
- .msig-advanced summary {
-   width: fit-content; color: var(--muted); font-weight: 700; cursor: pointer;
- }
- .msig-advanced summary:hover { color: var(--fg); }
- .msig-advanced summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 3px; }
- .msig-advanced[open] summary { margin-bottom: 12px; color: var(--fg); }
-.msig-key-row { display: grid; gap: 8px; }
+.msig-key-row {
+  display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px;
+}
+.msig-key-content { display: grid; min-width: 0; gap: 8px; }
+.msig-cosigner-advanced { padding-top: 8px; }
+.msig-cosigner-advanced[open] { padding-bottom: 2px; }
+.msig-cosigner-advanced .derivation-advanced-fields { margin-top: var(--space-component); }
+.msig-key-rail {
+  display: flex; min-height: 100%; align-items: center; flex-direction: column;
+  color: var(--muted); transform: translateX(-17px);
+}
+.msig-key-rail-line {
+  position: relative; flex: 1 1 0; width: 1px; min-height: 14px;
+  background: var(--border);
+}
+.msig-key-rail-line::before {
+  content: ""; position: absolute; left: 0; width: 10px; height: 1px;
+  background: var(--border);
+}
+.msig-key-rail-line-top::before { top: 0; }
+.msig-key-rail-line-bottom::before { bottom: 0; }
+.msig-key-rail-label {
+  margin: 9px 0; writing-mode: vertical-rl; transform: rotate(180deg);
+  color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
+  white-space: nowrap;
+}
 .msig-key-row-head {
   display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
 }
@@ -1859,7 +1900,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .tool-intro-note { margin: var(--space-control) 0 0; }
 .psbt-grid { margin-top: var(--space-component); }
 .psbt-grid > .field, .psbt-grid > div > .field:first-child { margin-top: 0; }
-.psbt-actions { margin-top: var(--space-component); }
 .bip85-intro { margin: var(--space-control) 0 0; }
 .bip85-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 14px; margin-top: var(--space-component); }
 .bip85-grid .field[hidden] { display: none !important; }
@@ -1869,7 +1909,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .bip85-path-row { margin: var(--space-component) 0 0; }
 .bip85-path-row code { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
-.bip85-actions { margin-top: var(--space-component); }
 .bip85-notes { margin: var(--space-component) 0 0; padding-left: 20px; color: var(--muted); font-size: 13px; line-height: 1.5; }
 #bip85-out { margin-top: var(--space-component); }
 #bip85-card.is-result-view #bip85-out { margin-top: 0; }
@@ -1931,6 +1970,17 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-tab:last-child::after, .key-tab:has(+ .key-tab.active)::after { display: none; }
 .key-tab.active, .key-tab-editing {
   background: var(--surface); color: var(--fg); border-color: var(--border); border-bottom-color: var(--surface);
+}
+/* A Station is the durable starting point for a strip of derived tabs. Keep
+   it above the scrolling results so it remains reachable even at the far end
+   of a long session. Its opaque ground lets those results pass underneath. */
+.key-tabs > .key-tab.station-tab {
+  position: sticky; left: 0; z-index: 4; background: var(--bg);
+  box-shadow: 9px 0 10px -11px rgb(0 0 0 / .9);
+}
+.key-tabs > .key-tab.station-tab.active { background: var(--surface); }
+.key-tabs > .key-tab.station-tab:not(.active):hover {
+  background: color-mix(in oklab, var(--surface-2) 60%, var(--bg));
 }
 .key-tab.is-lab { font-weight: 700; }
 .key-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
@@ -2102,12 +2152,8 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
      only as wide as its label. Give every child the whole row so the group
      stacks as one block, the way .wallet-data-actions above already does.
      Listed after .psbted-actions so the editor's flex-end alignment gives way. */
-  .current-item-actions,
-  .bip85-actions,
-  .psbt-actions { align-items: stretch; }
-  .current-item-actions > *,
-  .bip85-actions > *,
-  .psbt-actions > * { width: 100%; justify-content: center; }
+  .tool-actions { align-items: stretch; }
+  .tool-actions > * { width: 100%; justify-content: center; }
   .journal-download-options { justify-content: flex-start; }
   .journal-download-options > .btn { width: auto; }
   .journal-create-ready-arrow { transform: rotate(90deg); }

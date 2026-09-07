@@ -140,6 +140,47 @@
     element.dispatchEvent(new Event("input", { bubbles: true }));
   };
 
+  await test("test mode preloads the requested deterministic hashed-dice keys", async () => {
+    const tabs = await until(() => {
+      const node = document.getElementById("key-tabs");
+      return node?.children.length === 9 ? node : null;
+    }, "eight test-mode Key Station keys");
+    equal(document.documentElement.dataset.testKeys, "8");
+    equal(
+      [...tabs.querySelectorAll(".key-tab:not(.is-lab) .key-tab-label")].map((label) => label.textContent).join("|"),
+      "Test dice 1|Test dice 2|Test dice 3|Test dice 4|Test dice 5|Test dice 6|Test dice 11|Test dice 22",
+    );
+    const lifehashes = await until(() => {
+      const images = [...tabs.querySelectorAll(".key-tab:not(.is-lab) .key-tab-lifehash")];
+      return images.length === 8 && images.every((image) => !image.hidden && image.src.startsWith("data:image/png")) ? images : null;
+    }, "all test-mode Key Station LifeHashes");
+    equal(new Set(lifehashes.map((image) => image.dataset.fingerprint)).size, 8, "each test key should paint its own LifeHash");
+    const previousMaxWidth = tabs.style.maxWidth;
+    tabs.style.maxWidth = "320px";
+    const station = tabs.firstElementChild;
+    assert(station.classList.contains("station-tab"), "Key Station is not marked as the strip's pinned tab");
+    await until(() => tabs.scrollWidth > tabs.clientWidth, "the test key tabs to overflow their strip");
+    tabs.scrollLeft = tabs.scrollWidth;
+    await wait(0);
+    const stripLeft = tabs.getBoundingClientRect().left, stationAtEnd = station.getBoundingClientRect();
+    assert(Math.abs(stationAtEnd.left - stripLeft) < 1, "Key Station did not remain pinned at the left edge");
+    assert(stationAtEnd.right >= tabs.children[1].getBoundingClientRect().right, "derived key tabs did not scroll underneath Key Station");
+    tabs.children[1].click();
+    await until(() => {
+      const currentStation = tabs.firstElementChild, selected = tabs.children[1];
+      return selected.classList.contains("active") && selected.getBoundingClientRect().left >= currentStation.getBoundingClientRect().right - 1;
+    }, "the selected derived key tab to clear the pinned Station");
+    tabs.style.maxWidth = previousMaxWidth;
+    tabs.scrollLeft = 0;
+    while (tabs.children.length > 1) {
+      tabs.lastElementChild.click();
+      document.getElementById("delete-key").click();
+      await wait(0);
+    }
+    equal(tabs.children.length, 1, "test-mode cleanup should leave only Key Station");
+    assert(tabs.firstElementChild.classList.contains("is-lab"), "test-mode cleanup removed Key Station");
+  });
+
   await test("hosted preview enables its warning and inline branding", () => {
     const warning = document.getElementById("online-warning");
     const logo = document.querySelector(".site-logo");
@@ -1155,6 +1196,63 @@
     }
   });
 
+  await test("every tool card uses the shared spacing rhythm", async () => {
+    const rootStyle = getComputedStyle(document.documentElement);
+    const token = (name) => parseFloat(rootStyle.getPropertyValue(name));
+    equal(token("--space-control"), 8);
+    equal(token("--space-component"), 16);
+    equal(token("--space-section"), 20);
+    equal(token("--space-intro"), 24);
+
+    const cardIds = [
+      "calc-card", "vanity-card", "bip85-card", "msig-card", "sp-card",
+      "psbt-card", "psbted-card", "journal-card", "journal-notes-card",
+      "journal-keymanager-card", "journal-state-card", "journal-log-card",
+    ];
+    cardIds.forEach((id) => {
+      const card = document.getElementById(id);
+      const style = getComputedStyle(card);
+      assert(card.classList.contains("tool-card"), `${id} is missing the shared tool-card shell`);
+      equal(parseFloat(style.paddingTop), token("--space-section"), `${id} top padding`);
+      equal(parseFloat(style.paddingRight), token("--space-section"), `${id} right padding`);
+      equal(parseFloat(getComputedStyle(card.firstElementChild).marginTop), 0, `${id} first-child margin`);
+      equal(parseFloat(getComputedStyle(card.lastElementChild).marginBottom), 0, `${id} last-child margin`);
+    });
+    document.querySelectorAll(".tool-actions").forEach((row) => {
+      equal(parseFloat(getComputedStyle(row).marginTop), token("--space-component"), "tool action-row spacing");
+    });
+    document.querySelectorAll(".tool-intro, .journal-section-intro").forEach((intro) => {
+      equal(parseFloat(getComputedStyle(intro).marginBottom), token("--space-intro"), "tool intro spacing");
+    });
+
+    const gap = (before, after) => Math.round(after.getBoundingClientRect().top - before.getBoundingClientRect().bottom);
+    try {
+      document.querySelector('#workspace [data-workspace="vanity"]').click();
+      await until(() => !document.getElementById("vanity-card").hidden, "Vanity spacing audit");
+      const vanityMessages = document.querySelector("#vanity-card > .wallet-result-messages");
+      const vanityKeys = document.querySelector("#vanity-card > .station-key-source");
+      assert(vanityMessages && vanityKeys, "Vanity spacing blocks are missing");
+      equal(gap(vanityMessages, vanityKeys), token("--space-section"), "Vanity warning-to-key-source spacing");
+
+      document.querySelector('#workspace [data-workspace="sp"]').click();
+      await until(() => !document.getElementById("sp-card").hidden, "Silent Payments spacing audit");
+      const spModes = document.getElementById("sp-modes");
+      const spKeys = document.querySelector("#sp-card > .station-key-source");
+      assert(spModes && spKeys, "Silent Payments spacing blocks are missing");
+      equal(gap(spModes, spKeys), token("--space-section"), "Silent Payments mode-to-key-source spacing");
+
+      document.querySelector('#workspace [data-workspace="bip85"]').click();
+      await until(() => !document.getElementById("bip85-card").hidden, "BIP-85 spacing audit");
+      const bipCard = document.getElementById("bip85-card");
+      const bipSection = bipCard.querySelector(".station-key-source");
+      assert(bipSection, "BIP-85 key-source block is missing");
+      equal(Math.round(bipSection.getBoundingClientRect().top - bipCard.getBoundingClientRect().top - parseFloat(getComputedStyle(bipCard).borderTopWidth)), token("--space-section"), "BIP-85 first-section card inset");
+    } finally {
+      document.querySelector('#workspace [data-workspace="calc"]').click();
+      await until(() => !document.getElementById("key-manager").hidden, "key workspace after spacing audit");
+    }
+  });
+
   await test("the Journal stores entries and notes to files and loads them back", async () => {
     const journalPassword = "load store drill password";
     const entryLabel = "store-load drill entry";
@@ -1305,6 +1403,10 @@
     await until(() => [...document.querySelectorAll("#key-tabs .key-tab")].some((tab) => tab.textContent.includes("ef94d090")), "the derived key tab ef94d090");
     document.querySelector('#workspace [data-workspace="vanity"]').click();
     await until(() => document.querySelector("#vanity-session-keys .session-key-option"), "the Key Station chip to appear");
+    const vanityKeyPickerStyle = getComputedStyle(document.getElementById("vanity-session-keys"));
+    const vanityKeyOptionStyle = getComputedStyle(document.querySelector("#vanity-session-keys .session-key-option"));
+    assert(vanityKeyPickerStyle.flexWrap === "nowrap" && vanityKeyPickerStyle.overflowX === "auto", "The shared Key Station picker was not a single horizontally scrollable row");
+    assert(vanityKeyOptionStyle.flexShrink === "0", "A shared Key Station key could shrink inside its horizontal row");
     const chips = [...document.querySelectorAll("#vanity-session-keys .session-key-option")].map((chip) => chip.textContent.trim());
     equal(chips.join(","), "ef94d090", "only the derived key is a chip — never the Key Station lab tab");
     document.querySelector("#vanity-session-keys .session-key-option").click();
@@ -1957,6 +2059,9 @@
         const candidate = document.querySelector(selector);
         return candidate?.getClientRects().length ? candidate : null;
       }, `${workspace} Station icon`);
+      const stationTab = icon.closest(".key-tab");
+      assert(stationTab?.classList.contains("station-tab"), `${workspace} Station tab is not marked as pinned`);
+      equal(getComputedStyle(stationTab).position, "sticky", `${workspace} Station tab is not sticky`);
       const box = icon.getBoundingClientRect();
       assert(Math.abs(box.height - expectedHeight) < 0.5, `${workspace} Station icon has the wrong decorative height`);
       assert(Math.abs(box.width - expectedWidth) < 0.5, `${workspace} Station icon has the wrong optical width`);
@@ -3271,22 +3376,88 @@
     assert(!document.getElementById("msig-session-keys"), "MS Station still has the redundant global Key Station picker");
     assert(!document.querySelector(".msig-station-key-source"), "MS Station still has the redundant Key Station import section");
     assert(reuseToggle && !reuseToggle.checked, "MS Station key reuse was not opt-in");
+    const originState = document.getElementById("msig-origin-state");
+    assert(originState?.hidden, "The redundant global co-signer derivation controls are still visible");
+    const scriptType = document.getElementById("msig-script-type");
+    const keyOrder = document.getElementById("msig-key-order");
+    const bip87Toggle = document.getElementById("msig-legacy-account-toggle");
+    const keyRows = document.getElementById("msig-keys");
+    assert(keyOrder && !keyOrder.hidden && !keyOrder.closest("details"), "Key order was not a visible multisig policy control");
+    assert(scriptType.compareDocumentPosition(keyOrder) & Node.DOCUMENT_POSITION_FOLLOWING, "Key order did not follow Script type");
+    assert(keyOrder.compareDocumentPosition(bip87Toggle) & Node.DOCUMENT_POSITION_FOLLOWING, "The BIP87 setting did not follow Key order");
+    assert(bip87Toggle.compareDocumentPosition(keyRows) & Node.DOCUMENT_POSITION_FOLLOWING, "The BIP87 setting did not precede the co-signer inputs");
     let rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
     assert(rows.length >= 2, "MS Station did not start with at least two co-signer rows");
+    rows.forEach((row, index) => {
+      const railLabel = row.querySelector(".msig-key-rail-label");
+      const keyStripStyle = getComputedStyle(row.querySelector(".msig-session-keys"));
+      assert(railLabel && railLabel.textContent === `Co-signer ${index + 1}`, "A co-signer row did not render its numbered side rail");
+      assert(row.getAttribute("aria-labelledby") === railLabel.id, "A co-signer side rail did not label its row");
+      assert(row.querySelectorAll(".msig-key-rail-line").length === 2, "A co-signer side rail did not bracket its content");
+      assert(keyStripStyle.flexWrap === "nowrap" && keyStripStyle.overflowX === "auto", "A co-signer key strip was not a single horizontally scrollable row");
+      const advanced = row.querySelector(".msig-cosigner-advanced");
+      assert(advanced && !advanced.open, "A co-signer's Advanced entry did not start collapsed");
+      const fingerprint = row.querySelector(".msig-master-fingerprint");
+      const fullPath = row.querySelector(".msig-full-path");
+      assert(row.querySelector("textarea") && fingerprint && fullPath, "A co-signer's key, master fingerprint, or full derivation path is not visible");
+      assert(fingerprint.compareDocumentPosition(fullPath) & Node.DOCUMENT_POSITION_FOLLOWING, "A co-signer's master fingerprint was not placed left of its full derivation path");
+      assert(!advanced.contains(row.querySelector("textarea")) && !advanced.contains(row.querySelector(".msig-full-path")), "A co-signer's key or full path was hidden in Advanced entry");
+    });
+    const railLeft = rows[0].querySelector(".msig-key-rail-line").getBoundingClientRect().left;
+    const reuseBorderLeft = reuseToggle.closest(".choice").getBoundingClientRect().left;
+    assert(Math.abs(railLeft - reuseBorderLeft) <= 1, `The co-signer rail did not align with the key-reuse container border (${railLeft} vs ${reuseBorderLeft})`);
     const rowOption = (row) => row.querySelector(".msig-session-keys .msig-session-key");
     rows.forEach((row) => input(row.querySelector("textarea"), ""));
     rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
+    assert(rows.every((row) => row.querySelector(".msig-full-path").value.startsWith("m/") && row.querySelectorAll(".msig-path-component").length >= 1), "Cleared co-signer rows did not show a default full path with synchronized Advanced components");
+    const emptyKeyHint = rows[0].querySelector("textarea").nextElementSibling;
+    assert(emptyKeyHint?.classList.contains("neutral") && emptyKeyHint.textContent === "Choose a Key Station key above, or paste a co-signer extended public key.", "An empty co-signer input did not show neutral entry guidance");
     assert(rows.every((row) => rowOption(row)), "A co-signer row did not offer the compatible Key Station key");
 
     rowOption(rows[0]).click();
     rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
     const first = document.getElementById("msig-x-0");
     assert(first.value.trim(), "The first co-signer's Key Station picker did not populate its input");
-    const identity = document.querySelector("#msig-keys .msig-key-row .msig-key-ident");
-    assert(identity && !identity.hidden, "The selected key identity was not shown above its co-signer input");
+    assert(/^m\//.test(rows[0].querySelector(".msig-full-path").value), "Selecting a key did not populate its visible full derivation path");
+    const firstFingerprintInput = rows[0].querySelector(".msig-master-fingerprint");
+    const firstFingerprint = firstFingerprintInput.value;
+    const bareFirstKey = first.value;
+    assert(/^[A-Za-z]pub/.test(bareFirstKey) && !bareFirstKey.includes("["), "Selecting a key did not split its extended public key from its origin fields");
+    assert(/^[0-9a-f]{8}$/.test(firstFingerprint), "Selecting a key did not populate its separate master fingerprint");
+    input(document.getElementById("msig-network"), /^(?:tpub|[UV]pub)/.test(bareFirstKey) ? "1" : "0");
+    const firstHint = first.nextElementSibling;
+    const fieldMessageGap = firstHint.getBoundingClientRect().top - first.getBoundingClientRect().bottom;
+    const standardFieldMessageGap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--space-control"));
+    assert(firstHint.classList.contains("hint") && Math.abs(fieldMessageGap - standardFieldMessageGap) <= 0.5, `The co-signer input message gap did not match the app's field-message spacing (${fieldMessageGap}px vs ${standardFieldMessageGap}px)`);
+    assert(!document.querySelector("#msig-keys .msig-key-ident"), "The selected key was repeated between its label and input");
     rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
     assert(rowOption(rows[0]).classList.contains("active"), "The picked key was not marked active on the first row");
-    assert(!rowOption(rows[1]), "An assigned key remained available on another row while reuse was off");
+    assert(rowOption(rows[0]).getAttribute("aria-pressed") === "true", "The picked key did not expose its selected state");
+    const activeKeyStyle = getComputedStyle(rowOption(rows[0]));
+    assert(activeKeyStyle.backgroundColor === "rgb(255, 153, 0)" && activeKeyStyle.color === "rgb(0, 0, 0)", "The picked key did not retain its orange pressed state");
+    assert(activeKeyStyle.boxShadow.includes("inset"), "The picked key did not retain its inset pressed appearance");
+    const activeLifeHash = rowOption(rows[0]).querySelector(".key-tab-lifehash");
+    assert(getComputedStyle(activeLifeHash).boxShadow !== "none", "The picked key's LifeHash did not gain its dark emphasis shadow");
+    assert(rowOption(rows[1]), "An assigned key disappeared from another row while reuse was off");
+    assert(rowOption(rows[1]).classList.contains("unavailable") && rowOption(rows[1]).disabled, "An assigned key was not faded and unavailable on another row while reuse was off");
+
+    input(first, "");
+    input(first, bareFirstKey);
+    assert(first.value === bareFirstKey && firstHint.classList.contains("bad") && firstHint.textContent.includes("Master fingerprint"), "A bare xpub did not remain in its field while waiting for separate origin metadata");
+    input(firstFingerprintInput, firstFingerprint);
+    assert(first.value === bareFirstKey && firstHint.classList.contains("ok"), `A bare xpub did not validate after entering its separate fingerprint and path: ${firstHint.className} ${firstHint.textContent}`);
+
+    rowOption(rows[0]).click();
+    rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
+    assert(!first.value, "Clicking the selected key did not clear its co-signer input");
+    assert(rows.every((row) => rowOption(row)), "Deselecting a key did not restore it to every co-signer row");
+    assert(rows.every((row) => !rowOption(row).classList.contains("unavailable") && !rowOption(row).disabled), "Deselecting a key did not restore its normal state on every row");
+    assert([...rows[0].querySelectorAll(".msig-session-key")].every((option) => !option.classList.contains("active") && option.getAttribute("aria-pressed") === "false"), "Deselecting a key did not reset its row choices");
+    assert(getComputedStyle(rowOption(rows[0]).querySelector(".key-tab-lifehash")).boxShadow === "none", "Deselecting a key did not remove its LifeHash emphasis shadow");
+    rowOption(rows[0]).click();
+    rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
+    assert(first.value.trim(), "The key could not be selected again after being cleared");
+    assert(rowOption(rows[1]).classList.contains("unavailable") && rowOption(rows[1]).disabled, "The reselected key was not faded on another row while reuse was off");
 
     // Opting into reuse keeps the key selectable on every row. Picking it
     // again offers a derivation path so its descriptor public keys differ.
@@ -3294,27 +3465,49 @@
     rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
     const second = document.getElementById("msig-x-1");
     const secondOption = rowOption(rows[1]);
-    assert(secondOption, "Enabling reuse did not restore the assigned key on another co-signer row");
+    assert(secondOption && !secondOption.classList.contains("unavailable") && !secondOption.disabled, "Enabling reuse did not restore the assigned key on another co-signer row");
     const secondFingerprint = secondOption.dataset.fingerprint;
     secondOption.click();
     assert(second.value.trim(), "The second co-signer row did not populate the reused key");
-    const reusePanel = rows[1].querySelector(".msig-key-reuse");
-    assert(reusePanel && !reusePanel.hidden, "Reusing a key did not offer a derivation path on the second row");
-    assert(reusePanel.querySelector(".msig-key-reuse-note").textContent.includes("Co-signer 1"), "The reuse note did not name the other co-signer");
-    const reusePath = reusePanel.querySelector(".msig-key-reuse-path");
-    assert(reusePath.value === "1", `The suggested derivation path was not /1 (got ${reusePath.value || "blank"})`);
-    assert(reusePanel.querySelector(".msig-key-reuse-clear").hidden, "Remove path showed before a path was applied");
-    reusePanel.querySelector(".msig-key-reuse-apply").click();
-    assert(/\/1$/.test(second.value), "Apply path did not append /1 to the reused co-signer key");
-    assert(rows[1].querySelector(".msig-key-reuse-note").textContent.includes("/1"), "The reuse note did not confirm the applied path");
-    assert(!reusePanel.querySelector(".msig-key-reuse-clear").hidden, "Remove path did not appear once a path was applied");
-    assert(second.value.includes(secondFingerprint), "The reused key origin changed when the path was applied");
-    reusePanel.querySelector(".msig-key-reuse-clear").click();
-    assert(!/\/1$/.test(second.value), "Remove path did not strip the appended derivation path");
+    const secondPath = rows[1].querySelector(".msig-full-path");
+    assert(/\/1$/.test(secondPath.value) && !second.value.includes("/"), "Reusing a key did not keep its distinct child in the separate full path");
+    assert(rows[1].querySelector(".msig-master-fingerprint").value === secondFingerprint, "The reused key's separate master fingerprint changed");
+    const secondAdvanced = rows[1].querySelector(".msig-cosigner-advanced");
+    secondAdvanced.open = true;
+    const childComponent = [...secondAdvanced.querySelectorAll(".msig-path-component")].at(-1);
+    assert(childComponent?.textContent.includes("Extended child 1"), "The reused key's appended child was not represented in Advanced entry");
+    const childInput = childComponent.querySelector(".msig-path-component-input");
+    childInput.focus();
+    childInput.setSelectionRange(1, 1);
+    input(childInput, "2");
+    assert(/\/2$/.test(secondPath.value) && second.nextElementSibling.textContent.includes("/2"), "Changing an Advanced path component did not update the full path and effective key expression");
+    assert(document.activeElement === childInput && childInput.selectionStart === 1, "Changing an Advanced path component lost its focus or cursor position");
+    input(secondPath, secondPath.value.replace(/\/2$/, ""));
+    assert(!second.nextElementSibling.textContent.includes("/2"), "Changing the full path did not update the effective co-signer key expression");
 
+    const firstPath = rows[0].querySelector(".msig-full-path").value;
+    const importedKey = `[${rows[0].querySelector(".msig-master-fingerprint").value}/${firstPath.slice(2).replace(/'/g, "h")}]${first.value.trim()}`;
     input(document.getElementById("msig-x-0"), "");
     input(document.getElementById("msig-x-1"), "");
     if (reuseToggle.checked) reuseToggle.click();
+    const importPanel = document.getElementById("msig-import");
+    const thresholdLabels = document.querySelector(".msig-threshold-labels");
+    assert(importPanel.compareDocumentPosition(thresholdLabels) & Node.DOCUMENT_POSITION_FOLLOWING, "Descriptor import did not come before manual m-of-n selection");
+    importPanel.open = true;
+    input(document.getElementById("msig-descriptor"), `wsh(sortedmulti(1,${importedKey}/0/*))`);
+    const importButton = document.getElementById("msig-descriptor-import");
+    assert(!importButton.disabled, "A valid descriptor was not ready to import into empty co-signer fields");
+    importButton.click();
+    equal(document.getElementById("msig-m").value, "1", "The imported threshold did not populate m");
+    equal(document.getElementById("msig-n").value, "1", "The imported key count did not populate n");
+    assert(document.getElementById("msig-threshold-control").disabled, "The imported range controls were not locked");
+    assert(document.getElementById("msig-m-number").disabled && document.getElementById("msig-n-number").disabled, "The imported numeric m-of-n controls were not locked");
+    assert(document.getElementById("msig-threshold-lock").textContent.includes("1-of-1"), "The imported quorum lock was not explained");
+    document.getElementById("msig-wipe").click();
+    assert(!document.getElementById("msig-threshold-control").disabled, "Clearing the multisig did not unlock manual quorum selection");
+    equal(document.getElementById("msig-m").value, "2", "Clearing the imported multisig did not restore default m");
+    equal(document.getElementById("msig-n").value, "3", "Clearing the imported multisig did not restore default n");
+    equal(document.getElementById("msig-descriptor").value, "", "Clearing the imported multisig did not clear its descriptor");
     document.querySelector('#workspace [data-workspace="calc"]').click();
     await until(() => !document.getElementById("key-manager").hidden, "key workspace after MS Station picker test");
   });
@@ -3618,7 +3811,9 @@
     equal(walletTabs().length, committedBefore + 1, "Deriving did not commit exactly one new wallet tab");
     document.getElementById("msig-edit-inputs").click();
     await until(() => !document.getElementById("msig-lab").hidden && document.getElementById("msig-x-0")?.value, "lab restored with the wallet's inputs");
-    equal(document.getElementById("msig-x-0").value, decorated, "Edit input did not restore the exact co-signer paste, descriptor-path suffix included");
+    equal(document.getElementById("msig-x-0").value, decorated.match(/\]([^/]+)/)[1], "Edit input did not restore the co-signer's bare extended public key");
+    equal(document.querySelector("#msig-keys .msig-master-fingerprint").value, "932f8b09", "Edit input did not restore the separate master fingerprint");
+    equal(document.querySelector("#msig-keys .msig-full-path").value, "m/48'/0'/0'/2'", "Edit input did not restore the separate full derivation path");
     equal(document.getElementById("msig-n").value, "1", "Edit input did not restore the key count");
     equal(document.getElementById("msig-m").value, "1", "Edit input did not restore the threshold");
     // The committed wallet keeps its result while its inputs sit in the lab.

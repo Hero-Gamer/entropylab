@@ -313,6 +313,10 @@ const outpointFree = (doc, index, txid, vout) => {
   const candidateTxid = String(txid).toLowerCase();
   if (!integerText(String(vout))) return true; // moot on an unbuildable doc
   const candidateVout = String(Number(BigInt(String(vout))));
+  // A zero txid paired with UINT32_MAX is the consensus null prevout. It is
+  // not a valid ordinary PSBT input, even though both fields are valid in
+  // isolation, so the repair oracle must not select it as a recovery value.
+  if (candidateTxid === "0".repeat(64) && candidateVout === String(U32_MAX)) return false;
   for (const [at, other] of doc.tx.inputs.entries()) {
     if (at === index || !integerText(String(other.vout))) continue; // a mid-edit poison compares as no duplicate
     if (String(other.txid).toLowerCase() === candidateTxid && String(Number(BigInt(String(other.vout)))) === candidateVout) return false;

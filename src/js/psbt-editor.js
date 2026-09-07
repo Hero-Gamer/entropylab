@@ -662,7 +662,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
       ${stale ? `<p class="psbted-note-warn" id="psbted-stale-note">The fields do not build right now — this is the last valid build. Export is unavailable until they build again.</p>` : ""}
       <p class="psbt-ok">${gate}; its unsigned transaction passes consensus sanity checks (${resultBytes.length} bytes).</p>
       <label class="field">Edited PSBT (base64)<textarea id="psbted-result-b64" readonly spellcheck="false"${gated}>${stale ? "" : escapeHtml(b64)}</textarea></label>
-      <div class="row psbt-actions">
+      <div class="row psbt-actions tool-actions">
         <button class="btn secondary" id="psbted-copy-b64" type="button"${gated}>Copy base64</button>
         <button class="btn secondary" id="psbted-copy-hex" type="button"${gated}>Copy hex</button>
         <button class="btn secondary" id="psbted-download" type="button"${gated}>Download .psbt</button>

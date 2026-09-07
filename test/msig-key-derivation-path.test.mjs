@@ -66,7 +66,6 @@ const hodlNetworkFamily = new Function(`${loadFunction("hodlNetworkFamily")}; re
 const hodlSerializeExtendedKey = new Function("hodlReversionExtendedKey", "hodlExtendedKeyVersions", "hodlNetworkFamily", `${loadFunction("hodlSerializeExtendedKey")}; return hodlSerializeExtendedKey;`)(hodlReversionExtendedKey, hodlExtendedKeyVersions, hodlNetworkFamily);
 const hodlMultisigKeyToken = new Function("hodlSerializeExtendedKey", `${loadFunction("hodlMultisigKeyToken")}; return hodlMultisigKeyToken;`)(hodlSerializeExtendedKey);
 const hodlMsigDerivedNode = new Function(`${loadFunction("hodlMsigDerivedNode")}; return hodlMsigDerivedNode;`)();
-const hodlStripMsigKeyPath = new Function(`${loadFunction("hodlStripMsigKeyPath")}; return hodlStripMsigKeyPath;`)();
 
 // BIP39 "abandon" x11 + "about"; master fingerprint 73c5da0a.
 const seed = mnemonicToSeedSync("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about");
@@ -109,11 +108,4 @@ test("the derived co-signer node follows the appended path", () => {
   const parsed = hodlParseMultisigCosigner(`${EXPORT}/1`);
   assert.equal(hodlHex.encode(hodlMsigDerivedNode(parsed).publicKey), hodlHex.encode(node.derive("m/1").publicKey));
   assert.equal(hodlHex.encode(hodlMsigDerivedNode(hodlParseMultisigCosigner(EXPORT)).publicKey), hodlHex.encode(node.publicKey));
-});
-
-test("stripping the path returns the export a session key picked", () => {
-  assert.equal(hodlStripMsigKeyPath(`${EXPORT}/1`), EXPORT);
-  assert.equal(hodlStripMsigKeyPath(`${EXPORT}/0/2`), EXPORT);
-  assert.equal(hodlStripMsigKeyPath(`${EXPORT}/1/0/*`), EXPORT);
-  assert.equal(hodlStripMsigKeyPath(EXPORT), EXPORT);
 });

@@ -19,7 +19,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -709,6 +709,7 @@ const withChainNode = async (network, body) => {
   const fixture = CHAIN_FIXTURES[network];
   const port = await freePort();
   const datadir = mkdtempSync(join(tmpdir(), `entropylab-bitcoind-${network}-`));
+  const pidFile = join(datadir, "bitcoind.pid");
   const flagArgs = fixture.flag ? [fixture.flag] : [];
   const cliArgs = [...flagArgs, `-datadir=${datadir}`, "-rpcuser=el", "-rpcpassword=el", `-rpcport=${port}`];
   const cli = (args, { check = true } = {}) => {
@@ -717,18 +718,22 @@ const withChainNode = async (network, body) => {
     return run;
   };
   try {
-    execFileSync("bitcoind", [...flagArgs, `-datadir=${datadir}`, "-listen=0", "-connect=0", "-server", "-rpcuser=el", "-rpcpassword=el", `-rpcport=${port}`, "-daemon"], { stdio: "pipe" });
+    execFileSync("bitcoind", [...flagArgs, `-datadir=${datadir}`, `-pid=${pidFile}`, "-listen=0", "-connect=0", "-server", "-rpcuser=el", "-rpcpassword=el", `-rpcport=${port}`, "-daemon"], { stdio: "pipe" });
     cli(["-rpcwait", "getblockchaininfo"]);
     await body((args, options) => cli(args, options), join(datadir, fixture.subdir, "wallets"));
   } finally {
     spawnSync("bitcoin-cli", [...cliArgs, "stop"], { stdio: "pipe" });
-    // stop returns before the process exits; wait for the RPC to go quiet so
-    // the datadir removal cannot race a late flush.
+    // stop returns before the process exits, and RPC can go quiet while a
+    // final chain-state flush is still in progress. Bitcoin Core removes its
+    // PID file at the actual shutdown boundary, so wait for that instead.
     for (let waited = 0; waited < 300; waited++) {
-      if (cli(["getblockchaininfo"], { check: false }).status !== 0) break;
+      if (!existsSync(pidFile)) break;
       sleepSync(100);
     }
-    rmSync(datadir, { recursive: true, force: true });
+    // macOS can keep a just-closed chain subdirectory briefly busy after the
+    // RPC endpoint disappears. Let rmSync retry ENOTEMPTY/EBUSY instead of
+    // turning successful wallet validation into a cleanup-only test failure.
+    rmSync(datadir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 };
 

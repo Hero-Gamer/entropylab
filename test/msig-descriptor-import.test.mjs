@@ -2,8 +2,9 @@
 // the wrapper picks the script type, multi/sortedmulti picks the key order,
 // and the threshold plus one key expression per co-signer fill the quorum and
 // the fields. The #checksum is verified, private keys are refused, and shapes
-// the form cannot reproduce (a fixed derivation path, a non-NUMS Taproot
-// internal key) fail with directions.
+// the form cannot reproduce (a fixed derivation path, a trailing path deeper
+// than the receive/change branch step, a non-NUMS Taproot internal key) fail
+// with directions.
 // Run with: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -107,7 +108,7 @@ test("sh, sh(wsh), and bare multi wrappers map to script kinds", () => {
   const nested = hodlParseMsigDescriptor(hodlDescriptorWithChecksum(`sh(wsh(multi(2,${keyA}/0/*,${keyB}/0/*)))`));
   assert.equal(nested.kind, "p2sh-p2wsh");
   assert.equal(nested.sorted, false);
-  const legacy = hodlParseMsigDescriptor(hodlDescriptorWithChecksum(`sh(multi(1,${keyA}))`));
+  const legacy = hodlParseMsigDescriptor(hodlDescriptorWithChecksum(`sh(multi(1,${keyA}/0/*))`));
   assert.equal(legacy.kind, "p2sh");
   assert.equal(legacy.m, 1);
   assert.equal(legacy.n, 1);
@@ -126,6 +127,164 @@ test("a present checksum is verified, not just stripped", () => {
 test("multipath suffixes strip like plain branch wildcards", () => {
   const parsed = hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/<0;1>/*,${keyB}/<0;1>/*))`);
   assert.deepEqual(parsed.keys, [keyA, keyB]);
+});
+
+// Issue #389: the import used to drop every trailing step, so a descriptor
+// whose keys ended in /0/20/* imported as …/0/* — the displayed and exported
+// wallet silently differed from the imported one. Every shape the form cannot
+// reproduce exactly must now be refused instead of rewritten.
+test("a trailing path beyond the branch step is refused, not dropped (issue #389)", () => {
+  assert.throws(
+    () => hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/0/20/*,${keyB}/0/20/*))`),
+    /\/0\/20\/\*.*cannot reproduce|would change the wallet/,
+  );
+  // A branch the default receive/change window never derives.
+  assert.throws(
+    () => hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/5/*,${keyB}/5/*))`),
+    /would change the wallet/,
+  );
+  // A multipath that reaches past the change branch.
+  assert.throws(
+    () => hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/<0;2>/*,${keyB}/<0;2>/*))`),
+    /would change the wallet/,
+  );
+  // No branch step at all: the tool always derives one below the key.
+  assert.throws(
+    () => hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/*,${keyB}/*))`),
+    /would change the wallet/,
+  );
+  // A fixed key with no wildcard names one address the form never derives.
+  assert.throws(
+    () => hodlParseMsigDescriptor(`sh(multi(1,${keyA}))`),
+    /no derivation|cannot reproduce/,
+  );
+});
+
+test("reproducible tails still import: receive, change, and the receive/change multipath", () => {
+  for (const tail of ["/0/*", "/1/*", "/<0;1>/*", "/<1;0>/*"]) {
+    const parsed = hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}${tail},${keyB}${tail}))`);
+    assert.deepEqual(parsed.keys, [keyA, keyB], `tail ${tail}`);
+  }
+});
+
+const bip45A = `[${fingerprint}/45h]${nodeA.publicExtendedKey}`;
+const bip45B = `[${fingerprint}/45h]${nodeB.publicExtendedKey}`;
+// Plain-xpub twins of keyA/keyB for the rust-miniscript round-trip (the crate
+// does not read SLIP-132 versions).
+const xkeyA = `[${fingerprint}/48h/0h/0h/2h]${nodeA.publicExtendedKey}`;
+const xkeyB = `[${fingerprint}/48h/0h/1h/2h]${nodeB.publicExtendedKey}`;
+
+// Issue #389 follow-up: the per-key tail check alone accepted
+// wsh(sortedmulti(2,A/0/*,B/1/*)) — the form derives ONE shared branch window
+// below every key, so both reconstructions (all keys on /0/*, or all on /1/*)
+// derive different addresses than the imported descriptor.
+test("co-signer keys that name different branches are refused (issue #389)", () => {
+  assert.throws(
+    () => hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/0/*,${keyB}/1/*))`),
+    /different branches.*would change the wallet/,
+  );
+  // A sole branch step beside a receive/change multipath disagrees the same way.
+  assert.throws(
+    () => hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/0/*,${keyB}/<0;1>/*))`),
+    /different branches/,
+  );
+  // The BIP45 cosigner step does not hide a branch disagreement.
+  assert.throws(
+    () => hodlParseMsigDescriptor(`sh(sortedmulti(1,${bip45A}/0/0/*,${bip45B}/0/1/*))`),
+    /different branches/,
+  );
+});
+
+test("the one-element multipath folds, but multipath element order IS a branch disagreement (issue #389)", () => {
+  // <0> and /0 expand identically, so those spellings agree.
+  const spelledOut = hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/<0>/*,${keyB}/0/*))`);
+  assert.deepEqual(spelledOut.keys, [keyA, keyB]);
+  // BIP-389 expands multipath wildcards positionally: <0;1> beside <1;0>
+  // pairs A/0 with B/1 and A/1 with B/0 — no shared branch reproduces it.
+  assert.throws(
+    () => hodlParseMsigDescriptor(`wsh(sortedmulti(2,${keyA}/<0;1>/*,${keyB}/<1;0>/*))`),
+    /different branches/,
+  );
+});
+
+test("an accepted import reconstructs the descriptor's own addresses (rust-miniscript)", async () => {
+  const { descriptorDerive } = await import("../src/js/addresses.js");
+  // The tool derives imported keys through its own /branch/* suffix; both
+  // branches of a <0;1> import must land on the descriptor's expansions.
+  const parsed = hodlParseMsigDescriptor(`wsh(sortedmulti(2,${xkeyA}/<0;1>/*,${xkeyB}/<0;1>/*))`);
+  for (const branch of [0, 1]) {
+    const reconstructed = `wsh(sortedmulti(2,${parsed.keys.map((key) => `${key}/${branch}/*`).join(",")}))`;
+    const expansion = `wsh(sortedmulti(2,${xkeyA}/${branch}/*,${xkeyB}/${branch}/*))`;
+    assert.equal(descriptorDerive(reconstructed, 3, "mainnet").address, descriptorDerive(expansion, 3, "mainnet").address, `branch ${branch}`);
+  }
+  // …and the mixed-branch shape guarded against really was a different
+  // wallet under either shared-branch reconstruction.
+  const original = descriptorDerive(`wsh(sortedmulti(2,${xkeyA}/0/*,${xkeyB}/1/*))`, 0, "mainnet").address;
+  assert.notEqual(descriptorDerive(`wsh(sortedmulti(2,${xkeyA}/0/*,${xkeyB}/0/*))`, 0, "mainnet").address, original, "all-receive reconstruction");
+  assert.notEqual(descriptorDerive(`wsh(sortedmulti(2,${xkeyA}/1/*,${xkeyB}/1/*))`, 0, "mainnet").address, original, "all-change reconstruction");
+  // The reversed-multipath bypass too: <0;1> beside <1;0> expands in lockstep
+  // to (A/0,B/1) and (A/1,B/0) — neither shared-branch reconstruction reaches
+  // either original expansion.
+  const reversedPairs = [
+    descriptorDerive(`wsh(sortedmulti(2,${xkeyA}/0/*,${xkeyB}/1/*))`, 0, "mainnet").address,
+    descriptorDerive(`wsh(sortedmulti(2,${xkeyA}/1/*,${xkeyB}/0/*))`, 0, "mainnet").address,
+  ];
+  const shared = [
+    descriptorDerive(`wsh(sortedmulti(2,${xkeyA}/0/*,${xkeyB}/0/*))`, 0, "mainnet").address,
+    descriptorDerive(`wsh(sortedmulti(2,${xkeyA}/1/*,${xkeyB}/1/*))`, 0, "mainnet").address,
+  ];
+  for (const reconstructed of shared) for (const expansion of reversedPairs) assert.notEqual(reconstructed, expansion);
+});
+
+test("a BIP45 cosigner step ahead of the branch wildcard still imports", () => {
+  // sh(multi) over 45-purpose origins: /0/0/* is cosigner 0, receive branch —
+  // exactly what the BIP45 compose re-derives.
+  const parsed = hodlParseMsigDescriptor(`sh(sortedmulti(1,${bip45A}/0/0/*,${bip45B}/0/0/*))`);
+  assert.deepEqual(parsed.keys, [bip45A, bip45B]);
+  const bothBranches = hodlParseMsigDescriptor(`sh(sortedmulti(1,${bip45A}/0/<0;1>/*,${bip45B}/0/<0;1>/*))`);
+  assert.deepEqual(bothBranches.keys, [bip45A, bip45B]);
+  // A cosigner index other than 0 is not what the tool derives.
+  assert.throws(() => hodlParseMsigDescriptor(`sh(sortedmulti(1,${bip45A}/1/0/*,${bip45B}/0/0/*))`), /would change the wallet/);
+  // And the cosigner step does not excuse a deeper path.
+  assert.throws(() => hodlParseMsigDescriptor(`sh(sortedmulti(1,${bip45A}/0/0/20/*,${bip45B}/0/0/*))`), /would change the wallet/);
+});
+
+// Issue #389 follow-up: the cosigner step used to be optional — a bare /0/*
+// on a 45-purpose key read as "branch 0", so sh(sortedmulti(2,A/0/*,B/0/0/*))
+// passed the per-key and cross-key checks, yet the BIP45 compose rebuilt BOTH
+// keys as /0/0/*: A derived a different wallet than the descriptor named.
+test("a BIP45 key without its cosigner step is refused, not rewritten (issue #389)", () => {
+  assert.throws(
+    () => hodlParseMsigDescriptor(`sh(sortedmulti(2,${bip45A}/0/*,${bip45B}/0/0/*))`),
+    /Co-signer 1: .*BIP45.*\/0\/\*.*would change the wallet/,
+  );
+  // Both keys bare is the same rewrite twice over, not an agreement.
+  assert.throws(
+    () => hodlParseMsigDescriptor(`sh(sortedmulti(2,${bip45A}/0/*,${bip45B}/0/*))`),
+    /BIP45.*would change the wallet/,
+  );
+  assert.throws(
+    () => hodlParseMsigDescriptor(`sh(sortedmulti(2,${bip45A}/<0;1>/*,${bip45B}/<0;1>/*))`),
+    /BIP45.*would change the wallet/,
+  );
+});
+
+test("an accepted BIP45 import reconstructs the descriptor's own addresses (rust-miniscript)", async () => {
+  const { descriptorDerive } = await import("../src/js/addresses.js");
+  // The BIP45 compose derives imported keys through its /0/<branch>/* suffix;
+  // both branches of a /0/<0;1>/* import must land on the descriptor's expansions.
+  const parsed = hodlParseMsigDescriptor(`sh(sortedmulti(2,${bip45A}/0/<0;1>/*,${bip45B}/0/<0;1>/*))`);
+  assert.deepEqual(parsed.keys, [bip45A, bip45B]);
+  for (const branch of [0, 1]) {
+    const reconstructed = `sh(sortedmulti(2,${parsed.keys.map((key) => `${key}/0/${branch}/*`).join(",")}))`;
+    const expansion = `sh(sortedmulti(2,${bip45A}/0/${branch}/*,${bip45B}/0/${branch}/*))`;
+    assert.equal(descriptorDerive(reconstructed, 3, "mainnet").address, descriptorDerive(expansion, 3, "mainnet").address, `branch ${branch}`);
+  }
+  // …and the bare-tail shape guarded against really was a different wallet:
+  // the compose would have rebuilt A/0/* as A/0/0/*.
+  const original = descriptorDerive(`sh(sortedmulti(2,${bip45A}/0/*,${bip45B}/0/0/*))`, 0, "mainnet").address;
+  const rebuilt = descriptorDerive(`sh(sortedmulti(2,${bip45A}/0/0/*,${bip45B}/0/0/*))`, 0, "mainnet").address;
+  assert.notEqual(rebuilt, original, "cosigner-step reconstruction");
 });
 
 test("an extended private key in the descriptor is refused", () => {

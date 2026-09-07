@@ -181,6 +181,42 @@ test("partial resolution wipes earlier copies and leaves the session usable", ()
   assert.ok(copies.every(copy=>copy.every(b=>b===0)));
 });
 
+// Issue #389: HDKey.privateKey returns a fresh copy on every read, and the
+// resolver used to read it twice (existence check, then the tweak/copy for
+// the resolved scalar) — node.wipePrivateData() can never reach those copies.
+test("the sender-key wipe covers every privateKey getter copy (issue #389)", () => {
+  setup();
+  const retained = [];
+  const original = Object.getOwnPropertyDescriptor(HDKey.prototype, "privateKey");
+  Object.defineProperty(HDKey.prototype, "privateKey", {
+    configurable: true,
+    get() {
+      const copy = original.get.call(this);
+      if (copy) retained.push(copy);
+      return copy;
+    },
+  });
+  try {
+    const [resolved] = hodlSpDeriveVinKeys([vinOf(OWNED_SCRIPT)]);
+    assert.ok(resolved.private_key.some((b) => b !== 0), "the resolved scalar is live until the vin wipe");
+    assert.equal(retained.length, 1, "one getter read per resolution, not one per use");
+    assert.ok(retained[0].every((b) => b === 0), "the single retained copy is wiped after the tweak is built");
+    hodlSpWipeVinKeys([resolved]);
+    assert.ok(resolved.private_key.every((b) => b === 0));
+    // Same guarantee on a non-Taproot input, where the resolved scalar is a
+    // straight copy of the getter's buffer.
+    retained.length = 0;
+    const path = "m/84'/1'/0'/0/0", pub = SESSION.derive(path).publicKey;
+    const [plain] = hodlSpDeriveVinKeys([vinOf(bytesToHex(p2wpkhScript(pub)), { path, txinwitness: "0121" + bytesToHex(pub) })]);
+    assert.equal(retained.length, 1);
+    assert.ok(retained[0].every((b) => b === 0), "the getter copy is wiped even though the resolved scalar outlives it");
+    assert.ok(plain.private_key.some((b) => b !== 0));
+    hodlSpWipeVinKeys([plain]);
+  } finally {
+    Object.defineProperty(HDKey.prototype, "privateKey", original);
+  }
+});
+
 test("UI construction wipes byte keys on success and throw, and suppresses the scalar sum", () => {
   setup();
   for(const fail of [false,true]){

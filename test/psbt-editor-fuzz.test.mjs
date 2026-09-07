@@ -320,6 +320,13 @@ const outpointFree = (doc, index, txid, vout) => {
   return true;
 };
 
+// …and no prevout may be the null outpoint (bad-txns-prevout-null): txid 0
+// with vout u32::MAX is never spendable, so neither field edit may land on it.
+const prevoutNotNull = (txid, vout) => {
+  if (!integerText(String(vout))) return true; // moot on an unbuildable doc
+  return !(String(txid).toLowerCase() === "0".repeat(64) && Number(BigInt(String(vout))) === 4294967295);
+};
+
 const txidPool = [
   () => randomHex(64),
   () => randomHex(64).toUpperCase(),
@@ -378,14 +385,14 @@ const fieldTargets = (state) => {
         kind: "txid", index, name: `input ${index} txid`, hex: true, pool: txidPool,
         write: (doc, text) => { doc.tx.inputs[index].txid = text; },
         read: (doc) => doc.tx.inputs[index].txid,
-        ok: (text, doc) => /^[0-9a-f]{64}$/i.test(String(text)) && outpointFree(doc, index, text, doc.tx.inputs[index].vout),
+        ok: (text, doc) => /^[0-9a-f]{64}$/i.test(String(text)) && outpointFree(doc, index, text, doc.tx.inputs[index].vout) && prevoutNotNull(text, doc.tx.inputs[index].vout),
         normalize: (text) => String(text).toLowerCase(),
       },
       {
         kind: "vout", index, name: `input ${index} vout`, hex: false, pool: u32Pool,
         write: (doc, text) => { doc.tx.inputs[index].vout = text; },
         read: (doc) => doc.tx.inputs[index].vout,
-        ok: (text, doc) => inRange(text, 0n, U32_MAX) && outpointFree(doc, index, doc.tx.inputs[index].txid, text),
+        ok: (text, doc) => inRange(text, 0n, U32_MAX) && outpointFree(doc, index, doc.tx.inputs[index].txid, text) && prevoutNotNull(doc.tx.inputs[index].txid, text),
         normalize: asStoredNumber,
       },
       {
@@ -829,7 +836,11 @@ test("adversarial field and pair values reject cleanly, pinned", () => {
   for (const text of ["0", "zz", "0x6a"]) cases.push([onOutput("scriptPubKey", text), /scriptPubKey/]);
   for (const text of ["2147483648", "", "abc"]) cases.push([(draft) => { draft.tx.version = text; }, /version/]);
   for (const text of ["4294967296", "-1"]) cases.push([(draft) => { draft.tx.locktime = text; }, /locktime/]);
+  // The null outpoint (txid 0, vout u32::MAX) is consensus-invalid from
+  // either field's direction (bad-txns-prevout-null).
   cases.push(
+    [(draft) => { draft.tx.inputs[0].txid = "0".repeat(64); draft.tx.inputs[0].vout = "4294967295"; }, /prevout-null/],
+    [(draft) => { draft.tx.inputs[0].vout = "4294967295"; draft.tx.inputs[0].txid = "0".repeat(64); }, /prevout-null/],
     [(draft) => { draft.inputs[0].push({ key: draft.inputs[0][0].key, value: "" }); }, /duplicate key/],
     [(draft) => { draft.inputs[0].push({ key: "", value: "" }); }, /type byte/],
     [(draft) => { draft.inputs[0].push({ key: "30aa", value: "abc" }); }, /odd number of digits/],

@@ -1190,8 +1190,16 @@ function hodlBindAddressMatch() {
   update()
 }
 var hodlAddressVirtualThreshold = 24, hodlAddressVirtualRowHeight = 34, hodlAddressVirtualOverscan = 6;
+// Address indexes come out of the derivation loops as non-negative integers.
+// An imported cached result (Key Manager → "Use in Key Station") is restored
+// without re-derivation and can carry an arbitrary value instead, so anything
+// but a non-negative integer renders as escaped text — never markup that an
+// imported file could smuggle onto the page (issue #389).
+function hodlAddressIndexHtml(index) {
+  return Number.isSafeInteger(index) && index >= 0 ? String(index) : hodlEscapeHtml(index);
+}
 function hodlAddressTableRows(rows, includeWif = false, rowOffset = 0) {
-  return rows.map((row, offset) => `<tr aria-rowindex="${rowOffset + offset + 2}"><th scope="row">${row.index}</th><td>${hodlEscapeHtml(hodlDisplayDerivationPath(row.path))}</td><td>${hodlEscapeHtml(row.address)}</td>${includeWif ? `<td>${hodlPrivateValue(row.wif, "mono table-private-field-value")}</td>` : ""}</tr>`).join("");
+  return rows.map((row, offset) => `<tr aria-rowindex="${rowOffset + offset + 2}"><th scope="row">${hodlAddressIndexHtml(row.index)}</th><td>${hodlEscapeHtml(hodlDisplayDerivationPath(row.path))}</td><td>${hodlEscapeHtml(row.address)}</td>${includeWif ? `<td>${hodlPrivateValue(row.wif, "mono table-private-field-value")}</td>` : ""}</tr>`).join("");
 }
 function hodlAddressVirtualSpacer(height, columns) {
   return height > 0 ? `<tr class="address-virtual-spacer" aria-hidden="true"><td colspan="${columns}" style="height:${height}px"></td></tr>` : "";
@@ -1285,7 +1293,7 @@ function hodlShowAccount(id) {
           <h3 id="account-address-heading">Addresses</h3>
           <p class="muted">Verify the first selected address on another trusted wallet or signing device before accepting bitcoin.</p>
         </div>
-        ${firstAddress ? `<div class="account-address-lead"><h4 class="wallet-data-subtitle">${hodlEscapeHtml(firstLabel)} address #${firstIndex}</h4><div class="qr" aria-label="${hodlEscapeHtml(firstLabel)} address ${firstIndex} QR code">${hodlQrSvg(firstAddress.address)}</div><p class="mono">${hodlEscapeHtml(firstAddress.address)}</p><p class="muted mono">${hodlEscapeHtml(hodlDisplayDerivationPath(firstAddress.path))}</p></div>` : ""}
+        ${firstAddress ? `<div class="account-address-lead"><h4 class="wallet-data-subtitle">${hodlEscapeHtml(firstLabel)} address #${hodlAddressIndexHtml(firstIndex)}</h4><div class="qr" aria-label="${hodlEscapeHtml(firstLabel)} address ${hodlAddressIndexHtml(firstIndex)} QR code">${hodlQrSvg(firstAddress.address)}</div><p class="mono">${hodlEscapeHtml(firstAddress.address)}</p><p class="muted mono">${hodlEscapeHtml(hodlDisplayDerivationPath(firstAddress.path))}</p></div>` : ""}
         ${hodlAddressBranchTables(branches, hasPrivate, "hd")}
         ${hodlAddressMatchMarkup()}
       </section>
@@ -6475,8 +6483,10 @@ function hodlParseMultisigCosigner(raw) {
 // one key expression per co-signer fill the quorum and the fields. The
 // #checksum is verified when present and every key is validated by the same
 // path a hand-pasted co-signer key takes. Anything the form cannot reproduce
-// — a fixed derivation path after a key, an extended private key, a Taproot
-// internal key other than the BIP341 NUMS point — is refused with directions.
+// — a fixed derivation path after a key, a trailing path deeper than the one
+// receive/change branch step the tool derives itself, co-signer keys that
+// disagree on that branch, an extended private key, a Taproot internal key
+// other than the BIP341 NUMS point — is refused with directions.
 function hodlSplitDescriptorArgs(text) {
   let args = [], depth = 0, start = 0;
   for (let i = 0; i < text.length; i++) {
@@ -6524,7 +6534,31 @@ function hodlMsigDescriptorKeyText(expr, index) {
   }
   let parsed = hodlParseMultisigCosigner(key);
   if (parsed.isPrivate) throw new Error(label + "this descriptor carries an extended private key. This tool is watch-only — export the public descriptor from the wallet instead.");
-  return key;
+  // The form derives only <branch>/<index> below each imported key, so the
+  // descriptor tail must be exactly that one branch step. Anything else — a
+  // deeper path like /0/20/*, a bare /*, or a branch outside receive/change —
+  // would import silently as a different wallet than the descriptor names
+  // (issue #389). Refuse it with directions instead of dropping the steps.
+  if (!steps.length) throw new Error(label + "the descriptor fixes this key with no derivation to import. The tool always derives the receive and change branches below each co-signer key, so it cannot reproduce this descriptor.");
+  let tail = steps.slice(0, -1);
+  // BIP45 keys carry their cosigner index (always 0 here) ahead of the branch
+  // step, and the BIP45 compose ALWAYS re-adds it: a 45-purpose key rebuilds
+  // as key/0/<branch>/*. So the cosigner step is required, not optional —
+  // treating a bare /0/* as branch 0 accepted sh(sortedmulti(2,A/0/*,B/0/0/*))
+  // and rebuilt A as A/0/0/*, a different wallet (issue #389).
+  if (/^45h?$/.test(parsed.origin?.path.split("/")[0] || "")) {
+    if (tail.length !== 2 || tail[0] !== "0") throw new Error(label + "the descriptor derives this BIP45 key through /" + steps.join("/") + ", which the form cannot reproduce: it derives BIP45 keys through co-signer index 0 and then the receive and change branches (/0/0/*, /0/1/*, or /0/<0;1>/*). Importing it would change the wallet.");
+    tail = tail.slice(1);
+  }
+  let branches = tail.length === 1 ? (tail[0].startsWith("<") ? tail[0].slice(1, -1).split(";") : [tail[0]]) : null;
+  if (!branches || branches.some((branch) => Number(branch) > 1)) throw new Error(label + "the descriptor derives this key through /" + steps.join("/") + ", which the form cannot reproduce: it derives only the receive and change branches (/0/*, /1/*, or /<0;1>/*) below each key. Importing it would change the wallet.");
+  // The branch choice, canonicalized for the cross-key check in
+  // hodlParseMsigDescriptor: a sole step and a one-element multipath are the
+  // same branch. Multipath element ORDER is preserved — BIP-389 expands
+  // multipath wildcards positionally, so <0;1> beside <1;0> pairs the
+  // branches differently (A/0 with B/1, A/1 with B/0), not a shared branch
+  // the form can reproduce (issue #389).
+  return { key, branch: branches.map((branch) => Number(branch)).join(";") };
 }
 function hodlParseMsigDescriptor(raw) {
   let text = String(raw ?? "").trim();
@@ -6565,7 +6599,12 @@ function hodlParseMsigDescriptor(raw) {
   let m = Number(args[0]), exprs = args.slice(1);
   if (exprs.length > hodlMsigSliderLimit) throw new Error("This descriptor lists " + exprs.length + " keys; the tool builds at most " + hodlMsigSliderLimit + ".");
   if (m > exprs.length) throw new Error("The threshold of " + m + " exceeds the " + exprs.length + " keys listed.");
-  return { m, n: exprs.length, sorted, kind, keys: exprs.map(hodlMsigDescriptorKeyText) };
+  let parsedKeys = exprs.map(hodlMsigDescriptorKeyText);
+  // The form derives ONE shared branch window below every key, so a
+  // descriptor whose keys name different branches (/0/* beside /1/*) imports
+  // as a different wallet under either shared branch (issue #389 follow-up).
+  if (new Set(parsedKeys.map((entry) => entry.branch)).size > 1) throw new Error("The descriptor derives its co-signer keys through different branches, but the form derives one shared receive/change branch below every key — importing it would change the wallet.");
+  return { m, n: exprs.length, sorted, kind, keys: parsedKeys.map((entry) => entry.key) };
 }
 // The Import button only runs on a fresh form: it stays disabled while any
 // co-signer field holds text (importing would have to overwrite it) or the
@@ -7846,7 +7885,7 @@ function hodlShowMsig() {
           <h3 id="multisig-address-heading">Addresses</h3>
           <p class="muted">Verify the first selected address on every signing device before accepting bitcoin.</p>
         </div>
-        ${firstAddress ? `<div class="account-address-lead"><h4 class="wallet-data-subtitle">${hodlEscapeHtml(firstLabel)} address #${firstIndex}</h4><div class="qr" aria-label="Multisig ${hodlEscapeHtml(firstLabel.toLowerCase())} address ${firstIndex} QR code">${hodlQrSvg(firstAddress.address)}</div><p class="mono">${hodlEscapeHtml(firstAddress.address)}</p><p class="muted mono">${hodlEscapeHtml(firstAddress.path)}</p></div>` : ""}
+        ${firstAddress ? `<div class="account-address-lead"><h4 class="wallet-data-subtitle">${hodlEscapeHtml(firstLabel)} address #${hodlAddressIndexHtml(firstIndex)}</h4><div class="qr" aria-label="Multisig ${hodlEscapeHtml(firstLabel.toLowerCase())} address ${hodlAddressIndexHtml(firstIndex)} QR code">${hodlQrSvg(firstAddress.address)}</div><p class="mono">${hodlEscapeHtml(firstAddress.address)}</p><p class="muted mono">${hodlEscapeHtml(firstAddress.path)}</p></div>` : ""}
         ${hodlAddressBranchTables(branches, false, "msig")}
         ${hodlAddressMatchMarkup()}
       </section>
@@ -9182,10 +9221,14 @@ function hodlSpDeriveVinKeys(vins) {
         path = hit.path;
       }
       if (!/^m(\/|$)/.test(path)) throw new Error(`Input ${i}: path must start at the session root ("m/…").`);
-      let node = null;
+      let node = null, nodePrivateKey = null;
       try {
         node = root.derive(path);
-        if (!node.privateKey) throw new Error(`Input ${i}: path ${path} names a watch-only node.`);
+        // The privateKey getter returns a fresh copy on every read; wiping the
+        // node cannot reach those copies. Read it once, and wipe that single
+        // buffer in the finally below (issue #389).
+        nodePrivateKey = node.privateKey;
+        if (!nodePrivateKey) throw new Error(`Input ${i}: path ${path} names a watch-only node.`);
         // The derived key must actually produce the prevout script — the "lie"
         // check, including the BIP-341 tweak for P2TR inputs.
         const scriptBytes = vinPrevoutScript(vin);
@@ -9201,12 +9244,14 @@ function hodlSpDeriveVinKeys(vins) {
         if (expected === null) throw new Error(`Input ${i}: unrecognized prevout script type.`);
         // BIP-352 spends a taproot input with the key of its output key, so the
         // P2TR case injects the BIP-341-tweaked scalar; anything less would
-        // produce outputs the recipient can never detect.
-        const privateKey = isP2tr(scriptBytes) ? taprootOutputPrivateKey(node.privateKey) : new Uint8Array(node.privateKey);
+        // produce outputs the recipient can never detect. Both branches copy,
+        // so wiping nodePrivateKey cannot touch the resolved scalar.
+        const privateKey = isP2tr(scriptBytes) ? taprootOutputPrivateKey(nodePrivateKey) : new Uint8Array(nodePrivateKey);
         const resolved = { ...vin, private_key: privateKey };
         derived.push(resolved);
         return resolved;
       } finally {
+        if (nodePrivateKey) nodePrivateKey.fill(0);
         if (node) node.wipePrivateData();
       }
     });
@@ -12549,11 +12594,16 @@ function hodlScheduleJournalStateRefresh() {
 // The encrypted entropy notebook gates the Journal tools and keeps its
 // document and Web Crypto keys apart from the session notepad.
 var hodlJournalKeys = null, hodlJournalDoc = null, hodlJournalFileText = "", hodlJournalDirty = false, hodlJournalGate = "create", hodlJournalReveal = false, hodlJournalEditingId = null, hodlJournalDeleteArmed = false;
+// Bumped by every notebook teardown (clear, lock, lifecycle disposal). An
+// async unlock/create that completes against an older generation must discard
+// its decrypted material, not install it over a wiped session (issue #389).
+var hodlJournalGeneration = 0;
 function hodlJournalError(message) {
   let error = document.getElementById("journal-error");
   if (error) error.textContent = message || "";
 }
 function hodlJournalWipeNotebook() {
+  hodlJournalGeneration++;
   hodlJournalWipeDocument(hodlJournalDoc);
   hodlJournalDoc = null;
   // The AES-GCM and HMAC CryptoKeys are non-extractable, so the only wipeable
@@ -12565,6 +12615,14 @@ function hodlJournalWipeNotebook() {
   hodlJournalReveal = false;
   hodlJournalEditingId = null;
   hodlJournalDeleteArmed = false;
+}
+// A notebook whose decryption outlived its session: the generation check in
+// create/unlock routes it here, so its plaintext and verify digest are wiped
+// instead of installed (the CryptoKeys themselves are non-extractable and are
+// simply dropped).
+function hodlJournalDiscardOpened(opened) {
+  hodlJournalWipeDocument(opened?.doc);
+  if (opened?.keys) hodlJournalWipeBytes(opened.keys.verify);
 }
 function hodlJournalCopy(button, label) {
   let phrase = button?.dataset.phrase;
@@ -12885,8 +12943,10 @@ function hodlJournalOpenView(id) {
 }
 async function hodlJournalCreate() {
   hodlJournalError("");
+  let generation = hodlJournalGeneration;
   try {
     let created = await hodlJournalCreateDocument(document.getElementById("journal-create-password")?.value || "", document.getElementById("journal-create-confirm")?.value || "");
+    if (generation !== hodlJournalGeneration) return hodlJournalDiscardOpened(created);
     hodlKeyManagerReset();
     hodlJournalWipeNotebook();
     hodlJournalKeys = created.keys;
@@ -12904,9 +12964,11 @@ async function hodlJournalCreate() {
 }
 async function hodlJournalUnlock() {
   hodlJournalError("");
+  let generation = hodlJournalGeneration;
   try {
     if (!hodlJournalFileText) throw new Error("Choose an encrypted journal file first.");
     let opened = await hodlJournalOpenDocument(hodlJournalFileText, document.getElementById("journal-open-password")?.value || "");
+    if (generation !== hodlJournalGeneration) return hodlJournalDiscardOpened(opened);
     hodlKeyManagerReset();
     hodlJournalWipeNotebook();
     hodlJournalKeys = opened.keys;

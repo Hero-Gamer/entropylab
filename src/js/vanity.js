@@ -265,7 +265,12 @@ export class VanityGrinder {
     let finished = 0;
     let handed = 0;
     let failed = false;
+    let stoppedEarly = false;
     this.running = true;
+    // Set when stop() lands before every worker has reported ready: a late
+    // "ready" must not be answered with the grind job — it carries the key
+    // material — so the worker is terminated instead (issue #389).
+    this.stopAsked = false;
     this.startedAt = performance.now();
     // The main-thread copies of the key material are dead once every worker
     // holds its own (or the run is torn down first).
@@ -313,6 +318,16 @@ export class VanityGrinder {
         const msg = event.data;
         if (!msg || typeof msg !== "object") return;
         if (msg.type === "ready") {
+          if (this.stopAsked) {
+            // Stop was requested while this worker was still initializing:
+            // never hand it the key material. It will never post "done", so
+            // settle it here and let the run finish as stopped.
+            worker.terminate();
+            stoppedEarly = true;
+            finished += 1;
+            if (finished === buckets.length) finish(true);
+            return;
+          }
           // Every worker gets its own copy of the key material (structured
           // clone); it lives in that worker's WASM memory until termination.
           worker.postMessage({ type: "grind", mode, key: key.slice(), salt: salt.slice(), path: pathIndexes, counterSlot, prefix, passLen, start: bucket.start, count: bucket.count, script: scriptCode });
@@ -330,7 +345,7 @@ export class VanityGrinder {
         } else if (msg.type === "done") {
           progress[index] = msg.done;
           finished += 1;
-          if (finished === buckets.length) finish(msg.stopped);
+          if (finished === buckets.length) finish(Boolean(msg.stopped) || stoppedEarly);
         } else if (msg.type === "error") {
           fail(msg.message || "Vanity worker failed.");
         }
@@ -346,6 +361,10 @@ export class VanityGrinder {
   }
 
   stop() {
+    // Record the request: a worker that has not reported ready yet must never
+    // receive the grind job (and with it the key material) afterwards — its
+    // late "ready" is answered with termination instead (issue #389).
+    this.stopAsked = true;
     for (const worker of this.workers) worker.postMessage({ type: "stop" });
   }
 

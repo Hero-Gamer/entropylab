@@ -115,7 +115,7 @@ test("legacy signature cannot be forced through smp", async () => {
 });
 
 test("pof rejects a non-ASCII message before PSBT verification", async () => {
-  const verified = await result("é", P2TR, "pof/not-a-psbt");
+  const verified = await result("é", P2TR, "pofnot-a-psbt");
   assert.equal(verified.state, "invalid");
   assert.equal(verified.prefix, "pof");
   assert.match(verified.error, /ASCII/);

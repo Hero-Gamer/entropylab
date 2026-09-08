@@ -1005,7 +1005,7 @@
       // keeping the four destination tabs visible but unavailable.
       tabs[2].dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
       await until(() => !document.getElementById("journal-card").hidden, "End to reach the Journal tool");
-      assert(document.activeElement === tabs[6], "End should move focus to the last tab");
+      assert(document.activeElement === tabs[tabs.length - 1], "End should move focus to the last tab");
       const journalTabs = [...document.querySelectorAll("#journal-tool-tabs [data-journal-tool]")];
       equal(journalTabs.length, 4, "Journal should expose exactly four internal tabs");
       equal(journalTabs.map((tab) => tab.textContent.trim()).join("|"), "Notepad|Key manager|Session state|Session log");
@@ -1143,11 +1143,11 @@
       await until(() => !document.getElementById("psbt-card").hidden, "ArrowLeft to open PSBT / Nonce");
       assert(document.activeElement === psbtTabs[0], "Focus should return to PSBT / Nonce");
       // Home returns to the first top-level tool.
-      tabs[6].dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+      tabs[tabs.length - 1].dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
       await until(() => document.activeElement === tabs[0], "Home to return to the first tab");
       // Left from the first wraps round to the last.
       tabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
-      await until(() => document.activeElement === tabs[6], "ArrowLeft to wrap to the last tab");
+      await until(() => document.activeElement === tabs[tabs.length - 1], "ArrowLeft to wrap to the last tab");
     } finally {
       document.querySelector('#journal-tool-tabs [data-journal-tool="notes"]').click();
       document.querySelector('#workspace [data-workspace="calc"]').click();

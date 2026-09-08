@@ -2060,7 +2060,7 @@ test("derived key results put private recovery before script type and addresses"
 test("derived wallet results stay within the mobile layout (#238)", () => {
   assert.match(css, /\.key-result \{ min-width: 0; max-width: 100%;/);
   assert.match(css, /\.key-result-main \{ min-width: 0; max-width: 100%;/);
-  assert.match(css, /\.secret-placeholder \{ display: grid; min-width: 0; max-width: 100%;/);
+  assert.match(css, /\.secret-placeholder \{ position: relative; display: grid; min-width: 0; max-width: 100%;/);
   assert.match(css, /\.secret-placeholder-mask \{[^}]*max-width: 100%;[^}]*overflow-wrap: anywhere;[^}]*word-break: break-all;/);
   assert.match(css, /\.qr \{ max-width: 100%;/);
   assert.match(css, /\.qr svg \{[^}]*max-width: 100%;[^}]*height: auto;[^}]*aspect-ratio: 1;/);

@@ -106,7 +106,10 @@ const utxoVerification = (pairs) => {
 // Calculate the fee only from inputs whose UTXO amounts and scripts are
 // independently established by the existing inspector validation. This keeps
 // the fee claim separate from the ordinary PSBT-provided fee calculation.
+// Inspector monetary errors stay authoritative: matching transaction bytes
+// do not make an out-of-range amount independently verified.
 const independentlyVerifiedFee = (doc) => {
+  if (doc.fee?.known && doc.fee.sats === null) return null;
   if (!doc.tx.inputs.length || doc.inputs.length !== doc.tx.inputs.length) return null;
 
   let totalIn = 0n;
@@ -151,7 +154,13 @@ const signingStatus = (pairs) => {
 };
 
 // Render the fee summary while preserving the inspector's unknown/conflict states.
+// Inspector monetary errors (MAX_MONEY, u64 overflow, outputs-exceed-inputs)
+// are shown before any locally recomputed independently-verified fee.
 const feeHtml = (doc) => {
+  if (doc.fee?.known && doc.fee.sats === null) {
+    return `<span class="psbted-note-bad">${escapeHtml(doc.fee?.error || "outputs exceed claimed inputs")}</span>`;
+  }
+
   const verifiedFee = independentlyVerifiedFee(doc);
   if (verifiedFee !== null) {
     return verifiedFee < 0n
@@ -160,9 +169,7 @@ const feeHtml = (doc) => {
   }
 
   if (doc.fee?.known) {
-    return doc.fee.sats === null
-      ? `<span class="psbted-note-bad">${escapeHtml(doc.fee?.error || "outputs exceed claimed inputs")}</span>`
-      : `<span class="psbted-viz-feenum">${groupSats(doc.fee.sats)} sats</span> <span class="muted">(PSBT claim)</span>`;
+    return `<span class="psbted-viz-feenum">${groupSats(doc.fee.sats)} sats</span> <span class="muted">(PSBT claim)</span>`;
   }
   return doc.fee?.error
     ? `<span class="psbted-note-bad">${escapeHtml(doc.fee.error)}</span>`

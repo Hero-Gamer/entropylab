@@ -309,3 +309,26 @@ test("focus loss, window blur, and tab hides all stop the repeat", () => {
     mock.timers.reset();
   }
 });
+
+
+// BIP-322 P1/P2 regression tests (from review) - source invariants
+test("BIP-322 PoF inconclusive does not claim valid", () => {
+  // P1: banner only when state === valid, inconclusive renders as Inconclusive
+  assert.match(appSource, /if\s*\(data\.prefix\s*===\s*["']pof["']\s*&&\s*data\.state\s*===\s*["']valid["']\)/);
+  assert.match(appSource, /Cryptographically valid offline/);
+  assert.match(appSource, /data\.state\s*===\s*["']inconclusive["'].*Inconclusive/);
+});
+
+test("BIP-322 result cleared on input edit after success", () => {
+  // P2: input listeners bump generation and clear result
+  assert.match(appSource, /let bip322Gen = 0/);
+  assert.match(appSource, /bip322Gen\+\+/);
+  assert.match(appSource, /result\.replaceChildren\(\)/);
+});
+
+test("BIP-322 stale async does not render", () => {
+  // P2: generation guard on both success and catch paths
+  assert.match(appSource, /const myGen = \+\+bip322Gen/);
+  const guards = (appSource.match(/if \(myGen !== bip322Gen\) return;/g) || []).length;
+  assert.ok(guards >= 2, `expected at least 2 generation guards, found ${guards}`);
+});

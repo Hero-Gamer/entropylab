@@ -1,5 +1,5 @@
 //! Offline BIP-322 verification for EntropyLab.
-//! Cryptographic verification is delegated to rust-bitcoin/bip322 0.0.11.
+//! Cryptographic verification is delegated to rust-bitcoin/bip322 0.0.12.
 
 use bip322::{
     tagged_hash, verify_full_encoded, verify_legacy_encoded, verify_pof_encoded,

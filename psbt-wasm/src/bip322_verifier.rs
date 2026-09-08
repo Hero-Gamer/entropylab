@@ -136,7 +136,7 @@ fn verification_state(verification: &Verification) -> (&'static str, Option<Valu
         Verification::Valid { time, age } => {
             let lock_time = time.to_consensus_u32();
             let relative = age.to_consensus_u32();
-            let active = lock_time != 0 || age.is_relative_lock_time();
+            let active = lock_time != 0 || (age.is_relative_lock_time() && relative != 0);
             (
                 if active { "inconclusive" } else { "valid" },
                 Some(json!({

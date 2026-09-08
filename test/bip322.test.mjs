@@ -87,12 +87,14 @@ test("BIP-322 simple verifies an official P2WSH vector", async () => {
 
 test("BIP-322 full verifies an official transaction vector", async () => {
   const verified = await result(FULL_MESSAGE, FULL_ADDRESS, `ful${FULL_SIGNATURE}`);
-  assert.equal(verified.state, "valid");
+  // This official vector is version 2 with nLockTime=2016 and nSequence=2016 (difficulty interval),
+  // so it is timelocked: "valid at time T and age S" -> inconclusive per BIP-322 spec.
+  assert.equal(verified.state, "inconclusive");
   assert.equal(verified.prefix, "ful");
   assert.equal(verified.challenge_type, "p2wpkh");
-  assert.equal(verified.time_locks.active, false);
-  assert.equal(verified.time_locks.T, 0);
-  assert.equal(verified.time_locks.S, 0);
+  assert.equal(verified.time_locks.active, true);
+  assert.equal(verified.time_locks.T, 2016);
+  assert.equal(verified.time_locks.S, 2016);
 });
 
 test("future full transaction version is inconclusive", async () => {

@@ -41,18 +41,25 @@ const le64 = (value) => {
 
 const reverse = (bytes) => Uint8Array.from(bytes).reverse();
 
-const finalField = (map, name) => map.find((pair) => pair.name === name);
+const finalFields = (map, name) => map.filter((pair) => pair.name === name);
 
 const finalScripts = (map) => {
-  const scriptSig = finalField(map, "PSBT_IN_FINAL_SCRIPTSIG");
-  const witness = finalField(map, "PSBT_IN_FINAL_SCRIPTWITNESS");
+  const scriptSigFields = finalFields(map, "PSBT_IN_FINAL_SCRIPTSIG");
+  const witnessFields = finalFields(map, "PSBT_IN_FINAL_SCRIPTWITNESS");
+  if (scriptSigFields.length > 1 || witnessFields.length > 1) return null;
+  const scriptSig = scriptSigFields[0];
+  const witness = witnessFields[0];
   if (!scriptSig && !witness) return null;
+  if (scriptSig?.decodeError || witness?.decodeError) return null;
   const scriptSigBytes = scriptSig ? hexToBytes(scriptSig.value) : new Uint8Array();
   const witnessItems = witness?.decoded?.items?.map(hexToBytes) ?? [];
   return { scriptSig: scriptSigBytes, witness: witnessItems };
 };
 
 const serializeFinalTx = (doc) => {
+  if (doc.rustBitcoinError) return null;
+  if (doc.inputs.some((map) => map.some((pair) => pair.decodeError))) return null;
+
   const inputs = doc.tx.inputs;
   const outputs = doc.tx.outputs;
   const finals = inputs.map((_, i) => finalScripts(doc.inputs[i]));
@@ -68,7 +75,7 @@ const serializeFinalTx = (doc) => {
     le32(input.sequence >>> 0),
   ));
   const witnesses = hasWitness
-    ? finals.map(({ witness }) => concat(varint(witness.length), ...witness))
+    ? finals.map(({ witness }) => concat(varint(witness.length), ...witness.map((item) => concat(varint(item.length), item))))
     : [];
   const vout = outputs.map((output) => {
     const script = hexToBytes(output.scriptPubKey);
@@ -78,7 +85,7 @@ const serializeFinalTx = (doc) => {
   return {
     base: concat(version, varint(vin.length), ...vin, varint(vout.length), ...vout, locktime),
     full: hasWitness
-      ? concat(version, new Uint8Array([0, 1]), varint(vin.length), ...vin, ...witnesses, varint(vout.length), ...vout, locktime)
+      ? concat(version, new Uint8Array([0, 1]), varint(vin.length), ...vin, varint(vout.length), ...vout, ...witnesses, locktime)
       : concat(version, varint(vin.length), ...vin, varint(vout.length), ...vout, locktime),
   };
 };
@@ -112,7 +119,10 @@ const sumOutputs = (doc) => doc.tx.outputs.reduce((sum, output) => sum + BigInt(
 export const psbtCostFactsFromDoc = (doc) => {
   const inputAmount = sumInputs(doc);
   const outputAmount = sumOutputs(doc);
-  const fee = inputAmount !== null && inputAmount >= outputAmount ? inputAmount - outputAmount : null;
+  // honor inspector's monetary validity (MAX_MONEY, overflow, negative)
+  const feeInvalid = Boolean(doc.fee?.error) || (doc.fee?.known && doc.fee?.sats == null);
+  const rawFee = inputAmount !== null && inputAmount >= outputAmount ? inputAmount - outputAmount : null;
+  const fee = feeInvalid ? null : rawFee;
   const tx = serializeFinalTx(doc);
   const finalized = tx !== null;
   const weight = finalized ? BigInt(tx.base.length * 3 + tx.full.length) : null;

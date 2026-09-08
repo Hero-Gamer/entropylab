@@ -104,6 +104,21 @@ and code path, so the image does not ship a second copy). The Rust
 toolchain and crate registry, and the npm cache, are pre-fetched into the
 image, so `npm ci` and `npm run build:wasm` work without further downloads.
 
+### Local UI test mode
+
+For layout work that needs a populated Key Station, run:
+
+```sh
+npm run testmode -- --keys=18
+```
+
+This builds a temporary test-hooks-only artifact and serves it on loopback at
+the printed URL. `--keys` accepts 1–100 and defaults to 12; `--port` defaults
+to 4173. The fixtures are deliberately insecure hashed-dice transcripts in
+the sequence `1` through `6`, `11` through `66`, `111`, and so on. They are
+for UI testing only and must never receive funds. The loader and its
+`?test-keys=` URL flag are compiled out of the release artifact.
+
 ## 5. Working agreements
 
 - **Versioning:** declared once in `package.json`; `README.md` must match it (a
@@ -136,6 +151,30 @@ image, so `npm ci` and `npm run build:wasm` work without further downloads.
   (AndreasGassmann/lifehash) and BSD-2-Clause-Patent
   (BlockchainCommons/bc-lifehash) notices in its header must be preserved in
   copies and derivative works, including the built `entropylab.html`.
+
+## 6. UI layout and spacing
+
+Use the spacing tokens in `src/css/styles.css`; do not add one-off inline
+margins. The shared rhythm is 8px between a label, its control, and help text;
+16px between peer controls or an action row and its content; 20px between
+distinct blocks inside a card; and 24px between a tool introduction and its
+controls.
+
+New tool markup should reuse the shared layout classes:
+
+```html
+<div class="tool-intro">...</div>
+<section class="card no-print tool-card">
+  <div class="tool-section">...</div>
+  <label class="field">Label <input ...><span class="field-note">Help</span></label>
+  <div class="row tool-actions"><button class="btn primary">Run</button></div>
+</section>
+```
+
+`tool-card` normalizes its first and last edges, `tool-section` separates a
+meaningful group, and `tool-actions` separates actions from the content they
+operate on. Compact tables, grids, and visualizations may use tighter local
+spacing internally, but their outer boundary should still follow this rhythm.
 
 ## A final sanity check
 

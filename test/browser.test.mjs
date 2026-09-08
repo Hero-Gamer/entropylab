@@ -343,7 +343,7 @@ const tail = (file, maxLines = 120) => {
 // concurrently and fail on any failed check in either report.
 const runEngine = (engine, staging, port) => async () => {
   const { downloadDir, onlineProfile, offlineProfile } = stageEngine(engine, staging.workDir);
-  const onlineUrl = `http://127.0.0.1:${port}/browser-tests.html?online-preview=1`;
+  const onlineUrl = `http://127.0.0.1:${port}/browser-tests.html?online-preview=1&test-keys=8`;
   const offlineUrl = `${pathToFileURL(staging.testHtmlPath).href}?offline-test=1`;
   const onlineLog = join(staging.workDir, `${engine.id}-online.log`);
   const offlineLog = join(staging.workDir, `${engine.id}-offline.log`);

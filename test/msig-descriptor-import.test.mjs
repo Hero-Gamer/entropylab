@@ -1,4 +1,4 @@
-// The multisig Paste descriptor panel decomposes a full multisig descriptor:
+// The multisig descriptor import panel decomposes a full multisig descriptor:
 // the wrapper picks the script type, multi/sortedmulti picks the key order,
 // and the threshold plus one key expression per co-signer fill the quorum and
 // the fields. The #checksum is verified, private keys are refused, and shapes
@@ -323,15 +323,31 @@ test("more keys than the quorum supports are refused", () => {
   assert.throws(() => hodlParseMsigDescriptor(`wsh(sortedmulti(2,${many}))`), /at most 15/);
 });
 
-test("both markups ship the Paste descriptor panel and the app wires it", () => {
+test("both markups ship the multisig wallet descriptor import panel and the app wires it", () => {
   for (const markup of [shell]) {
-    assert.match(markup, /<summary[^>]*>Paste descriptor<\/summary>/, "expandable summary");
+    assert.match(markup, /<summary[^>]*>Import a multisig wallet descriptor<\/summary>/, "expandable summary");
     assert.ok(markup.includes('id="msig-descriptor"'), "descriptor textarea");
     assert.ok(markup.includes('id="msig-descriptor-import"'), "import button");
     assert.ok(markup.includes('id="msig-descriptor-status"'), "status line");
     assert.ok(markup.includes('id="msig-descriptor-import" type="button" disabled aria-disabled="true"'), "the import button ships disabled — the descriptor field starts empty");
+    assert.ok(markup.indexOf('id="msig-import"') < markup.indexOf('class="msig-threshold-labels"'), "descriptor import comes before manual quorum selection");
   }
   assert.ok(app.includes('addEventListener("click", hodlImportMsigDescriptor)'), "the import button is wired");
+});
+
+test("a successful descriptor import locks its m-of-n policy until the multisig is cleared", () => {
+  const importer = loadSlice("hodlImportMsigDescriptor");
+  const lock = loadSlice("hodlSetMsigThresholdLock");
+  const reset = loadSlice("hodlResetMsigForm");
+  const capture = loadSlice("hodlCaptureMsig");
+  const restore = loadSlice("hodlRestoreMsig");
+  assert.ok(importer.includes("hodlSetMsigThresholdLock(true)"), "import locks the populated quorum");
+  assert.ok(lock.includes("fieldset.disabled = locked"), "the range controls are disabled while locked");
+  assert.ok(lock.includes("mNumber.disabled = locked") && lock.includes("nNumber.disabled = locked"), "the numeric quorum controls are disabled while locked");
+  assert.ok(reset.includes("hodlSetMsigThresholdLock(false)"), "clearing the multisig restores manual quorum selection");
+  assert.ok(capture.includes("state.fields.thresholdLocked"), "the imported lock is captured with its multisig tab");
+  assert.ok(restore.includes("Boolean(state.fields.thresholdLocked)"), "the imported lock returns when its multisig tab is restored");
+  assert.ok(restore.includes("Imported descriptor locks this multisig quorum."), "the restored status describes the quorum lock without implying every policy control is locked");
 });
 
 test("the import button disables while any co-signer field holds text", () => {

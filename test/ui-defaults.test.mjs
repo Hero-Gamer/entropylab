@@ -27,6 +27,7 @@ const appWhitespace = transformSync(appSource, {
 }).code;
 const css = read("src/css/styles.css");
 const online = read("src/js/online.js");
+const contributing = read("CONTRIBUTING.md");
 
 
 test("top status banner omits the entropy RNG message", () => {
@@ -50,15 +51,11 @@ test("every enabled button uses orange and black momentary press feedback", () =
 });
 
 test("wallet coin type indexes enable and default to mainnet", () => {
-  for (const id of ["network", "msig-network"]) {
-    const mainnetCoinType = new RegExp(
-      `<input id="${id}" type="(?:text|number)"[^>]*inputmode="numeric" value="0${id === "network" ? "'" : ""}"`,
-    );
-    assert.match(shell, mainnetCoinType);
-  }
+  assert.match(shell, /<input id="network" type="text" inputmode="numeric" value="0'"/);
+  assert.match(shell, /id="msig-origin-state" hidden aria-hidden="true"[\s\S]*<input id="msig-network" type="number" value="0">/);
   for (const markup of [shell]) {
     assert.match(markup, /id="network-help">Coin type index (?:·|\\xB7) Mainnet (?:·|\\xB7) Hardened (?:·|\\xB7) 0 to 2,147,483,647/);
-    assert.match(markup, /id="msig-network-help">Coin type index (?:·|\\xB7) Mainnet (?:·|\\xB7) Hardened (?:·|\\xB7) 0 to 2,147,483,647/);
+    assert.match(markup, /<span id="msig-network-help"><\/span>/);
     // The PSBT tools dropped their own network selects: they read the header
     // picker's choice directly. Only the SP station keeps a select.
     assert.doesNotMatch(markup, /id="psbt-network"/);
@@ -191,7 +188,7 @@ test("the header network picker sets the network every tool defaults to", () => 
 test("advanced derivation fields use the shared responsive settings grid", () => {
   assert.match(shell, /<div class="field network-field"><label for="network">Network<\/label>[\s\S]*?<input id="network"[^>]*>/);
   assert.match(css, /\.derivation-advanced-fields \{ display: grid; gap: var\(--space-component\); \}/);
-  assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*?\.key-settings-row \{ grid-template-columns: minmax\(0, 1fr\); \}/);
+  assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*?\.key-settings-row, \.msig-origin-fields, \.msig-path-components \{ grid-template-columns: minmax\(0, 1fr\); \}/);
 });
 
 test("key and multisig derivation use an indexed address window with an estimate and progress", () => {
@@ -605,15 +602,15 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   assert.match(css, /\.seed-keyboard-key:disabled,[\s\S]*?\.seed-keyboard-space:disabled \{[^}]*cursor: not-allowed[^}]*opacity: \.3/s);
 });
 
-test("multisig derivation settings follow the key inputs", () => {
-  const fieldOrder = /id="msig-keys"[\s\S]*id="msig-key-order-status"[\s\S]*id="msig-hint"[\s\S]*id="msig-script-type"[\s\S]*id="msig-purpose"[\s\S]*id="msig-network"[\s\S]*id="msig-account"[\s\S]*id="msig-address-start"[\s\S]*id="msig-address-range"[\s\S]*id="msig-key-order"[\s\S]*id="msig-go"/;
+test("multisig policy settings precede the key inputs and output settings follow them", () => {
+  const fieldOrder = /id="msig-script-type"[\s\S]*id="msig-key-order"[\s\S]*id="msig-legacy-bip87"[\s\S]*id="msig-key-order-status"[\s\S]*id="msig-keys"[\s\S]*id="msig-hint"[\s\S]*id="msig-origin-state"[\s\S]*id="msig-purpose"[\s\S]*id="msig-network"[\s\S]*id="msig-account"[\s\S]*id="msig-address-start"[\s\S]*id="msig-address-range"[\s\S]*id="msig-go"/;
   assert.match(shell, fieldOrder);
 });
 
 test("key derivation and multisig use the accurate Script type label", () => {
   for (const markup of [shell]) {
     assert.match(markup, /id="script-type-field"[^>]*>[\s\S]*?Script type[\s\S]*?<select/);
-    assert.match(markup, /<label class="field">(?:<span[^>]*>)?Script type(?:<\/span>)?\s*<select id="msig-script-type"[^>]*>/);
+    assert.match(markup, /<label class="field msig-script-type-field">(?:<span[^>]*>)?Script type(?:<\/span>)?\s*<select id="msig-script-type"[^>]*>/);
     assert.match(markup, /<option value="p2wsh" selected(?:="selected")?(?:\s[^>]*)?>Native SegWit<\/option>/);
     assert.match(markup, /<option value="p2tr"(?:\s[^>]*)?>Taproot<\/option>/);
     assert.doesNotMatch(markup, /<option value="p2wsh"[^>]*>[^<]*BIP48/);
@@ -684,8 +681,9 @@ test("multisig script type and placeholders follow detected co-signer exports", 
     assert.match(markup, /id="msig-script-warning" role="status" hidden/);
     assert.match(markup, /id="msig-go"[^>]*aria-describedby="msig-script-warning"/);
   }
-  assert.match(shell, /placeholder="\[fingerprint\/48h\/0h\/0h\/2h\]xpub…"/);
+  assert.match(shell, /placeholder="xpub…"/);
   assert.match(app, /function hodlMultisigKeyPlaceholder\(kind,network,purpose,coinType=hodlCoinTypeFromNetwork\(network\),hardening=/);
+  assert.match(appSource, /hodlMultisigKeyPlaceholder\(kind, network, purpose, coinType, hodlReadHardening\("msig-"\)\)\.replace\(\/\^\\\[[\s\S]*?, ""\)/);
   assert.match(appWhitespace, /kind==="p2sh"&&purpose===45\)return`\[fingerprint\/\$\{purposeStep\}\]\$\{testnet\?"tpub":"xpub"\}(?:…|\\u2026)`/);
   assert.match(appWhitespace, /kind==="p2sh"\|\|purpose===87\)return`\[fingerprint\/\$\{purposeStep\}\/\$\{coin\}\/\$\{account\}\]\$\{testnet\?"tpub":"xpub"\}(?:…|\\u2026)`/);
   assert.match(appWhitespace, /kind==="p2sh-p2wsh"\)return`\[fingerprint\/\$\{purposeStep\}\/\$\{coin\}\/\$\{account\}\/1h\]\$\{testnet\?"tpub":"xpub"\}(?:…|\\u2026)`/);
@@ -750,15 +748,15 @@ test("derived wallets offer an address match check", () => {
   assert.match(css, /\.address-match-field/);
 });
 
-test("multisig key order is sorted by default and listed order is advanced", () => {
+test("multisig key order is sorted by default and visible with the policy settings", () => {
   for (const markup of [shell]) {
-    assert.match(markup, /id="msig-advanced"/);
-    assert.match(markup, /id="msig-key-order"/);
+    assert.match(markup, /class="key-settings-row">[\s\S]*id="msig-script-type"[\s\S]*id="msig-key-order"[\s\S]*id="msig-legacy-bip87"/);
+    assert.doesNotMatch(markup, /id="msig-advanced"/);
     assert.match(markup, /<option value="sorted" selected(?:="selected")?(?:\s[^>]*)?>Sorted (?:·|\\xB7) sortedmulti<\/option>/);
     assert.match(markup, /<option value="listed"(?:\s[^>]*)?>As listed (?:·|\\xB7) multi<\/option>/);
     assert.match(markup, /id="msig-key-order-status" hidden/);
   }
-  assert.match(css, /\.msig-advanced summary/);
+  assert.doesNotMatch(css, /\.msig-advanced/);
   assert.match(css, /\.msig-key-move-btn/);
   assert.match(app, /function hodlMsigKeysSorted\(\)/);
   assert.match(app, /function hodlBindMsigKeyReorder\(box\)/);
@@ -773,10 +771,8 @@ test("multisig key order is sorted by default and listed order is advanced", () 
 
 test("multisig separates script type from purpose and keeps the Legacy BIP87 shortcut", () => {
   for (const markup of [shell]) {
-    assert.match(markup, /id="msig-script-type"[\s\S]*id="msig-purpose"[\s\S]*id="msig-network"[\s\S]*id="msig-account"/);
-    assert.match(markup, /id="msig-purpose" type="number" min="0" max="2147483647" step="1" inputmode="numeric" value="48"/);
-    assert.match(markup, /id="msig-purpose-help"[^>]*>Purpose index (?:·|\\xB7) Hardened (?:·|\\xB7) 0 to 2,147,483,647/);
-    assert.match(markup, /id="msig-account-help"[^>]*>Account index (?:·|\\xB7) Hardened (?:·|\\xB7) Derived from co-signer key origins/);
+    assert.match(markup, /id="msig-origin-state" hidden aria-hidden="true"[\s\S]*id="msig-purpose"[^>]*value="48"[\s\S]*id="msig-network"[^>]*value="0"[\s\S]*id="msig-account"/);
+    assert.doesNotMatch(markup, /<label for="msig-purpose">Purpose<\/label>|<label for="msig-network">Network<\/label>|<label for="msig-account">Account<\/label>/);
     assert.match(markup, /id="msig-legacy-account-toggle" hidden/);
     assert.match(markup, /id="msig-legacy-bip87" type="checkbox"/);
     assert.match(markup, />Use standardized BIP87 accounts</);
@@ -869,9 +865,9 @@ test("account results do not repeat derivation settings shown above", () => {
   assert.doesNotMatch(css, /\.account-summary-grid/);
 });
 
-test("multisig account is displayed as a disabled value derived from key origins", () => {
+test("multisig account is retained internally as a value derived from key origins", () => {
   for (const markup of [shell]) {
-    assert.match(markup, /<input id="msig-account" type="text" value="" placeholder="Derived from keys"[^>]*disabled/);
+    assert.match(markup, /id="msig-origin-state" hidden aria-hidden="true"[\s\S]*<input id="msig-account" type="text" value="" disabled>/);
     assert.match(markup, /id="msig-account-warning" role="status" hidden/);
   }
   assert.match(app, /function hodlUpdateMsigAccount\(\)/);
@@ -891,6 +887,7 @@ test("multisig threshold labels describe signatures and keys", () => {
     assert.match(markup, /id="msig-n" type="range" min="1" max="15"[^>]*value="3"/);
     assert.doesNotMatch(markup, /msig-threshold-ratio|msig-[mn]-output/);
     assert.doesNotMatch(markup, /<select id="msig-[mn]"/);
+    assert.ok(markup.indexOf('id="msig-import"') < markup.indexOf('class="msig-threshold-labels"'));
     assert.ok(markup.indexOf('class="msig-threshold-labels"') < markup.indexOf('<fieldset class="msig-threshold-control"'));
   }
   assert.match(css, /\.msig-threshold-number\s*\{[^}]*appearance: textfield[^}]*text-align: center/s);
@@ -932,10 +929,18 @@ test("multisig consistently uses derive for its heading and action", () => {
   assert.match(app, /let\{network,coinType,count,addressStart,branchStart,branchRange,n,m,kind,purpose,hardening,legacyStandard,nodes,xpubs,keyTokens,accountSummary,accountWarning\}=hodlValidatedMsigInputs\(\)/);
 });
 
-test("Station add controls stay pinned to the right of their tab strips", () => {
+test("Station tabs stay pinned left while add controls stay pinned right", () => {
   assert.match(css, /\.key-tab-strip \{ display: flex; align-items: flex-end; min-width: 0; margin-top: 12px; \}/);
   assert.match(css, /\.key-tabs \{\s*display: flex;[^}]*flex: 1 1 auto; min-width: 0;/s);
+  assert.match(css, /\.key-tabs > \.key-tab\.station-tab \{\s*position: sticky; left: 0; z-index: 4; background: var\(--bg\);/);
+  assert.match(css, /\.key-tabs > \.key-tab\.station-tab\.active \{ background: var\(--surface\); \}/);
   assert.match(css, /\.add-item-control \{ position: relative; display: inline-flex; flex: 0 0 auto; \}/);
+  assert.match(appSource, /button\.className = "tab key-tab" \+ \(state\.isLab \? " is-lab station-tab" : ""\)/);
+  assert.match(appSource, /button\.className = "tab key-tab bip85-tab" \+ \(state\.isLab \? " is-lab station-tab" : ""\)/);
+  assert.match(appSource, /button\.className = "tab key-tab msig-tab" \+ \(state\.isLab \? " is-lab station-tab" : ""\)/);
+  assert.match(appSource, /button\.className = "tab key-tab is-lab station-tab active"/);
+  assert.match(appSource, /pinnedWidth = station && tab !== station \? station\.offsetWidth : 0/);
+  assert.match(appSource, /start < left \+ pinnedWidth/);
 });
 
 test("the Key Station method picker is one dropdown carrying every method's mark", () => {
@@ -1044,12 +1049,12 @@ test("the tools' closing button groups stack full width on narrow screens", () =
   // ragged lines. Below 520px every child takes the whole row instead.
   assert.match(
     css,
-    /@media \(max-width: 520px\)[\s\S]*\.current-item-actions,\s*\.bip85-actions,\s*\.psbt-actions \{ align-items: stretch; \}[\s\S]*\.current-item-actions > \*,\s*\.bip85-actions > \*,\s*\.psbt-actions > \* \{ width: 100%; justify-content: center; \}/,
+    /@media \(max-width: 520px\)[\s\S]*\.tool-actions \{ align-items: stretch; \}[\s\S]*\.tool-actions > \* \{ width: 100%; justify-content: center; \}/,
   );
   // .psbted-actions pins the editor's row to flex-end, so the stacking rule has
   // to follow it to win on order.
   assert.ok(
-    css.indexOf(".psbt-actions > *") > css.indexOf(".psbted-actions { align-items: flex-end; }"),
+    css.indexOf(".tool-actions > *") > css.indexOf(".psbted-actions { align-items: flex-end; }"),
     "the narrow-screen stack must follow .psbted-actions so its alignment wins",
   );
 });
@@ -1630,7 +1635,7 @@ test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
     assert.match(markup, /rust-bitcoin compiled to WebAssembly/);
     // The row must carry psbted-actions in both markups so the editor's
     // button rows keep their compact, text-sized buttons.
-    assert.match(markup, /<div class="row psbt-actions psbted-actions">/);
+    assert.match(markup, /<div class="row psbt-actions psbted-actions tool-actions">/);
   }
   assert.match(css, /\.psbted-actions \{ align-items: flex-end; \}/);
   assert.match(css, /\.psbted-actions \.btn, \.psbted-actions \.custom-select-button \{ min-height: 36px; padding: 6px 10px; border-radius: 8px; \}/);
@@ -1685,7 +1690,7 @@ test("Journal gates its four tools behind the encrypted notebook", () => {
     assert.match(markup, /id="journal-create-password"[^>]*aria-describedby="journal-create-password-note journal-create-password-status"/);
     assert.match(markup, /class="journal-password-validation" id="journal-create-confirm-status" role="status" aria-live="polite" hidden/);
     assert.match(markup, /id="journal-create-confirm"[^>]*aria-describedby="journal-create-confirm-status"/);
-    assert.match(markup, /class="row bip85-actions journal-create-actions">\s*<button class="btn primary" id="journal-create"[^>]*>Create journal<\/button>\s*<span class="journal-create-ready" id="journal-create-ready" hidden><span class="journal-create-ready-arrow" aria-hidden="true">←<\/span> Ready to create journal<\/span>/);
+    assert.match(markup, /class="row bip85-actions journal-create-actions tool-actions">\s*<button class="btn primary" id="journal-create"[^>]*>Create journal<\/button>\s*<span class="journal-create-ready" id="journal-create-ready" hidden><span class="journal-create-ready-arrow" aria-hidden="true">←<\/span> Ready to create journal<\/span>/);
     assert.match(markup, /does not invent entropy/);
     assert.match(markup, /The journal lives in this page until you save the encrypted file/);
     assert.match(markup, /id="journal-notes-card"/);
@@ -1725,7 +1730,7 @@ test("Journal gates its four tools behind the encrypted notebook", () => {
     assert.match(markup, /<div class="journal-log-wrap"><pre class="journal-log" id="journal-log-out"[^>]*>No events yet\.<\/pre><button class="seed-phrase-copy journal-log-copy" id="journal-log-copy"[^>]*aria-label="Copy session log"[^>]*><svg[^>]*><rect class="seed-copy-icon-clip"[^>]*\/><path class="seed-copy-icon-board"[^>]*\/><\/svg><\/button><\/div>/);
     assert.match(markup, /class="btn secondary journal-download-action journal-file-button" id="journal-log-download"[^>]*aria-label="Download session log"[^>]*>[\s\S]*?<span class="control-label">Download session log<\/span><\/button>/);
     assert.match(markup, /class="btn clear-current-action" id="journal-log-clear"[^>]*>Clear log<\/button>/);
-    assert.match(markup, /class="row psbt-actions journal-log-actions"/);
+    assert.match(markup, /class="row psbt-actions journal-log-actions tool-actions"/);
   }
   assert.match(shell, /data-journal-tool="notes"[^>]*>Notepad/);
   assert.match(shell, /data-journal-tool="keymanager"[^>]*>Key manager/);
@@ -1743,9 +1748,9 @@ test("Journal gates its four tools behind the encrypted notebook", () => {
   assert.match(css, /\.journal-create-ready \{[^}]*display: inline-flex;[^}]*color: var\(--ok\);/);
   assert.match(css, /\.journal-create-ready-arrow \{[^}]*font-size: 18px;/);
   assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*\.journal-create-ready-arrow \{ transform: rotate\(90deg\); \}/);
-  assert.match(css, /\.journal-section-intro \{ margin: 0 0 24px; \}/);
+  assert.match(css, /\.journal-section-intro \{ margin: 0 0 var\(--space-intro\); \}/);
   assert.match(css, /\.journal-section-intro > \.muted \{ max-width: 760px; margin: 0; \}/);
-  assert.match(css, /\.journal-global-actions \{[^}]*margin-top: var\(--space-component\);/);
+  assert.match(css, /\.journal-global-actions \{ align-items: center; \}/);
   assert.match(css, /#journal-tool-tabs \.key-tab:disabled,[\s\S]*opacity: \.52; cursor: not-allowed;/);
   assert.match(css, /#journal-card:not\(\[hidden\]\), #journal-notes-card:not\(\[hidden\]\), #journal-keymanager-card:not\(\[hidden\]\), #journal-state-card:not\(\[hidden\]\), #journal-log-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
   assert.match(css, /\.journal-notes-wrap \{[^}]*--journal-font-family:[^}]*position: relative;/s);
@@ -2064,42 +2069,139 @@ test("derived wallet results stay within the mobile layout (#238)", () => {
   assert.match(css, /\.wallet-table \{[^}]*width: 100%; max-width: 100%;[^}]*overflow: auto;/);
 });
 
-test("every MS Station co-signer row can pick any session key, and key reuse offers a derivation path", () => {
+test("every MS Station co-signer keeps its key and full path visible with synchronized advanced components", () => {
   for (const markup of [shell]) {
-    assert.match(markup, /class="station-key-source msig-station-key-source"[\s\S]*id="msig-session-keys"[\s\S]*id="msig-reuse-session-keys"[\s\S]*id="msig-session-key-status"/);
-    assert.match(markup, /Bring in a key from Key Station/);
+    assert.doesNotMatch(markup, /class="station-key-source msig-station-key-source"/);
+    assert.doesNotMatch(markup, /id="msig-session-keys"/);
+    assert.doesNotMatch(markup, /id="msig-session-key-status"/);
+    assert.match(markup, /id="msig-reuse-session-keys"[\s\S]*Keep selected Key Station keys available for more than one co-signer input/);
   }
   assert.match(appSource, /function hodlSessionMsigKeys\(\) \{/);
   assert.match(appSource, /function hodlMatchingMsigExport\(result\) \{/);
-  assert.match(appSource, /function hodlSyncMsigKeyAvatar\(row\) \{/);
   assert.match(appSource, /chips\.className = "msig-session-keys"/);
+  assert.match(appSource, /rail\.className = "msig-key-rail"/);
+  assert.match(appSource, /railLabel\.className = "msig-key-rail-label"/);
+  assert.match(appSource, /railLabel\.textContent = hodlTText\("Co-signer \{n\}"/);
+  assert.match(appSource, /row\.setAttribute\("aria-labelledby", railLabel\.id\)/);
+  assert.match(appSource, /advanced\.className = "derivation-advanced msig-cosigner-advanced"/);
+  assert.match(appSource, /advancedSummary\.textContent = hodlTText\("Advanced entry"\)/);
+  assert.match(appSource, /pathLabel\.textContent = hodlTText\("Full derivation path"\)/);
+  assert.match(appSource, /pathInput\.className = "msig-full-path"/);
+  assert.match(appSource, /fingerprintLabel\.textContent = hodlTText\("Master fingerprint"\)/);
+  assert.match(appSource, /fingerprintInput\.className = "msig-master-fingerprint"/);
+  assert.match(appSource, /originFields\.append\(fingerprintLabel, pathLabel\)/);
+  assert.match(appSource, /pathComponents\.className = "derivation-advanced-fields msig-path-components"/);
+  assert.match(appSource, /advanced\.append\(advancedSummary, pathComponents\)/);
+  assert.match(appSource, /content\.append\(chips, lab, originFields, advanced\)/);
   assert.match(appSource, /hodlCreateMsigSessionKeyButton\(option, "msig-session-key"/);
-  assert.match(appSource, /function hodlPickMsigSessionKey\(state, row = hodlMsigNextKeyRow\(\)\) \{/);
-  assert.match(appSource, /\(\) => hodlPickMsigSessionKey\(option\.state, row\)/);
+  assert.match(appSource, /function hodlPickMsigSessionKey\(option, row\) \{/);
+  assert.match(appSource, /ta\.value = deselect \? "" : value/);
+  assert.match(appSource, /\(\) => hodlPickMsigSessionKey\(option, row\)/);
+  assert.match(appSource, /let unavailable = !reuse && !active && Boolean\(option\.baseId\) && usedElsewhere\.has\(option\.baseId\)/);
+  assert.match(appSource, /button\.disabled = unavailable/);
+  assert.match(appSource, /is already selected for another co-signer/);
+  assert.match(appSource, /\$\{selected \? "Remove" : "Use"\} Key Station key/);
   assert.match(appSource, /hodlFillKeyTabLifehash\(image, fingerprint\)/);
   assert.match(appSource, /hodlRefreshMsigSessionPickers\(\)/);
-  // Reusing a key for another co-signer must come with a derivation path so
-  // every slot derives distinct public keys in the descriptor.
-  assert.match(appSource, /className = "msig-key-reuse"/);
-  assert.match(appSource, /function hodlSyncMsigKeyReuse\(row\) \{/);
+  // Reusing a key appends a public child to the one visible full path; there
+  // is no second, special-purpose child-path control to reconcile.
   assert.match(appSource, /function hodlMsigSuggestedDerivationPath\(parsed, row\) \{/);
-  assert.match(appSource, /function hodlStripMsigKeyPath\(value\) \{/);
+  assert.match(appSource, /value \+= "\/" \+ hodlMsigSuggestedDerivationPath\(optionParsed, row\)/);
+  assert.match(appSource, /function hodlUpdateMsigFullPathFromComponents\(row\) \{/);
+  assert.match(appSource, /hodlApplyMsigRowPath\(row, false\)/);
+  assert.match(appSource, /function hodlApplyMsigRowPath\(row, renderComponents = true\) \{/);
+  assert.match(appSource, /if \(renderComponents\) hodlRenderMsigPathComponents\(row\)/);
+  assert.match(appSource, /row\.dataset\.msigPathUpdate = "true"/);
+  assert.match(appSource, /if \(row\.dataset\.msigPathUpdate !== "true"\) hodlSyncMsigRowPathFromKey\(row\)/);
+  assert.match(appSource, /value\.setSelectionRange\(/);
+  assert.match(appSource, /hodlHint\(ta, null, hodlTText\("Choose a Key Station key above, or paste a co-signer extended public key\."\)\)/);
+  assert.match(css, /\.hint\.neutral \{ color: var\(--muted\); \}/);
+  assert.match(appSource, /function hodlMsigRowValue\(row, strict = false\) \{/);
+  assert.match(appSource, /Master fingerprint must be exactly 8 hexadecimal characters\./);
+  assert.match(appSource, /return `\[\$\{fingerprint\}\/\$\{originComponents\.map/);
   assert.match(appSource, /function hodlMsigBaseKeyId\(parsed\) \{/);
-  assert.match(appSource, /Append a different derivation path so this co-signer derives a different public key in the descriptor\./);
   assert.match(appSource, /parsed\.derivationPath = parsedOrigin\.derivationPath \|\| ""/);
   assert.match(appSource, /must be unhardened \(like \/1\); hardened steps cannot be derived from an extended public key/);
   assert.match(appSource, /function hodlMsigDerivedNode\(parsed\) \{/);
   assert.match(appSource, /let node = hodlMsigDerivedNode\(parsed\);\s*return hodlHex\.encode\(node\.publicKey\)/);
   assert.match(appSource, /\]\$\{canonical\}\$\{parsed\.derivationPath \? "\/" \+ parsed\.derivationPath : ""\}/);
-  assert.match(appSource, /var hodlMsigKeyTarget = null/);
-  assert.match(appSource, /function hodlMsigNextKeyRow\(\) \{/);
+  assert.doesNotMatch(appSource, /hodlMsigKeyTarget|hodlMsigNextKeyRow|msig-session-key-status/);
   assert.match(appSource, /reuseSessionKeys\?\.addEventListener\("change"/);
   assert.match(shell, /Reused keys need different derivation paths\./);
-  assert.match(css, /\.msig-session-keys \{/);
-  assert.match(css, /\.msig-session-key \{/);
-  assert.match(css, /\.msig-session-key\.active/);
-  assert.match(css, /\.msig-key-reuse \{/);
-  assert.match(css, /\.msig-key-ident \{/);
+  assert.match(css, /\.msig-session-keys \{\s*display: flex; flex-wrap: nowrap; gap: 8px; max-width: 100%;[\s\S]*?overflow-x: auto; overflow-y: hidden;/);
+  assert.match(css, /\.msig-session-key \{\s*display: inline-flex; flex: 0 0 auto;/);
+  assert.match(css, /\.msig-session-key\.active \{\s*background: var\(--selection-accent\); color: var\(--selection-fg\); border-color: var\(--selection-accent\);\s*box-shadow: inset 0 2px 4px rgb\(0 0 0 \/ 30%\);\s*\}/);
+  assert.match(css, /\.msig-session-key\.active \* \{ color: inherit; \}/);
+  assert.match(css, /\.msig-session-key\.active \.key-tab-lifehash \{\s*box-shadow: 0 0 0 2px rgb\(0 0 0 \/ 82%\), 0 3px 8px rgb\(0 0 0 \/ 70%\);\s*\}/);
+  assert.match(css, /\.msig-key-row \{\s*display: grid; grid-template-columns: 34px minmax\(0, 1fr\); gap: 12px;/);
+  assert.match(css, /\.msig-key-rail \{[\s\S]*?transform: translateX\(-17px\);\s*\}/);
+  assert.match(css, /\.msig-key-rail-line \{/);
+  assert.match(css, /\.msig-key-rail-line::before \{\s*content: ""; position: absolute; left: 0; width: 10px;/);
+  assert.match(css, /\.msig-key-rail-label \{\s*margin: 9px 0; writing-mode: vertical-rl; transform: rotate\(180deg\);/);
+  assert.match(css, /\.msig-session-key\.unavailable \{ opacity: 0\.45; filter: grayscale\(0\.55\); cursor: not-allowed; \}/);
+  assert.match(css, /\.msig-origin-fields \{ display: grid; grid-template-columns: minmax\(150px, \.7fr\) minmax\(0, 2fr\);/);
+  assert.match(css, /\.msig-master-fingerprint, \.msig-full-path \{ font-family: var\(--mono\); \}/);
+  assert.match(css, /\.msig-path-components \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.doesNotMatch(appSource, /msig-key-reuse-path|msig-key-reuse-apply|msig-key-reuse-clear/);
+  assert.doesNotMatch(appSource, /msig-key-ident|hodlSyncMsigKeyAvatar|hodlMsigKeyOriginFingerprint/);
+  assert.doesNotMatch(css, /\.msig-key-ident/);
+});
+
+test("input help and validation messages share the same vertical spacing", () => {
+  assert.match(css, /--space-control: 8px;/);
+  assert.match(css, /\.hint \{ font-size: 13px; margin: var\(--space-control\) 0 0; \}/);
+  assert.match(css, /\.field-note \{\s*display: block; margin-top: var\(--space-control\);/);
+  assert.match(css, /\.station-key-source > \.field-note \{ display: block; margin: var\(--space-control\) 0 0; \}/);
+  assert.match(css, /\.msig-full-path \{ font-family: var\(--mono\); \}/);
+});
+
+test("tool cards follow the shared spacing contract", () => {
+  assert.match(css, /--space-control: 8px;/);
+  assert.match(css, /--space-component: 16px;/);
+  assert.match(css, /--space-section: 20px;/);
+  assert.match(css, /--space-intro: 24px;/);
+  assert.match(css, /\.tool-card > :first-child \{ margin-top: 0; \}/);
+  assert.match(css, /\.tool-card > :last-child \{ margin-bottom: 0; \}/);
+  assert.match(css, /\.tool-section \{ margin: var\(--space-section\) 0; \}/);
+  assert.match(css, /\.tool-card > :first-child > \.tool-section:first-child \{ margin-top: 0; \}/);
+  assert.match(css, /\.tool-actions \{ margin-top: var\(--space-component\); \}/);
+  assert.match(css, /\.tool-intro \{ margin: 0 0 var\(--space-intro\); \}/);
+  assert.match(css, /\.last-word-options \{ margin-top: var\(--space-control\); \}/);
+
+  const cardIds = [
+    "calc-card", "vanity-card", "bip85-card", "msig-card", "sp-card",
+    "psbt-card", "psbted-card", "journal-card", "journal-notes-card",
+    "journal-keymanager-card", "journal-state-card", "journal-log-card",
+  ];
+  for (const id of cardIds) {
+    assert.match(shell, new RegExp(`<section class="card no-print tool-card" id="${id}"`));
+  }
+  assert.equal((shell.match(/class="station-key-source tool-section"/g) || []).length, 3);
+  assert.match(shell, /class="vanity-source tool-section" id="vanity-source"/);
+
+  const actionRows = [...shell.matchAll(/class="row ([^"]*(?:current-item-actions|bip85-actions|psbt-actions|journal-global-actions)[^"]*)"/g)];
+  assert.ok(actionRows.length > 0);
+  for (const [, classes] of actionRows) {
+    assert.ok(classes.split(/\s+/).includes("tool-actions"), `missing tool-actions: ${classes}`);
+  }
+  assert.doesNotMatch(`${shell}\n${appSource}`, /style="[^"]*(?:margin|padding|gap)\s*:/);
+  assert.match(contributing, /## 6\. UI layout and spacing[\s\S]*class="card no-print tool-card"[\s\S]*class="row tool-actions"/);
+});
+
+test("test mode can preload a bounded sequence of hashed-dice keys", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  const launcher = read("scripts/testmode.mjs");
+  assert.equal(packageJson.scripts.testmode, "node scripts/testmode.mjs");
+  assert.match(launcher, /Usage: npm run testmode -- --keys=12 \[--port=4173\]/);
+  assert.match(launcher, /integerFlag\("keys", 12, 1, 100\)/);
+  assert.match(launcher, /"--test-hooks", "--out", outDir/);
+  assert.match(launcher, /server\.listen\(port, "127\.0\.0\.1"/);
+  assert.match(appSource, /function hodlTestDiceTranscript\(index\) \{\s*return String\(index % 6 \+ 1\)\.repeat\(Math\.floor\(index \/ 6\) \+ 1\);\s*\}/);
+  assert.match(appSource, /new URLSearchParams\(location\.search\)\.get\("test-keys"\)/);
+  assert.match(appSource, /return Math\.min\(Number\(raw\), 100\);/);
+  assert.match(appSource, /hodlDiceEntropy\(transcript, "coldcard", 24\)/);
+  assert.match(appSource, /addEventListener\("load", \(\) => hodlRenderKeyTabs\(\), \{ once: true \}\);/);
+  assert.match(appSource, /if \(__ENTROPYLAB_TEST_HOOKS__\) await hodlLoadTestKeys\(\);/);
 });
 
 test("BIP-85 and SP Stations can bring in compatible Key Station roots", () => {
@@ -2121,7 +2223,8 @@ test("BIP-85 and SP Stations can bring in compatible Key Station roots", () => {
   assert.match(appSource, /document\.getElementById\("sp-pass"\)\.value = state\.result\?\.mnemonic \? state\.fields\?\.pass \|\| "" : "";/);
   assert.match(appSource, /document\.getElementById\("bip85-key"\)\.addEventListener\("input"/);
   assert.match(appSource, /document\.getElementById\("sp-key"\)\.addEventListener\("input", detachStationKey\)/);
-  assert.match(css, /\.session-key-picker \{ display: flex; flex-wrap: wrap; gap: 8px; \}/);
+  assert.match(css, /\.session-key-picker \{\s*display: flex; flex-wrap: nowrap; gap: 8px; max-width: 100%;\s*overflow-x: auto; overflow-y: hidden;/);
+  assert.match(css, /\.session-key-option \{\s*display: inline-flex; flex: 0 0 auto;/);
   // The selected chip is unmistakable: accent border and tint plus a check
   // mark, so the selection never rests on the border colour alone.
   assert.match(css, /\.session-key-option\.active \{[^}]*border-color: var\(--selection-accent\)[^}]*box-shadow: inset 0 0 0 1px var\(--selection-accent\)/s);
@@ -2198,13 +2301,13 @@ test("the vanity grinder is a workspace tab that ships collapsed and never auto-
   // picked; the card is a tabpanel and stays out of print output.
   for (const markup of [shell]) {
     assert.match(markup, /<div class="tool-intro" id="vanity-tool-intro" hidden>/);
-    assert.match(markup, /<section class="card no-print" id="vanity-card" role="tabpanel" hidden>/);
+    assert.match(markup, /<section class="card no-print tool-card" id="vanity-card" role="tabpanel" hidden>/);
     // The key comes in through the same clickable Key Station picker the
     // BIP-85 and Silent Payments tabs use; the selected key is restated with
     // its starting passphrase, labelled and read-only.
     assert.match(markup, /<p class="label">Bring in a key from Key Station<\/p>/);
     assert.match(markup, /<div class="session-key-picker" id="vanity-session-keys" role="group" aria-label="Key Station keys" hidden><\/div>/);
-    assert.match(markup, /<div class="vanity-source" id="vanity-source" hidden>/);
+    assert.match(markup, /<div class="vanity-source tool-section" id="vanity-source" hidden>/);
     assert.match(markup, /<span class="vanity-source-kicker">Selected key<\/span>/);
     assert.match(markup, /<label class="field" for="vanity-pass">Starting passphrase <span class="vanity-source-from" id="vanity-pass-from"><\/span><\/label>/);
     assert.match(markup, /<input id="vanity-pass" readonly autocomplete="off" spellcheck="false"[^>]*aria-describedby="vanity-pass-note">/);

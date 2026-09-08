@@ -8493,6 +8493,11 @@ function hodlInitBip322() {
   let verify = document.getElementById("bip322-verify");
   let result = document.getElementById("bip322-result");
   if (!message || !address || !signature || !verify || !result) return;
+  let bip322Gen = 0;
+  [message, address, signature].forEach(el => el && el.addEventListener('input', () => {
+    bip322Gen++;
+    result.replaceChildren();
+  }));
   let render = (data) => {
     result.replaceChildren();
     let state = document.createElement("p");
@@ -8531,7 +8536,7 @@ function hodlInitBip322() {
       banner.textContent = "Legacy P2PKH-only, deprecated — BIP-137 / Electrum style, not generic";
       result.append(banner);
     }
-    if (data.prefix === "pof" && data.state !== "invalid") {
+    if (data.prefix === "pof" && data.state === "valid") {
       let banner = document.createElement("aside");
       banner.className = "bip322-warning";
       banner.textContent = "Cryptographically valid offline — unspent NOT checked, cluster would leak if pasted online";
@@ -8550,6 +8555,7 @@ function hodlInitBip322() {
     }
   };
   verify.onclick = async () => {
+    const myGen = ++bip322Gen;
     result.replaceChildren();
     let busy = document.createElement("p");
     busy.className = "muted";
@@ -8557,8 +8563,11 @@ function hodlInitBip322() {
     result.append(busy);
     verify.disabled = true;
     try {
-      render(await verifyBip322(message.value, address.value, signature.value));
+      const data = await verifyBip322(message.value, address.value, signature.value);
+      if (myGen !== bip322Gen) return;
+      render(data);
     } catch (error) {
+      if (myGen !== bip322Gen) return;
       result.replaceChildren();
       let failure = document.createElement("p");
       failure.className = "err";

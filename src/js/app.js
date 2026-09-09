@@ -55,7 +55,6 @@ import hodlShellHtml from "../shell.html";
 import { hodlKeyModeLabels, hodlNetworkNames, hodlHexFormatLabels, hodlScriptBeginnerTexts, hodlFairnessVerdictLabels } from "./i18n-labels.js";
 import {
   METHOD_LABELS as hodlJournalMethodLabels,
-  PASSWORD_MIN_LENGTH as hodlJournalPasswordMinLength,
   addEntry as hodlJournalAddEntry,
   appendLog as hodlJournalAppend,
   createDocument as hodlJournalCreateDocument,
@@ -5079,10 +5078,10 @@ function hodlRenderKeyForm() {
       <p class="label">${hodlT("How to turn rolls into a {words}-word seed", { words: config.words })}</p>
       <div class="choice-grid">
       <label class="choice"><input type="radio" name="dm" value="coldcard" ${hodlDiceMethod === "coldcard" ? "checked" : ""} />
-        <span><strong>${hodlT("Hashed rolls / Base 10 [0-9] (recommended)")}</strong><span class="desc">${hodlT("SHA-256 of the original dice digit string, matching the method used by COLDCARD and SeedSigner. The first {bits} bits become the selected {words}-word seed; {hashRolls} rolls are recommended, and every entered roll is included.", { bits: config.bits, words: config.words, hashRolls: config.hashRolls })}</span></span>
+        <span><strong>${hodlT("Base 10 [0-9] / Hashed rolls (recommended)")}</strong><span class="desc">${hodlT("SHA-256 of the original dice digit string, matching the method used by COLDCARD and SeedSigner. The first {bits} bits become the selected {words}-word seed; {hashRolls} rolls are recommended, and every entered roll is included.", { bits: config.bits, words: config.words, hashRolls: config.hashRolls })}</span></span>
       </label>
       <label class="choice"><input type="radio" name="dm" value="coleman" ${hodlDiceMethod === "coleman" ? "checked" : ""} />
-        <span><strong>${hodlT("Hashed rolls / Dice [1-6]")}</strong><span class="desc">${hodlT("Convert each 6 to 0 and SHA-256 the complete mapped digit string, matching the method used by Keystone. Use the first {bits} bits; {hashRolls} rolls are recommended, and every entered roll is included.", { bits: config.bits, words: config.words, hashRolls: config.hashRolls })}</span></span>
+        <span><strong>${hodlT("Dice [1-6] / Hashed rolls")}</strong><span class="desc">${hodlT("Convert each 6 to 0 and SHA-256 the complete mapped digit string, matching the method used by Keystone. Use the first {bits} bits; {hashRolls} rolls are recommended, and every entered roll is included.", { bits: config.bits, words: config.words, hashRolls: config.hashRolls })}</span></span>
       </label>
       <label class="choice"><input type="radio" name="dm" value="bitbox" ${hodlDiceMethod === "bitbox" ? "checked" : ""} />
         <span><strong>${hodlT("BitBox diceware / Direct word selection")}</strong><span class="desc">${hodlT("Use five dice showing 1–4, then a coin (or 6th die: 1–3 heads, 4–6 tails). Build {partialWords} lookup-table words, then choose 1 of {candidates} valid final checksum words.", { partialWords: config.partialWords, candidates: config.candidates })}</span></span>
@@ -10447,12 +10446,36 @@ function hodlKeyHasResult(state = hodlKeys[hodlActiveKey]) {
 }
 function hodlKeySummaryMethod(state) {
   if (!state) return "";
-  if (state.mode === "dice") return "Dice rolls";
-  if (state.mode === "cards") return "Cards";
-  if (state.mode === "hex") return "Number bases";
-  if (state.mode === "seed") return "Seed phrase";
-  if (state.mode === "key") return "Private key";
-  return "";
+  let method = {
+    dice: "Dice rolls",
+    cards: "Cards",
+    hex: "Number bases",
+    seed: "Seed phrase",
+    key: "Private key",
+  }[state.mode] || "";
+  let submethod = state.mode === "dice" ? {
+    coldcard: "Base 10 [0-9] / Hashed rolls",
+    coleman: "Dice [1-6] / Hashed rolls",
+    bitbox: "BitBox diceware / Direct word selection",
+    dplus: "D++ / Direct word selection",
+  }[state.diceMethod || "coldcard"] : state.mode === "cards"
+    ? state.cardMethod === "direct" ? "Direct word selection" : "Hashed card transcript"
+    : state.mode === "hex" ? {
+      bin: "Binary (Base 2)",
+      base4: "Base 4",
+      base8: "Octal (Base 8)",
+      hex: "Hexadecimal (Base 16)",
+      base32: "Crockford Base32",
+      base64: "Base64 (RFC 4648 alphabet)",
+    }[state.entropyFormat || "bin"]
+    : state.mode === "seed" ? state.seedMethod === "numbers" ? "BIP39 word numbers" : "Direct word entry"
+    : state.mode === "key" ? {
+      wif: "WIF",
+      "hex-key": "Private key hex",
+      minikey: "Mini key",
+      brain: "Brain wallet",
+    }[state.fields?.keyKind || "wif"] : "";
+  return method && submethod ? `${method}: ${submethod}` : method;
 }
 function hodlKeySummaryScript(state) {
   let id = state?.accountId || state?.fields?.script || "bip84";
@@ -12859,13 +12882,12 @@ function hodlSyncJournalCreatePasswordValidation() {
       confirmStatus = document.getElementById("journal-create-confirm-status"),
       ready = document.getElementById("journal-create-ready");
   if (!password || !confirm) return;
-  let passwordValue = password.value,
-      passwordLongEnough = Array.from(passwordValue).length >= hodlJournalPasswordMinLength;
+  let passwordValue = password.value;
   hodlJournalSetPasswordValidation(
     password,
     passwordStatus,
-    passwordLongEnough,
-    !passwordValue ? "" : passwordLongEnough ? "\u2713 Password is long enough" : "Password has too few characters",
+    true,
+    passwordValue ? hodlTText("\u2713 Password protection enabled") : "",
   );
   let confirmValue = confirm.value,
       passwordsMatch = confirmValue === passwordValue;
@@ -12873,21 +12895,25 @@ function hodlSyncJournalCreatePasswordValidation() {
     confirm,
     confirmStatus,
     passwordsMatch,
-    !confirmValue ? "" : passwordsMatch ? "\u2713 Passwords match" : "Passwords do not match",
+    !confirmValue ? "" : passwordsMatch ? hodlTText("\u2713 Passwords match") : hodlTText("Passwords do not match"),
   );
-  if (ready) ready.hidden = !(passwordLongEnough && confirmValue && passwordsMatch);
+  if (ready) {
+    ready.hidden = !passwordsMatch;
+    let message = ready.querySelector(".journal-create-ready-text");
+    if (message) message.textContent = hodlTText(passwordValue ? "Ready to create with a password" : "Ready to create without a password");
+  }
 }
 function hodlJournalCreatePasswordKeydown(event) {
   if (event.key !== "Enter" || event.altKey || event.ctrlKey || event.metaKey || event.isComposing || event.repeat) return;
   let password = document.getElementById("journal-create-password"),
       confirm = document.getElementById("journal-create-confirm");
-  if (!password || !confirm || Array.from(password.value).length < hodlJournalPasswordMinLength) return;
+  if (!password || !confirm) return;
   event.preventDefault();
   if (event.currentTarget === password && confirm.value !== password.value) {
     confirm.focus();
     return;
   }
-  if (confirm.value && confirm.value === password.value) hodlJournalCreate();
+  if (confirm.value === password.value) hodlJournalCreate();
 }
 function hodlJournalSetGate(mode) {
   hodlJournalGate = mode === "open" ? "open" : "create";
@@ -12905,10 +12931,10 @@ function hodlJournalUnlocked() {
   return Boolean(hodlJournalKeys && hodlJournalDoc);
 }
 function hodlJournalNoteText() {
-  if (!hodlJournalDoc) return "Create a journal or open an encrypted file.";
+  if (!hodlJournalDoc) return "Create a journal or open a journal file.";
   let n = hodlJournalDoc.entries.length;
-  let unsaved = hodlJournalDirty ? " Unsaved changes \u2014 save the encrypted file before locking." : "";
-  if (!n) return "No entries yet. Save the encrypted file after you add one." + unsaved;
+  let unsaved = hodlJournalDirty ? " Unsaved changes \u2014 download the journal file before locking." : "";
+  if (!n) return "No entries yet. Download the journal file after you add one." + unsaved;
   return `${n} ${n === 1 ? "entry" : "entries"} in this page only.${unsaved}`;
 }
 function hodlJournalFillLifehash(image, digest) {
@@ -12971,6 +12997,15 @@ function hodlJournalShowWork() {
   }
   let note = document.getElementById("journal-status-note");
   if (note) note.textContent = hodlJournalNoteText();
+  if (unlocked) {
+    let passwordProtected = Boolean(hodlJournalKeys.passwordProtected), title = document.getElementById("journal-status-title");
+    if (title) title.textContent = hodlTText(passwordProtected ? "Journal open \u00b7 Password protected" : "Journal open \u00b7 No password protection");
+    document.querySelectorAll(".journal-encrypt-option span").forEach((label) => {
+      label.textContent = hodlTText(passwordProtected ? "Encrypt with Journal password" : "Encode for this Journal (no password protection)");
+    });
+    let keyManagerNote = document.querySelector(".journal-keymanager-encryption-note");
+    if (keyManagerNote) keyManagerNote.textContent = hodlTText(passwordProtected ? "Encrypted with the Journal password" : "Encoded for this Journal \u00b7 No password protection");
+  }
   hodlJournalFillLifehash(document.getElementById("journal-lifehash"), hodlJournalKeys?.verify);
   hodlJournalRenderList();
 }
@@ -13065,7 +13100,7 @@ function hodlJournalOpenView(id) {
   view.innerHTML = `<section class="wallet-data-section wallet-private-section" aria-labelledby="journal-entry-heading">
       <div class="wallet-data-section-head">
         <h3 id="journal-entry-heading">${hodlEscapeHtml(entry.label)}</h3>
-        <p class="muted" id="journal-private-description">Anyone with the journal file and the journal password can read this entry.</p>
+        <p class="muted" id="journal-private-description">${hodlT("Anyone who can open the journal file can read this entry. A file created without a password has no access protection.")}</p>
       </div>
       <div class="wallet-data-actions no-print">
         <label class="reveal-private-toggle">
@@ -13146,7 +13181,7 @@ async function hodlJournalUnlock() {
   hodlJournalError("");
   let generation = hodlJournalGeneration;
   try {
-    if (!hodlJournalFileText) throw new Error("Choose an encrypted journal file first.");
+    if (!hodlJournalFileText) throw new Error("Choose a journal file first.");
     let opened = await hodlJournalOpenDocument(hodlJournalFileText, document.getElementById("journal-open-password")?.value || "");
     if (generation !== hodlJournalGeneration) return hodlJournalDiscardOpened(opened);
     hodlKeyManagerReset();

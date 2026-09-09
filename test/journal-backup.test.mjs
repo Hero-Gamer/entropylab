@@ -148,9 +148,9 @@ test("a tampered backup is detected at open, not silently restored", async () =>
   addEntry(doc, sampleEntry(), fixedNow);
   const file = await sealDocument(doc, keys);
   const flippedCipher = { ...file, ciphertext: flip(file.ciphertext, 0) };
-  await assert.rejects(() => openDocument(pack(flippedCipher), password), /Wrong password/);
+  await assert.rejects(() => openDocument(pack(flippedCipher), password), /password is incorrect/);
   const flippedIv = { ...file, iv: flip(file.iv, 0) };
-  await assert.rejects(() => openDocument(pack(flippedIv), password), /Wrong password/);
+  await assert.rejects(() => openDocument(pack(flippedIv), password), /password is incorrect/);
 });
 
 test("a backup that decrypts to invalid entries is rejected entry by entry", async () => {
@@ -216,6 +216,7 @@ test("key derivation is deterministic, bounded, and non-extractable", async () =
   const again = await deriveJournalKeys(password);
   assert.deepEqual([...again.verify], [...keys.verify]); // same password, same verifier
   assert.equal(again.iterations, JOURNAL_ITERATIONS);
+  assert.equal(again.passwordProtected, true);
   assert.equal(again.encKey.extractable, false);
   assert.deepEqual([...again.encKey.usages].sort(), ["decrypt", "encrypt"]);
   assert.equal(again.ivKey.extractable, false);
@@ -225,7 +226,9 @@ test("key derivation is deterministic, bounded, and non-extractable", async () =
   await assert.rejects(() => deriveJournalKeys(password, JOURNAL_MIN_ITERATIONS - 1), /key-derivation cost/);
   await assert.rejects(() => deriveJournalKeys(password, JOURNAL_MAX_ITERATIONS + 1), /key-derivation cost/);
   await assert.rejects(() => deriveJournalKeys(password, 600000.5), /key-derivation cost/);
-  await assert.rejects(() => deriveJournalKeys(""), /missing/);
+  const passwordless = await deriveJournalKeys("");
+  assert.equal(passwordless.passwordProtected, false);
+  assert.ok(passwordless.verify.some((byte) => byte !== 0));
 });
 
 // --- Entry bookkeeping behind the backup ------------------------------------

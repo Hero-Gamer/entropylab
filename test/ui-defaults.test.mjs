@@ -1646,7 +1646,7 @@ test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
   assert.match(css, /#psbt-card:not\(\[hidden\]\), #psbted-card:not\(\[hidden\]\), #vanity-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
 });
 
-test("Journal gates its four tools behind the encrypted notebook", () => {
+test("Journal gates its four tools behind the local notebook", () => {
   assert.match(appSource, /\["psbt", "PSBT", "PSBT"\], \["journal", "Journal", "Journal"\]\];/);
   assert.match(appSource, /import \{[\s\S]*wipeJournal,[\s\S]*\} from "\.\/journal\.js"/);
   assert.match(appSource, /import \{[\s\S]*sealDocument as hodlJournalSealDocument,[\s\S]*\} from "\.\/journal\.js"/);
@@ -1678,7 +1678,7 @@ test("Journal gates its four tools behind the encrypted notebook", () => {
     assert.match(markup, /id="journal-state-tab"[^>]*aria-disabled="true"[^>]*data-journal-tool="state"[^>]*disabled/);
     assert.match(markup, /id="journal-log-tab"[^>]*aria-disabled="true"[^>]*data-journal-tool="log"[^>]*disabled/);
     assert(markup.indexOf('id="journal-notes-tab"') < markup.indexOf('id="journal-keymanager-tab"') && markup.indexOf('id="journal-keymanager-tab"') < markup.indexOf('id="journal-state-tab"'), "Key manager should follow Notepad in the Journal tab strip");
-    assert.match(markup, /id="journal-card" role="region" aria-label="Encrypted Journal"/);
+    assert.match(markup, /id="journal-card" role="region" aria-label="Journal"/);
     assert.match(markup, /id="journal-create"/);
     assert.match(markup, /id="journal-unlock"/);
     assert.match(markup, /id="journal-save"/);
@@ -1690,9 +1690,13 @@ test("Journal gates its four tools behind the encrypted notebook", () => {
     assert.match(markup, /id="journal-create-password"[^>]*aria-describedby="journal-create-password-note journal-create-password-status"/);
     assert.match(markup, /class="journal-password-validation" id="journal-create-confirm-status" role="status" aria-live="polite" hidden/);
     assert.match(markup, /id="journal-create-confirm"[^>]*aria-describedby="journal-create-confirm-status"/);
-    assert.match(markup, /class="row bip85-actions journal-create-actions tool-actions">\s*<button class="btn primary" id="journal-create"[^>]*>Create journal<\/button>\s*<span class="journal-create-ready" id="journal-create-ready" hidden><span class="journal-create-ready-arrow" aria-hidden="true">←<\/span> Ready to create journal<\/span>/);
+    assert.match(markup, /Journal password \(optional\)/);
+    assert.match(markup, /placeholder="Leave blank for no password"/);
+    assert.match(markup, /Confirm password \(optional\)/);
+    assert.match(markup, /placeholder="Repeat password or leave blank"/);
+    assert.match(markup, /class="row bip85-actions journal-create-actions tool-actions">\s*<button class="btn primary" id="journal-create"[^>]*>Create journal<\/button>\s*<span class="journal-create-ready" id="journal-create-ready" hidden><span class="journal-create-ready-arrow" aria-hidden="true">←<\/span> <span class="journal-create-ready-text">Ready to create without a password<\/span><\/span>/);
     assert.match(markup, /does not invent entropy/);
-    assert.match(markup, /The journal lives in this page until you save the encrypted file/);
+    assert.match(markup, /files created without one can be opened by anyone/);
     assert.match(markup, /id="journal-notes-card"/);
     assert.match(markup, /id="journal-keymanager-card"/);
     assert.match(markup, /id="journal-state-card"/);
@@ -1716,9 +1720,9 @@ test("Journal gates its four tools behind the encrypted notebook", () => {
     assert.match(markup, /class="btn secondary journal-upload-action journal-file-button" id="journal-keymanager-upload"[^>]*aria-label="Upload managed keys"[^>]*>[\s\S]*?<span class="control-label">Upload<\/span><\/button>/);
     assert.match(markup, /id="journal-keymanager-file"[^>]*accept="\.elkeys,\.json,application\/json"/);
     assert.equal([...markup.matchAll(/class="journal-encrypt-download"/g)].length, 3, "each Journal tab should carry the shared encryption choice");
-    assert.match(markup, /id="journal-notes-encrypt" type="checkbox" checked><span>Use journal password to encrypt<\/span>/);
-    assert.match(markup, /id="journal-state-encrypt" type="checkbox" checked><span>Use journal password to encrypt<\/span>/);
-    assert.match(markup, /id="journal-log-encrypt" type="checkbox" checked><span>Use journal password to encrypt<\/span>/);
+    assert.match(markup, /id="journal-notes-encrypt" type="checkbox" checked><span>Use Journal file encryption<\/span>/);
+    assert.match(markup, /id="journal-state-encrypt" type="checkbox" checked><span>Use Journal file encryption<\/span>/);
+    assert.match(markup, /id="journal-log-encrypt" type="checkbox" checked><span>Use Journal file encryption<\/span>/);
     assert.match(markup, /id="journal-notes-file"[^>]*accept="\.json,\.txt,application\/json,text\/plain"/);
     assert.doesNotMatch(markup, /id="journal-notes-download-text"|Download plain-text notes/);
     assert.doesNotMatch(markup, /id="journal-note-add"|>Add note</);
@@ -1827,11 +1831,12 @@ test("Journal gates its four tools behind the encrypted notebook", () => {
   assert.match(appSource, /hodlJournal\.log\.length = 0;\s*hodlJournalLog\("clear", "session-log", "journal"\)/);
   assert.match(css, /#journal-notes-card:not\(\[hidden\]\), #journal-keymanager-card:not\(\[hidden\]\), #journal-state-card:not\(\[hidden\]\), #journal-log-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
   assert.match(appSource, /\["journal", "Journal", "Journal"\]/);
-  assert.match(appSource, /PASSWORD_MIN_LENGTH as hodlJournalPasswordMinLength/);
-  assert.match(appSource, /function hodlSyncJournalCreatePasswordValidation\(\) \{[\s\S]*Array\.from\(passwordValue\)\.length >= hodlJournalPasswordMinLength[\s\S]*Password has too few characters[\s\S]*Passwords do not match/);
-  assert.match(appSource, /if \(ready\) ready\.hidden = !\(passwordLongEnough && confirmValue && passwordsMatch\);/);
+  assert.doesNotMatch(appSource, /PASSWORD_MIN_LENGTH|hodlJournalPasswordMinLength|Password has too few characters/);
+  assert.match(appSource, /function hodlSyncJournalCreatePasswordValidation\(\) \{[\s\S]*Password protection enabled[\s\S]*Passwords do not match/);
+  assert.match(appSource, /ready\.hidden = !passwordsMatch/);
+  assert.match(appSource, /Ready to create without a password/);
   assert.match(appSource, /\["journal-create-password", "journal-create-confirm"\][\s\S]*addEventListener\("input", hodlSyncJournalCreatePasswordValidation\)/);
-  assert.match(appSource, /function hodlJournalCreatePasswordKeydown\(event\) \{[\s\S]*event\.key !== "Enter"[\s\S]*Array\.from\(password\.value\)\.length < hodlJournalPasswordMinLength[\s\S]*confirm\.focus\(\)[\s\S]*confirm\.value === password\.value\) hodlJournalCreate\(\)/);
+  assert.match(appSource, /function hodlJournalCreatePasswordKeydown\(event\) \{[\s\S]*event\.key !== "Enter"[\s\S]*confirm\.focus\(\)[\s\S]*confirm\.value === password\.value\) hodlJournalCreate\(\)/);
   assert.match(appSource, /\["journal-create-password", "journal-create-confirm"\][\s\S]*addEventListener\("keydown", hodlJournalCreatePasswordKeydown\)/);
   assert.match(appSource, /function hodlSyncJournalTool\(\) \{[\s\S]*unlocked = hodlJournalUnlocked\(\)[\s\S]*button\.disabled = !unlocked;[\s\S]*button\.setAttribute\("aria-disabled", String\(!unlocked\)\)[\s\S]*journal-notes-card"\)\.hidden = !visible \|\| !unlocked/);
   assert.match(appSource, /async function hodlJournalCreate\(\) \{[\s\S]*hodlJournalShowWork\(\);\s*hodlShowJournalTool\("notes"\)/);
@@ -2032,7 +2037,12 @@ test("Key Station stays put and a derived key opens a fingerprint tab with a sum
     assert.match(markup, /id="key-edit-inputs"/);
     assert.match(markup, /id="key-summary-path"/);
     assert.match(markup, /Open Key Station to derive another key/);
+    assert.match(markup, /Base 10 \[0-9\] \/ Hashed rolls \(recommended\)/);
+    assert.match(markup, /Dice \[1-6\] \/ Hashed rolls/);
   }
+  assert.match(appSource, /hodlT\("Base 10 \[0-9\] \/ Hashed rolls \(recommended\)"\)/);
+  assert.match(appSource, /hodlT\("Dice \[1-6\] \/ Hashed rolls"\)/);
+  assert.match(css, /\.key-summary-lifehash \{[^}]*width: 72px;[^}]*height: 72px;/s);
   assert.match(appSource, /function hodlSnapshotKeySummary\(/);
   assert.match(appSource, /state\.createdScript = hodlKeySummaryScript\(state\)/);
   assert.match(appSource, /state\.createdPath = hodlKeySummaryPath\(state\)/);
@@ -2042,6 +2052,20 @@ test("Key Station stays put and a derived key opens a fingerprint tab with a sum
   assert.match(appSource, /if \(edit\) edit\.onclick = hodlEditKeyInputs;/);
   assert.match(css, /#calc-card\.is-result-view #modes/);
   assert.match(css, /#calc-card:not\(\.is-result-view\) #out/);
+});
+
+test("derived-key summaries put the selected sub-method after the method", () => {
+  const source = appSource.match(/(function hodlKeySummaryMethod\(state\) \{[\s\S]*?\n\})\nfunction hodlKeySummaryScript/);
+  assert.ok(source, "key summary method formatter");
+  const summary = new Function(`${source[1]}; return hodlKeySummaryMethod;`)();
+  assert.equal(summary({ mode: "dice", diceMethod: "coldcard" }), "Dice rolls: Base 10 [0-9] / Hashed rolls");
+  assert.equal(summary({ mode: "dice", diceMethod: "coleman" }), "Dice rolls: Dice [1-6] / Hashed rolls");
+  assert.equal(summary({ mode: "dice", diceMethod: "bitbox" }), "Dice rolls: BitBox diceware / Direct word selection");
+  assert.equal(summary({ mode: "dice", diceMethod: "dplus" }), "Dice rolls: D++ / Direct word selection");
+  assert.equal(summary({ mode: "cards", cardMethod: "direct" }), "Cards: Direct word selection");
+  assert.equal(summary({ mode: "hex", entropyFormat: "hex" }), "Number bases: Hexadecimal (Base 16)");
+  assert.equal(summary({ mode: "seed", seedMethod: "numbers" }), "Seed phrase: BIP39 word numbers");
+  assert.equal(summary({ mode: "key", fields: { keyKind: "minikey" } }), "Private key: Mini key");
 });
 
 test("derived key results put private recovery before script type and addresses", () => {

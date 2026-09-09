@@ -76,7 +76,7 @@
     <section class="card no-print tool-card" id="calc-card" role="tabpanel" hidden>
       <div class="key-mode-select" id="modes"><p class="label" id="key-method-label">Method</p></div>
       <div class="key-summary" id="key-summary" hidden>
-        <img class="key-summary-lifehash" id="key-summary-lifehash" width="48" height="48" alt="" hidden>
+        <img class="key-summary-lifehash" id="key-summary-lifehash" width="72" height="72" alt="" hidden>
         <div class="key-summary-text">
           <code class="key-summary-fingerprint" id="key-summary-fingerprint"></code>
           <p class="key-summary-meta" id="key-summary-method"></p>
@@ -98,11 +98,11 @@
       <p class="label">How to turn rolls into a seed</p>
       <div class="choice-grid">
       <label class="choice"><input type="radio" name="dm" value="coldcard" checked="checked">
-        <span><strong>Hashed rolls / Base 10 [0-9] (recommended)</strong>
+        <span><strong>Base 10 [0-9] / Hashed rolls (recommended)</strong>
         <span class="desc">SHA-256 of the original dice digit string, matching the method used by COLDCARD and SeedSigner. Every entered roll is included.</span></span>
       </label>
       <label class="choice"><input type="radio" name="dm" value="coleman">
-        <span><strong>Hashed rolls / Dice [1-6]</strong>
+        <span><strong>Dice [1-6] / Hashed rolls</strong>
         <span class="desc">Convert every rolled 6 to 0, hash the complete
 digit string with SHA-256, then use the selected BIP39 entropy length.
 This matches the method used by Keystone, and all rolls are included.</span></span>
@@ -638,7 +638,7 @@ words, pick one of the checksum words.</span></span>
     <div class="tool-intro" id="journal-tool-intro" hidden>
         <div class="kicker">Your rolls, on paper you control.</div>
         <h2>Entropy Journal</h2>
-        <p class="muted tool-intro-note journal-intro">An encrypted notebook of entropy you already produced — dice, coins, hex, brain-wallet text, or a seed. The file stays on your machine and opens with a password you choose. Encryption is a pure function of the password and the entries — nothing is generated for you. This is not a password manager and does not invent entropy.</p>
+        <p class="muted tool-intro-note journal-intro">A local notebook of entropy you already produced — dice, coins, hex, brain-wallet text, or a seed. Protect its files with a password or leave the password blank. A file created without a password can be opened by anyone who has it. The file format is a pure function of the password and entries — nothing is generated for you. This is not a password manager and does not invent entropy.</p>
         <div class="row journal-global-actions tool-actions">
           <button class="btn secondary journal-download-action" id="journal-global-download" type="button" disabled aria-disabled="true"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span>Download journal</span></button>
           <button class="btn clear-current-action" id="journal-global-clear" type="button" disabled aria-disabled="true">Clear journal</button>
@@ -654,31 +654,31 @@ words, pick one of the checksum words.</span></span>
         </div>
       </div>
     </section>
-      <section class="card no-print tool-card" id="journal-card" role="region" aria-label="Encrypted Journal" hidden>
+      <section class="card no-print tool-card" id="journal-card" role="region" aria-label="Journal" hidden>
       <div id="journal-locked-panel">
         <div class="row segmented-control" id="journal-gate-modes" role="group" aria-label="Journal start">
           <button type="button" class="tab active" data-journal-gate="create" aria-pressed="true">Create</button>
           <button type="button" class="tab" data-journal-gate="open" aria-pressed="false">Open file</button>
         </div>
         <div id="journal-create-panel">
-          <label class="field"><span class="journal-password-label"><span>Password for the journal</span><span class="journal-password-validation" id="journal-create-password-status" role="status" aria-live="polite" hidden></span></span>
-            <input id="journal-create-password" type="password" placeholder="At least 12 characters" autocomplete="new-password" aria-describedby="journal-create-password-note journal-create-password-status">
-            <span class="field-note" id="journal-create-password-note">A long passphrase you can picture beats a short clever one. There is no recovery: lose the password and the file stays sealed.</span>
+          <label class="field"><span class="journal-password-label"><span>Journal password (optional)</span><span class="journal-password-validation" id="journal-create-password-status" role="status" aria-live="polite" hidden></span></span>
+            <input id="journal-create-password" type="password" placeholder="Leave blank for no password" autocomplete="new-password" aria-describedby="journal-create-password-note journal-create-password-status">
+            <span class="field-note" id="journal-create-password-note">A password protects Journal files and encrypted downloads. Leave it blank to create without password protection; anyone with the file can open it. Passwords cannot be recovered.</span>
           </label>
-          <label class="field"><span class="journal-password-label"><span>Confirm the password</span><span class="journal-password-validation" id="journal-create-confirm-status" role="status" aria-live="polite" hidden></span></span>
-            <input id="journal-create-confirm" type="password" placeholder="Enter the same password again" autocomplete="new-password" aria-describedby="journal-create-confirm-status">
+          <label class="field"><span class="journal-password-label"><span>Confirm password (optional)</span><span class="journal-password-validation" id="journal-create-confirm-status" role="status" aria-live="polite" hidden></span></span>
+            <input id="journal-create-confirm" type="password" placeholder="Repeat password or leave blank" autocomplete="new-password" aria-describedby="journal-create-confirm-status">
           </label>
           <div class="row bip85-actions journal-create-actions tool-actions">
             <button class="btn primary" id="journal-create" type="button">Create journal</button>
-            <span class="journal-create-ready" id="journal-create-ready" hidden><span class="journal-create-ready-arrow" aria-hidden="true">←</span> Ready to create journal</span>
+            <span class="journal-create-ready" id="journal-create-ready" hidden><span class="journal-create-ready-arrow" aria-hidden="true">←</span> <span class="journal-create-ready-text">Ready to create without a password</span></span>
           </div>
         </div>
         <div id="journal-open-panel" hidden>
-          <label class="field">Encrypted journal file
+          <label class="field">Journal file
             <input id="journal-file" type="file" accept=".json,application/json">
           </label>
-          <label class="field">Password for the journal
-            <input id="journal-open-password" type="password" placeholder="The password used when this file was created" autocomplete="off">
+          <label class="field">Journal password (if used)
+            <input id="journal-open-password" type="password" placeholder="Leave blank if the file has no password" autocomplete="off">
           </label>
           <div class="row bip85-actions tool-actions">
             <button class="btn primary" id="journal-unlock" type="button">Open journal</button>
@@ -689,8 +689,8 @@ words, pick one of the checksum words.</span></span>
         <div class="journal-status" id="journal-status">
           <img class="journal-status-lifehash" id="journal-lifehash" width="48" height="48" alt="" hidden>
           <div>
-            <p class="journal-status-title" id="journal-status-title">Journal unlocked</p>
-            <p class="muted" id="journal-status-note">No entries yet. Save the encrypted file after you add one.</p>
+            <p class="journal-status-title" id="journal-status-title">Journal open</p>
+            <p class="muted" id="journal-status-note">No entries yet. Download the journal file after you add one.</p>
           </div>
         </div>
         <div class="row bip85-actions journal-toolbar tool-actions">
@@ -738,7 +738,7 @@ words, pick one of the checksum words.</span></span>
         <div id="journal-view" hidden></div>
       </div>
       <p class="err" id="journal-error" role="alert"></p>
-      <p class="muted">The journal lives in this page until you save the encrypted file. Anyone with that file and the journal password can read every entry. Memory clearing is best-effort; close the page before reconnecting the computer.</p>
+      <p class="muted">The journal lives in this page until you download its file. Password-protected files require the exact password; files created without one can be opened by anyone. Memory clearing is best-effort; close the page before reconnecting the computer.</p>
     </section>
       <section class="card no-print tool-card" id="journal-notes-card" role="tabpanel" hidden>
       <div class="journal-section-intro" id="journal-notes-tool-intro">
@@ -760,7 +760,7 @@ words, pick one of the checksum words.</span></span>
         <button class="seed-phrase-copy journal-notes-copy" id="journal-notes-copy" type="button" aria-label="Copy notepad page" title="Copy notepad page" data-copy-label="Copy notepad page" data-copied-label="Notepad page copied" disabled><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect class="seed-copy-icon-clip" x="8" y="2" width="8" height="4" rx="1"/><path class="seed-copy-icon-board" d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button>
       </div>
       <div class="row psbt-actions journal-file-actions tool-actions">
-        <div class="journal-download-options"><button class="btn secondary journal-download-action journal-file-button" id="journal-notes-download" type="button" aria-label="Download notepad" title="Download notepad"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download notepad</span></button><label class="journal-encrypt-option"><input class="journal-encrypt-download" id="journal-notes-encrypt" type="checkbox" checked><span>Use journal password to encrypt</span></label></div>
+        <div class="journal-download-options"><button class="btn secondary journal-download-action journal-file-button" id="journal-notes-download" type="button" aria-label="Download notepad" title="Download notepad"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download notepad</span></button><label class="journal-encrypt-option"><input class="journal-encrypt-download" id="journal-notes-encrypt" type="checkbox" checked><span>Use Journal file encryption</span></label></div>
         <button class="btn secondary journal-upload-action journal-file-button" id="journal-notes-upload" type="button" aria-label="Upload notebook" title="Upload notebook"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 17V5M7 10l5-5 5 5M5 21h14"/></svg><span class="control-label">Upload</span></button>
         <input id="journal-notes-file" type="file" accept=".json,.txt,application/json,text/plain" hidden>
       </div>
@@ -770,7 +770,7 @@ words, pick one of the checksum words.</span></span>
       <div class="journal-section-intro" id="journal-keymanager-tool-intro">
         <div class="kicker">Keys on paper you control.</div>
         <h2>Key manager</h2>
-        <p class="muted tool-intro-note" data-i18n-rich>Collect derived Key Station keys in one encrypted <code>.elkeys</code> file. Imported keys stay here until you explicitly load one into Key Station. The file uses this Journal's password and never leaves your machine.</p>
+        <p class="muted tool-intro-note" data-i18n-rich>Collect derived Key Station keys in one <code>.elkeys</code> file. Imported keys stay here until you explicitly load one into Key Station. The file uses this Journal's password setting and never leaves your machine; without a password it has no access protection.</p>
       </div>
       <div class="key-tab-strip journal-keymanager-tab-strip"><div class="key-tabs" id="journal-keymanager-tabs" role="tablist" aria-label="Managed keys"></div></div>
       <div class="journal-keymanager-panel" id="journal-keymanager-panel"></div>
@@ -779,7 +779,7 @@ words, pick one of the checksum words.</span></span>
         <div class="journal-keymanager-ignored-list" id="journal-keymanager-ignored-list"></div>
       </section>
       <div class="row psbt-actions journal-file-actions journal-keymanager-file-actions tool-actions">
-        <div class="journal-download-options"><button class="btn secondary journal-download-action journal-file-button" id="journal-keymanager-download" type="button" aria-label="Download managed keys" title="Download managed keys"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download keys</span></button><span class="journal-keymanager-encryption-note">Encrypted with the Journal password</span></div>
+        <div class="journal-download-options"><button class="btn secondary journal-download-action journal-file-button" id="journal-keymanager-download" type="button" aria-label="Download managed keys" title="Download managed keys"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download keys</span></button><span class="journal-keymanager-encryption-note">Uses this Journal's password setting</span></div>
         <button class="btn secondary journal-upload-action journal-file-button" id="journal-keymanager-upload" type="button" aria-label="Upload managed keys" title="Upload managed keys"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 17V5M7 10l5-5 5 5M5 21h14"/></svg><span class="control-label">Upload</span></button>
         <input id="journal-keymanager-file" type="file" accept=".elkeys,.json,application/json" hidden>
       </div>
@@ -800,7 +800,7 @@ words, pick one of the checksum words.</span></span>
         <textarea id="journal-state-text" spellcheck="false" autocomplete="off" autocapitalize="off" readonly aria-readonly="true"></textarea>
       </label>
       <div class="row psbt-actions tool-actions">
-        <div class="journal-download-options"><button class="btn secondary journal-download-action journal-file-button" id="journal-state-download" type="button" aria-label="Download session state" title="Download session state"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download session state</span></button><label class="journal-encrypt-option"><input class="journal-encrypt-download" id="journal-state-encrypt" type="checkbox" checked><span>Use journal password to encrypt</span></label></div>
+        <div class="journal-download-options"><button class="btn secondary journal-download-action journal-file-button" id="journal-state-download" type="button" aria-label="Download session state" title="Download session state"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download session state</span></button><label class="journal-encrypt-option"><input class="journal-encrypt-download" id="journal-state-encrypt" type="checkbox" checked><span>Use Journal file encryption</span></label></div>
       </div>
     </section>
       <section class="card no-print tool-card" id="journal-log-card" role="tabpanel" hidden>
@@ -812,7 +812,7 @@ words, pick one of the checksum words.</span></span>
       <p class="muted">Download this with a bug report. It names tools and fingerprints, not seeds.</p>
       <div class="journal-log-wrap"><pre class="journal-log" id="journal-log-out" aria-live="polite">No events yet.</pre><button class="seed-phrase-copy journal-log-copy" id="journal-log-copy" type="button" aria-label="Copy session log" title="Copy session log" data-copy-label="Copy session log" data-copied-label="Session log copied"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect class="seed-copy-icon-clip" x="8" y="2" width="8" height="4" rx="1"/><path class="seed-copy-icon-board" d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button></div>
       <div class="row psbt-actions journal-log-actions tool-actions">
-        <div class="journal-download-options"><button class="btn secondary journal-download-action journal-file-button" id="journal-log-download" type="button" aria-label="Download session log" title="Download session log"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download session log</span></button><label class="journal-encrypt-option"><input class="journal-encrypt-download" id="journal-log-encrypt" type="checkbox" checked><span>Use journal password to encrypt</span></label></div>
+        <div class="journal-download-options"><button class="btn secondary journal-download-action journal-file-button" id="journal-log-download" type="button" aria-label="Download session log" title="Download session log"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download session log</span></button><label class="journal-encrypt-option"><input class="journal-encrypt-download" id="journal-log-encrypt" type="checkbox" checked><span>Use Journal file encryption</span></label></div>
         <button class="btn clear-current-action" id="journal-log-clear" type="button">Clear log</button>
       </div>
     </section>
@@ -826,7 +826,7 @@ words, pick one of the checksum words.</span></span>
       <p data-i18n-rich>Die Distribution / Fairness Analysis (Pearson’s χ²): <a href="https://rpg.stackexchange.com/questions/70802/how-can-i-test-whether-a-die-is-fair" target="_blank" rel="noopener noreferrer">How can I test whether a die is fair?</a> — live check while entering rolls, following the <a href="https://dicefairness.johnellmore.com/" target="_blank" rel="noopener noreferrer">Dice Fairness Tester</a> thresholds.</p>
       <p data-i18n-rich>Jade anti-exfil (sign-to-contract): <a href="https://blog.blockstream.com/anti-exfil-stopping-key-exfiltration/" target="_blank" rel="noopener noreferrer">Anti-Exfil: Stopping Key Exfiltration</a> — secp256k1-zkp <code>ecdsa_s2c</code> / <code>anti_exfil_host_verify</code>.</p>
       <p data-i18n-rich>BIP-85 deterministic entropy: <a href="https://github.com/bitcoin/bips/blob/master/bip-0085.mediawiki" target="_blank" rel="noopener noreferrer">bip-0085.mediawiki</a> — HMAC-SHA512 of a fully hardened child; English BIP-39 / WIF / XPRV / HEX / password applications match COLDCARD.</p>
-      <p data-i18n-rich>Entropy Journal: AES-256-GCM from a typed password (Web Crypto) — PBKDF2-SHA-256, 600,000 rounds, with the salt derived from the password itself; the IV is HMAC-SHA-256 of the plaintext, so the same password and entries always reproduce the same file. No relays, no accounts, no localStorage for secrets.</p>
+      <p data-i18n-rich>Entropy Journal: AES-256-GCM from an optional typed password (Web Crypto) — PBKDF2-SHA-256, 600,000 rounds, with the salt derived from the password itself; the IV is HMAC-SHA-256 of the plaintext, so the same password and entries always reproduce the same file. An empty password preserves the file format but provides no access protection. No relays, no accounts, no localStorage for secrets.</p>
       <p data-i18n-rich>BIP-352 Silent Payments: <a href="https://github.com/bitcoin/bips/blob/master/bip-0352.mediawiki" target="_blank" rel="noopener noreferrer">bips/bip-0352</a> — reusable <code>sp1q…</code> addresses and unique taproot outputs. Descriptors: <a href="https://github.com/bitcoin/bips/blob/master/bip-0392.mediawiki" target="_blank" rel="noopener noreferrer">BIP-392</a>. Publish URI: <a href="https://github.com/bitcoin/bips/blob/master/bip-0321.mediawiki" target="_blank" rel="noopener noreferrer">BIP-321</a>. DNS name: <a href="https://github.com/bitcoin/bips/blob/master/bip-0353.mediawiki" target="_blank" rel="noopener noreferrer">BIP-353</a> — this page prints the TXT, it does not resolve names.</p>
       <p data-i18n-rich>Inscription envelopes: <a href="https://docs.ordinals.com/inscriptions.html" target="_blank" rel="noopener noreferrer">docs.ordinals.com/inscriptions</a> — <code>OP_FALSE OP_IF "ord"</code> parser only. This tool does not create inscriptions or number sats.</p>
     </section>

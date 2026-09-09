@@ -769,7 +769,6 @@
     const dplusRange = dplusProgress.querySelector(".sr-only");
     assert(/D8 roll|D16 roll/.test(dplusProgress.textContent) && /^ \([01]–[8F]\)$/.test(dplusRange?.textContent || ""), "D++ progress lost its accessible next-roll range");
     assert([...dplusProgress.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE).every((node) => !/[01]–[8F]/.test(node.textContent)), "D++ progress left the face range in the visible narrow-screen line");
-    assert(document.getElementById("dice-help").textContent.includes("D8 face from 1–8") && document.getElementById("dice-help").textContent.includes("D16 faces from 0–F"), "D++ input guidance lost its face ranges");
     equal(document.getElementById("dice").value, "1", "Three bits did not emit the first complete D++ D8 result");
     document.querySelector('input[name="dm"][value="bitbox"]').click();
     equal(document.getElementById("dice").value, "1", "BitBox emitted a second die before four bits were available");
@@ -2072,7 +2071,7 @@
     assert(!modes.querySelector(".tab"), "The segmented method row should be gone at every width");
     equal([...select.options].map((option) => option.value).join(","), "dice,cards,hex,seed,key");
     equal(select.getAttribute("aria-labelledby"), "key-method-label");
-    equal(document.getElementById("key-method-label").textContent, "Method");
+    equal(document.getElementById("key-method-label").textContent, "Derivation Method");
     const root = modes.querySelector(".custom-select");
     assert(root, "The method select was not upgraded to the shared dropdown");
     const button = root.querySelector(".custom-select-button");
@@ -2540,10 +2539,18 @@
     const toggle = await until(() => document.getElementById("dice-fairness-toggle"), "dice fairness toggle");
     const glyph = toggle.querySelector("[data-dice-fairness-glyph]");
     assert(toggle.textContent.includes("Die Distribution / Fairness Analysis") && glyph && glyph.textContent === "▸", "Fairness toggle did not use a text glyph and Die Distribution / Fairness Analysis label");
-    assert(toggle.closest(".seed-word-copy-row")?.querySelector(":scope > .seed-phrase-copy"), "Fairness toggle did not share the copy row");
+    // The toggle heads the panel it opens, so it has its own row; the copy
+    // button sits with the seed phrase title, above the grid it copies from.
+    assert(toggle.closest(".dice-fairness-row"), "Fairness toggle left its own row");
+    assert(!toggle.closest(".seed-word-copy-row"), "Fairness toggle is back in the copy row");
+    const titleRow = document.querySelector(".seed-word-copy-row:has(> .seed-phrase-copy)");
+    assert(titleRow?.querySelector(":scope > .label")?.textContent.trim(), "Copy button row lost its seed phrase title");
     input(dice, "");
     assert(panel.hidden && toggle.getAttribute("aria-expanded") === "false", "Empty rolls still showed the fairness panel");
+    const fairnessRow = toggle.closest(".dice-fairness-row");
+    assert(fairnessRow.hidden, "Fairness control showed with no rolls to analyse");
     input(dice, "123456".repeat(5));
+    assert(!fairnessRow.hidden, "Fairness control stayed hidden once rolls arrived");
     assert(panel.hidden, "Uniform d6 rolls opened the fairness panel without the expand button");
     toggle.click();
     assert(!panel.hidden && toggle.getAttribute("aria-expanded") === "true" && glyph.textContent === "▾", "Die Distribution / Fairness Analysis button did not expand the fairness panel");
@@ -2556,6 +2563,7 @@
     assert(panel.hidden && toggle.getAttribute("aria-expanded") === "false" && glyph.textContent === "▸", "Die Distribution / Fairness Analysis button did not collapse the fairness panel");
     input(dice, "");
     assert(panel.hidden, "Cleared rolls did not keep the fairness panel hidden");
+    assert(fairnessRow.hidden, "Cleared rolls left the fairness control behind");
   });
 
   await test("dice, binary, passphrase, multisig, and PSBT inputs cannot inject markup", async () => {

@@ -2277,6 +2277,16 @@ function hodlDPlusFinalNote(words = hodlTargetWordCount) {
   if (steps[0] === steps[1]) return hodlNote("roll a final {die} twice", { die: labels[0] });
   return hodlNote("roll a final {a} and {b}", { a: labels[0], b: labels[1] });
 }
+// The title wants a noun phrase ("one D8"), not the instruction the progress
+// line uses ("roll the D8 once more"). The final step differs per seed
+// length, so this cannot be a fixed string: 24 words end on one D8, but 21
+// end on one D16 and 18 on a D16 plus a coin flip.
+function hodlDPlusFinalPhrase(words = hodlTargetWordCount) {
+  let steps = hodlDPlusFinalSteps(words), labels = steps.map(hodlDPlusStepNoteLabel);
+  if (steps.length === 1) return hodlFormatNote(hodlNote("one {die}", { die: labels[0] }));
+  if (steps[0] === steps[1]) return hodlFormatNote(hodlNote("two {die}", { die: labels[0] }));
+  return hodlFormatNote(hodlNote("one {a} and {b}", { a: labels[0], b: labels[1] }));
+}
 function hodlDPlusFinalDescription(words = hodlTargetWordCount) {
   return hodlFormatNote(hodlDPlusFinalNote(words));
 }
@@ -2649,7 +2659,7 @@ function hodlDiceFairnessIsOpen() {
 }
 function hodlDiceFairnessToggleMarkup(open) {
   let expanded = Boolean(open);
-  return `<button type="button" class="dice-fairness-toggle" id="dice-fairness-toggle" aria-controls="dice-fairness" aria-expanded="${expanded}" aria-label="${expanded ? hodlT("Hide die distribution / fairness analysis") : hodlT("Show die distribution / fairness analysis")}"><span data-dice-fairness-glyph aria-hidden="true">${expanded ? "\u25BE" : "\u25B8"}</span> ${hodlT("Die Distribution / Fairness Analysis")}</button>`;
+  return `<button type="button" class="dice-fairness-toggle" id="dice-fairness-toggle" aria-controls="dice-fairness" aria-expanded="${expanded}" aria-label="${expanded ? hodlT("Hide die distribution / fairness analysis") : hodlT("Show die distribution / fairness analysis")}"><span data-dice-fairness-glyph aria-hidden="true">${expanded ? "\u25BE" : "\u25B8"}</span>${hodlT("Die Distribution / Fairness Analysis")}</button>`;
 }
 function hodlSetDiceFairnessOpen(open) {
   let expanded = Boolean(open), state = hodlKeys[hodlActiveKey], toggle = document.getElementById("dice-fairness-toggle"), glyph = toggle?.querySelector("[data-dice-fairness-glyph]");
@@ -2667,7 +2677,13 @@ function hodlRenderDiceFairness(value, method, targetWords = hodlTargetWordCount
   let panel = document.getElementById("dice-fairness");
   if (!panel) return;
   let reports = hodlDiceFairnessReports(value, method, targetWords), markup = hodlDiceFairnessMarkup(reports), open = hodlDiceFairnessIsOpen();
-  panel.hidden = !open;
+  // There is nothing to analyse until rolls arrive, so the control comes and
+  // goes with the analysis rather than offering to open an empty panel. The
+  // panel goes with it, or clearing the rolls would strand it open with no
+  // control left to close it.
+  let row = panel.previousElementSibling;
+  if (row?.classList.contains("dice-fairness-row")) row.hidden = !markup;
+  panel.hidden = !open || !markup;
   panel.dataset.tone = open ? hodlDiceFairnessTone(reports) : "muted";
   panel.innerHTML = open ? (markup ? `${markup}<p class="dice-fairness-caveat">${hodlT("Pearson’s χ² goodness-of-fit. A lucky streak can look biased, and a biased die can look fair until more rolls arrive. This check does not block derivation.")}</p>` : `<p class="dice-fairness-note">${hodlT("Enter rolls to run Pearson’s χ² test.")}</p>`) : "";
   panel.setAttribute("aria-label", hodlTText("Die Distribution / Fairness Analysis"));
@@ -3643,16 +3659,16 @@ function hodlPassphraseKeyboardToggleMarkup() {
 }
 function hodlPassphraseBip39ToggleMarkup(checked = hodlPassphraseBip39Enabled()) {
   let autocomplete = hodlPassphraseAutocompleteEnabled();
-  return `<div class="passphrase-bip39-options"><label class="seed-autocomplete-toggle passphrase-bip39-toggle"><input type="checkbox" id="passphrase-bip39-words" ${checked ? "checked" : ""} /><span><strong>Build passphrase from BIP39 words</strong> <span class="seed-autocomplete-note">(lowercase words separated by single spaces)</span></span></label><label class="seed-autocomplete-toggle passphrase-autocomplete-toggle" id="passphrase-autocomplete-control"${checked ? "" : " hidden"}><input type="checkbox" id="passphrase-autocomplete" ${autocomplete ? "checked" : ""} /><span><strong>Autocomplete BIP39 words</strong></span></label></div>`;
+  return `<div class="passphrase-bip39-options"><div class="passphrase-bip39-row"><label class="seed-autocomplete-toggle passphrase-bip39-toggle"><input type="checkbox" id="passphrase-bip39-words" aria-describedby="passphrase-bip39-note" ${checked ? "checked" : ""} /><span class="label">Build passphrase from BIP39 words</span></label><p class="seed-autocomplete-note passphrase-bip39-note" id="passphrase-bip39-note">lowercase words separated by single spaces</p></div><label class="seed-autocomplete-toggle passphrase-autocomplete-toggle" id="passphrase-autocomplete-control"${checked ? "" : " hidden"}><input type="checkbox" id="passphrase-autocomplete" ${autocomplete ? "checked" : ""} /><span class="label">Autocomplete BIP39 words</span></label></div>`;
 }
 function hodlBrainWalletTrimEnabled() {
   return Boolean(document.getElementById("brain-wallet-trim")?.checked);
 }
 function hodlBrainWalletTrimToggleMarkup(checked = Boolean(hodlKeys[hodlActiveKey]?.brainWalletTrim)) {
-  return `<label class="seed-autocomplete-toggle brain-wallet-trim-toggle" data-brain-wallet-trim-control hidden><input type="checkbox" id="brain-wallet-trim" ${checked ? "checked" : ""} /><span><strong>Trim leading and trailing whitespace</strong></span></label>`;
+  return `<label class="seed-autocomplete-toggle brain-wallet-trim-toggle" data-brain-wallet-trim-control hidden><input type="checkbox" id="brain-wallet-trim" ${checked ? "checked" : ""} /><span class="label">Trim leading and trailing whitespace</span></label>`;
 }
 function hodlPrivateKeyKeyboardToggleMarkup() {
-  return `<div class="passphrase-keyboard-tools">${hodlKeyboardToggleMarkup("private-keyboard-toggle", "on-screen private key keyboard", "private-keyboard")}${hodlBrainWalletTrimToggleMarkup()}</div>`;
+  return `<div class="passphrase-keyboard-tools">${hodlBrainWalletTrimToggleMarkup()}${hodlKeyboardToggleMarkup("private-keyboard-toggle", "on-screen private key keyboard", "private-keyboard")}</div>`;
 }
 function hodlBase64KeyboardToggleMarkup() {
   return hodlKeyboardToggleMarkup("base64-keyboard-toggle", "on-screen Base64 keyboard", "base64-keyboard");
@@ -4320,7 +4336,7 @@ function hodlRenderPassphraseKeyboard() {
     enabled = !shared;
   if (toggleHost) {
     toggleHost.hidden = !passphrase;
-    toggleHost.innerHTML = passphrase ? (ownToggle ? hodlPassphraseKeyboardToggleMarkup() : "") + hodlPassphraseBip39ToggleMarkup() : "";
+    toggleHost.innerHTML = passphrase ? hodlPassphraseBip39ToggleMarkup() + (ownToggle ? hodlPassphraseKeyboardToggleMarkup() : "") : "";
   }
   if (!host) return;
   host.hidden = !enabled;
@@ -4462,9 +4478,14 @@ function hodlManualCalculationMarkup(method, value, targetWords = hodlTargetWord
 function hodlRenderManualCalculations(id, method, value, targetWords = hodlTargetWordCount) {
   let panel = document.getElementById(id);
   if (!panel) return;
-  let markup = hodlManualCalculationsOpen ? hodlManualCalculationMarkup(method, value, targetWords) : "";
-  panel.hidden = !markup;
-  panel.innerHTML = markup;
+  // The switch answers to the calculations, not to the method: offering it
+  // before the first complete word gives the reader a control that opens on
+  // nothing. So the markup is built either way, and the row it lives in comes
+  // and goes with it; only the panel below answers to the checkbox.
+  let markup = hodlManualCalculationMarkup(method, value, targetWords), row = panel.previousElementSibling;
+  if (row?.classList.contains("manual-calculations-row")) row.hidden = !markup;
+  panel.hidden = !hodlManualCalculationsOpen || !markup;
+  panel.innerHTML = hodlManualCalculationsOpen ? markup : "";
 }
 function hodlRenderNumberBaseCalculations(value, format = "bin", targetWords = hodlTargetWordCount) {
   let panel = document.getElementById("number-base-calculations"), toggle = document.getElementById("show-number-base-calculations");
@@ -4810,7 +4831,7 @@ function hodlGlobalSyncControlMarkup(state) {
     syncUnknown = Boolean(syncBits) && reported === hodlGlobalSyncUnknownBits,
     syncShort = Boolean(syncBits) && !syncUnknown && effectiveBits < hodlGlobalSyncMinimumBits(),
     caution = syncUnknown ? hodlT("entropy unknown · only as strong as the text") : hodlT("{n} bits of entropy · under {min}", { n: effectiveBits, min: hodlGlobalSyncMinimumBits() });
-  return `<div class="global-sync-row"><div class="global-sync-head"><label class="seed-autocomplete-toggle global-sync-toggle"><input type="checkbox" id="global-entropy-sync" aria-describedby="global-sync-note" ${state?.globalSync ? "checked" : ""} /><span class="label">${hodlT("Sync entropy across methods")}</span></label><span class="global-sync-status" id="global-sync-status" aria-live="polite" ${state?.globalSync && syncBits ? "" : "hidden"}>${hodlCopiedIconMarkup()}<span>${hodlT("Key synced")}</span>${syncShort || syncUnknown ? `<span class="global-sync-shortfall">${hodlSyncWarningIconMarkup()}<span>${caution}</span></span>` : ""}</span></div><p class="seed-autocomplete-note global-sync-note" id="global-sync-note">${hodlT("(Keeps non-hashed methods synchronized. Hashed inputs update them one way and are never overwritten.)")}</p></div>`;
+  return `<div class="global-sync-row"><div class="global-sync-head"><label class="seed-autocomplete-toggle global-sync-toggle"><input type="checkbox" id="global-entropy-sync" aria-describedby="global-sync-note" ${state?.globalSync ? "checked" : ""} /><span class="label">${hodlT("Sync entropy across methods")}</span></label><span class="global-sync-status" id="global-sync-status" aria-live="polite" ${state?.globalSync && syncBits ? "" : "hidden"}>${hodlCopiedIconMarkup()}<span>${hodlT("Key synced")}</span>${syncShort || syncUnknown ? `<span class="global-sync-shortfall">${hodlSyncWarningIconMarkup()}<span>${caution}</span></span>` : ""}</span></div><p class="seed-autocomplete-note global-sync-note" id="global-sync-note">${hodlT("Keeps non-hashed methods synchronized. Hashed inputs update them one way and are never overwritten.")}</p></div>`;
 }
 function hodlRenderGlobalSyncControl() {
   let host = document.getElementById("global-sync-host"), state = hodlKeys[hodlActiveKey];
@@ -4850,6 +4871,48 @@ function hodlCopiedIconMarkup() {
 }
 function hodlSeedMetaRowMarkup(metaId, live = false) {
   return `<div class="seed-word-meta"><p class="muted" id="${metaId}"${live ? ' aria-live="polite"' : ""}></p></div>`;
+}
+// A dice progress line is a stack of short sentences, each carrying at most one
+// live number. The number takes colour and weight from whether the target is
+// met, and is spliced in as a node around a sentinel rather than built as
+// markup: a translation may put it anywhere in its own sentence, and the line
+// never becomes an HTML sink — the tail quotes what was typed.
+var hodlDiceMetaToken = "\u0000";
+function hodlDiceMetaValue(text, met) {
+  let span = document.createElement("span");
+  span.className = "dice-meta-value " + (met ? "is-met" : "is-short");
+  span.textContent = text;
+  return span;
+}
+// The next roll is the one thing to act on, so it carries the weight. The face
+// range rides along for screen readers only: the keypad already shows it.
+function hodlDPlusRollNode(rollPhrase, rollRange) {
+  let fragment = document.createDocumentFragment(), emphasis = document.createElement("strong"), accessibleRange = document.createElement("span");
+  emphasis.textContent = rollPhrase;
+  accessibleRange.className = "sr-only";
+  accessibleRange.textContent = rollRange;
+  fragment.append(emphasis, accessibleRange);
+  return fragment;
+}
+// A whole-line cue rather than a figure: it takes the met colour without the
+// weight, which stays reserved for the numbers.
+function hodlDiceMetaCue(text) {
+  let span = document.createElement("span");
+  span.className = "dice-meta-cue";
+  span.textContent = text;
+  return span;
+}
+function hodlRenderDiceMeta(lines, tail) {
+  let nodes = [];
+  for (let [text, value] of lines) {
+    if (nodes.length) nodes.push(document.createElement("br"));
+    for (let piece of text.split(/(\u0000)/)) {
+      if (piece === "") continue;
+      nodes.push(piece === hodlDiceMetaToken && value ? value : document.createTextNode(piece));
+    }
+  }
+  if (tail) nodes.push(document.createTextNode(tail));
+  hodlElement("#dice-meta").replaceChildren(...nodes);
 }
 function hodlSeedCopyRowMarkup(leading = "") {
   return `<div class="seed-word-copy-row">${leading}<span class="seed-phrase-copied" aria-live="polite"></span><button type="button" class="seed-phrase-copy" data-copy-seed-phrase disabled aria-label="${hodlT("Copy seed phrase")}" title="${hodlT("Copy seed phrase")}">${hodlClipboardIconMarkup()}</button></div>`;
@@ -5075,12 +5138,11 @@ function hodlRenderKeyForm() {
   if (hodlKeyMode === "dice") {
     let dplusFaces = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D", "E", "F"],
       dplusPad = dplusFaces.map(face => `<button type="button" data-d="${face}" aria-label="${hodlT("Hexadecimal D16 result {face}", { face })}">${face}</button>`).join("");
-    let diceLabel = hodlDiceMethod === "dplus" ? hodlT("D++ rolls (D8, D16, D16; then {final})", { final: hodlDPlusFinalDescription(config.words) }) : hodlDiceMethod === "bitbox" ? hodlT("Dice rolls (1–4, then a 6th die interpreted as a coin flip)") : hodlT("Dice rolls (faces 1–6 only)");
-    let diceHelp = hodlDiceMethod === "dplus" ? hodlT("Enter the D8 face from 1–8, then both hexadecimal D16 faces from 0–F exactly as shown on the dice. For example, 100 selects abandon and 8FF selects zoo. {finalHelp}", { finalHelp: hodlDPlusFinalHelp(config.words) }) : hodlDiceMethod === "bitbox" ? hodlT("{partialWords} lookup-table words fill one slot at a time, then choose a confirmed final checksum word. Use 1–4 for the first five rolls (if you get 5 or 6, roll again). The sixth roll is treated as the coin: 1–3 is Heads, 4–6 is Tails. Or flip a real coin!", { partialWords: config.partialWords }) : hodlDiceMethod === "coleman" ? hodlT("Every rolled 6 becomes 0 before the complete digit string is hashed with SHA-256. This Dice [1-6] method matches the method used by Keystone. Any nonempty count produces a phrase, but use at least {hashRolls} fair rolls before relying on it.", { hashRolls: config.hashRolls }) : hodlT("The original dice digit string is hashed with SHA-256. This Base 10 [0-9] method matches COLDCARD and SeedSigner. Any nonempty count produces a phrase, but use at least {hashRolls} fair rolls before relying on it.", { hashRolls: config.hashRolls });
+    let diceLabel = hodlDiceMethod === "dplus" ? hodlT("D++ rolls (each word D8 and two D16 hexadice; then {final} for checksum)", { final: hodlDPlusFinalPhrase(config.words) }) : hodlDiceMethod === "bitbox" ? hodlT("Dice rolls (each word five D6 and a sixth D6 as a coin flip)") : hodlT("Dice rolls (D6)");
     let dicePlaceholder = hodlDiceMethod === "dplus" ? "100 2AF…" : hodlDiceMethod === "bitbox" ? "111111 222224\u2026" : "415263415263\u2026";
     let dicePad = hodlDiceMethod === "dplus" ? `<div class="dice-input-pad dplus">${dplusPad}</div>` : `<div class="dice-input-pad faces-1-6">${[1,2,3,4,5,6].map(face=>`<button type="button" data-d="${face}">${face}</button>`).join("")}</div>`;
     hodlFormEl.innerHTML = `
-      <p class="label">${hodlT("How to turn rolls into a {words}-word seed", { words: config.words })}</p>
+      <p class="label">${hodlT("Dice roll options")}</p>
       <div class="choice-grid">
       <label class="choice"><input type="radio" name="dm" value="coldcard" ${hodlDiceMethod === "coldcard" ? "checked" : ""} />
         <span><strong>${hodlT("Base 10 [0-9] / Hashed rolls (recommended)")}</strong><span class="desc">${hodlT("SHA-256 of the original dice digit string, matching the method used by COLDCARD and SeedSigner. The first {bits} bits become the selected {words}-word seed; {hashRolls} rolls are recommended, and every entered roll is included.", { bits: config.bits, words: config.words, hashRolls: config.hashRolls })}</span></span>
@@ -5096,13 +5158,13 @@ function hodlRenderKeyForm() {
       </label>
       </div>
       <p class="label" id="dice-label">${diceLabel}</p>
-      <p class="muted" id="dice-help">${diceHelp}</p>
-      <div class="dice-input-shell"><pre class="dice-input-highlight" id="dice-highlight" aria-hidden="true"></pre><textarea id="dice" placeholder="${dicePlaceholder}" aria-describedby="dice-help dice-meta"></textarea></div>
       ${hodlSeedMetaRowMarkup("dice-meta", true)}
+      <div class="dice-input-shell"><pre class="dice-input-highlight" id="dice-highlight" aria-hidden="true"></pre><textarea id="dice" placeholder="${dicePlaceholder}" aria-describedby="dice-meta"></textarea></div>
       ${dicePad}
-      ${hodlDiceMethod === "bitbox" || hodlDiceMethod === "dplus" ? `<label class="seed-autocomplete-toggle manual-calculations-toggle"><input type="checkbox" id="show-manual-calculations" ${hodlManualCalculationsOpen ? "checked" : ""} /><span><strong>${hodlT("Show calculations")}</strong> <span class="seed-autocomplete-note">${hodlT("(show how direct word selection produces each BIP39 index)")}</span></span></label><div id="dice-manual-calculations" class="manual-calculations-container" hidden></div>` : ""}
-      ${hodlSeedCopyRowMarkup(hodlDiceFairnessToggleMarkup(hodlKeys[hodlActiveKey]?.showDiceFairness))}
+      ${hodlDiceMethod === "bitbox" || hodlDiceMethod === "dplus" ? `<div class="manual-calculations-row" hidden><label class="seed-autocomplete-toggle manual-calculations-toggle"><input type="checkbox" id="show-manual-calculations" aria-describedby="manual-calculations-note" ${hodlManualCalculationsOpen ? "checked" : ""} /><span class="label">${hodlT("Show calculations")}</span></label><p class="seed-autocomplete-note manual-calculations-note" id="manual-calculations-note">${hodlT("show how direct word selection produces each BIP39 index")}</p></div><div id="dice-manual-calculations" class="manual-calculations-container" hidden></div>` : ""}
+      <div class="dice-fairness-row" hidden>${hodlDiceFairnessToggleMarkup(hodlKeys[hodlActiveKey]?.showDiceFairness)}</div>
       <aside id="dice-fairness" class="dice-fairness" hidden role="status" aria-live="polite"></aside>
+      ${hodlSeedCopyRowMarkup(`<p class="label">${hodlT("Derived seed phrase")}</p>`)}
       <div id="dice-words" class="dice-word-grid" aria-label="${hodlT("{n} seed-word slots", { n: config.words })}"></div><div id="last-words" class="row last-word-options"></div>`;
     let input = document.getElementById("dice");
     input.dataset.previousValue = input.value;
@@ -5167,7 +5229,7 @@ function hodlRenderKeyForm() {
     let rankPad = direct ? hodlDirectCardRanks.map((rank) => `<button type="button" data-direct-card-rank="${rank}" aria-label="Enter rank ${rank}">${rank}</button>`).join("") : hodlCardRanks.map((rank) => `<button type="button" data-card-rank="${rank}" aria-label="${rank === "T" ? "10" : rank}">${rank === "T" ? "10" : rank}</button>`).join("");
     let inputId = direct ? "direct-cards" : "cards", inputLabel = direct ? "Rank-only draw transcript" : "Card transcript", inputHelp = direct ? `For each of the first ${config.partialWords} words, shuffle and draw from A\u20138 three times, then A\u20134 once. Each four-character group selects one word; spaces separate the groups. The shorter final group supplies the remaining entropy bits, and EntropyLab calculates the BIP39 checksum bits.` : `Each valid card updates a deterministic test seed. For real security, ${config.words === 24 ? "deal all 52 unique cards, shuffle again, then deal 6 more" : `deal ${needed.first} unique cards without putting them back`}. SHA-256 hashes the ASCII transcript (As 2c Td).`, placeholder = direct ? "A284 37A2 \u2026" : hodlCardColemanSymbols ? "A\u2660 2\u2663 T\u2665 T\u2666\u2026" : "As 2c Th Td\u2026";
     hodlFormEl.innerHTML = `
-      <p class="label">${hodlT("How to turn cards into a {words}-word seed", { words: config.words })}</p>
+      <p class="label">${hodlT("Card options")}</p>
       <div class="choice-grid">
         <label class="choice"><input type="radio" name="card-method" value="hashed" ${direct ? "" : "checked"} /><span><strong>${hodlT("Hashed card transcript")}</strong><span class="desc">${hodlT("Deal unique rank-and-suit cards without replacement. SHA-256 hashes the complete transcript; {recommended}.", { recommended: hashedRecommended })}</span></span></label>
         <label class="choice"><input type="radio" name="card-method" value="direct" ${direct ? "checked" : ""} /><span><strong>${hodlT("Direct word selection")}</strong><span class="desc">${hodlT("Ignore suits. Reshuffle and draw A–8, A–8, A–8, then A–4 for each full word. Finish with the shorter rank sequence shown for the checksum-valid final word.")}</span></span></label>
@@ -5182,7 +5244,7 @@ function hodlRenderKeyForm() {
       <div class="card-controls-row"><button class="card-undo-button seed-keyboard-delete" id="card-undo" type="button" aria-label="${hodlT("Undo last card")}" title="${hodlT("Undo last card")}" disabled><svg viewBox="0 0 24 18" aria-hidden="true" focusable="false"><path d="M9 2h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9L2 9l7-7Z"/><path d="m12 6 6 6m0-6-6 6"/></svg></button><label class="seed-autocomplete-toggle card-visibility-toggle"><input type="checkbox" id="show-cards" aria-controls="dealt-cards" ${showCards ? "checked" : ""} /><span>${hodlT("Show cards")}</span></label></div>
       <aside class="cards-reshuffle" id="cards-reshuffle" hidden></aside>
       <div class="dealt-cards" id="dealt-cards" aria-live="polite"${showCards ? "" : " hidden"}></div>
-      ${direct ? `<label class="seed-autocomplete-toggle manual-calculations-toggle"><input type="checkbox" id="show-manual-calculations" ${hodlManualCalculationsOpen ? "checked" : ""} /><span><strong>${hodlT("Show calculations")}</strong> <span class="seed-autocomplete-note">${hodlT("(show how direct card selection produces each BIP39 index)")}</span></span></label><div id="cards-manual-calculations" class="manual-calculations-container" hidden></div>` : ""}
+      ${direct ? `<div class="manual-calculations-row" hidden><label class="seed-autocomplete-toggle manual-calculations-toggle"><input type="checkbox" id="show-manual-calculations" aria-describedby="manual-calculations-note" ${hodlManualCalculationsOpen ? "checked" : ""} /><span class="label">${hodlT("Show calculations")}</span></label><p class="seed-autocomplete-note manual-calculations-note" id="manual-calculations-note">${hodlT("show how direct card selection produces each BIP39 index")}</p></div><div id="cards-manual-calculations" class="manual-calculations-container" hidden></div>` : ""}
       ${hodlSeedCopyRowMarkup()}
       <div id="dice-words" class="dice-word-grid" aria-label="${hodlT("{n} seed-word slots", { n: config.words })}"></div>
     `;
@@ -5325,7 +5387,7 @@ function hodlRenderKeyForm() {
     return;
   }
   if (hodlKeyMode === "seed") {
-    let state = hodlKeys[hodlActiveKey], autocompleteEnabled = Boolean(state?.seedAutocomplete), numbers = hodlSeedMethod === "numbers", choices = `<p class="label">${hodlT("How to enter a seed phrase")}</p><div class="choice-grid seed-method-grid"><label class="choice"><input type="radio" name="seed-method" value="words" ${numbers ? "" : "checked"} /><span><strong>${hodlT("Direct word entry")}</strong><span class="desc">${hodlT("Type or paste the English BIP39 words themselves.")}</span></span></label><label class="choice"><input type="radio" name="seed-method" value="numbers" ${numbers ? "checked" : ""} /><span><strong>${hodlT("BIP39 word numbers")}</strong><span class="desc">${hodlT("Enter each word's position in the standard English list, using 1 through 2048 by default.")}</span></span></label></div>`;
+    let state = hodlKeys[hodlActiveKey], autocompleteEnabled = Boolean(state?.seedAutocomplete), numbers = hodlSeedMethod === "numbers", choices = `<p class="label">${hodlT("Seed phrase format")}</p><div class="choice-grid seed-method-grid"><label class="choice"><input type="radio" name="seed-method" value="words" ${numbers ? "" : "checked"} /><span><strong>${hodlT("Direct word entry")}</strong><span class="desc">${hodlT("Type or paste the English BIP39 words themselves.")}</span></span></label><label class="choice"><input type="radio" name="seed-method" value="numbers" ${numbers ? "checked" : ""} /><span><strong>${hodlT("BIP39 word numbers")}</strong><span class="desc">${hodlT("Enter each word's position in the standard English list, using 1 through 2048 by default.")}</span></span></label></div>`;
     let bindMethodChoices = (input) => hodlFormEl.querySelectorAll('input[name="seed-method"]').forEach((radio) => {
       radio.onchange = () => {
         if (!radio.checked) return;
@@ -5511,9 +5573,7 @@ function hodlUpdateDice() {
   if (hodlDiceMethod !== "bitbox" && inputState.coinDerivedCount) invalidStatus += hodlT(" · coin-button digits are BitBox-only");
   if (hodlDiceMethod === "dplus") {
     let result = inputState.dplus || hodlDPlusRolls(input.value, config.words),
-      status = "",
-      selectingFinal = result.waiting === "last-word",
-      d16Range = "0\u2013F";
+      selectingFinal = result.waiting === "last-word";
     if (hodlPickedLastWord && (!selectingFinal || !result.candidates.includes(hodlPickedLastWord))) {
       hodlPickedLastWord = "";
       let state = hodlKeys[hodlActiveKey];
@@ -5521,41 +5581,26 @@ function hodlUpdateDice() {
     }
     let selectedFinal = selectingFinal ? hodlPickedLastWord : "",
       complete = result.complete || Boolean(selectedFinal);
-    let rollPhrase = "",
-      rollRange = "",
-      groupsEntered = `Group ${result.completedGroups} of ${config.partialWords} \xB7 word ${result.activeGroupIndex+1}`,
-      rollsComplete = `${config.partialWords} of ${config.partialWords} word rolls complete`;
-    if (result.waiting === "d8") {
-      status = groupsEntered;
-      rollPhrase = hodlT("D8 roll");
-      rollRange = hodlT(" (1–8)");
-    } else if (result.waiting === "d16-first") {
-      status = groupsEntered;
-      rollPhrase = hodlT("first D16 roll");
-      rollRange = hodlT(" (0–F)");
-    } else if (result.waiting === "d16-second") {
-      status = groupsEntered;
-      rollPhrase = hodlT("second D16 roll");
-      rollRange = hodlT(" (0–F)");
-    } else if (result.waiting === "correction") {
+    // Word progress, then what to do next — the same two lines the BitBox
+    // method shows. The word number is the count to act on: red until every
+    // word group is rolled, green once the phrase is down to its checksum.
+    // The old "Group x of y" prefix counted completed groups beside the active
+    // word, so the line carried two numbers that disagreed by one throughout.
+    let rollPhrase = "", rollRange = "", nextText = "", nextCue = "";
+    if (result.waiting === "d8") { rollPhrase = hodlTText("D8 roll"); rollRange = hodlTText(" (1–8)"); }
+    else if (result.waiting === "d16-first") { rollPhrase = hodlTText("first D16 roll"); rollRange = hodlTText(" (0–F)"); }
+    else if (result.waiting === "d16-second") { rollPhrase = hodlTText("second D16 roll"); rollRange = hodlTText(" (0–F)"); }
+    else if (result.waiting === "correction") {
       let invalid = result.firstInvalid,
         specSteps = hodlDPlusFinalSteps(config.words),
         position = invalid?.final ? hodlDPlusStepChecksumLabel(specSteps[invalid.position]) : `word ${(invalid?.groupIndex??0)+1}'s ${invalid?.position===0?"D8":invalid?.position===1?"first D16":"second D16"} roll`;
-      status = `Group ${result.completedGroups} of ${config.partialWords} \xB7 correct ${result.invalidRequiredCount} highlighted invalid result${result.invalidRequiredCount===1?"":"s"}, starting with ${position}`
-    } else if (selectingFinal) status = selectedFinal ? `${config.words} of ${config.words} seed words \xB7 checksum valid \xB7 ready to derive` : `${rollsComplete} \xB7 choose the final checksum word`;
-    else if (result.waiting === "checksum-d8") {
-      status = rollsComplete;
-      rollPhrase = hodlT("final D8 checksum roll");
-      rollRange = hodlT(" (1–8)");
-    } else if (result.waiting === "checksum-d16") {
-      status = rollsComplete;
-      rollPhrase = hodlT("final D16 checksum roll");
-      rollRange = hodlT(" (0–F)");
-    } else if (result.waiting === "checksum-coin") {
-      status = rollsComplete;
-      rollPhrase = hodlT("final D8 as a coin flip");
-      rollRange = hodlT(" (1–4 Heads, 5–8 Tails)");
-    } else status = hodlT("{words} of {words} seed words · checksum valid · ready to derive", { words: config.words });
+      nextText = `correct ${result.invalidRequiredCount} highlighted invalid result${result.invalidRequiredCount===1?"":"s"}, starting with ${position}`;
+    }
+    else if (selectingFinal) nextCue = selectedFinal ? hodlTText("checksum valid · ready to derive") : hodlTText("choose final checksum word below");
+    else if (result.waiting === "checksum-d8") { rollPhrase = hodlTText("final D8 checksum roll"); rollRange = hodlTText(" (1–8)"); }
+    else if (result.waiting === "checksum-d16") { rollPhrase = hodlTText("final D16 checksum roll"); rollRange = hodlTText(" (0–F)"); }
+    else if (result.waiting === "checksum-coin") { rollPhrase = hodlTText("final D8 as a coin flip"); rollRange = hodlTText(" (1–4 Heads, 5–8 Tails)"); }
+    else nextCue = hodlTText("checksum valid · ready to derive");
     let statusTail = result.extraAfter ? hodlT(" · {n} extra input(s) ignored", { n: result.extraAfter }) : "";
     let displayWords = result.wordSlots.slice();
     if (result.finalWord) displayWords.push(result.finalWord);
@@ -5568,32 +5613,40 @@ function hodlUpdateDice() {
       if (state) state.dplusLastWord = hodlPickedLastWord;
       hodlUpdateDice();
     }, { forceSelect: true, targetWords: config.words, placeholder: hodlT("Choose {article} {n}th word", { article: hodlT(config.words === 18 ? "an" : "a"), n: config.words }) });
+    // D++ rolls all 24 words: the last is a single checksum roll, not a pick
+    // from a list, so it counts toward the total the way the other 23 do. The
+    // count only turns green once that roll lands — the same moment the
+    // "checksum valid" line appears, so the two never contradict each other.
+    let partialDone = result.completedGroups >= config.partialWords,
+      activeWord = partialDone ? config.words : result.activeGroupIndex + 1;
+    hodlRenderDiceMeta([
+      [hodlTText("Word {word} of {partial}", { word: hodlDiceMetaToken, partial: config.words }), hodlDiceMetaValue(String(activeWord), complete)],
+      rollPhrase ? [hodlDiceMetaToken, hodlDPlusRollNode(rollPhrase, rollRange)] : nextCue ? [hodlDiceMetaToken, hodlDiceMetaCue(nextCue)] : [nextText, null],
+    ], statusTail + invalidStatus);
     let meta = hodlElement("#dice-meta");
-    meta.replaceChildren(document.createTextNode(status));
-    // The next roll is the one thing to act on, so it carries the weight.
-    if (rollPhrase) {
-      let emphasis = document.createElement("strong");
-      emphasis.textContent = rollPhrase;
-      let accessibleRange = document.createElement("span");
-      accessibleRange.className = "sr-only";
-      accessibleRange.textContent = rollRange;
-      meta.append(document.createTextNode(" \xB7 "), emphasis, accessibleRange)
-    }
-    meta.append(document.createTextNode(statusTail + invalidStatus));
-    meta.className = "muted" + (complete && !result.invalidCount ? " ok" : result.invalidCount ? " err" : "");
+    // No blanket colour on the completed line: the bright green on the count
+    // says it is done, and tinting the whole sentence olive on top of that put
+    // two different greens in one line. Errors still take the line, since a
+    // correction is about the sentence, not about any one number in it.
+    meta.className = "muted" + (result.invalidCount ? " err" : "");
     hodlRenderDiceFairness(input.value, hodlDiceMethod, config.words);
     hodlQueueMasterFingerprintPreview();
     return;
   }
   if (hodlDiceMethod === "bitbox") {
-    let result = hodlBitBoxRolls(input.value, config.words), status = result.waiting === "last-word" ? hodlT("{n} words · choose the final checksum word", { n: result.words.length }) : result.waiting === "coin" ? hodlT("Word {word} of {partial} · 6th die (interpreted as a coin flip)", { word: result.words.length + 1, partial: result.neededPartial }) : hodlT("Word {word} of {partial} · die {die} of 5 (faces 1–4)", { word: result.words.length + 1, partial: result.neededPartial, die: result.diceInWord + 1 });
-    if (result.extraAfter) status += hodlT(" · {n} extra input(s) ignored", { n: result.extraAfter });
+    // Word progress then what to roll next, each its own line. The word number
+    // is the count to act on: red until every lookup-table word is in, green
+    // once the phrase is down to its final checksum pick.
+    let result = hodlBitBoxRolls(input.value, config.words), bitboxDone = result.waiting === "last-word",
+      bitboxLines = bitboxDone
+        ? [[hodlTText("{n} words", { n: hodlDiceMetaToken }), hodlDiceMetaValue(String(result.words.length), true)], [hodlDiceMetaToken, hodlDiceMetaCue(hodlTText("choose final checksum word below"))]]
+        : [[hodlTText("Word {word} of {partial}", { word: hodlDiceMetaToken, partial: result.neededPartial }), hodlDiceMetaValue(String(result.words.length + 1), false)], [result.waiting === "coin" ? hodlTText("6th die (interpreted as a coin flip)") : hodlTText("die {die} of 5 (only faces 1–4 used)", { die: result.diceInWord + 1 }), null]];
     let last = result.waiting === "last-word" ? hodlTargetLastWords(result.words.join(" "), config.words) : null;
     if (last && !last.error && !last.candidates.includes(hodlPickedLastWord)) hodlPickedLastWord = "";
     if (!last || last.error) hodlPickedLastWord = "";
     let displayWords = result.words.slice();
     if (result.waiting === "last-word" && last && !last.error && hodlPickedLastWord) displayWords.push(hodlPickedLastWord);
-    hodlElement("#dice-meta").textContent = status + invalidStatus;
+    hodlRenderDiceMeta(bitboxLines);
     hodlRenderDiceWordGrid(wordsBox, displayWords, config.words, false);
     hodlRenderManualCalculations("dice-manual-calculations", "bitbox", input.value, config.words);
     hodlRenderLastWordPicker(picker, last && !last.error ? last.candidates : [], hodlPickedLastWord, (word) => {
@@ -5608,9 +5661,17 @@ function hodlUpdateDice() {
   }
   if (picker) picker.innerHTML = "";
   let rolls = inputState.acceptedRolls, words = hodlDicePreviewWords(input.value, hodlDiceMethod, config.words);
-  let missing = Math.max(0, config.hashRolls - rolls.length), provisional = rolls.length > 0 && missing > 0, extra = Math.max(0, rolls.length - config.hashRolls), methodLabel = hodlDiceMethod === "coleman" ? hodlT("Hashed rolls / Dice [1-6]") : hodlT("Hashed rolls / Base 10 [0-9]");
+  let missing = Math.max(0, config.hashRolls - rolls.length), provisional = rolls.length > 0 && missing > 0;
   hodlRenderDiceWordGrid(wordsBox, words, config.words, provisional);
-  hodlElement("#dice-meta").textContent = (!rolls.length ? hodlTText("0 of {n} recommended rolls · 0.0 bits estimated · {method}", { n: config.hashRolls, method: methodLabel }) : missing ? hodlTText("{have} of {n} recommended rolls · {bits} bits estimated · seed available for testing · {missing} more recommended", { have: rolls.length, n: config.hashRolls, bits: hodlDiceEntropyBits(rolls.length).toFixed(1), missing }) : hodlTText("{have} roll(s) · {bits} bits estimated · ready to derive", { have: rolls.length, bits: hodlDiceEntropyBits(rolls.length).toFixed(1) }) + (extra ? hodlTText(" · all {n} extra roll(s) included", { n: extra }) : "")) + invalidStatus;
+  // Rolls then bits, each its own line. Red while short of what the selected
+  // seed length asks for, green once met; bits answer to config.bits rather
+  // than a fixed 256, so a 12-word seed goes green at its own 128 instead of
+  // never. Zero rolls is just the short case with a count of 0.
+  let metaBitsValue = hodlDiceEntropyBits(rolls.length);
+  hodlRenderDiceMeta([
+    [missing ? hodlTText("{have} of {n} recommended rolls", { have: hodlDiceMetaToken, n: config.hashRolls }) : hodlTText("{have} rolls", { have: hodlDiceMetaToken }), hodlDiceMetaValue(String(rolls.length), !missing)],
+    [hodlTText("{bits} bits estimated", { bits: hodlDiceMetaToken }), hodlDiceMetaValue(metaBitsValue.toFixed(1), metaBitsValue >= config.bits)],
+  ], invalidStatus);
   hodlRenderDiceFairness(input.value, hodlDiceMethod, config.words);
   hodlQueueMasterFingerprintPreview();
 }
@@ -11321,6 +11382,15 @@ function hodlSyncKeyDeleteButton() {
   button.disabled = !state || state.isLab;
   button.setAttribute("aria-disabled", String(button.disabled));
 }
+// + only ever returns to the Key Station, so it has nowhere to go until a real
+// key exists to leave. With just the Station open the control would invite a
+// click that does nothing, so it stays disabled alongside −.
+function hodlSyncKeyAddButton() {
+  let button = hodlElement("#add-key");
+  if (!button) return;
+  button.disabled = !hodlKeys.some((state) => !state.isLab);
+  button.setAttribute("aria-disabled", String(button.disabled));
+}
 function hodlRenderKeyTabs() {
   let box = hodlElement("#key-tabs"), panel = hodlElement("#calc-card");
   box.innerHTML = "";
@@ -11333,6 +11403,7 @@ function hodlRenderKeyTabs() {
   });
   hodlRevealTab(box, hodlActiveKey);
   hodlSyncKeyDeleteButton();
+  hodlSyncKeyAddButton();
   hodlRefreshMsigSessionPickers();
   hodlRefreshStationKeyPickers();
   hodlRefreshJournalKeyPicker();
@@ -11352,6 +11423,7 @@ function hodlDeleteActiveKey() {
   let state = hodlKeys[hodlActiveKey];
   if (!state || state.isLab) {
     hodlSyncKeyDeleteButton();
+    hodlSyncKeyAddButton();
     return;
   }
   if (hodlJournalUnlocked()) {

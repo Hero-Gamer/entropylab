@@ -183,11 +183,78 @@ test("the header network picker sets the network every tool defaults to", () => 
   assert.doesNotMatch(narrow, /\.network-picker \{[^}]*position: absolute/s);
   // The row keeps its 40px touch targets rather than shrinking to a chip.
   assert.doesNotMatch(narrow, /\.network-picker-button \{[^}]*min-height: 0/s);
+  // The language dropdown drops its arrow at the same breakpoint, and takes
+  // back the symmetric padding the chevron's blank edge had been paying for.
+  assert.match(narrow, /\.locale-control \.custom-select-chevron \{ display: none; \}/);
+  // Squared off against the same 40px the network picker takes.
+  assert.match(narrow, /\.locale-control \.custom-select \{ flex: 0 0 40px; width: 40px; \}/);
+  assert.match(narrow, /\.locale-control \.custom-select-button \{ width: 40px; padding: 0; justify-content: center; \}/);
+  // The menu is not squared with it: it stays readable and opens leftward.
+  assert.match(narrow, /\.locale-control \.custom-select-list \{ left: auto; right: 0; min-width: 72px; \}/);
+  // Only the header's copy: the arrow stays on every other custom select.
+  assert.doesNotMatch(narrow, /^\s*\.custom-select-chevron \{ display: none; \}/m);
 });
 
 test("advanced derivation fields use the shared responsive settings grid", () => {
   assert.match(shell, /<div class="field network-field"><label for="network">Network<\/label>[\s\S]*?<input id="network"[^>]*>/);
-  assert.match(css, /\.derivation-advanced-fields \{ display: grid; gap: var\(--space-component\); \}/);
+  // The rules bracket the section, so the lower one sits under the toggle when
+  // shut and under the revealed fields when open. On the summary it split the
+  // label from its own content; on the revealed block it vanished with it.
+  assert.match(css, /\.derivation-advanced \{\s*margin: 0; padding: var\(--space-control\) 0;\s*border-top: 1px solid var\(--border\); border-bottom: 1px solid var\(--border\);\s*\}/s);
+  assert.doesNotMatch(css, /\.derivation-advanced summary \{[^}]*border-bottom/s);
+  assert.doesNotMatch(css, /\.derivation-advanced-fields \{[^}]*border-top/s);
+  // With the line off the row, it hugs its text again like the toggle it
+  // matches, so the hit area is the words rather than the whole card.
+  assert.match(css, /\.derivation-advanced summary \{[\s\S]*?display: inline-flex; align-items: center; gap: 4px; width: fit-content; min-height: 32px;/);
+  assert.match(css, /\.dice-fairness-toggle \{[^}]*width: fit-content;/s);
+  assert.match(css, /\.derivation-advanced\[open\] summary \{ margin-bottom: var\(--space-component\);/);
+  // The field titles match the card's label style; the control below each
+  // already carries the 8px, so they take no margin of their own.
+  assert.match(css, /\.derivation-advanced-fields \.field > label \{ display: block; font-size: 14px; font-weight: 600; color: var\(--fg\); \}/);
+  assert.match(css, /\.derivation-index-control \{[^}]*margin-top: var\(--space-control\);/s);
+  // The estimate belongs to the section above it, not to the button below, so
+  // it takes a wide seam above and sits close beneath.
+  assert.match(css, /\.derivation-estimate \{ margin: var\(--space-intro\) 0 0; \}/);
+  // Nothing under it: 16px is the floor, being the action row's own margin,
+  // which every tool card shares by design and which a bottom margin here
+  // would only collapse into.
+  assert.doesNotMatch(css, /\.derivation-estimate \{[^}]*padding-bottom/s);
+  assert.match(css, /\.tool-actions \{ margin-top: var\(--space-component\); \}/);
+  assert.doesNotMatch(css, /\.key-action-row \{/);
+  // A card's closing actions are the things to press, so their labels carry
+  // the weight. Scoped to the row, not to .btn: the tabs share that class, and
+  // a tab reads as a place you are rather than an action you take.
+  assert.match(css, /\.tool-actions \.btn \{ font-weight: 700; transition: background-color \.14s ease, border-color \.14s ease, color \.14s ease; \}/);
+  // Every closing action moves the same two things under the pointer, so a row
+  // of mixed button weights reads as one set of controls.
+  // One rule serves the filled primary and the quieter secondary: they differ at
+  // rest, not under the pointer. Both drop their fill to the page ground and
+  // move the accent out to the border and the label.
+  assert.match(css, /\.tool-actions \.btn:not\(:disabled\)[^{]*:hover \{\s*border-color: var\(--selection-accent\);\s*background: var\(--bg\);\s*color: var\(--selection-accent-ink\);\s*\}/s);
+  // The label takes the accent as lettering, which is theme-tuned: the fill
+  // orange manages 2.1:1 on white, so light mode uses a deeper one.
+  assert.match(css, /--selection-accent-ink: #ff9900;/);
+  assert.match(css, /:root\[data-theme="light"\][\s\S]*?--selection-accent-ink: #b36200;/);
+  // The fills keep the bright colour in both themes.
+  assert.match(css, /\.btn\.primary \{ background: var\(--selection-accent\);/);
+  assert.match(css, /\.tab\.active \{\s*background: var\(--selection-accent\);/);
+  assert.doesNotMatch(css, /\.tool-actions \.btn\.primary:not\(:disabled\):hover/);
+  // The tinted fill is gone from the action row; the same mix is used elsewhere
+  // in the sheet, so the check is scoped to this rule rather than the file.
+  assert.doesNotMatch(css, /\.tool-actions \.btn:not\(:disabled\)[^{]*:hover \{[^}]*color-mix/s);
+  // Buttons that already carry a meaning colour keep it, and now move their
+  // border too so the whole row changes the same properties.
+  // The destructive one inverts the same way, in the colour that says what it
+  // does. --danger-bright, which unlike --selection-accent is theme-tuned, so
+  // the red clears AA on both grounds.
+  assert.match(css, /\.btn:is\(\.delete-key, \.clear-current-action\):not\(:disabled\):hover \{ border-color: var\(--danger-bright\); background: var\(--bg\); color: var\(--danger-bright\); \}/);
+  for (const token of ["--danger-bright"]) {
+    assert.ok(css.match(new RegExp(`\\${token}:`, "g"))?.length >= 2, `${token} needs a light and a dark value`);
+  }
+  assert.match(css, /:not\(:is\(\.clear-current-action, \.delete-key, \.download-html, \.save-recovery-sheet, \.save-wallet-dat, \.journal-download-action\)\)/);
+  // Motion is opt-out, like every other transition in the sheet.
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.tool-actions \.btn \{ transition: none; \} \}/);
+  assert.doesNotMatch(css, /\.tab, \.btn \{[^}]*font-weight/s);
   assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*?\.key-settings-row, \.msig-origin-fields, \.msig-path-components \{ grid-template-columns: minmax\(0, 1fr\); \}/);
 });
 
@@ -273,16 +340,160 @@ test("a running derivation yields off the main thread, survives hidden tabs, and
   assert.equal(appSource.match(/hodlTText\("A derivation is already running\."\)/g)?.length, 2);
 });
 
-test("entropy progress messages sit directly below their inputs and above keypads", () => {
-  assert.match(app, /<textarea id="dice"[^>]*><\/textarea><\/div>\s*\$\{hodlSeedMetaRowMarkup\("dice-meta",!0\)\}\s*\$\{dicePad\}/);
+test("entropy progress messages sit next to their inputs and above keypads", () => {
+  // Dice is the exception: its progress line sits above the input, not below,
+  // so the textarea and the roll keypad stay adjacent. You read the count,
+  // then type and tap without a line of text wedged between the two controls.
+  assert.match(app, /\$\{hodlSeedMetaRowMarkup\("dice-meta",!0\)\}\s*<div class="dice-input-shell">[\s\S]*?<textarea id="dice"[^>]*><\/textarea><\/div>\s*\$\{dicePad\}/);
   assert.match(appSource, /<textarea id="\$\{inputId\}"[^>]*><\/textarea><\/div>\s*\$\{hodlSeedMetaRowMarkup\("cards-meta"\)\}/);
   assert.match(app, /<textarea id="\$\{inputId\}"[\s\S]*?<\/textarea><\/div>\s*\$\{hodlSeedMetaRowMarkup\("entropy-meta",!0\)\}\s*\$\{base64Keyboard\}\s*\$\{entropyPad\}/);
   assert.match(app, /<textarea id="seed"[^>]*><\/textarea><\/div><p class="muted" id="seed-meta"[^>]*><\/p>\$\{hodlSeedKeyboardMarkup\(\)\}/);
   assert.match(app, /<textarea id="key"[^>]*><\/textarea><\/div><p class="muted" id="private-key-meta"[^>]*><\/p>/);
 });
 
+test("the Advanced accordion matches the fairness toggle", () => {
+  // Both accordions in this card read as one control type: heading-sized text,
+  // grey until hovered or open, and the same disclosure triangle at the same
+  // size with the same optical nudge.
+  assert.match(css, /\.derivation-advanced summary \{[\s\S]*?min-height: 32px;[\s\S]*?color: var\(--muted\); font-size: 14px; font-weight: 600;/);
+  assert.match(css, /\.dice-fairness-toggle \{[^}]*color: var\(--muted\); font-size: 14px; font-weight: 600;/s);
+  assert.match(css, /\.derivation-advanced summary:hover \{ color: var\(--fg\); \}/);
+  assert.match(css, /\.derivation-advanced\[open\] summary \{[^}]*color: var\(--fg\); \}/);
+  // The native marker cannot be sized to match, so it steps aside for a glyph
+  // that can — the same triangles the fairness toggle swaps between.
+  assert.match(css, /\.derivation-advanced summary \{[\s\S]*?list-style: none;/);
+  assert.match(css, /\.derivation-advanced summary::-webkit-details-marker \{ display: none; \}/);
+  assert.match(css, /\.derivation-advanced summary::before \{\s*content: "\\25B8"; display: inline-block; width: 0\.7em; font-size: 22px; line-height: 1; transform: translateY\(-2px\);/);
+  assert.match(css, /\.derivation-advanced\[open\] summary::before \{ content: "\\25BE"; \}/);
+  // Same glyph metrics as the toggle it matches, so the two cannot drift.
+  assert.match(css, /\[data-dice-fairness-glyph\] \{[^}]*width: 0\.7em; font-size: 22px; line-height: 1; transform: translateY\(-2px\);/s);
+});
+
+test("checkboxes and radios carry no margin of their own", () => {
+  // The box sits where its row puts it. The 4px lead it used to carry was
+  // already overridden in four places, so it was working against its callers
+  // more often than for them.
+  assert.match(css, /input\[type="radio"\], input\[type="checkbox"\] \{[^}]*margin: 0;/s);
+  assert.doesNotMatch(css, /input\[type="radio"\], input\[type="checkbox"\] \{[^}]*margin: 4px/s);
+  // They are controls, so they say so on hover. The labels wrapping them are
+  // already pointer; the box itself was the one part that was not.
+  assert.match(css, /input\[type="radio"\], input\[type="checkbox"\] \{[^}]*cursor: pointer;/s);
+});
+
+test("inside the Key Station card a label owns the gap beneath it", () => {
+  // One convention: the label's margin-bottom sets the gap, and the content it
+  // introduces contributes no margin-top of its own. Before this the card named
+  // each pairing by hand, so anything unnamed kept whatever it happened to
+  // carry — the word grid sat 16px off its title where the rest sat 8px.
+  assert.match(css, /#calc-card \.label \{ margin-bottom: var\(--space-control\); \}/);
+  assert.match(css, /#calc-card \.label \+ \* \{ margin-top: 0; \}/);
+  // A title above text gives back that text's half-leading, so the first line
+  // lands where a bordered control would rather than 3.5px lower.
+  assert.match(css, /#calc-card \.label:has\(\+ \.seed-word-meta\) \{ margin-bottom: 4px; \}/);
+  assert.match(css, /\.muted \{ color: var\(--muted\); font-size: 14px; line-height: 1\.5; \}/);
+  // It must outrank the convention it adjusts, and follow it in the file.
+  assert.ok(
+    css.indexOf("#calc-card .label:has(+ .seed-word-meta)") > css.indexOf("#calc-card .label {"),
+    "the optical adjustment must follow the convention it overrides",
+  );
+  // The seed phrase title shares a row with the copy button, so the row spaces
+  // what follows it the same way a bare label does.
+  assert.match(css, /#calc-card \.seed-word-copy-row:has\(> \.label\) \+ \* \{ margin-top: 0; \}/);
+  // The row itself adds nothing: its margin-bottom stacked on the label's and
+  // set the grid twice as far from its heading as every other pairing.
+  assert.doesNotMatch(css, /#calc-card \.seed-word-copy-row:has\(> \.label\) \{ margin-bottom/);
+  // A checkbox's own text is not a heading over content: it sits inside the
+  // control, so it takes no gap. It has to outrank the id-scoped convention.
+  assert.match(css, /#calc-card \.seed-autocomplete-toggle \.label \{ margin: 0; \}/);
+  assert.ok(
+    css.indexOf("#calc-card .seed-autocomplete-toggle .label") > css.indexOf("#calc-card .label {"),
+    "the checkbox exception must follow the convention it overrides",
+  );
+  // The preview heading sits in a flex row whose gap does the spacing, so it
+  // pulls back instead of adding its own. Both classes, so it outranks the
+  // id-scoped convention rather than losing to it.
+  assert.match(css, /#calc-card \.label\.master-fingerprint-heading \{ margin: 0 0 -4px; \}/);
+  assert.match(css, /\.master-fingerprint-preview \{[^}]*gap: 12px;/s);
+  // At 520px the preview becomes a grid whose own gap is the whole spacing, so
+  // the pull is dropped there rather than doubling up with it.
+  assert.match(
+    css.slice(css.indexOf("@media (max-width: 520px)")),
+    /#calc-card \.label\.master-fingerprint-heading \{ margin: 0; \}/,
+  );
+  assert.match(
+    css.slice(css.indexOf("@media (max-width: 520px)")),
+    /\.master-fingerprint-preview \{ display: grid;[^}]*gap: 8px; \}/,
+  );
+  // The hand-written pairings are gone, replaced by the general rule.
+  assert.doesNotMatch(css, /\.key-form > \.label \+ /);
+  // The label still carries the gap it always did, so the value is stated once.
+  assert.match(css, /\.label \{ font-size: 14px; font-weight: 600; margin: var\(--space-section\) 0 var\(--space-control\);/);
+});
+
+test("the dice progress numbers are coloured against what the seed needs", () => {
+  // Red while short, green once met, in the same bright pair the network status
+  // tag uses: a few characters of live status is what those shades are held for.
+  // Bold carries the emphasis wherever colour cannot: print, forced
+  // monochrome, or a red/green confusion.
+  assert.match(css, /\.dice-meta-value \{ font-weight: 700; \}/);
+  assert.match(css, /\.dice-meta-value\.is-short \{ color: var\(--danger-bright\); \}/);
+  assert.match(css, /\.dice-meta-value\.is-met \{ color: var\(--ok-bright\); \}/);
+  // Both shades are defined in each theme, so the values never lose contrast.
+  for (const token of ["--danger-bright", "--ok-bright"]) {
+    assert.ok(css.match(new RegExp(`\\${token}:`, "g"))?.length >= 2, `${token} needs a light and a dark value`);
+  }
+  // One node builder serves every dice method, so their colours cannot drift.
+  assert.match(appSource, /span\.className = "dice-meta-value " \+ \(met \? "is-met" : "is-short"\);/);
+  // The count answers to the roll shortfall; the bits answer to the entropy the
+  // selected seed length needs, not a fixed 256, so a 12-word seed can go green.
+  assert.match(appSource, /hodlDiceMetaValue\(String\(rolls\.length\), !missing\)/);
+  assert.match(appSource, /hodlDiceMetaValue\(metaBitsValue\.toFixed\(1\), metaBitsValue >= config\.bits\)/);
+  // Spliced in as nodes around a sentinel, never as markup: the status line
+  // quotes what was typed, so it must not become an HTML sink.
+  assert.match(appSource, /for \(let piece of text\.split\(\/\(\\u0000\)\/\)\)/);
+  assert.doesNotMatch(appSource, /#dice-meta"\)\.innerHTML/);
+  // Every sentence is its own line, joined by a break rather than a separator
+  // buried inside one catalog string that every translation would have to keep.
+  assert.match(appSource, /if \(nodes\.length\) nodes\.push\(document\.createElement\("br"\)\);/);
+  assert.doesNotMatch(appSource, /"\{have\} (of \{n\} )?recommended rolls · \{bits\}/);
+});
+
+test("the BitBox word counter is coloured and its next roll sits on its own line", () => {
+  // The word number is the count to act on: red until every lookup-table word
+  // is in, green once the phrase is down to its final checksum pick.
+  assert.match(appSource, /hodlDiceMetaValue\(String\(result\.words\.length\), true\)/);
+  assert.match(appSource, /hodlDiceMetaValue\(String\(result\.words\.length \+ 1\), false\)/);
+  // What to roll next is its own sentence, so it lands on its own line.
+  assert.match(appSource, /hodlTText\("Word \{word\} of \{partial\}", \{ word: hodlDiceMetaToken, partial: result\.neededPartial \}\)/);
+  assert.match(appSource, /hodlTText\("die \{die\} of 5 \(only faces 1–4 used\)", \{ die: result\.diceInWord \+ 1 \}\)/);
+  assert.match(appSource, /hodlTText\("6th die \(interpreted as a coin flip\)"\)/);
+  // BitBox carries no tail at all now: the invalid-input note is redundant with
+  // the highlighted transcript above, and ignored extras still reach the user
+  // as a derive-time warning.
+  assert.match(appSource, /hodlRenderDiceMeta\(bitboxLines\);/);
+  assert.doesNotMatch(appSource, /bitboxTail/);
+  assert.match(appSource, /"Extra rolls after the final lookup-table word are ignored\./);
+  // The other methods keep the invalid-input tail, so the variable stays live.
+  assert.match(appSource, /statusTail \+ invalidStatus/);
+  // The final-pick line is a cue, not a figure: met colour, no added weight.
+  assert.match(css, /\.dice-meta-cue \{ color: var\(--ok-bright\); \}/);
+  assert.doesNotMatch(css, /\.dice-meta-cue \{[^}]*font-weight/);
+  assert.match(appSource, /hodlDiceMetaCue\(hodlTText\("choose final checksum word below"\)\)/);
+  // The dot-joined single sentences are gone from every BitBox state.
+  assert.doesNotMatch(appSource, /"Word \{word\} of \{partial\} ·/);
+  assert.doesNotMatch(appSource, /"\{n\} words · choose the final checksum word"/);
+  // It builds nodes, not markup, like every other dice progress line.
+  assert.doesNotMatch(appSource, /#dice-meta"\)\.textContent = status/);
+  assert.doesNotMatch(appSource, /#dice-meta"\)\.innerHTML/);
+  // Zero rolls is the short case with a count of 0, so one sentence serves both
+  // and each number is always a placeholder the colour can wrap.
+  assert.doesNotMatch(appSource, /"0 of \{n\} recommended rolls/);
+});
+
 test("seed phrase calculations and copy controls precede every numbered word grid", () => {
-  assert.match(appSource, /\$\{dicePad\}[\s\S]*?manual-calculations-container[\s\S]*?\$\{hodlSeedCopyRowMarkup\(hodlDiceFairnessToggleMarkup\([\s\S]*?\)\)\}[\s\S]*?<div id="dice-words"/);
+  // Fairness toggle, then its panel, then the seed phrase title row carrying
+  // the copy button, then the grid it copies from.
+  assert.match(appSource, /\$\{dicePad\}[\s\S]*?manual-calculations-container[\s\S]*?<div class="dice-fairness-row" hidden>\$\{hodlDiceFairnessToggleMarkup\([\s\S]*?\)\}<\/div>[\s\S]*?\$\{hodlSeedCopyRowMarkup\(`<p class="label">[\s\S]*?<div id="dice-words"/);
   assert.match(appSource, /<div class="dealt-cards"[^>]*><\/div>[\s\S]*?manual-calculations-container[\s\S]*?\$\{hodlSeedCopyRowMarkup\(\)\}\s*<div id="dice-words"/);
   assert.match(appSource, /\$\{entropyPad\}\s*<div id="number-base-calculations"[^>]*><\/div>\s*\$\{hodlSeedCopyRowMarkup\(\)\}\s*<div id="entropy-words"/);
   assert.match(appSource, /<\/div>\$\{hodlSeedCopyRowMarkup\(\)\}<div id="seed-number-words"/);
@@ -291,6 +502,27 @@ test("seed phrase calculations and copy controls precede every numbered word gri
 
 test("direct dice and card methods expose manual BIP39 calculations before copying", () => {
   assert.match(appSource, /id="show-manual-calculations"/);
+  // Two rows like the sync switch, and no bordered chip: the control reads as
+  // part of the card rather than a box floating on it.
+  assert.match(css, /\.manual-calculations-toggle \{ display: flex; width: 100%; min-height: 32px; margin-top: 0; padding: 0; border: 0; background: none; \}/);
+  assert.match(css, /\.manual-calculations-note \{ display: block; margin: 0; font-size: 13px; line-height: 1\.45; \}/);
+  // The note left the label, so the checkbox has to point at it explicitly or
+  // it stops being announced with the control.
+  assert.match(appSource, /id="show-manual-calculations" aria-describedby="manual-calculations-note"/);
+  // The switch waits for something to be behind it. It ships hidden, because a
+  // fresh form runs no update: the field restore only dispatches input when
+  // there is a stored value to put back.
+  assert.equal(appSource.match(/class="manual-calculations-row" hidden>/g)?.length, 2);
+  assert.match(css, /\.manual-calculations-row\[hidden\] \{ display: none; \}/);
+  // The row follows the calculations; only the panel follows the checkbox.
+  assert.match(appSource, /if \(row\?\.classList\.contains\("manual-calculations-row"\)\) row\.hidden = !markup;/);
+  assert.match(appSource, /panel\.hidden = !hodlManualCalculationsOpen \|\| !markup;/);
+  // The row is the panel's immediate previous sibling in every form that has one.
+  assert.equal(appSource.match(/<\/div><div id="[a-z-]*manual-calculations" class="manual-calculations-container" hidden>/g)?.length, 2);
+  assert.match(appSource, /<p class="seed-autocomplete-note manual-calculations-note" id="manual-calculations-note">/);
+  // Both methods that offer calculations use the same two-row shape.
+  assert.equal(appSource.match(/class="manual-calculations-row"/g)?.length, 2);
+  assert.doesNotMatch(appSource, /\("\(show how direct (word|card) selection/);
   assert.match(appSource, /id="dice-manual-calculations" class="manual-calculations-container"/);
   assert.match(appSource, /id="cards-manual-calculations" class="manual-calculations-container"/);
   assert.match(appSource, /function hodlManualCalculationMarkup\(method, value, targetWords = hodlTargetWordCount\)/);
@@ -375,17 +607,23 @@ test("Number bases offers exact Base 2, 4, 8, 16, Crockford Base32, and Base64-a
   // the chip elsewhere keeps both.
   // The chip's 44px box left 13px of its own height under the title; the row
   // hugs its content instead, staying full width and above the 24px floor.
-  assert.match(css, /\.global-sync-toggle \{[^}]*min-height: 32px;[^}]*padding: 0; border: 0; background: none; \}/);
+  assert.match(css, /\.global-sync-toggle \{[^}]*min-height: 24px;[^}]*padding: 0; border: 0; background: none; \}/);
   assert.match(css, /\.seed-autocomplete-toggle \{[^}]*min-height: 44px;[^}]*border: 1px solid var\(--border\);[^}]*background: var\(--surface-2\);/s);
   // The title matches the Method label above it.
   assert.match(css, /\.global-sync-toggle \.label \{ margin: 0; \}/);
   // The explanation is subordinate to that title and sits directly under it.
   assert.match(css, /\.global-sync-note \{ display: block; margin: 0; font-size: 13px; line-height: 1\.45; \}/);
-  // Whatever comes off the top is given back below, so the control sits with
-  // the method it qualifies rather than centred in its own gap. Padding, not
-  // margin: a bottom margin would collapse into .seed-length-control's larger
-  // top margin and buy nothing.
-  assert.match(css, /\.global-sync-host \{ margin-top: var\(--space-control\); padding-bottom: var\(--space-control\); \}/);
+  // The control sits with the method it qualifies rather than centred in its
+  // own gap, and it carries the rule that closes the Method section — the
+  // length band below opens without one, so the gap either side is even.
+  assert.match(css, /\.global-sync-host \{ margin-top: var\(--space-control\); padding-bottom: var\(--space-component\); border-bottom: 1px solid var\(--border\); \}/);
+  // The length band closes with its own rule and opens with the Method
+  // section's, so it never carries a border-top of its own.
+  assert.match(
+    css,
+    /\.seed-length-control \{ margin-top: var\(--space-component\); padding-bottom: var\(--space-component\); border-bottom: 1px solid var\(--border\); \}/,
+  );
+  assert.doesNotMatch(css, /\.seed-length-control \{[^}]*border-top/s);
   assert.match(css, /\.number-base-calculation-list \{/);
   assert.match(app, /fields:\{[\s\S]*?base4:"",base8:"",base32:"",base64:""/);
   assert.match(app, /function hodlBase64KeyboardMarkup\(\)\{return hodlKeyboardMarkup\(!0,"Base64 entropy","base64-keyboard"\)\}/);
@@ -542,7 +780,11 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   // Only one on-screen keyboard toggle per section: the seed keyboard and the
   // private-key keyboard each already serve the passphrase field too.
   assert.match(app, /ownToggle\?hodlPassphraseKeyboardToggleMarkup\(\):""/);
-  assert.match(app, /passphrase\?\(ownToggle\?hodlPassphraseKeyboardToggleMarkup\(\):""\)\+hodlPassphraseBip39ToggleMarkup\(\)/);
+  // The checkbox leads the row and the keyboard toggle follows. Swapped in the
+  // markup rather than with row-reverse, so tab order still follows the eye.
+  assert.match(app, /passphrase\?hodlPassphraseBip39ToggleMarkup\(\)\+\(ownToggle\?hodlPassphraseKeyboardToggleMarkup\(\):""\)/);
+  assert.match(appSource, /<div class="passphrase-keyboard-tools">\$\{hodlBrainWalletTrimToggleMarkup\(\)\}\$\{hodlKeyboardToggleMarkup\("private-keyboard-toggle"/);
+  assert.doesNotMatch(css, /\.passphrase-keyboard-tools \{[^}]*row-reverse/s);
   assert.match(app, /hodlPassphraseKeyboardToggleMarkup\(\)/);
   assert.match(app, /function hodlPassphraseBip39ToggleMarkup\(checked=hodlPassphraseBip39Enabled\(\)\)/);
   assert.match(app, /function hodlAnalyzeBip39Passphrase\(value,activeCaret=null\)/);
@@ -552,7 +794,17 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   assert.match(app, /hodlPrivateKeyKeyboardToggleMarkup\(\)/);
   assert.match(app, /function hodlBrainWalletTrimEnabled\(\)/);
   assert.match(app, /id="brain-wallet-trim"/);
-  assert.match(app, />Trim leading and trailing whitespace<\/strong>/);
+  // Borderless, and the title takes the shared label style rather than a bare
+  // <strong>, like every other checkbox in this card.
+  assert.match(app, /<span class="label">Trim leading and trailing whitespace<\/span>/);
+  assert.match(app, /<span class="label">Build passphrase from BIP39 words<\/span>/);
+  assert.match(app, /<span class="label">Autocomplete BIP39 words<\/span>/);
+  assert.match(css, /\.passphrase-bip39-toggle, \.passphrase-autocomplete-toggle, \.brain-wallet-trim-toggle \{[^}]*padding: 0; border: 0; background: none;/s);
+  // The one with an explanation gets two rows, and the checkbox points at the
+  // note now that it sits outside the label.
+  assert.match(app, /id="passphrase-bip39-words" aria-describedby="passphrase-bip39-note"/);
+  assert.match(app, /<p class="seed-autocomplete-note passphrase-bip39-note" id="passphrase-bip39-note">lowercase words separated by single spaces<\/p>/);
+  assert.match(css, /\.passphrase-bip39-note \{ display: block; margin: 0; font-size: 13px; line-height: 1\.45; \}/);
   assert.match(app, /brainWalletTrim:!1/);
   assert.match(css, /\.brain-wallet-trim-toggle\[hidden\] \{ display: none; \}/);
   assert.doesNotMatch(appSource, /bitaddress\.org-style brain wallet/);
@@ -588,7 +840,9 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   assert.match(css, /\.passphrase-keyboard-tools \{[^}]*display: flex[^}]*align-items: flex-start[^}]*gap: var\(--space-control\)/s);
   assert.match(css, /\.dice-input-shell\.passphrase-input-shell input \{[^}]*position: relative[^}]*margin-top: 0[^}]*background: transparent[^}]*color: transparent/s);
   assert.match(css, /\.passphrase-bip39-options \{[^}]*flex: 1 1 auto[^}]*gap: var\(--space-control\)/s);
-  assert.match(css, /\.passphrase-bip39-toggle, \.passphrase-autocomplete-toggle \{[^}]*width: 100%[^}]*margin-top: 0/s);
+  // The trim toggle joined these two when they all went borderless, so the
+  // three share one rule rather than drifting apart.
+  assert.match(css, /\.passphrase-bip39-toggle, \.passphrase-autocomplete-toggle, \.brain-wallet-trim-toggle \{[^}]*width: 100%[^}]*margin-top: 0/s);
   assert.match(css, /\.passphrase-keyboard-host \.seed-keyboard \{ margin-top: var\(--space-control\); margin-right: auto; margin-left: 0; \}/);
   assert.match(css, /\.seed-keyboard-toggle,\s*\.theme-toggle\s*\{[^}]*width: 44px[^}]*min-height: 44px[^}]*height: auto/s);
   assert.match(css, /\.seed-keyboard-toggle svg \{[^}]*width: 30px[^}]*height: 22px/s);
@@ -943,10 +1197,31 @@ test("Station tabs stay pinned left while add controls stay pinned right", () =>
   assert.match(appSource, /start < left \+ pinnedWidth/);
 });
 
+test("a disabled add or remove control shows no tooltip", () => {
+  // The wrapper takes :hover even when the button inside cannot, so the hint
+  // has to be suppressed from the button's own disabled state.
+  assert.match(css, /\.add-key:disabled \+ \.add-item-tooltip \{\s*opacity: 0; visibility: hidden;/s);
+  // It must come after the reveal rule: equal specificity, so order decides.
+  assert.ok(
+    css.indexOf(".add-key:disabled + .add-item-tooltip") >
+      css.indexOf(".add-item-control:focus-within .add-item-tooltip"),
+    "the suppression rule must follow the reveal rule",
+  );
+  // Every strip pairs the button with its tooltip as an immediate sibling,
+  // which is what the combinator relies on.
+  for (const id of ["add-key", "delete-key", "add-bip85", "delete-bip85", "add-msig", "delete-msig", "add-journal-page", "delete-journal-page"]) {
+    assert.match(
+      shell,
+      new RegExp(`id="${id}"[^>]*>[^<]*</button><span class="add-item-tooltip"`),
+      `${id} must sit immediately before its tooltip`,
+    );
+  }
+});
+
 test("the Key Station method picker is one dropdown carrying every method's mark", () => {
   for (const markup of [shell]) {
     // #modes hosts the title and the dropdown; the segmented row is gone.
-    assert.match(markup, /<div class="key-mode-select" id="modes"><p class="label" id="key-method-label"[^>]*>Method<\/p><\/div>/);
+    assert.match(markup, /<div class="key-mode-select" id="modes"><p class="label" id="key-method-label"[^>]*>Derivation Method<\/p><\/div>/);
     assert.doesNotMatch(markup, /key-mode-control|key-mode-label/);
   }
   // The title is the control's accessible name, so speech input can say it.
@@ -1028,6 +1303,20 @@ test("the delete control reads as unavailable on a Station tab", () => {
   // And it never lights up under the pointer: both accent states exclude it.
   assert.match(css, /\.add-key:not\(:disabled\):hover \{ background: transparent; color: var\(--accent\); \}/);
   assert.match(css, /\.add-key:not\(:disabled\):active \{ background: transparent; color: var\(--accent\); \}/);
+});
+
+test("the Keys plus control reads as unavailable until a key exists", () => {
+  // + does one thing: return to the Key Station. With only the Station open
+  // there is nowhere to return from, so it ships disabled and app.js keeps it
+  // that way until a non-lab key is in the strip.
+  assert.match(
+    shell,
+    /<button class="add-key" id="add-key"[^>]*disabled/,
+    "add-key must ship disabled",
+  );
+  assert.match(appSource, /function hodlSyncKeyAddButton\(\) \{[\s\S]*?button\.disabled = !hodlKeys\.some\(\(state\) => !state\.isLab\);/);
+  // Both controls are resynced together wherever the strip is rebuilt.
+  assert.match(appSource, /hodlSyncKeyDeleteButton\(\);\n  hodlSyncKeyAddButton\(\);/);
 });
 
 test("seed-entry tools keep a square keyboard toggle and a block note on narrow screens", () => {
@@ -1381,6 +1670,12 @@ test("the site header is fixed, carries the logo, and holds the version, downloa
   // Content clears the fixed header on screen, and reclaims the space in print.
   assert.match(css, /\.wrap \{ max-width: 1000px; margin: 0 auto; padding: calc\(var\(--site-header-height\) \+ 20px\) 16px 0; \}/);
   assert.match(css, /@media print \{[\s\S]*?\.wrap \{ padding-top: 20px; \}/);
+  // Narrow screens take the same 12px side padding the bar takes, so the page
+  // edge and the header edge stay on one line.
+  assert.match(
+    css.slice(css.indexOf("@media (max-width: 719px)")),
+    /\.wrap \{ padding-left: 12px; padding-right: 12px; \}/,
+  );
   assert.match(css, /html \{[^}]*scroll-padding-top: calc\(var\(--site-header-height\) \+ 12px\)/);
   // Every header control is one height, and Journal file actions deliberately
   // reuse that same compact sizing.
@@ -1391,7 +1686,7 @@ test("the site header is fixed, carries the logo, and holds the version, downloa
   // the form control's 44px minimum, control margin, and mono face, which
   // bulged out of the 52px bar.
   assert.match(css, /\.locale-control \.custom-select \{[^}]*margin-top: 0;[^}]*font-family: inherit;[^}]*font-size: 14px;/s);
-  assert.match(css, /\.locale-control \.custom-select-button \{[^}]*min-height: 40px;[^}]*padding: 0 12px;[^}]*border-radius: 8px;[^}]*background: var\(--surface-2\)/s);
+  assert.match(css, /\.locale-control \.custom-select-button \{[^}]*min-height: 40px;[^}]*padding: 0 9px 0 12px;[^}]*border-radius: 8px;[^}]*background: var\(--surface-2\)/s);
   assert.match(css, /\.custom-select-chevron \{[^}]*width: 12px; height: 12px;[^}]*stroke: currentColor;[^}]*stroke-linecap: round; stroke-linejoin: round;/s);
   assert.match(shell, /class="network-picker-chevron"[^>]*>[\s\S]*?<path d="m6 9 6 6 6-6"\/>/);
   assert.match(read("src/js/enhanced-inputs.js"), /chevronPath\.setAttribute\("d", "m6 9 6 6 6-6"\)/);
@@ -1522,13 +1817,35 @@ test("seed-length selector offers all five BIP39 sizes as a dropdown", () => {
 test("D++ uses the published hexadecimal D16 transcript without a notation toggle", () => {
   assert.match(appSource, /let dplusFaces = \["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D", "E", "F"\]/);
   // The label text lives in the locale catalogs now; the key call stays in the source.
-  assert.match(appSource, /hodlT\("D\+\+ rolls \(D8, D16, D16; then \{final\}\)", \{ final: hodlDPlusFinalDescription/);
-  assert.match(appSource, /"D\+\+ rolls \(D8, D16, D16; then \{final\}\)"/);
+  assert.match(appSource, /hodlT\("D\+\+ rolls \(each word D8 and two D16 hexadice; then \{final\} for checksum\)", \{ final: hodlDPlusFinalPhrase/);
+  // The closing step stays a placeholder: 24 words end on one D8, but 21 end on
+  // one D16 and 18 on a D16 plus a coin flip, so it cannot be a fixed string.
+  assert.match(appSource, /function hodlDPlusFinalPhrase\(words = hodlTargetWordCount\) \{/);
+  assert.doesNotMatch(appSource, /then one D8 for checksum/);
   assert.doesNotMatch(appSource, /D\+\+ rolls \(D8 1\\u20138, D16 0\\u2013F/);
   assert.match(appSource, /accessibleRange\.className = "sr-only";\s*accessibleRange\.textContent = rollRange;/);
   assert.doesNotMatch(appSource, /meta\.append\(document\.createTextNode\(" \\xB7 "\), emphasis, document\.createTextNode\(rollRange\)\)/);
+  // D++ shows the same two lines BitBox does: a coloured word count, then
+  // what to roll next. The old "Group x of y" prefix counted completed
+  // groups beside the active word, two numbers that disagreed by one.
+  assert.doesNotMatch(appSource, /Group \$\{result\.completedGroups\}/);
+  assert.doesNotMatch(appSource, /groupsEntered|rollsComplete|d16Range/);
+  // D++ rolls all 24 words — the last is a checksum roll, not a pick from a
+  // list — so the count runs to config.words, not partialWords.
+  assert.match(appSource, /activeWord = partialDone \? config\.words : result\.activeGroupIndex \+ 1;/);
+  // One sentence throughout: the wording never changes, only the colour, so
+  // the count reads the same before and after the checksum roll lands.
+  assert.match(appSource, /hodlDiceMetaValue\(String\(activeWord\), complete\)/);
+  assert.doesNotMatch(appSource, /partial: config\.partialWords \}\), hodlDiceMetaValue\(String\(activeWord\)/);
+  // Green is gated on the same flag that reveals the checksum-valid line,
+  // so the count and the cue can never contradict each other.
+  // Completion tints nothing but the count: a blanket .ok on the line put a
+  // second, olive green beside the bright one. Errors still take the line.
+  assert.match(appSource, /meta\.className = "muted" \+ \(result\.invalidCount \? " err" : ""\);/);
+  assert.match(appSource, /else nextCue = hodlTText\("checksum valid · ready to derive"\);/);
+  // The next roll keeps its emphasis and its screen-reader-only range.
+  assert.match(appSource, /hodlDPlusRollNode\(rollPhrase, rollRange\)/);
   assert.match(shell, /D8 labeled 1(?:–|\\u2013)8 and two hexadecimal D16 dice labeled 0(?:–|\\u2013)F/);
-  assert.match(appSource, /hodlT\("Enter the D8 face from 1–8, then both hexadecimal D16 faces from 0–F exactly as shown on the dice\./);
   assert.doesNotMatch(appSource, /data-dplus-die|hodlDPlusNumberedD16|dplusNumberedD16|Decimal D16/);
   assert.doesNotMatch(css, /dplus-die-pad|dplus-key-decimal|dplus-key-face/);
 });
@@ -1540,8 +1857,26 @@ test("dice rolls hide Pearson chi-squared fairness behind a text expand button",
   assert.match(app, /data-dice-fairness-glyph/);
   assert.match(app, /hodlT\("Die Distribution \/ Fairness Analysis"\)/);
   assert.match(appSource, /<div class="seed-word-copy-row">\$\{leading\}<span class="seed-phrase-copied"/);
-  assert.match(css, /\.seed-word-copy-row \.dice-fairness-toggle \{ margin-right: auto; \}/);
+  // The toggle has its own row now: it heads the panel under it rather than
+  // trailing the copy button, which belongs with the seed phrase title.
+  assert.match(css, /\.dice-fairness-row \{ display: flex; align-items: center; margin-top: var\(--space-control\); \}/);
+  assert.match(css, /\.seed-word-copy-row \.label \{ margin: 0; margin-right: auto; \}/);
+  assert.doesNotMatch(css, /\.seed-word-copy-row \.dice-fairness-toggle/);
+  assert.match(css, /\.seed-word-copy-row \{[^}]*margin-top: var\(--space-component\);/s);
+  // The copy button sits in the title row, directly above the word grid.
+  assert.match(appSource, /hodlSeedCopyRowMarkup\(`<p class="label">\$\{hodlT\("Derived seed phrase"\)\}<\/p>`\)/);
   assert.match(app, /id="dice-fairness" class="dice-fairness" hidden role="status" aria-live="polite"/);
+  // The word grid is titled like every other section, in both the rendered
+  // markup and the pre-boot shell so the two do not disagree at boot.
+  assert.match(appSource, /hodlSeedCopyRowMarkup\(`<p class="label">\$\{hodlT\("Derived seed phrase"\)\}<\/p>`\)\}\s*<div id="dice-words"/);
+  assert.match(shell, /<div class="seed-word-copy-row"><p class="label">Derived seed phrase<\/p>[\s\S]*?<\/div>\s*<div id="dice-words"/);
+  // The pre-boot markup shows the same shape the app renders: the meta row in
+  // its wrapper above the input, two lines, each number a coloured value.
+  assert.match(shell, /<div class="seed-word-meta"><p class="muted" id="dice-meta" aria-live="polite">/);
+  assert.match(shell, /<span class="dice-meta-value is-short">0<\/span> of 99 recommended rolls<br><span class="dice-meta-value is-short">0\.0<\/span> bits estimated/);
+  assert.match(shell, /id="dice-meta"[\s\S]*?<div class="dice-input-shell">[\s\S]*?<div class="dice-input-pad/);
+  // No trace of the single-line form with its trailing method restatement.
+  assert.doesNotMatch(shell, /0\.0 bits estimated · 24-word seed/);
   assert.match(app, /function hodlSetDiceFairnessOpen\(open\)/);
   assert.match(app, /function hodlChiSquaredCdf\(/);
   assert.match(app, /function hodlDiceFairnessAssess\(rolls,\s*labels,\s*title\)/);
@@ -1552,6 +1887,44 @@ test("dice rolls hide Pearson chi-squared fairness behind a text expand button",
   assert.match(app, /hodlT\("Hide die distribution \/ fairness analysis"\)/);
   assert.match(css, /\.dice-fairness \{/);
   assert.match(css, /\.dice-fairness-toggle \{/);
+  // It heads the panel it opens, so it matches the labels above it rather than
+  // inheriting the browser default a step larger than every title around it.
+  // Grey at rest, white while hovered or open. The arrow is a child span with
+  // no colour of its own, so it follows the label through every state.
+  assert.match(css, /\.dice-fairness-toggle \{[^}]*color: var\(--muted\); font-size: 14px; font-weight: 600;/s);
+  assert.match(css, /\.dice-fairness-toggle:hover, \.dice-fairness-toggle\[aria-expanded="true"\] \{ color: var\(--fg\); \}/);
+  // It waits for rolls, the way the calculations switch waits for a word.
+  assert.match(appSource, /<div class="dice-fairness-row" hidden>/);
+  assert.match(css, /\.dice-fairness-row\[hidden\] \{ display: none; \}/);
+  assert.match(appSource, /if \(row\?\.classList\.contains\("dice-fairness-row"\)\) row\.hidden = !markup;/);
+  // The panel goes with it: clearing the rolls must not strand it open with no
+  // control left to close it.
+  assert.match(appSource, /panel\.hidden = !open \|\| !markup;/);
+  // Same size, weight and colour the shared title class uses.
+  assert.match(css, /\.label \{ font-size: 14px; font-weight: 600;[^}]*color: var\(--fg\); \}/);
+  // A heading-styled control takes no press flash: the global button rule
+  // paints one orange, which reads as a fault rather than feedback here.
+  assert.match(css, /\.dice-fairness-toggle:not\(:disabled\):active \{\s*background: transparent !important; color: var\(--fg\) !important;/s);
+  // With no rolls the note is the whole panel, so its lead would leave 18px
+  // above against 12px below. Populated reports keep the lead under a head.
+  assert.match(css, /\.dice-fairness > \.dice-fairness-note:first-child \{ margin-top: 0; \}/);
+  assert.match(css, /\.dice-fairness-note, \.dice-fairness-caveat \{ margin: 6px 0 0;/);
+  assert.match(css, /\.dice-fairness \{[^}]*padding: 12px 14px;/s);
+  // The panel sits directly under the row that opens it.
+  assert.match(css, /\.dice-fairness \{\s*margin-top: 0;/s);
+  // The arrow is the only open/closed cue, so it is readable at a glance.
+  // Wide enough that swapping the two triangles cannot shift the title, and no
+  // wider: at 18px a 0.9em box left a run of empty space before the text.
+  // Optical: centred boxes leave the triangle reading low beside the label, and
+  // a transform corrects it without touching the 44px row height.
+  assert.match(css, /\[data-dice-fairness-glyph\] \{\s*display: inline-block; width: 0\.7em; font-size: 22px; line-height: 1; transform: translateY\(-2px\);\s*\}/s);
+  assert.match(css, /\.dice-fairness-toggle \{[^}]*gap: 4px;/s);
+  // Sized as a heading rather than a tap target, matching the sync switch:
+  // the 44px default padded the row and pushed the panel away from its title.
+  assert.match(css, /\.dice-fairness-toggle \{[^}]*min-height: 32px;/s);
+  assert.match(css, /\.manual-calculations-toggle \{[^}]*min-height: 32px;/s);
+  // The flex gap alone sets that spacing; no literal space in the markup.
+  assert.match(appSource, /<\/span>\$\{hodlT\("Die Distribution \/ Fairness Analysis"\)\}<\/button>/);
   assert.match(css, /\.dice-fairness\[data-tone="danger"\] \{/);
   assert.match(shell, /dicefairness\.johnellmore\.com/);
   assert.match(shell, /How can I test whether a die is fair/);

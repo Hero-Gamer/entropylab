@@ -9,6 +9,12 @@
   --border: #333333;
   --accent: #d8892b;
   --selection-accent: #ff9900;
+  /* The accent as lettering rather than as a fill. On the dark ground the fill
+     colour reads fine as text (9.8:1); on the light one it does not (2.1:1),
+     so light mode takes a deeper orange. Split from --selection-accent so the
+     solid fills — the primary button, the active tab, the press flash — keep
+     the bright colour in both themes. */
+  --selection-accent-ink: #ff9900;
   --selection-fg: #000000;
   --danger: #d4574a;
   --danger-bright: #ff4438; /* alert red: --danger is too muted to carry a live status */
@@ -61,6 +67,7 @@
   --faint: #666666;
   --border: #c9c9c9;
   --accent: #b86f1c;
+  --selection-accent-ink: #b36200; /* 4.5:1 on white: the brightest orange that still clears AA */
   --danger: #b42318;
   --danger-bright: #d92d20;
   --ok: #4f7a3a;
@@ -213,16 +220,17 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 .seed-entry-tools { display: flex; align-items: stretch; gap: var(--space-control); margin-top: var(--space-component); }
 .seed-entry-tools .seed-autocomplete-toggle { flex: 1 1 auto; margin-top: 0; }
 /* Tighter to the dropdown above than to the section below: the control reads
-   as part of the method it qualifies, and the 8px off the top is given back
-   under the explanation. */
-.global-sync-host { margin-top: var(--space-control); padding-bottom: var(--space-control); }
+   as part of the method it qualifies. The rule belongs to this section, not to
+   the length band under it: Method closes with the line rather than Seed
+   phrase length opening with one, so the gap either side of it is even. */
+.global-sync-host { margin-top: var(--space-control); padding-bottom: var(--space-component); border-bottom: 1px solid var(--border); }
 .global-sync-host[hidden] { display: none; }
 /* Two rows: the switch and its title, then the explanation under both. The
    shared toggle chrome is a bordered chip elsewhere; here the control reads as
    part of the card, so it gives up the box and keeps the 44px target. */
 .global-sync-row { display: block; }
 .global-sync-head { display: flex; align-items: center; gap: var(--space-control); }
-.global-sync-toggle { flex: 1 1 auto; min-height: 32px; margin-top: 0; padding: 0; border: 0; background: none; }
+.global-sync-toggle { flex: 1 1 auto; min-height: 24px; margin-top: 0; padding: 0; border: 0; background: none; }
 /* The title carries the same weight and colour as the Method label above it. */
 .global-sync-toggle .label { margin: 0; }
 .global-sync-note { display: block; margin: 0; font-size: 13px; line-height: 1.45; }
@@ -271,8 +279,15 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 .number-base-calculation-sum > span { display: inline-flex; align-items: baseline; gap: 5px; }
 .number-base-calculation-sum strong { color: var(--accent); font-size: 13px; font-weight: 700; }
 .number-base-calculation-sum b { color: var(--faint); }
-.manual-calculations-toggle { width: 100%; }
+/* Two rows like the sync switch: the box and its title, then the explanation
+   under both. The shared toggle chrome is a bordered chip elsewhere; here the
+   control reads as part of the card, so it gives up the box. */
+.manual-calculations-row { margin-top: var(--space-component); }
+.manual-calculations-toggle { display: flex; width: 100%; min-height: 32px; margin-top: 0; padding: 0; border: 0; background: none; }
+.manual-calculations-toggle .label { margin: 0; }
+.manual-calculations-note { display: block; margin: 0; font-size: 13px; line-height: 1.45; }
 .manual-calculations-container { margin-top: var(--space-section); }
+.manual-calculations-row[hidden] { display: none; }
 .manual-calculations-container[hidden] { display: none; }
 .manual-calculation-panel > .label { margin-top: 0; }
 .manual-calculation-list { display: grid; gap: var(--space-control); }
@@ -323,9 +338,18 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 .passphrase-keyboard-tools[hidden] { display: none; }
 .passphrase-keyboard-tools .seed-keyboard-toggle { align-self: flex-start; }
 .passphrase-bip39-options { display: grid; flex: 1 1 auto; gap: var(--space-control); }
-.passphrase-bip39-toggle, .passphrase-autocomplete-toggle { width: 100%; margin-top: 0; }
+/* The same borderless switch the sync and calculations toggles use: these read
+   as part of the card rather than as chips floating on it, so they give up the
+   bordered box and keep only the row the checkbox sits in. */
+.passphrase-bip39-toggle, .passphrase-autocomplete-toggle, .brain-wallet-trim-toggle {
+  width: 100%; min-height: 24px; margin-top: 0; padding: 0; border: 0; background: none;
+}
+/* Two rows where there is an explanation: the switch and its title, then the
+   note under both, the way the sync switch reads. */
+.passphrase-bip39-row { display: block; }
+.passphrase-bip39-note { display: block; margin: 0; font-size: 13px; line-height: 1.45; }
 .passphrase-autocomplete-toggle[hidden] { display: none; }
-.brain-wallet-trim-toggle { flex: 1 1 auto; margin-top: 0; }
+.brain-wallet-trim-toggle { flex: 1 1 auto; }
 .brain-wallet-trim-toggle[hidden] { display: none; }
 .dice-input-shell.passphrase-input-shell input {
   position: relative; z-index: 1; margin-top: 0; background: transparent;
@@ -390,10 +414,11 @@ input[type="radio"], input[type="checkbox"] {
   height: 16px;
   min-width: 16px;
   min-height: 16px;
-  margin: 4px 0 0;
+  margin: 0;
   padding: 0;
   accent-color: var(--accent);
   flex-shrink: 0;
+  cursor: pointer;
 }
 label.field { display: block; margin-top: var(--space-component); font-size: 14px; font-weight: 600; }
 .label { font-size: 14px; font-weight: 600; margin: var(--space-section) 0 var(--space-control); color: var(--fg); }
@@ -461,17 +486,44 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
     grid-template-rows: repeat(4, minmax(48px, auto));
   }
 }
+/* It heads the panel it opens, so it takes the size, weight and colour of the
+   labels above it rather than the button default, which inherits the
+   browser's 16px and read a step larger than every title around it. */
 .dice-fairness-toggle {
-  display: inline-flex; align-items: center; gap: 8px; width: fit-content; min-height: 44px; padding: 0;
-  border: 0; background: transparent; color: var(--muted); font-weight: 700; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px; width: fit-content; min-height: 32px; padding: 0;
+  border: 0; background: transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer;
 }
-.seed-word-copy-row .dice-fairness-toggle { margin-right: auto; }
-.dice-fairness-toggle:hover { color: var(--fg); }
-.dice-fairness-toggle[aria-expanded="true"] { color: var(--fg); }
+/* Grey at rest, white while hovered or open: the arrow is a child span with no
+   colour of its own, so it follows the label through every state. */
+.dice-fairness-toggle:hover, .dice-fairness-toggle[aria-expanded="true"] { color: var(--fg); }
+/* The fairness toggle heads the panel under it rather than trailing anything,
+   so it takes its own row, close to the keypad above. The copy button that
+   used to share this row belongs with the seed phrase title instead. */
+.dice-fairness-row { display: flex; align-items: center; margin-top: var(--space-control); }
+.dice-fairness-row[hidden] { display: none; }
 .dice-fairness-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 3px; }
-.dice-fairness-toggle [data-dice-fairness-glyph] { display: inline-block; width: 0.9em; font-size: 12px; line-height: 1; }
+/* Opt out of the global press flash. That rule paints a control orange for
+   the length of a click, which reads as feedback on a chip but as a fault on
+   something styled as a heading. The panel opening is the feedback here.
+   !important to match the specificity the global rule sets. */
+.dice-fairness-toggle:not(:disabled):active {
+  background: transparent !important; color: var(--fg) !important; border-color: transparent !important;
+}
+/* The arrow is the only thing that says whether the panel is open, so it is
+   sized to be read at a glance instead of tucked under the title. Its own
+   em box, so the 44px row height does not move with it. */
+/* The row centres the two boxes, but the triangle's ink does not sit where the
+   label's does inside its own, so centred boxes read as a sagging arrow. The
+   nudge lines up what the eye sees rather than what the layout measures, and
+   a transform keeps it out of the 44px row height. Optical, not layout. */
+.dice-fairness-toggle [data-dice-fairness-glyph] {
+  display: inline-block; width: 0.7em; font-size: 22px; line-height: 1; transform: translateY(-2px);
+}
+/* Sits directly under the control that opens it: the toggle row already
+   carries its own space below the text, since the button holds a 44px touch
+   target around a 14px line. */
 .dice-fairness {
-  margin-top: var(--space-control); padding: 12px 14px; border-radius: 12px;
+  margin-top: 0; padding: 12px 14px; border-radius: 12px;
   border: 1px solid var(--border); background: var(--surface-2); color: var(--fg);
 }
 .dice-fairness[hidden] { display: none; }
@@ -500,6 +552,10 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
 .dice-fairness-head span { color: var(--muted); font-family: var(--mono); font-size: 12px; }
 .dice-fairness-note, .dice-fairness-caveat { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
 .dice-fairness-caveat { margin-top: 12px; }
+/* The empty state is the whole panel: with nothing above it to separate from,
+   its 6px lead only unbalances the padding, leaving 18px over 12px. Populated
+   reports always put this note under a head, so it keeps its lead there. */
+.dice-fairness > .dice-fairness-note:first-child { margin-top: 0; }
 .dice-fairness-faces { display: grid; gap: 5px; margin-top: 10px; }
 @media (min-width: 640px) {
   .dice-fairness-faces[data-sides="8"], .dice-fairness-faces[data-sides="16"] { grid-template-columns: 1fr 1fr; gap: 5px 14px; }
@@ -594,10 +650,29 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
 /* Status lines quote what was typed, so a long unbroken token must break
    rather than run off the side. */
 .seed-word-meta > .muted, #seed-meta, #dice-meta { overflow-wrap: anywhere; }
+/* The roll count and the bits estimate are the numbers to act on, so they
+   alone take colour out of the muted line: red while short of what the
+   selected seed length asks for, green once it is met. One class serves
+   both, so the two can never drift apart. It takes the bright pair the
+   network tag uses, not --danger/--ok: these are a few characters of live
+   status, which is what the brightest shades are reserved for, and the
+   muted pair would barely lift off the muted line around it. Bold as well as
+   coloured, so the two numbers still read as the figures to act on where
+   colour does not arrive: print, forced monochrome, or a colour blindness
+   that flattens the red against the green. */
+.dice-meta-value { font-weight: 700; }
+.dice-meta-value.is-short { color: var(--danger-bright); }
+.dice-meta-value.is-met { color: var(--ok-bright); }
+/* The next action, not a figure: it takes the met colour so the line reads as
+   cleared, but leaves the weight to the numbers it sits under. */
+.dice-meta-cue { color: var(--ok-bright); }
 .seed-word-copy-row {
   display: flex; align-items: center; justify-content: flex-end; gap: 8px;
   margin-top: var(--space-component);
 }
+/* The seed phrase title owns its row and the copy button trails it, so the
+   label hands its own vertical margins to the row and pushes the rest right. */
+.seed-word-copy-row .label { margin: 0; margin-right: auto; }
 .seed-phrase-copied {
   flex: 0 0 auto; color: var(--ok); font-size: 13px; line-height: 21px; white-space: nowrap;
 }
@@ -738,8 +813,11 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
    the colour Core gives the network: yellow mainnet, green testnet, purple
    signet, grey regtest. */
 .network-picker { position: relative; flex: 0 0 auto; }
+/* Right padding runs 3px short of the left: the 12px chevron's ink spans
+   only the middle half of its box, so a symmetric 12px reads wide on that
+   side. Optical, not layout. */
 .network-picker-button {
-  display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 12px;
+  display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 9px 0 12px;
   border: 1px solid var(--border); border-radius: 8px;
   background: var(--surface-2); color: var(--fg); font-size: 14px; font-weight: 600; cursor: pointer;
 }
@@ -813,8 +891,11 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
    (44px minimum, control margin, mono face) would bulge out of the 52px bar.
    In the header the generated control wears the header-button sizing instead. */
 .locale-control .custom-select { flex: 0 0 auto; width: auto; margin-top: 0; font-family: inherit; font-size: 14px; }
+/* Right padding runs 3px short of the left: the 12px chevron's ink spans
+   only the middle half of its box, so a symmetric 12px reads wide on that
+   side. Optical, not layout. */
 .locale-control .custom-select-button {
-  min-height: 40px; padding: 0 12px; border-radius: 8px; gap: 7px;
+  min-height: 40px; padding: 0 9px 0 12px; border-radius: 8px; gap: 7px;
   background: var(--surface-2); color: var(--fg); font-weight: 600; letter-spacing: 0.04em;
 }
 .theme-toggle svg { display: none; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -1621,15 +1702,46 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .sp-qr svg { width: 100%; height: auto; display: block; background: #fff; border-radius: 8px; }
 .key-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .key-panel-head #modes { flex: 1 1 auto; min-width: 0; }
-.seed-length-control { margin-top: var(--space-section); padding-top: var(--space-component); border-top: 1px solid var(--border); }
+/* Closes with a rule of its own; the one above it belongs to the Method
+   section. Equal 16px either side of both lines, so the band reads as one. */
+.seed-length-control { margin-top: var(--space-component); padding-bottom: var(--space-component); border-bottom: 1px solid var(--border); }
 .seed-length-control[hidden] { display: none !important; }
 .seed-length-control .label { margin: 0 0 8px; }
 .seed-length-control .muted { margin: var(--space-control) 0 0; }
 .key-form { margin-top: var(--space-section); }
 .key-form > :first-child { margin-top: 0; }
 .key-form > .muted { margin: var(--space-control) 0 0; }
-.key-form > .label + .muted { margin-top: 0; }
-.key-form > .label + textarea { margin-top: 0; }
+/* Inside this card a title owns the space beneath it: the gap is set once, by
+   the label's margin-bottom, and whatever follows adds nothing of its own.
+   The card used to spell this out one pairing at a time (.label + .muted,
+   .label + textarea), so anything without its own pairing kept whatever
+   margin-top it happened to carry — 8px under some titles, 16px under the
+   word grid. Scoped to this card: the rest of the page still mixes the two
+   conventions, and unpicking that belongs in its own pass. */
+#calc-card .label { margin-bottom: var(--space-control); }
+#calc-card .label + * { margin-top: 0; }
+/* Text starts lower under a title than a box does: .muted carries a 1.5 line
+   height, so roughly 3.5px of half-leading sits above its first line and a
+   full 8px reads wider than the same 8px above a bordered control. The label
+   hands that back, keeping it the one thing that owns the gap. Optical, not
+   layout: the text lands where a control would, not the box around it. */
+#calc-card .label:has(+ .seed-word-meta) { margin-bottom: 4px; }
+/* The exception: a checkbox's own text is not a heading over content. It sits
+   inside the control, on one line with the box, so it owns no gap either side.
+   The components above already say margin: 0; this repeats it only to outrank
+   the convention, which an id lets win over their plain class selectors. */
+#calc-card .seed-autocomplete-toggle .label { margin: 0; }
+/* The other exception: this heading sits in a flex row whose 12px gap already
+   spaces the cards under it, so it pulls back rather than adding a gap of its
+   own — 12px less the 4px pull is the same 8px every other label sets. Written
+   with both classes so it outranks the convention, which an id would otherwise
+   win outright and turn the pull into a second gap. */
+#calc-card .label.master-fingerprint-heading { margin: 0 0 -4px; }
+/* A row carrying a title is still a title, so what follows it starts flush and
+   the gap comes from the label inside, exactly as it does for a bare one. The
+   row adds nothing of its own: its own margin-bottom stacked on the label's
+   and set the grid twice as far from its heading as every other pairing. */
+#calc-card .seed-word-copy-row:has(> .label) + * { margin-top: 0; }
 .key-form > .muted:empty, .key-form > #last-words:empty { display: none; }
 .last-word-options { margin-top: var(--space-control); }
 #calc-card > .key-form + .field { margin-top: var(--space-section); }
@@ -1682,14 +1794,39 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .key-settings .field { min-width: 0; margin: 0; }
 .derivation-path-field input { font-family: var(--mono); }
+/* The rules bracket the whole section, so the lower one sits under the toggle
+   when shut and under the revealed fields when open — the section grows
+   between them rather than the line splitting the label from its content. */
 .derivation-advanced {
-  margin: 0; padding-top: var(--space-component); border-top: 1px solid var(--border);
+  margin: 0; padding: var(--space-control) 0;
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
 }
-.derivation-advanced summary { width: fit-content; color: var(--muted); font-weight: 700; cursor: pointer; }
+/* The card's other accordion, styled as the fairness toggle so the two read as
+   one control type: heading-sized text, grey until hovered or open, and the
+   same disclosure triangle. The native marker steps aside because it cannot
+   be sized to match; the glyph replacing it is decorative, since <details>
+   already tells assistive tech whether the section is open. */
+/* The rule belongs to the toggle row, so it stays put whether the section is
+   open or shut. That means the row spans the card rather than hugging its
+   text — a line only as wide as the words would read as an underline. The
+   glyph and label still sit left; only the hit area grows with it. */
+.derivation-advanced summary {
+  display: inline-flex; align-items: center; gap: 4px; width: fit-content; min-height: 32px;
+  color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; list-style: none;
+}
+.derivation-advanced summary::-webkit-details-marker { display: none; }
+.derivation-advanced summary::before {
+  content: "\25B8"; display: inline-block; width: 0.7em; font-size: 22px; line-height: 1; transform: translateY(-2px);
+}
+.derivation-advanced[open] summary::before { content: "\25BE"; }
 .derivation-advanced summary:hover { color: var(--fg); }
 .derivation-advanced summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 3px; }
 .derivation-advanced[open] summary { margin-bottom: var(--space-component); color: var(--fg); }
 .derivation-advanced-fields { display: grid; gap: var(--space-component); }
+/* These title their inputs the way the rest of the card does. The control
+   below each already carries the 8px, so the title takes only the size, weight
+   and colour — not .label's margins, which would double the grid gap. */
+.derivation-advanced-fields .field > label { display: block; font-size: 14px; font-weight: 600; color: var(--fg); }
 .derivation-advanced .derivation-index-value input:not([type="checkbox"]) { padding-right: 12px; }
 .derivation-index-control {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; gap: var(--space-control);
@@ -1720,7 +1857,12 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   display: block; margin-top: var(--space-control); color: var(--muted); font-size: 12px; font-weight: 400; line-height: 1.4;
 }
 .address-estimate { color: var(--accent); }
-.derivation-estimate { margin: var(--space-control) 0 0; }
+/* A deliberate asymmetry: the estimate belongs to the section above it, whose
+   closing rule it answers to, and not to the Derive button under it. So it
+   takes a wide seam above and sits close beneath. 16px is the floor below —
+   the action row's own margin, shared by every tool card by design, and this
+   element's bottom margin would only collapse into it. */
+.derivation-estimate { margin: var(--space-intro) 0 0; }
 .msig-legacy-account-toggle { margin: 0; }
 .msig-legacy-account-toggle[hidden] { display: none !important; }
 .msig-legacy-account-toggle input { margin-top: 2px; }
@@ -1734,7 +1876,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 @media (max-width: 520px) {
   .master-fingerprint-preview { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
-  .master-fingerprint-heading { margin: 0; }
+  #calc-card .label.master-fingerprint-heading { margin: 0; }
   .master-fingerprint-card { padding: 10px 12px; }
   .master-fingerprint-arrow { justify-self: center; transform: rotate(90deg); font-size: 22px; }
 }
@@ -1752,13 +1894,35 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   flex: 0 0 auto; border-color: color-mix(in oklab, var(--danger) 65%, var(--border));
   background: color-mix(in oklab, var(--danger) 14%, var(--surface-2)); color: var(--danger);
 }
-.btn:is(.delete-key, .clear-current-action):not(:disabled):hover { background: color-mix(in oklab, var(--danger) 23%, var(--surface-2)); color: var(--fg); }
+/* Inverted like the primary, in the colour that says what it does: the fill
+   drops to the page ground and the alert red takes the border and label.
+   --danger-bright rather than --danger, which is too muted to carry an
+   edge and a label on their own. */
+.btn:is(.delete-key, .clear-current-action):not(:disabled):hover { border-color: var(--danger-bright); background: var(--bg); color: var(--danger-bright); }
 .btn:is(.delete-key, .clear-current-action):focus-visible { outline: 2px solid var(--danger); outline-offset: 2px; }
 .btn:is(.delete-key, .clear-current-action):disabled {
   cursor: not-allowed; opacity: .45; border-color: color-mix(in oklab, var(--danger) 30%, var(--border));
   background: color-mix(in oklab, var(--danger) 6%, var(--surface-2)); color: color-mix(in oklab, var(--danger) 55%, var(--muted));
 }
 .tool-actions { margin-top: var(--space-component); }
+/* A card's closing actions are the things to press, so their labels carry the
+   weight. On the row rather than on .btn, which the tabs share: a tab reads as
+   a place you are, not an action you take. */
+.tool-actions .btn { font-weight: 700; transition: background-color .14s ease, border-color .14s ease, color .14s ease; }
+/* The closing actions answer to the pointer the same way — border and surface
+   both move — so a row of mixed button weights reads as one set of controls.
+   Buttons that already carry a meaning colour are left out: the destructive
+   red and the save-to-disk green say more than a shared accent would. */
+/* Every closing action inverts the same way: the fill drops back to the page
+   ground and the accent moves out to the border and the label, so the button
+   reads as itself outlined. One rule now serves the filled primary and the
+   quieter secondary — they differ at rest, not under the pointer. */
+.tool-actions .btn:not(:disabled):not(:is(.clear-current-action, .delete-key, .download-html, .save-recovery-sheet, .save-wallet-dat, .journal-download-action)):hover {
+  border-color: var(--selection-accent);
+  background: var(--bg);
+  color: var(--selection-accent-ink);
+}
+@media (prefers-reduced-motion: reduce) { .tool-actions .btn { transition: none; } }
 .current-item-actions { align-items: center; width: 100%; }
 .current-item-actions .clear-current-action { margin-inline-start: auto; }
 .btn.primary[data-derivation-state="running"],
@@ -1980,6 +2144,13 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .add-item-control:focus-within .add-item-tooltip {
   opacity: 1; visibility: visible; transform: translateY(0); transition-delay: 0s;
 }
+/* A disabled + or − has nothing to offer, so it says nothing. The button
+   itself takes no :hover, but the wrapper the tooltip hangs off does, which is
+   how the hint kept appearing over a dead control. Keyed off the button's own
+   state, and placed after the reveal rule: the two match on specificity. */
+.add-key:disabled + .add-item-tooltip {
+  opacity: 0; visibility: hidden; transform: translateY(-4px);
+}
 @media (prefers-reduced-motion: reduce) { .add-item-tooltip { transition: none; } }
 .key-tabs {
   display: flex; align-items: flex-end; gap: 0; flex: 1 1 auto; min-width: 0; height: 50px; margin-top: 0; position: relative; z-index: 2;
@@ -2132,6 +2303,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    control keeps its own aria-label, so nothing is lost to assistive tech. */
 @media (max-width: 719px) {
   :root { --site-header-pad: 12px; }
+  /* The page edge follows the bar's: narrow screens hand the 4px a side back
+     to the content, and the card lines up with the header controls above it. */
+  .wrap { padding-left: 12px; padding-right: 12px; }
   .control-label { display: none; }
   /* The Station's dropdowns take the whole card from the same width the bar's
      controls collapse at, so the page changes shape in one step. */
@@ -2143,6 +2317,15 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   .network-picker { flex: 0 0 40px; }
   .network-picker-label, .network-picker-chevron { display: none; }
   .network-picker-button { width: 40px; padding: 0; justify-content: center; }
+  /* The other header dropdown collapses at the same width: arrow off, and
+     squared against the same 40px so the two read as one row of buttons. */
+  .locale-control .custom-select-chevron { display: none; }
+  .locale-control .custom-select { flex: 0 0 40px; width: 40px; }
+  .locale-control .custom-select-button { width: 40px; padding: 0; justify-content: center; }
+  /* The button is square; the menu is not. Right-anchored like the network
+     menu so it opens leftward into the page, and held wide enough for the
+     option text that no longer fits under a 40px button. */
+  .locale-control .custom-select-list { left: auto; right: 0; min-width: 72px; }
   /* Short tool names here: the strip is the page's only horizontal scroll, so
      fitting more of it on screen matters more than the fuller wording. */
   .workspace-tab-full { display: none; }

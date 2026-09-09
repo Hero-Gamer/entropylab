@@ -72,10 +72,10 @@
         <p class="muted calc-intro">Turn entropy you bring — dice rolls, playing cards, a number in any base, a seed phrase, or a private key — into a BIP-39 seed, then derive its master fingerprint, extended public keys, and receive addresses. The dice methods match COLDCARD, SeedSigner, Keystone, and BitBox, so the same rolls reproduce the same seed on those signers. This does not invent entropy — it is a calculator, and nothing leaves this page.</p>
       </div>
       <section class="key-manager no-print" id="key-manager">
-      <div class="key-tab-strip"><div class="key-tabs" id="key-tabs" role="tablist" aria-label="Keys"></div><div class="add-item-control"><button class="add-key" id="add-key" type="button" aria-label="Open Key Station to derive another key" aria-describedby="add-key-tooltip">+</button><span class="add-item-tooltip" id="add-key-tooltip" role="tooltip">Open Key Station to derive another key</span></div><div class="add-item-control"><button class="add-key remove-key" id="delete-key" type="button" aria-label="Delete current key" aria-describedby="delete-key-tooltip" disabled>−</button><span class="add-item-tooltip" id="delete-key-tooltip" role="tooltip">Delete this key</span></div></div>
+      <div class="key-tab-strip"><div class="key-tabs" id="key-tabs" role="tablist" aria-label="Keys"></div><div class="add-item-control"><button class="add-key" id="add-key" type="button" aria-label="Open Key Station to derive another key" aria-describedby="add-key-tooltip" disabled>+</button><span class="add-item-tooltip" id="add-key-tooltip" role="tooltip">Open Key Station to derive another key</span></div><div class="add-item-control"><button class="add-key remove-key" id="delete-key" type="button" aria-label="Delete current key" aria-describedby="delete-key-tooltip" disabled>−</button><span class="add-item-tooltip" id="delete-key-tooltip" role="tooltip">Delete this key</span></div></div>
     </section>
     <section class="card no-print tool-card" id="calc-card" role="tabpanel" hidden>
-      <div class="key-mode-select" id="modes"><p class="label" id="key-method-label">Method</p></div>
+      <div class="key-mode-select" id="modes"><p class="label" id="key-method-label">Derivation Method</p></div>
       <div class="key-summary" id="key-summary" hidden>
         <img class="key-summary-lifehash" id="key-summary-lifehash" width="72" height="72" alt="" hidden>
         <div class="key-summary-text">
@@ -96,7 +96,7 @@
         <p class="muted" id="seed-length-help">24 words use 256 bits of BIP39 entropy.</p>
       </section>
       <div id="form" class="key-form">
-      <p class="label">How to turn rolls into a seed</p>
+      <p class="label">Dice roll options</p>
       <div class="choice-grid">
       <label class="choice"><input type="radio" name="dm" value="coldcard" checked="checked">
         <span><strong>Base 10 [0-9] / Hashed rolls (recommended)</strong>
@@ -120,11 +120,11 @@ words, pick one of the checksum words.</span></span>
         <span class="desc">Roll one D8 and two D16 dice for each lookup-table word, then use the per-size final rolls for the checksum word.</span></span>
       </label>
       </div>
-      <p class="label" id="dice-label">Dice rolls (faces 1–6 only)</p>
-      <p class="muted" id="dice-help">Base 10 [0-9] hashes the original roll string, matching COLDCARD and SeedSigner. Dice [1-6] converts each 6 to 0 before hashing, matching the method used by Keystone.</p>
-      <div class="dice-input-shell"><pre class="dice-input-highlight" id="dice-highlight" aria-hidden="true"></pre><textarea id="dice" placeholder="415263415263…" inputmode="numeric" autocomplete="off" spellcheck="false" aria-describedby="dice-help dice-meta"></textarea></div>
+      <p class="label" id="dice-label">Dice rolls (D6)</p>
+      <div class="seed-word-meta"><p class="muted" id="dice-meta" aria-live="polite"><span class="dice-meta-value is-short">0</span> of 99 recommended rolls<br><span class="dice-meta-value is-short">0.0</span> bits estimated</p></div>
+      <div class="dice-input-shell"><pre class="dice-input-highlight" id="dice-highlight" aria-hidden="true"></pre><textarea id="dice" placeholder="415263415263…" inputmode="numeric" autocomplete="off" spellcheck="false" aria-describedby="dice-meta"></textarea></div>
       <div class="dice-input-pad faces-1-6"><button type="button" data-d="1">1</button><button type="button" data-d="2">2</button><button type="button" data-d="3">3</button><button type="button" data-d="4">4</button><button type="button" data-d="5">5</button><button type="button" data-d="6">6</button></div>
-      <p class="muted" id="dice-meta">0 of 99 recommended rolls · 0.0 bits estimated · 24-word seed</p>
+      <div class="seed-word-copy-row"><p class="label">Derived seed phrase</p><span class="seed-phrase-copied" aria-live="polite"></span><button type="button" class="seed-phrase-copy" data-copy-seed-phrase disabled aria-label="Copy seed phrase" title="Copy seed phrase"></button></div>
       <div id="dice-words" class="dice-word-grid" aria-label="24 seed-word slots"></div>
       <div id="last-words" class="row last-word-options"></div>
     </div>

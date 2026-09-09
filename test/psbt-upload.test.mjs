@@ -73,6 +73,25 @@ test("both markups carry the upload control, and the editor wires it", () => {
   assert.match(editor, /psbtBytesFromUpload\(new Uint8Array\(await chosen\.arrayBuffer\(\)\)\)/);
 });
 
+test("the PSBT / Nonce inspector also uploads and downloads the file", () => {
+  const shell = read("src/shell.html");
+  const app = read("src/js/app.js");
+  assert.match(shell, /<button class="btn secondary" id="psbt-upload" type="button">Upload \.psbt file<\/button>/);
+  assert.match(shell, /<input type="file" id="psbt-file" accept="\.psbt,\.txn,\.txt,\.hex" hidden>/);
+  assert.match(shell, /<button class="btn secondary" id="psbt-download" type="button">Download \.psbt<\/button>/);
+  assert.match(app, /import \{ initPsbtEditor, psbtBytesFromUpload \} from "\.\/psbt-editor\.js"/);
+  assert.match(app, /getElementById\("psbt-upload"\)/);
+  assert.match(app, /getElementById\("psbt-file"\)/);
+  assert.match(app, /getElementById\("psbt-download"\)/);
+  assert.match(app, /psbtBytesFromUpload\(new Uint8Array\(await chosen\.arrayBuffer\(\)\)\)/);
+  assert.match(app, /hodlBytesToB64\(bytes\)/);
+  assert.match(app, /"inspected\.psbt"/);
+  assert.match(app, /"inspected\.txn"/);
+  assert.match(app, /Paste or upload a PSBT or raw transaction first/);
+  assert.match(app, /"psbt-upload": \["psbt", "upload", "psbt-file"\]/);
+  assert.match(app, /"psbt-download": \["psbt", "download", "inspected-psbt"\]/);
+});
+
 test("the result panel offers a binary .psbt download", () => {
   const editor = read("src/js/psbt-editor.js");
   assert.match(editor, /id="psbted-download"/);

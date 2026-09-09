@@ -43,7 +43,7 @@ import { entropyToMnemonic as hodlEntropyToMnemonic, mnemonicToEntropy as hodlMn
 import { wordlist as bip39English } from "./bip39-english.js";
 // The PSBT editor (its own workspace tab) drives the rust-bitcoin WASM
 // bindings in psbt-wasm.js; heavy lifting lives in psbt-editor.js.
-import { initPsbtEditor } from "./psbt-editor.js";
+import { initPsbtEditor, psbtBytesFromUpload } from "./psbt-editor.js";
 import { hodlTapKeySigs, hodlTapScriptSigs, hodlTapSighashProblems } from "./psbt-schnorr.js";
 import { initQrReferences } from "./qr-references.js";
 import { renderSVG as hodlUqrRenderSvg } from "uqr";
@@ -8092,6 +8092,11 @@ function hodlB64(value) {
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
+function hodlBytesToB64(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
 function hodlPsbtBytes(raw) {
   let value = raw.trim(), compact = value.replace(/\s/g, "");
   if (!value) throw new Error("Paste a PSBT v0 or a raw Bitcoin transaction.");
@@ -8615,6 +8620,14 @@ function hodlUseActiveKeyForPsbt() {
   hodlPsbtSource = "active";
   hodlPsbtSessionSpec = state.name ? { key: "Session key from {name}. Kept in page memory only.", vars: { name: state.name } } : { key: "Session key from the active key. Kept in page memory only." };
 }
+function hodlDownloadBytes(bytes, name) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 function hodlInitPsbt() {
   let go = document.getElementById("psbt-go");
   if (!go) return;
@@ -8643,6 +8656,36 @@ function hodlInitPsbt() {
     document.getElementById("psbt-out").innerHTML = "";
     hodlSetPsbtError(null);
     document.getElementById("psbt-session").textContent = hodlPsbtSessionText();
+  };
+  // Same load path as the editor: Sparrow/Coldcard binary .psbt, or a
+  // base64/hex text export saved to disk. The textarea mirrors the file as
+  // base64 so Inspect and Download keep working without a second parser.
+  const file = document.getElementById("psbt-file");
+  document.getElementById("psbt-upload").onclick = () => file.click();
+  file.addEventListener("change", () => {
+    const chosen = file.files?.[0];
+    file.value = "";
+    if (!chosen) return;
+    (async () => {
+      try {
+        const bytes = psbtBytesFromUpload(new Uint8Array(await chosen.arrayBuffer()));
+        document.getElementById("psbt-text").value = hodlBytesToB64(bytes);
+        hodlRunPsbt();
+      } catch (exception) {
+        hodlSetPsbtError({ raw: exception.message || String(exception) });
+      }
+    })();
+  });
+  document.getElementById("psbt-download").onclick = () => {
+    hodlSetPsbtError(null);
+    try {
+      const raw = document.getElementById("psbt-text").value;
+      if (!String(raw || "").trim()) throw new Error("Paste or upload a PSBT or raw transaction first.");
+      const bytes = hodlPsbtBytes(raw);
+      hodlDownloadBytes(bytes, isPsbtMagic(bytes) ? "inspected.psbt" : "inspected.txn");
+    } catch (exception) {
+      hodlSetPsbtError({ raw: exception.message || String(exception) });
+    }
   };
   let clearSecretFields = () => {
     hodlPsbtWipeMem();
@@ -12005,6 +12048,8 @@ var hodlJournalAuditedClicks = {
   "sp-wipe": ["sp", "clear", "session"],
   "psbt-use-calc": ["psbt", "use-session-key", "active-key"],
   "psbt-wipe": ["psbt", "clear", "session"],
+  "psbt-upload": ["psbt", "upload", "psbt-file"],
+  "psbt-download": ["psbt", "download", "inspected-psbt"],
   "psbted-load": ["psbt", "load", "editor-text"],
   "psbted-upload": ["psbt", "upload", "psbt-file"],
   "psbted-wipe": ["psbt", "clear", "editor"],

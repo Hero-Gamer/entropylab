@@ -2745,8 +2745,27 @@
     document.querySelector('#psbt-tool-tabs [data-psbt-tool="nonce"]').click();
     await until(() => !document.getElementById("psbt-card").hidden, "PSBT / Nonce tab");
     const box = await until(() => document.getElementById("psbt-text"), "PSBT input");
-    input(box, vector);
-    document.getElementById("psbt-go").click();
+    const fileInput = document.getElementById("psbt-file");
+    const upload = (bytes, name) => {
+      Object.defineProperty(fileInput, "files", {
+        configurable: true,
+        value: [new File([bytes], name, { type: "application/octet-stream" })],
+      });
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    const downloadedBytes = async (name) => {
+      state.lastBlob = null;
+      state.downloadName = "";
+      document.getElementById("psbt-download").click();
+      const blob = await until(() => state.downloadName === name && state.lastBlob, `${name} download`);
+      return new Uint8Array(await blob.arrayBuffer());
+    };
+    const sameBytes = (actual, expected, description) => {
+      assert(actual.length === expected.length && actual.every((byte, index) => byte === expected[index]), description);
+    };
+    const vectorBytes = Uint8Array.from(atob(vector), (char) => char.charCodeAt(0));
+    upload(vectorBytes, "wallet.psbt");
+    await until(() => box.value === vector, "binary PSBT upload");
     await until(() => document.getElementById("psbt-out").textContent.includes("ECDSA nonce check") || document.getElementById("psbt-error").textContent, "inspector report");
     equal(document.getElementById("psbt-error").textContent, "", "inspector rejected a valid vector");
     const out = document.getElementById("psbt-out").textContent;
@@ -2760,6 +2779,7 @@
     assert(out.includes("Output ownership / derivation — Incomplete"), "missing session-key coverage was not exposed");
     assert(out.includes("Nonce analysis — Incomplete"), "single-signature nonce limitation was not exposed");
     assert(!out.includes("LISTED CHECKS COMPLETE"), "an incomplete report was presented as complete");
+    sameBytes(await downloadedBytes("inspected.psbt"), vectorBytes, "downloaded PSBT differs from its binary upload");
     // Change the finalized signature's SIGHASH_ALL suffix to SIGHASH_NONE.
     // The report remains incomplete for unverified prevouts, but the real
     // policy problem must dominate the overall banner and its severity.
@@ -2799,6 +2819,15 @@
     assert(rawOut.includes("Where this transaction sends bitcoin"), "raw transaction outputs section missing");
     assert(rawOut.includes("1Cu32FVupVCgHkMMRJdYJugxwo2Aprgk7H"), "mainnet output address missing");
     assert(rawOut.includes("r values:"), "raw transaction signatures were not inspected");
+    const rawBytes = Uint8Array.from(rawTx.match(/../g), (pair) => parseInt(pair, 16));
+    const txnDownload = await downloadedBytes("inspected.txn");
+    sameBytes(txnDownload, rawBytes, "downloaded transaction differs from the inspected bytes");
+    input(box, "");
+    document.getElementById("psbt-out").innerHTML = "";
+    upload(txnDownload, "inspected.txn");
+    await until(() => document.getElementById("psbt-out").textContent.includes("Raw Bitcoin transaction.") || document.getElementById("psbt-error").textContent, "downloaded transaction re-upload");
+    equal(document.getElementById("psbt-error").textContent, "", "inspector rejected its binary .txn download");
+    sameBytes(await downloadedBytes("inspected.txn"), rawBytes, "transaction bytes changed after download and re-upload");
     // The header network picker must reach the render as well.
     document.getElementById("network-picker-button").click();
     document.querySelector('#network-picker-menu [data-network="testnet"]').click();

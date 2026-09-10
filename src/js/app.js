@@ -8111,6 +8111,34 @@ function hodlPsbtBytes(raw) {
   if (bytes.length > 5e6) throw new Error("This file is too large to inspect safely.");
   return bytes;
 }
+function hodlPsbtInspectorBytesFromUpload(bytes) {
+  let decoded, uploadError;
+  try {
+    decoded = psbtBytesFromUpload(bytes);
+  } catch (error) {
+    uploadError = error;
+  }
+  if (decoded) {
+    if (isPsbtMagic(decoded)) return decoded;
+    try {
+      parseRawTx(decoded);
+      return decoded;
+    } catch {
+      // A binary transaction can happen to decode as text. Validate the
+      // original bytes below before rejecting the upload.
+    }
+  }
+  if (bytes instanceof Uint8Array && bytes.length && bytes.length <= 5e6) {
+    try {
+      parseRawTx(bytes);
+      return bytes;
+    } catch {
+      // Keep the shared decoder's bounded, user-facing rejection below.
+    }
+  }
+  if (uploadError) throw uploadError;
+  throw new Error("That does not look like a PSBT or raw transaction in base64, hex, or binary form.");
+}
 function hodlReadMap(bytes, offset) {
   let entries = [], keys = /* @__PURE__ */ new Set();
   for (; ; ) {
@@ -8668,7 +8696,7 @@ function hodlInitPsbt() {
     if (!chosen) return;
     (async () => {
       try {
-        const bytes = psbtBytesFromUpload(new Uint8Array(await chosen.arrayBuffer()));
+        const bytes = hodlPsbtInspectorBytesFromUpload(new Uint8Array(await chosen.arrayBuffer()));
         document.getElementById("psbt-text").value = hodlBytesToB64(bytes);
         hodlRunPsbt();
       } catch (exception) {

@@ -83,7 +83,7 @@ test("the PSBT / Nonce inspector also uploads and downloads the file", () => {
   assert.match(app, /getElementById\("psbt-upload"\)/);
   assert.match(app, /getElementById\("psbt-file"\)/);
   assert.match(app, /getElementById\("psbt-download"\)/);
-  assert.match(app, /psbtBytesFromUpload\(new Uint8Array\(await chosen\.arrayBuffer\(\)\)\)/);
+  assert.match(app, /hodlPsbtInspectorBytesFromUpload\(new Uint8Array\(await chosen\.arrayBuffer\(\)\)\)/);
   assert.match(app, /hodlBytesToB64\(bytes\)/);
   assert.match(app, /"inspected\.psbt"/);
   assert.match(app, /"inspected\.txn"/);

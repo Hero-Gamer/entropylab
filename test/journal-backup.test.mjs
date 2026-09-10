@@ -348,6 +348,25 @@ test("journal entry variants survive encryption while old and unknown variants s
   assert.equal(hostile.cardMethod, undefined);
   assert.equal(hostile.entropyFormat, undefined);
   assert.equal(entryMethodLabel(hostile), "Playing cards");
+  // The hex method is labeled "Number bases" with or without a variant,
+  // matching the method pickers in the rest of the app.
+  assert.equal(entryMethodLabel(normalizeEntry(sampleEntry({ method: "hex" }), fixedNow)), "Number bases");
+});
+
+test("a variant that belongs to another method is dropped, even through an edit", () => {
+  // replaceEntry merges the previous entry, so a stale diceMethod would
+  // survive a method switch if normalizeEntry did not drop it.
+  const doc = emptyDocument();
+  const entry = addEntry(doc, sampleEntry({ method: "dice", diceMethod: "coldcard" }), fixedNow);
+  const replaced = replaceEntry(doc, entry.id, sampleEntry({ method: "cards", cardMethod: "direct" }));
+  assert.equal(replaced.method, "cards");
+  assert.equal(replaced.diceMethod, undefined);
+  assert.equal(replaced.cardMethod, "direct");
+  assert.equal(entryMethodLabel(replaced), "Playing cards · Direct word selection");
+  // Methods with no variant field (coin, brain) drop every variant.
+  const coin = normalizeEntry(sampleEntry({ method: "coin", diceMethod: "coldcard", seedMethod: "numbers" }), fixedNow);
+  assert.equal(coin.diceMethod, undefined);
+  assert.equal(coin.seedMethod, undefined);
 });
 
 test("the snapshot captures private-key modes and the passphrase warning", () => {

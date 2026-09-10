@@ -348,7 +348,7 @@ const JOURNAL_EXPORT_KINDS = new Set(["notebook", "key-manager", "session-state"
 export const METHOD_LABELS = Object.freeze({
   dice: "Dice rolls",
   coin: "Coin flips",
-  hex: "Hex",
+  hex: "Number bases",
   brain: "Brain-wallet text",
   seed: "Manual seed",
   cards: "Playing cards",
@@ -360,6 +360,16 @@ const ENTRY_VARIANTS = Object.freeze({
   seedMethod: Object.freeze({ words: "Direct words", numbers: "BIP39 word numbers" }),
 });
 
+// Each entry method owns at most one variant field. normalizeEntry keeps only
+// the field that belongs to the entry's method, so a stale variant cannot
+// survive a method switch through replaceEntry's merge of the previous entry.
+const METHOD_VARIANT_FIELD = Object.freeze({
+  dice: "diceMethod",
+  hex: "entropyFormat",
+  cards: "cardMethod",
+  seed: "seedMethod",
+});
+
 function normalizeEntryVariant(field, value) {
   const variant = String(value ?? "");
   return Object.hasOwn(ENTRY_VARIANTS[field], variant) ? variant : "";
@@ -368,9 +378,9 @@ function normalizeEntryVariant(field, value) {
 export function entryMethodLabel(entry) {
   const method = String(entry?.method || "");
   const base = METHOD_LABELS[method] || method;
-  const field = method === "dice" ? "diceMethod" : method === "hex" ? "entropyFormat" : method === "cards" ? "cardMethod" : method === "seed" ? "seedMethod" : "";
+  const field = METHOD_VARIANT_FIELD[method] || "";
   const variant = field ? ENTRY_VARIANTS[field][normalizeEntryVariant(field, entry?.[field])] : "";
-  return variant ? `${method === "hex" ? "Number bases" : base} · ${variant}` : base;
+  return variant ? `${base} · ${variant}` : base;
 }
 
 const encoder = new TextEncoder();
@@ -478,8 +488,9 @@ export function normalizeEntry(entry, now = new Date()) {
     walletName: String(entry?.walletName ?? ""),
     fingerprint: String(entry?.fingerprint ?? "").toLowerCase(),
   };
+  const variantField = METHOD_VARIANT_FIELD[method] || "";
   for (const field of Object.keys(ENTRY_VARIANTS)) {
-    const variant = normalizeEntryVariant(field, entry?.[field]);
+    const variant = field === variantField ? normalizeEntryVariant(field, entry?.[field]) : "";
     if (variant) normalized[field] = variant;
   }
   return normalized;

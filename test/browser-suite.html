@@ -3310,7 +3310,11 @@
       return candidate && !candidate.hidden && candidate;
     }, "address QR overlay");
     equal(overlay.querySelector("#addr-qr-title").textContent, `Address #${index}`, "The overlay title is wrong");
-    equal(overlay.querySelector("#addr-qr-address").textContent, address, "The overlay shows a different address than the row");
+    const overlayAddress = overlay.querySelector("#addr-qr-address");
+    equal(overlayAddress.textContent, address, "The overlay shows a different address than the row");
+    const addressRange = document.createRange();
+    addressRange.selectNodeContents(overlayAddress);
+    equal(addressRange.getClientRects().length, 1, "The native SegWit address wraps in the overlay");
     assert(overlay.querySelector("#addr-qr-image svg"), "The overlay did not render a QR code");
     overlay.querySelector("#addr-qr-close").click();
     await until(() => document.getElementById("addr-qr-overlay")?.hidden, "address QR overlay close");

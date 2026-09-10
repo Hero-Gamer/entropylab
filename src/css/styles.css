@@ -1608,7 +1608,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .addr-qr-overlay[hidden] { display: none; }
 .addr-qr-card {
-  width: min(340px, 100%); padding: 20px; border: 1px solid var(--border);
+  width: min(400px, 100%); padding: 20px; border: 1px solid var(--border);
   border-radius: 12px; background: var(--surface); text-align: center;
   box-shadow: 0 16px 36px rgb(0 0 0 / 55%);
 }

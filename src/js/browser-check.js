@@ -16,6 +16,27 @@
 // independent unit at the bottom of this file gates the page on the beta
 // disclaimer.
 (() => {
+  // Framing is a hosting-origin problem, not a missing API. Meta CSP cannot
+  // set frame-ancestors; GitHub Pages does not send X-Frame-Options. Kill
+  // the page before any seed field exists if someone wrapped this origin.
+  if (window.top !== window.self) {
+    const root = document.documentElement;
+    if (root) {
+      root.dataset.browserChecks = "framed";
+      root.dataset.browserFailed = "1";
+    }
+    if (document.body) {
+      document.body.innerHTML = `
+<main class="sanity-failure">
+  <div class="sanity-failure-card" role="alert">
+    <h1 class="sanity-failure-title">This page was opened inside another site</h1>
+    <p class="sanity-failure-message">EntropyLab will not run in a frame. Open it as its own tab or as the downloaded HTML file.</p>
+  </div>
+</main>`;
+    }
+    return;
+  }
+
   // Each check returns true when the browser behaves and throws or returns
   // false when it does not. Keep every check free of BigInt literal syntax
   // so a browser too old for BigInt still parses this file and reports the

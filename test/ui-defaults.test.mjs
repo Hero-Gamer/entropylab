@@ -1639,7 +1639,7 @@ test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
   }
   assert.match(css, /\.psbted-actions \{ align-items: flex-end; \}/);
   assert.match(css, /\.psbted-actions \.btn, \.psbted-actions \.custom-select-button \{ min-height: 36px; padding: 6px 10px; border-radius: 8px; \}/);
-  assert.match(appSource, /import \{ initPsbtEditor \} from "\.\/psbt-editor\.js"/);
+  assert.match(appSource, /import \{ initPsbtEditor, psbtBytesFromUpload \} from "\.\/psbt-editor\.js"/);
   // The editor reads the header picker's network through the passed getter.
   assert.match(appSource, /initPsbtEditor\(\{ networkDefault: \(\) => hodlNetworkDefault \}\)/);
   assert.match(css, /#psbted-card\[hidden\]/);

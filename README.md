@@ -56,7 +56,9 @@ Official website: [entropylab.online](https://entropylab.online)
   indexes and hardening choices. Addresses are derived from the exported
   output descriptor itself by rust-miniscript (in the WASM crate), so the two
   cannot drift.
-- Inspects PSBT v0 transactions, reports PSBT-provided amounts and fees, checks
+- Inspects PSBT v0 transactions (paste, or upload a binary .psbt / hex or
+  base64 text export; the loaded bytes download as .psbt or .txn), reports
+  PSBT-provided amounts and fees, checks
   for repeated ECDSA nonces from the same public key — including signatures
   carried by finalized scriptSig/witness fields, which are decoded and analyzed
   rather than skipped — verifies optional Jade

@@ -1612,6 +1612,12 @@ test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
   }
   assert.match(shell, /data-psbt-tool="nonce"[^>]*>PSBT \/ Nonce/);
   assert.match(shell, /data-psbt-tool="editor"[^>]*>PSBT Editor/);
+  assert.match(shell, /id="psbt-nonce-history-upload"/);
+  assert.match(shell, /id="psbt-nonce-history-download"[^>]*disabled/);
+  assert.match(shell, /id="psbt-nonce-history-clear"[^>]*disabled/);
+  assert.match(shell, /id="psbt-nonce-history-result" aria-live="assertive"/);
+  assert.match(appSource, /parseNonceHistory, serializeNonceHistory/);
+  assert.match(appSource, /"entropylab-nonce-history\.json"/);
   assert.match(appSource, /getElementById\("psbt-manager"\)/);
   assert.match(appSource, /getElementById\("psbt-tool-intros"\)/);
   assert.match(appSource, /function hodlShowPsbtTool\(id, focus = false\)/);
@@ -1825,6 +1831,7 @@ test("Journal gates its four tools behind the local notebook", () => {
   assert.match(appSource, /hodlJournalTool === "state"\) hodlJournalRefreshSessionState\(\)/);
   assert.doesNotMatch(appSource, /hodlJournalLog\("capture"|hodlJournalCaptureSession/);
   assert.match(appSource, /hodlJournalLog\("inspect", kind, "psbt"\)[\s\S]*hodlJournalLog\("inspect-error", "", "psbt"\)/);
+  assert.doesNotMatch(appSource, /hodlJournalLog\("inspect-nonce-/);
   assert.match(appSource, /hodlJournalLog\("calculate", hodlSpMode, "sp"\)[\s\S]*hodlJournalLog\("calculate-error", hodlSpMode, "sp"\)/);
   assert.match(appSource, /hodlJournalLog\("derive-error", "", "bip85"\)/);
   assert.match(appSource, /hodlJournalLog\("note-delete", "", "journal"\)/);

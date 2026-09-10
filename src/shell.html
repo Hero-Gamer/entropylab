@@ -564,7 +564,7 @@ words, pick one of the checksum words.</span></span>
     <div class="tool-intro active" id="psbt-tool-intro" aria-hidden="false">
         <div class="kicker">Inspect first. Sign elsewhere.</div>
         <h2>Read a PSBT or a signed transaction.</h2>
-        <p class="muted tool-intro-note">Inspecting a PSBT v0 or a raw Bitcoin transaction does not require a private key. EntropyLab can show outputs, PSBT-provided input amounts and fees, signatures, and repeated ECDSA nonce values. Optional Jade anti-exfil transcripts (host nonce ρ and signer opening R) are checked without a key. Finalized taproot witnesses and tap-leaf scripts are scanned for inscription envelopes (OP_FALSE OP_IF "ord"); this does not number sats or fetch content from the chain. A binary .psbt file as saved by Sparrow, Coldcard or another wallet uploads directly, and the loaded bytes can be downloaded as a .psbt (or .txn for a raw transaction). Loading a matching key additionally labels which outputs belong to this wallet (change vs receive vs not yours) and checks whether supported signatures match plain RFC 6979 or Bitcoin Core-style low-r grinding; a mismatch alone is not evidence of a compromised signer.</p>
+        <p class="muted tool-intro-note">Inspecting a PSBT v0 or a raw Bitcoin transaction does not require a private key. EntropyLab can show outputs, PSBT-provided input amounts and fees, signatures, and repeated ECDSA nonce values. An optional nonce-history file compares r values across sessions without storing the PSBT or signature. Optional Jade anti-exfil transcripts (host nonce ρ and signer opening R) are checked without a key. Finalized taproot witnesses and tap-leaf scripts are scanned for inscription envelopes (OP_FALSE OP_IF "ord"); this does not number sats or fetch content from the chain. A binary .psbt file as saved by Sparrow, Coldcard or another wallet uploads directly, and the loaded bytes can be downloaded as a .psbt (or .txn for a raw transaction). Loading a matching key additionally labels which outputs belong to this wallet (change vs receive vs not yours) and checks whether supported signatures match plain RFC 6979 or Bitcoin Core-style low-r grinding; a mismatch alone is not evidence of a compromised signer.</p>
       </div>
     <div class="tool-intro" id="psbted-tool-intro" aria-hidden="true">
         <div class="kicker">Full-fidelity editor. Sign elsewhere.</div>
@@ -606,6 +606,18 @@ words, pick one of the checksum words.</span></span>
         <button class="btn secondary" id="psbt-use-calc" type="button">Use active key this session</button>
         <button class="btn secondary" id="psbt-wipe" type="button">End session / clear fields</button>
       </div>
+      <section class="tool-section" aria-labelledby="psbt-nonce-history-heading">
+        <h3 id="psbt-nonce-history-heading">Cross-session ECDSA nonce history</h3>
+        <p class="muted">Compare this inspection with earlier ECDSA signatures without keeping a PSBT or signature. The versioned file records when each r value was checked, its master fingerprint when available, the raw r value, hashed signing-key and message/source identifiers, and a verification flag. A master fingerprint groups a wallet; the hashed signing-key identifier keeps different child keys distinct. This is correlation-sensitive metadata, so keep it offline.</p>
+        <div class="row tool-actions">
+          <button class="btn secondary" id="psbt-nonce-history-upload" type="button">Upload nonce history</button>
+          <input type="file" id="psbt-nonce-history-file" accept=".json,.txt" hidden>
+          <button class="btn secondary" id="psbt-nonce-history-download" type="button" disabled>Download nonce history</button>
+          <button class="btn secondary" id="psbt-nonce-history-clear" type="button" disabled>Clear nonce history</button>
+        </div>
+        <p class="muted" id="psbt-nonce-history-status" aria-live="polite">No nonce history in memory. Inspect a PSBT or upload a history file.</p>
+        <div id="psbt-nonce-history-result" aria-live="assertive"></div>
+      </section>
       <p class="muted" id="psbt-session" aria-live="polite">No session key. Inspect-only mode.</p>
       <p class="err" id="psbt-error" role="alert"></p>
       <div id="psbt-out" aria-live="polite"></div>

@@ -47,6 +47,7 @@ import { initPsbtEditor, psbtBytesFromUpload } from "./psbt-editor.js";
 import { hodlTapKeySigs, hodlTapScriptSigs, hodlTapSighashProblems } from "./psbt-schnorr.js";
 import { initQrReferences } from "./qr-references.js";
 import { addressQrButtonHtml as hodlAddressQrButton, initAddressQr as hodlInitAddressQr } from "./address-qr.js";
+import { NONCE_HISTORY_MAX_TEXT, compareNonceHistory, mergeNonceHistory, nonceHistoryRecord, parseNonceHistory, serializeNonceHistory } from "./nonce-history.js";
 import { renderSVG as hodlUqrRenderSvg } from "uqr";
 import { BIP39_LANGUAGE_ENGLISH, BIP85_APPS, bip85Path, deriveApplication, parseChildIndex, wipeBip85Result, wipeBytes as hodlWipeBytes } from "./bip85.js";
 import { VANITY_HARDENED, VANITY_MAX_INDEX, VANITY_METHODS, VANITY_SCRIPTS, VanityGrinder, estimateVanityWork, validateVanityIndexRange, validateVanityMnemonic, validateVanityPassphrase, validateVanityPrefix, validateVanityRange, vanityBenchmark, vanityPathIndexes, vanityPathString } from "./vanity.js";
@@ -8025,6 +8026,7 @@ function hodlShowMsig() {
   hodlBindAddressMatch()
 }
 var hodlPsbtPriv = null, hodlPsbtHd = null, hodlPsbtSource = "", hodlPsbtSessionSpec = { key: "No session key. Inspect-only mode." }, hodlPsbtLast = null, hodlPsbtErrorSpec = null;
+var hodlPsbtNonceHistory = [], hodlPsbtCurrentNonceRecords = [], hodlPsbtNonceVerdict = "", hodlPsbtNonceVerdictKind = "", hodlPsbtNonceHistoryVerdict = "", hodlPsbtNonceInspected = false;
 function hodlPsbtSessionText() {
   return hodlTText(hodlPsbtSessionSpec.key, hodlPsbtSessionSpec.vars);
 }
@@ -8038,6 +8040,7 @@ function hodlRefreshPsbtLocale() {
   let session = document.getElementById("psbt-session");
   if (session) session.textContent = hodlPsbtSessionText();
   if (hodlPsbtErrorSpec) hodlSetPsbtError(hodlPsbtErrorSpec);
+  hodlPsbtSyncNonceHistoryControls();
   if (hodlPsbtLast) {
     let output = document.getElementById("psbt-out");
     if (output) output.innerHTML = hodlRenderPsbt(hodlPsbtLast);
@@ -8528,6 +8531,116 @@ function hodlCompareNonces(rValues) {
   }
 }
 
+function hodlPsbtResetNonceInspection() {
+  hodlPsbtCurrentNonceRecords = [];
+  hodlPsbtNonceVerdict = "";
+  hodlPsbtNonceVerdictKind = "";
+  hodlPsbtNonceHistoryVerdict = "";
+  hodlPsbtNonceInspected = false;
+  let result = document.getElementById("psbt-nonce-history-result");
+  if (result) result.innerHTML = "";
+  hodlScheduleJournalStateRefresh();
+}
+function hodlPsbtNonceRecordIdentity(record) {
+  return `${record.keyTag}:${record.r}:${record.messageTag || ""}`;
+}
+function hodlPsbtNonceContext(sourceTag, input) {
+  let context = new Uint8Array(sourceTag.length + 4), view = new DataView(context.buffer);
+  context.set(sourceTag);
+  view.setUint32(sourceTag.length, Number(input) >>> 0, true);
+  return context;
+}
+function hodlPsbtMasterFingerprint(entries, pubkey, sessionKeyMatched = false) {
+  if (sessionKeyMatched && hodlPsbtHd) return hodlFingerprintHex(hodlPsbtHd.fingerprint);
+  try {
+    let compressed = hodlCompressedPubkey(pubkey), fingerprints = [];
+    for (let derivation of hodlBip32(entries)) {
+      if (!hodlEq(hodlCompressedPubkey(derivation.pubkey), compressed)) continue;
+      let fingerprint = hodlHex.encode(derivation.fingerprint);
+      if (!fingerprints.includes(fingerprint)) fingerprints.push(fingerprint);
+    }
+    return fingerprints.length === 1 ? fingerprints[0] : null;
+  } catch {
+    return null;
+  }
+}
+function hodlPsbtNonceHistoryPriorRecords() {
+  let current = new Set(hodlPsbtCurrentNonceRecords.map(hodlPsbtNonceRecordIdentity));
+  return hodlPsbtNonceHistory.filter((record) => !current.has(hodlPsbtNonceRecordIdentity(record)));
+}
+function hodlPsbtSyncNonceHistoryControls(message = "", error = false) {
+  let count = hodlPsbtNonceHistory.length,
+    download = document.getElementById("psbt-nonce-history-download"),
+    clear = document.getElementById("psbt-nonce-history-clear"),
+    status = document.getElementById("psbt-nonce-history-status");
+  if (download) download.disabled = count === 0;
+  if (clear) clear.disabled = count === 0;
+  if (status) {
+    status.textContent = message || (count
+      ? hodlTText("{count} nonce history record(s) in memory. Download the file to keep them across sessions.", { count })
+      : hodlTText("No nonce history in memory. Inspect a PSBT or upload a history file."));
+    status.className = error ? "err" : "muted";
+  }
+  hodlScheduleJournalStateRefresh();
+}
+function hodlPsbtRenderNonceHistoryComparison() {
+  let result = document.getElementById("psbt-nonce-history-result");
+  if (!result) return;
+  hodlPsbtNonceHistoryVerdict = "";
+  if (!hodlPsbtNonceInspected) {
+    result.innerHTML = "";
+    return;
+  }
+  if (!hodlPsbtCurrentNonceRecords.length) {
+    result.innerHTML = `<p class="muted">${hodlT("This inspection has no ECDSA r values to add or compare.")}</p>`;
+    hodlPsbtNonceHistoryVerdict = "incomplete";
+    return;
+  }
+  let prior = hodlPsbtNonceHistoryPriorRecords();
+  if (!prior.length) {
+    result.innerHTML = `<p class="muted">${hodlT("No earlier nonce history records are available for comparison. The current records are now in memory.")}</p>`;
+    hodlPsbtNonceHistoryVerdict = "incomplete";
+    return;
+  }
+  let comparison = compareNonceHistory(hodlPsbtCurrentNonceRecords, prior), html = [];
+  if (comparison.reused.length) {
+    html.push(`<p class="psbt-bad"><strong>${hodlT("Cross-session nonce reuse detected.")}</strong> ${hodlT("The same ECDSA key and r value appeared with a different verified message digest. The private key may be recoverable. Do not sign or broadcast.")}</p>`);
+    hodlPsbtNonceHistoryVerdict = "reuse";
+  }
+  if (comparison.possible.length) {
+    html.push(`<p class="psbt-warn"><strong>${hodlT("Possible cross-session nonce reuse.")}</strong> ${hodlT("The same ECDSA key and r value appeared in another record, but one or both message digests could not be verified. Check the signatures independently.")}</p>`);
+    if (!hodlPsbtNonceHistoryVerdict) hodlPsbtNonceHistoryVerdict = "possible";
+  }
+  if (comparison.crossKey.length) {
+    html.push(`<p class="psbt-warn"><strong>${hodlT("The same r value appears under different public keys in nonce history.")}</strong> ${hodlT("This is not proof of nonce reuse, but a mislabeled key can hide a real match. Verify the signatures independently.")}</p>`);
+    if (!hodlPsbtNonceHistoryVerdict) hodlPsbtNonceHistoryVerdict = "cross-key";
+  }
+  if (!html.length) {
+    html.push(`<p class="psbt-ok">${hodlT("No matching ECDSA key and r pair was found in {count} earlier nonce history record(s).", { count: prior.length })}</p>`);
+    hodlPsbtNonceHistoryVerdict = "clean";
+  }
+  result.innerHTML = html.join("");
+}
+function hodlPsbtRecordNonceInspection(kind, rValues, sourceTag, verdict, checkedAt) {
+  hodlPsbtNonceInspected = true;
+  hodlPsbtNonceVerdictKind = kind;
+  hodlPsbtNonceVerdict = verdict;
+  try {
+    hodlPsbtCurrentNonceRecords = mergeNonceHistory(rValues.map((value) => nonceHistoryRecord({
+      ...value,
+      checkedAt,
+      context: hodlPsbtNonceContext(sourceTag, value.input),
+    })));
+    hodlPsbtNonceHistory = mergeNonceHistory(hodlPsbtNonceHistory, hodlPsbtCurrentNonceRecords);
+    hodlPsbtSyncNonceHistoryControls();
+    hodlPsbtRenderNonceHistoryComparison();
+  } catch (exception) {
+    hodlPsbtCurrentNonceRecords = [];
+    hodlPsbtNonceHistoryVerdict = "incomplete";
+    hodlPsbtSyncNonceHistoryControls(hodlTText("Nonce history could not be updated: {message}", { message: exception.message || String(exception) }), true);
+  }
+}
+
 function hodlPrivForPub(pubkey) {
   if (hodlPsbtPriv) {
     let compressed = hodlSecp256k1.getPublicKey(hodlPsbtPriv, true), uncompressed = hodlSecp256k1.getPublicKey(hodlPsbtPriv, false);
@@ -8578,6 +8691,7 @@ function hodlPsbtWipeMem() {
   hodlPsbtHd = null;
   hodlPsbtSource = "";
   hodlPsbtSessionSpec = { key: "No session key. Inspect-only mode." };
+  hodlPsbtResetNonceInspection();
 }
 function hodlLoadPsbtKey(text, passphrase) {
   hodlPsbtWipeMem();
@@ -8656,6 +8770,12 @@ function hodlDownloadBytes(bytes, name) {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+function hodlPsbtClearNonceHistory(all = false) {
+  hodlPsbtNonceHistory = [];
+  if (all) hodlPsbtResetNonceInspection();
+  hodlPsbtSyncNonceHistoryControls();
+  hodlPsbtRenderNonceHistoryComparison();
+}
 function hodlInitPsbt() {
   let go = document.getElementById("psbt-go");
   if (!go) return;
@@ -8674,6 +8794,7 @@ function hodlInitPsbt() {
   };
   document.getElementById("psbt-wipe").onclick = () => {
     hodlPsbtWipeMem();
+    hodlPsbtClearNonceHistory(true);
     hodlPsbtLast = null;
     hodlPsbtSessionSpec = { key: "Session ended and accessible fields were cleared (best effort)." };
     document.getElementById("psbt-key").value = "";
@@ -8715,8 +8836,42 @@ function hodlInitPsbt() {
       hodlSetPsbtError({ raw: exception.message || String(exception) });
     }
   };
+  const historyFile = document.getElementById("psbt-nonce-history-file");
+  document.getElementById("psbt-nonce-history-upload").onclick = () => historyFile.click();
+  historyFile.addEventListener("change", () => {
+    const chosen = historyFile.files?.[0];
+    historyFile.value = "";
+    if (!chosen) return;
+    (async () => {
+      try {
+        if (chosen.size > NONCE_HISTORY_MAX_TEXT) throw new Error("Nonce history file is too large.");
+        let imported = parseNonceHistory(await chosen.text());
+        hodlPsbtNonceHistory = mergeNonceHistory(hodlPsbtNonceHistory, imported);
+        hodlPsbtSyncNonceHistoryControls(hodlTText("Loaded {loaded} nonce history record(s); {total} record(s) are now in memory.", { loaded: imported.length, total: hodlPsbtNonceHistory.length }));
+        hodlPsbtRenderNonceHistoryComparison();
+      } catch (exception) {
+        hodlPsbtSyncNonceHistoryControls(hodlTText("Nonce history was not loaded: {message}", { message: exception.message || String(exception) }), true);
+      }
+    })();
+  });
+  document.getElementById("psbt-nonce-history-download").onclick = () => {
+    try {
+      if (!hodlPsbtNonceHistory.length) throw new Error("There is no nonce history to download.");
+      hodlDownloadBytes(new TextEncoder().encode(serializeNonceHistory(hodlPsbtNonceHistory)), "entropylab-nonce-history.json");
+      hodlPsbtSyncNonceHistoryControls(hodlTText("Downloaded {count} nonce history record(s).", { count: hodlPsbtNonceHistory.length }));
+    } catch (exception) {
+      hodlPsbtSyncNonceHistoryControls(hodlTText("Nonce history was not downloaded: {message}", { message: exception.message || String(exception) }), true);
+    }
+  };
+  document.getElementById("psbt-nonce-history-clear").onclick = () => {
+    hodlPsbtClearNonceHistory();
+    hodlPsbtSyncNonceHistoryControls(hodlTText("Nonce history cleared from memory. Inspect again to add the current file."));
+  };
+  document.getElementById("psbt-text").addEventListener("input", hodlPsbtResetNonceInspection);
+  hodlPsbtSyncNonceHistoryControls();
   let clearSecretFields = () => {
     hodlPsbtWipeMem();
+    hodlPsbtClearNonceHistory(true);
     let key = document.getElementById("psbt-key"), pass = document.getElementById("psbt-pass");
     if (key) key.value = "";
     if (pass) pass.value = "";
@@ -9144,6 +9299,7 @@ function hodlRunPsbt() {
   let output = document.getElementById("psbt-out"), manual = document.getElementById("psbt-key").value;
   hodlSetPsbtError(null);
   hodlPsbtLast = null;
+  hodlPsbtResetNonceInspection();
   output.innerHTML = "";
   try {
     if (manual.trim()) {
@@ -9154,11 +9310,13 @@ function hodlRunPsbt() {
     document.getElementById("psbt-session").textContent = hodlPsbtSessionText();
     let bytes = hodlPsbtBytes(document.getElementById("psbt-text").value);
     let kind = isPsbtMagic(bytes) ? "psbt" : "transaction";
-    if (kind === "psbt") output.innerHTML = hodlRenderPsbt(hodlParsePsbt(bytes));
-    else output.innerHTML = hodlRenderRawTx(parseRawTx(bytes));
+    let sourceTag = hodlSha256(bytes), checkedAt = new Date().toISOString();
+    if (kind === "psbt") output.innerHTML = hodlRenderPsbt(hodlParsePsbt(bytes), sourceTag, checkedAt);
+    else output.innerHTML = hodlRenderRawTx(parseRawTx(bytes), sourceTag, checkedAt);
     hodlJournalLog("inspect", kind, "psbt");
   } catch (exception) {
     hodlPsbtLast = null;
+    hodlPsbtResetNonceInspection();
     if (!hodlPsbtErrorSpec) hodlSetPsbtError({ raw: exception instanceof Error ? exception.message : String(exception) });
     else hodlSetPsbtError(hodlPsbtErrorSpec);
     hodlJournalLog("inspect-error", "", "psbt");
@@ -9773,7 +9931,7 @@ function hodlPsbtNonceCheck(reused, possible, nonceIncomplete) {
   if (nonceIncomplete) return { label: "Nonce analysis", state: "incomplete", detail: "Coverage is partial: unreadable signatures, fewer than two comparable ECDSA signatures, missing key/digest data, unsupported scripts, or Taproot/Schnorr signatures prevented one or more nonce checks." };
   return { label: "Nonce analysis", state: "complete", detail: "All ECDSA signatures in this PSBT had comparable nonce values; no repeated r was found for the same key within this file." };
 }
-function hodlRenderPsbt(psbt) {
+function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt = new Date().toISOString()) {
   // The inspector follows the header network picker (mainnet/testnet); there
   // is no per-tool network control.
   let network = hodlNetworkDefault,
@@ -9907,6 +10065,7 @@ function hodlRenderPsbt(psbt) {
           lowS: !1
         }) : null,
         privateKey = hodlPrivForPub(signature.pubkey) || hodlPrivFromPath(entries, signature.pubkey),
+        masterFingerprint = hodlPsbtMasterFingerprint(entries, signature.pubkey, Boolean(privateKey && hodlPsbtHd)),
         message = hodlT("Need the matching key in this session to check RFC 6979 and low-r grind."),
         className = "muted";
       let suffixForPolicy = signature.raw.length >= 2 ? signature.sighash : null,
@@ -9927,6 +10086,7 @@ function hodlRenderPsbt(psbt) {
           r: looseR,
           hex: hodlHex.encode(looseR),
           pubkey: hodlCompressedPubkey(signature.pubkey),
+          masterFingerprint,
           sighash,
           valid: parts ? signatureValid : null
         });
@@ -10019,6 +10179,8 @@ function hodlRenderPsbt(psbt) {
   if (tapSignatureCount) html.push("<p class='muted'>This PSBT also contains " + tapSignatureCount + " Taproot / Schnorr signature(s). Their sighash policies are checked above; their BIP340 nonces are not analyzed in this version.</p>");
   html.push("<p class='muted'>RFC 6979 comparison currently covers SegWit v0 P2WPKH and P2WSH signatures using SIGHASH_ALL, including Bitcoin Core-style low-r grinding. Jade anti-exfil is secp256k1-zkp sign-to-contract and needs the USB host nonce plus signer opening; QR / sign_psbt Jade does not run it yet. BitBox anti-klepto is a different construction. Nonce reuse detection compares r values for the same secp256k1 point, including signatures carried by finalized scriptSig/witness fields, compressed and uncompressed encodings, and recoverable non-strict DER; the same r value claimed under two different public keys is flagged as a mislabeled field rather than skipped. A clean verdict is not issued when a signature cannot be inspected. Inscription detection reads OP_FALSE OP_IF \"ord\" envelopes in tap-leaf scripts and finalized witnesses; it does not number sats. Output ownership is derived from the session key: accounts 0\u20132, 50 receive + 50 change, all four script types. It does not talk to the chain.</p>");
   let nonceIncomplete = uninspected || tapSignatureCount || unsupportedNonceChecks || crossKey.length || rValues.length < 2;
+  let nonceVerdict = reused.length ? "reuse" : crossKey.length ? "cross-key" : possible.length ? "possible" : nonceIncomplete ? "incomplete" : "clean";
+  hodlPsbtRecordNonceInspection("psbt", rValues, nonceSourceTag, nonceVerdict, nonceCheckedAt);
   let checks = [
     {
       label: "Previous outputs and fee",
@@ -10057,7 +10219,7 @@ function hodlRenderPsbt(psbt) {
   html.unshift(hodlPsbtAnalysisSummary(checks));
   return html.join("")
 }
-function hodlRenderRawTx(tx) {
+function hodlRenderRawTx(tx, nonceSourceTag = new Uint8Array(), nonceCheckedAt = new Date().toISOString()) {
   // The inspector follows the header network picker (mainnet/testnet); there
   // is no per-tool network control.
   let network = hodlNetworkDefault,
@@ -10091,6 +10253,7 @@ function hodlRenderRawTx(tx) {
       r: looseR,
       hex: hodlHex.encode(looseR),
       pubkey: hodlCompressedPubkey(signature.pubkey),
+      masterFingerprint: null,
       sighash: null,
       valid: null
     });
@@ -10104,6 +10267,9 @@ function hodlRenderRawTx(tx) {
   else html.push("<p class='muted'>No ECDSA signatures with a readable r and public key were found.</p>");
   if (rValues.length) html.push("<p class='psbt-kv'>r values:<br>" + rValues.map((value) => hodlEscapeHtml(value.hex) + " (input " + value.input + ")").join("<br>") + "</p>");
   html.push("<p class='muted'>Raw-transaction inspect does not reconstruct sighashes. Paste the PSBT when you still can; use this path for a fully signed hex dump from a hardware wallet or Bitcoin Core.</p>");
+  let nonceIncomplete = uninspected || crossKey.length || rValues.length < 2;
+  let nonceVerdict = crossKey.length ? "cross-key" : possible.length ? "possible" : nonceIncomplete ? "incomplete" : "clean";
+  hodlPsbtRecordNonceInspection("transaction", rValues, nonceSourceTag, nonceVerdict, nonceCheckedAt);
   return html.join("");
 }
 var hodlAccountId = "bip84",
@@ -12875,7 +13041,13 @@ function hodlJournalRefreshSessionState() {
   let sp = { derived: Boolean(hodlSpKeys?.fingerprint), fingerprint: hodlSpKeys?.fingerprint || "", address: "" };
   let addressEl = document.getElementById("sp-address");
   if (addressEl) sp.address = addressEl.textContent || addressEl.value || "";
-  let psbt = { loaded: Boolean((document.getElementById("psbt-text")?.value || "").trim() || (document.getElementById("psbted-text")?.value || "").trim()) };
+  let psbt = {
+    loaded: hodlPsbtNonceInspected,
+    nonce: hodlPsbtNonceVerdict,
+    nonceKind: hodlPsbtNonceVerdictKind,
+    historyCount: hodlPsbtNonceHistory.length,
+    historyVerdict: hodlPsbtNonceHistoryVerdict,
+  };
   let text = hodlJournalSnapshot({
     capturedAt: hodlJournalStamp(),
     version: build?.textContent?.match(/v[\d.]+/)?.[0] || "",

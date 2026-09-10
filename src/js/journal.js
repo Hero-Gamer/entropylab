@@ -312,6 +312,21 @@ export function snapshotSession(session) {
   lines.push(session.sp?.derived ? `- fingerprint ${session.sp.fingerprint || "unknown"}${session.sp.address ? `\n  ${session.sp.address}` : ""}` : "- not derived");
   lines.push("", "PSBT");
   lines.push(session.psbt?.loaded ? "- payload present in the inspector" : "- inspector empty");
+  if (session.psbt?.loaded && session.psbt?.nonce) {
+    let kind = session.psbt?.nonceKind === "transaction" ? "raw transaction" : "PSBT";
+    if (session.psbt.nonce === "reuse") lines.push(`- nonce verdict: reused ECDSA nonce in this ${kind} (same key, different digest)`);
+    else if (session.psbt.nonce === "possible") lines.push(`- nonce verdict: possible reuse in this ${kind} (digest incomplete)`);
+    else if (session.psbt.nonce === "cross-key") lines.push(`- nonce verdict: same ECDSA r claimed under different keys in this ${kind}`);
+    else if (session.psbt.nonce === "incomplete") lines.push(`- nonce verdict: incomplete coverage in this ${kind}`);
+    else if (session.psbt.nonce === "clean") lines.push(`- nonce verdict: no repeated ECDSA r for the same key in this ${kind} (ECDSA signatures only; Taproot/Schnorr nonces are not analyzed)`);
+  }
+  let historyCount = Number.isSafeInteger(session.psbt?.historyCount) && session.psbt.historyCount > 0 ? session.psbt.historyCount : 0;
+  lines.push(`- nonce history: ${historyCount} record${historyCount === 1 ? "" : "s"} in memory`);
+  if (session.psbt?.loaded && session.psbt?.historyVerdict === "reuse") lines.push("- cross-session comparison: reused ECDSA nonce detected");
+  else if (session.psbt?.loaded && session.psbt?.historyVerdict === "possible") lines.push("- cross-session comparison: possible reuse; verification incomplete");
+  else if (session.psbt?.loaded && session.psbt?.historyVerdict === "cross-key") lines.push("- cross-session comparison: same r appears under different keys");
+  else if (session.psbt?.loaded && session.psbt?.historyVerdict === "clean") lines.push("- cross-session comparison: no matching key and r pair in earlier records");
+  else if (session.psbt?.loaded && session.psbt?.historyVerdict === "incomplete") lines.push("- cross-session comparison: incomplete or no earlier records");
   lines.push("", "This snapshot lives in this page until you download it. Closing the tab discards it.");
   return lines.join("\n");
 }

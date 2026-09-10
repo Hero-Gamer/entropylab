@@ -27,6 +27,7 @@ import {
   createJournal,
   deriveJournalKeys,
   emptyDocument,
+  entryMethodLabel,
   encodeFile,
   formatLog,
   formatNotebook,
@@ -311,18 +312,42 @@ test("the snapshot captures each input method's live transcript", () => {
   const base = { id: 1, isLab: false, name: "", fields: {}, result: null };
   const dplus = snapshotFromKeyState({ ...base, mode: "dice", diceMethod: "dplus", fields: { dplusDice: "⚁⚂⚄", dice: "1 2 3" } });
   assert.equal(dplus.input, "⚁⚂⚄");
+  assert.equal(dplus.diceMethod, "dplus");
+  assert.equal(entryMethodLabel(dplus), "Dice rolls · D++ direct word selection");
   const bitbox = snapshotFromKeyState({ ...base, mode: "dice", diceMethod: "bitbox", fields: { bitboxDice: "bb", dice: "1 2 3" } });
   assert.equal(bitbox.input, "bb");
+  assert.equal(bitbox.diceMethod, "bitbox");
   const direct = snapshotFromKeyState({ ...base, mode: "cards", cardMethod: "direct", fields: { directCards: "AS KD", cards: "hashed" } });
   assert.equal(direct.method, "cards");
   assert.equal(direct.input, "AS KD");
+  assert.equal(direct.cardMethod, "direct");
+  assert.equal(entryMethodLabel(direct), "Playing cards · Direct word selection");
   const binary = snapshotFromKeyState({ ...base, mode: "hex", entropyFormat: "bin", fields: { bin: "0101", hex: "aa" } });
   assert.equal(binary.method, "hex");
   assert.equal(binary.input, "0101");
+  assert.equal(binary.entropyFormat, "bin");
+  assert.equal(entryMethodLabel(binary), "Number bases · Binary (Base 2)");
   const hexFallback = snapshotFromKeyState({ ...base, mode: "hex", entropyFormat: "base64", fields: { hex: "aa" } });
   assert.equal(hexFallback.input, "aa"); // an empty chosen format falls back to hex
+  assert.equal(hexFallback.entropyFormat, "hex");
   const numbers = snapshotFromKeyState({ ...base, mode: "seed", seedMethod: "numbers", fields: { seedNumbers: "1 2 3", seed: "words" } });
   assert.equal(numbers.input, "1 2 3");
+  assert.equal(numbers.seedMethod, "numbers");
+  assert.equal(entryMethodLabel(numbers), "Manual seed · BIP39 word numbers");
+});
+
+test("journal entry variants survive encryption while old and unknown variants stay safe", async () => {
+  const doc = emptyDocument();
+  addEntry(doc, sampleEntry({ method: "dice", diceMethod: "coleman" }), fixedNow);
+  const opened = await openDocument(pack(await sealDocument(doc, keys)), password);
+  assert.equal(opened.doc.entries[0].diceMethod, "coleman");
+  assert.equal(entryMethodLabel(opened.doc.entries[0]), "Dice rolls · Ian Coleman / Keystone");
+  const oldEntry = normalizeEntry(sampleEntry({ method: "seed" }), fixedNow);
+  assert.equal(entryMethodLabel(oldEntry), "Manual seed");
+  const hostile = normalizeEntry(sampleEntry({ method: "cards", cardMethod: "exfil", entropyFormat: "javascript:" }), fixedNow);
+  assert.equal(hostile.cardMethod, undefined);
+  assert.equal(hostile.entropyFormat, undefined);
+  assert.equal(entryMethodLabel(hostile), "Playing cards");
 });
 
 test("the snapshot captures private-key modes and the passphrase warning", () => {
@@ -648,6 +673,11 @@ test("an .elkeys backup is opaque until opened with the journal password", async
 
 test("the app routes every journal backup through the sealed primitives", () => {
   const app = read("src/js/app.js");
+  // A Key Station snapshot carries its method variant through the editor and
+  // both journal labels render that persisted variant.
+  assert.match(app, /hodlJournalEntryVariants = hodlJournalReadEntryVariants\(snapshot\)/);
+  assert.match(app, /method: document\.getElementById\("journal-method"\)\?\.value \|\| "dice",\s+\.\.\.hodlJournalEntryVariants,/);
+  assert.equal((app.match(/hodlJournalEntryMethodLabel\(entry\)/g) || []).length, 2);
   // Downloads encrypt with the unlocked journal keys by default and mark the
   // file as encrypted.
   assert.match(app, /async function hodlJournalDownloadContent\(kind, filename, text[\s\S]*?hodlJournalSealExport\(kind, text, hodlJournalKeys\)/);

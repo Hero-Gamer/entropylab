@@ -342,7 +342,6 @@ export const JOURNAL_MIN_ITERATIONS = 100_000; // never open a file cheaper than
 export const JOURNAL_MAX_ITERATIONS = 10_000_000; // a crafted file must not hang the page
 export const JOURNAL_SALT_PREFIX = "entropylab-journal-salt-v1:";
 export const IV_BYTES = 12;
-export const PASSWORD_MIN_LENGTH = 12;
 export const METHODS = Object.freeze(["dice", "coin", "hex", "brain", "seed", "cards"]);
 const JOURNAL_EXPORT_KINDS = new Set(["notebook", "key-manager", "session-state", "session-log"]);
 export const METHOD_LABELS = Object.freeze({
@@ -409,8 +408,7 @@ export function wipeDocument(doc) {
 }
 
 export function assertPassword(password, { confirm } = {}) {
-  if (typeof password !== "string" || !password) throw new Error("Journal password is missing.");
-  if (Array.from(password).length < PASSWORD_MIN_LENGTH) throw new Error(`Journal password needs at least ${PASSWORD_MIN_LENGTH} characters.`);
+  if (typeof password !== "string") throw new Error("Journal password must be text.");
   if (confirm != null && confirm !== password) throw new Error("The two passwords do not match.");
 }
 
@@ -447,7 +445,7 @@ async function deriveMasterBits(password, iterations) {
 // One PBKDF2 run yields 512 bits: the first half keys AES-GCM, the second
 // keys the HMAC that derives IVs. Both are imported non-extractable.
 export async function deriveJournalKeys(password, iterations = JOURNAL_ITERATIONS) {
-  if (typeof password !== "string" || !password) throw new Error("Journal password is missing.");
+  if (typeof password !== "string") throw new Error("Journal password must be text.");
   if (!Number.isInteger(iterations) || iterations < JOURNAL_MIN_ITERATIONS || iterations > JOURNAL_MAX_ITERATIONS) {
     throw new Error("This journal file uses an unsupported key-derivation cost.");
   }
@@ -457,7 +455,7 @@ export async function deriveJournalKeys(password, iterations = JOURNAL_ITERATION
     const encKey = await subtle.importKey("raw", master.subarray(0, 32), { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
     const ivKey = await subtle.importKey("raw", master.subarray(32), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
     const verify = new Uint8Array(await subtle.digest("SHA-256", master));
-    return { encKey, ivKey, verify, iterations };
+    return { encKey, ivKey, verify, iterations, passwordProtected: password.length > 0 };
   } finally {
     wipeBytes(master);
   }
@@ -721,7 +719,7 @@ export async function openDocument(file, password) {
   try {
     plainBytes = new Uint8Array(await subtle.decrypt({ name: "AES-GCM", iv: parsed.iv }, keys.encKey, parsed.ciphertext));
   } catch {
-    throw new Error("Wrong password, or the file is damaged.");
+    throw new Error("The password is incorrect, or the journal file is damaged.");
   }
   try {
     return { keys, doc: parseDocument(decoder.decode(plainBytes)) };

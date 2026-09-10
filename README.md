@@ -131,22 +131,24 @@ Official website: [entropylab.online](https://entropylab.online)
   account index back to the key and re-derives it, so the Keys tab, its
   exports, and the Journal show the vanity wallet. Found passphrases stay in
   page memory, are masked until revealed, and are wiped with the session.
-- A session **Journal** (last workspace tab) holds an encrypted **Entropy
+- A session **Journal** (last workspace tab) holds an **Entropy
   Journal** notebook, a notepad stamped with this computer's date and time,
-  an encrypted Key Manager, a live summary of everything derived in this sitting, and a debug log
+  a Key Manager, a live summary of everything derived in this sitting, and a debug log
   of tool switches and derives (fingerprints, not seeds). Its introduction
   remains above the Journal controls. Notepad, Key manager, Session state, and Session log
-  stay visible but disabled until the user creates a journal with a valid
-  password or successfully opens an existing journal; the create/open gate
+  stay visible but disabled until the user creates a journal, with or without
+  a password, or successfully opens an existing journal; the create/open gate
   then disappears and the Journal starts on Notepad. The create form reports
-  password length and confirmation matches live without exposing what was
-  typed. Journal-wide **Download journal** and **Clear journal** actions stay
+  whether password protection is enabled and checks confirmation matches live
+  without exposing what was typed. A blank password is accepted and provides
+  no access protection: anyone holding the resulting file can open it by
+  leaving the password blank. Journal-wide **Download journal** and **Clear journal** actions stay
   below the introduction once a journal is unlocked; clearing wipes the
-  encrypted entries, notepad, session snapshot, and log from page memory and
+  entries, notepad, session snapshot, and log from page memory and
   returns to the create/open gate. The notebook keeps
   entropy the user already produced — dice, coins, hex, brain-wallet text, or
-  a seed — under AES-256-GCM; the key is PBKDF2-SHA-256 (600,000 rounds) of a
-  password the user chooses, with the salt derived from the password itself
+  a seed — under AES-256-GCM; the key is PBKDF2-SHA-256 (600,000 rounds) of the
+  optional password the user chooses, with the salt derived from that password
   and the IV HMAC-SHA-256 of the plaintext, so the file is a pure function of
   password and entries and no CSPRNG is ever called. One JSON file the user
   downloads and loads back. Nothing is stored in the browser; download a file
@@ -154,8 +156,8 @@ Official website: [entropylab.online](https://entropylab.online)
   calculator companion, not a password manager: it only stores material the
   user generated themselves.
   The **Key manager** tab packages selected derived Key Station keys and
-  ignored-key metadata into an encrypted `.elkeys` file. It reuses the
-  unlocked Journal password keys, so it adds no password prompt, random salt,
+  ignored-key metadata into an `.elkeys` file. It reuses the unlocked
+  Journal's password setting, so it adds no password prompt, random salt,
   or random nonce. Imported keys remain in Key Manager until the user chooses
   **Use in Key Station**; deleting a Key Station tab while a Journal is open
   likewise removes it from the station without discarding it from Key Manager.
@@ -167,11 +169,13 @@ Official website: [entropylab.online](https://entropylab.online)
   typeface, text size, and line spacing. Its key picker lists the currently
   derived Key Station keys with their LifeHashes; choosing one inserts a
   public inline reference with a line-height LifeHash and master fingerprint.
-  Notepad, Session state, and Session log downloads use the unlocked journal password by
-  default. Their matching checkboxes stay synchronized, so one change applies
+  Notepad, Session state, and Session log downloads use the unlocked Journal's
+  file encryption by default. If the Journal has a password, that password
+  protects the downloads; without one, the encoded downloads have no access
+  protection. Their matching checkboxes stay synchronized, so one change applies
   to Notepad, Session state, and Session log; unchecking exports the original
   plain JSON or text. Notepad can upload either its plain notebook JSON or its
-  password-encrypted export while that journal is unlocked.
+  Journal-format export while that journal is unlocked.
   Each page opens
   with a live local timestamp and freezes it when note text is entered. Delete
   the note back to its timestamp to return to the live new-note prompt. Press

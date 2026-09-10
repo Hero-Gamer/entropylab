@@ -243,13 +243,12 @@ test("the journal module never talks to the network, browser storage, or a CSPRN
 
 // --- Encrypted entropy notebook (AES-GCM, password-derived, deterministic) ---
 
-test("passwords need real length and a matching confirmation", () => {
-  assert.throws(() => assertPassword(""), /missing/);
-  assert.throws(() => assertPassword(42), /missing/);
-  assert.throws(() => assertPassword("short"), /at least 12/);
+test("passwords are optional and confirmation must match", () => {
+  assert.equal(assertPassword("", { confirm: "" }), undefined);
+  assert.throws(() => assertPassword(42), /must be text/);
+  assert.equal(assertPassword("short", { confirm: "short" }), undefined);
   assert.throws(() => assertPassword(password, { confirm: otherPassword }), /do not match/);
   assert.equal(assertPassword(password, { confirm: password }), undefined);
-  assert.equal(assertPassword("🐴".repeat(12)), undefined); // length counts characters, not bytes
 });
 
 test("the journal never invents entropy or talks to the network", () => {
@@ -330,9 +329,20 @@ test("AES-GCM round-trips with the password and fails on the wrong one", async (
   assert.equal(opened.doc.entries[0].input, "ab");
   assert.equal(opened.doc.entries[0].phrase, "seed words here");
   assert.equal(opened.keys.iterations, JOURNAL_ITERATIONS);
-  await assert.rejects(() => openDocument(packed, otherPassword), /Wrong password/);
+  await assert.rejects(() => openDocument(packed, otherPassword), /password is incorrect/);
   wipeDocument(opened.doc);
   assert.equal(opened.doc.entries.length, 0);
+});
+
+test("a journal with no password downloads and reopens with a blank password", async () => {
+  const created = await createDocument("", "");
+  assert.equal(created.keys.passwordProtected, false);
+  addEntry(created.doc, { method: "coin", input: "HTHT", phrase: "seed", label: "passwordless" }, fixedNow);
+  const packed = JSON.stringify(await sealDocument(created.doc, created.keys));
+  const opened = await openDocument(packed, "");
+  assert.equal(opened.keys.passwordProtected, false);
+  assert.equal(opened.doc.entries[0].label, "passwordless");
+  await assert.rejects(() => openDocument(packed, "not blank"), /password is incorrect/);
 });
 
 test("encryption is deterministic: same password and entries, same file", async () => {

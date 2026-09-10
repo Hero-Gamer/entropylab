@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 license = "Unlicense"
-description = "WebAssembly bindings to libsecp256k1, bitcoin_hashes, rust-bitcoin, rust-bip39, base58ck, and bech32 for EntropyLab (built by CI, committed as src/js/entropylab-wasm-b64.js)"
+description = "WebAssembly bindings to libsecp256k1, bitcoin_hashes, rust-bitcoin, rust-bip39, base58ck, bech32, scrypt, and a vendored AEZ v5 (for aezeed) for EntropyLab (built by CI, committed as src/js/entropylab-wasm-b64.js)"
 
 [lib]
 crate-type = ["cdylib"]
@@ -35,6 +35,18 @@ base58ck = { version = "=0.1.101", default-features = false, features = ["std"] 
 # rust-bitcoin's bech32 crate, used directly for the word-level bech32m the
 # BIP352 silent-payment code needs (extended length limit).
 bech32 = { version = "=0.11.1", default-features = false, features = ["alloc"] }
+# RustCrypto scrypt (RFC 7914), the KDF of LND's aezeed cipher seed.
+# default-features off drops the password-hashing "simple" API; only the raw
+# scrypt() function ships.
+scrypt = { version = "=0.12.0", default-features = false }
+# RustCrypto primitives for the vendored AEZ v5 module (src/aez/, the
+# wide-block cipher of LND's aezeed cipher seed; see src/aez/mod.rs for
+# provenance): "hazmat" exposes the single AES round the AEZ construction is
+# built from, blake2 is the AEZ key-extraction hash, constant_time_eq checks
+# the authentication block.
+aes = { version = "=0.8.4", default-features = false, features = ["hazmat"] }
+blake2 = { version = "=0.10.6", default-features = false }
+constant_time_eq = { version = "=0.4.2", default-features = false }
 
 [profile.release]
 opt-level = "z"

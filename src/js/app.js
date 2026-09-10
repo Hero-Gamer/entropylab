@@ -44,6 +44,9 @@ import { wordlist as bip39English } from "./bip39-english.js";
 // The PSBT editor (its own workspace tab) drives the rust-bitcoin WASM
 // bindings in psbt-wasm.js; heavy lifting lives in psbt-editor.js.
 import { initPsbtEditor, psbtBytesFromUpload } from "./psbt-editor.js";
+// The Lightning node key tool (its own workspace tab): aezeed deciphering
+// and the LND/LDK node identity derivations live in lightning.js/aezeed.js.
+import { hodlInitLn, hodlLnWipeMem } from "./lightning.js";
 import { hodlTapKeySigs, hodlTapScriptSigs, hodlTapSighashProblems } from "./psbt-schnorr.js";
 import { initQrReferences } from "./qr-references.js";
 import { addressQrButtonHtml as hodlAddressQrButton, initAddressQr as hodlInitAddressQr } from "./address-qr.js";
@@ -11816,9 +11819,10 @@ function hodlShowWorkspace(id) {
   document.getElementById("bip85-card").hidden = id !== "bip85";
   document.getElementById("sp-card").hidden = id !== "sp";
   document.getElementById("vanity-card").hidden = id !== "vanity";
+  document.getElementById("ln-card").hidden = id !== "ln";
   // The context block sits outside its tool's card, so it is shown and hidden
   // with the card rather than by it.
-  ["bip85", "sp", "msig", "calc", "vanity"].forEach((tool) => {
+  ["bip85", "sp", "msig", "calc", "vanity", "ln"].forEach((tool) => {
     document.getElementById(`${tool}-tool-intro`).hidden = id !== tool;
   });
   hodlSyncPsbtTool();
@@ -11978,7 +11982,7 @@ async function hodlLoadTestKeys() {
 }
 // Each tool carries a full name and a short one. Narrow screens show the
 // short form so more tools stay on screen instead of off the right edge.
-var hodlWorkspaceTabs = [["calc", "Keys", "Keys"], ["vanity", "Vanity", "Vanity"], ["bip85", "BIP-85", "BIP85"], ["msig", "Multi Signature", "MultiSig"], ["sp", "Silent Payments", "SP"], ["psbt", "PSBT", "PSBT"], ["journal", "Journal", "Journal"]];
+var hodlWorkspaceTabs = [["calc", "Keys", "Keys"], ["vanity", "Vanity", "Vanity"], ["bip85", "BIP-85", "BIP85"], ["msig", "Multi Signature", "MultiSig"], ["sp", "Silent Payments", "SP"], ["psbt", "PSBT", "PSBT"], ["ln", "Lightning", "LN"], ["journal", "Journal", "Journal"]];
 var hodlPsbtTool = "nonce";
 function hodlSyncPsbtTool() {
   let visible = hodlWorkspace === "psbt",
@@ -14316,6 +14320,7 @@ function hodlInitWorkspace() {
   hodlInitBip85();
   hodlInitVanity();
   hodlInitSp();
+  hodlInitLn({ journalLog: hodlJournalLog });
 }
 var hodlKeyClearSyncQueued = false, hodlMsigClearSyncQueued = false, hodlDeriveSyncQueued = false;
 function hodlQueueKeyClearButtonSync() {
@@ -14573,6 +14578,7 @@ function hodlInitSecretFieldAutoClear() {
     hodlPsbtWipeMem();
     hodlBip85WipeMem();
     hodlSpWipeMem();
+    hodlLnWipeMem();
     hodlJournalWipeMem();
     hodlKeys = hodlKeys.map((state) => {
       let fields = state.fields || {}, privateKeys = fields.privateKeys;
@@ -14627,6 +14633,12 @@ function hodlInitSecretFieldAutoClear() {
     if (spVerifyOutputs) spVerifyOutputs.value = "";
     if (spLabel) spLabel.value = "";
     if (spPayname) spPayname.value = "";
+    let lnSeed = document.getElementById("ln-seed"), lnPass = document.getElementById("ln-pass");
+    if (lnSeed) lnSeed.value = "";
+    if (lnPass) lnPass.value = "";
+    let lnOut = document.getElementById("ln-out"), lnError = document.getElementById("ln-error");
+    if (lnOut) lnOut.innerHTML = "";
+    if (lnError) lnError.textContent = "";
     // Found vanity passphrases and the brought-in salt are private key
     // material; stop the grinder and drop them too.
     hodlVanityCancel();

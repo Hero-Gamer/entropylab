@@ -17,6 +17,7 @@ await wasmReady;
 // Every export the crate ships (entropylab-wasm/src/lib.rs), alphabetically.
 const CRATE_EXPORTS = [
   "el_addr_from_script",
+  "el_aezeed_decipher",
   "el_b58check_decode",
   "el_b58check_encode",
   "el_bech32m_decode",
@@ -34,6 +35,7 @@ const CRATE_EXPORTS = [
   "el_hmac_sha512",
   "el_pbkdf2_hmac_sha512",
   "el_ripemd160",
+  "el_scrypt",
   "el_script_multisig",
   "el_script_multisig_tr",
   "el_sha256",

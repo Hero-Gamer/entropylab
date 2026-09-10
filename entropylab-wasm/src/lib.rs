@@ -1,10 +1,12 @@
 //! WebAssembly bindings to libsecp256k1, bitcoin_hashes, rust-bitcoin,
-//! rust-bip39, base58ck, and bech32 for EntropyLab.
+//! rust-bip39, base58ck, bech32, scrypt, and a vendored AEZ v5 (src/aez/,
+//! for the aezeed cipher seed) for EntropyLab.
 //!
 //! Every secp256k1 curve operation and every cryptographic hash in the app
 //! goes through this library, along with BIP32/BIP39/address/transaction
-//! work (the JS facades — secp256k1.js, hashes.js, hdkey.js, bip39.js,
-//! base58.js, addresses.js, bech32.js, tx.js — all share the loader
+//! work and the aezeed (LND cipher seed) decipher (the JS facades —
+//! secp256k1.js, hashes.js, hdkey.js, bip39.js, base58.js, addresses.js,
+//! bech32.js, tx.js, aezeed.js — all share the loader
 //! src/js/entropylab-wasm.js).
 //! The boundary is deliberately narrow: scalars and hashes cross as fixed
 //! 32-byte buffers, public points as their SEC serialization (33 bytes
@@ -27,8 +29,13 @@
 //! `ChainCode` go through the volatile `wipe` helpers. What cannot be wiped
 //! without new dependencies: state hidden inside dependency types that expose
 //! no erase (the `HmacEngine` key pads, `bip39::Mnemonic`'s stored phrase,
-//! and the by-value moves inside `bitcoin::bip32`). Those copies are short
-//! lived stack/heap cells, but they are the known residual.
+//! the by-value moves inside `bitcoin::bip32`, the scrypt crate's internal
+//! working buffer (128·N·r bytes, 32 MiB at aezeed's production N=2^15,
+//! allocated and freed inside the crate), and the expanded AEZ key schedule
+//! inside `aez::Aez`). Those copies are short lived stack/heap cells, but
+//! they are the known residual. The scrypt working buffer also grows WASM
+//! linear memory permanently (linear memory never shrinks); that is a size
+//! cost, not a secrecy cost.
 //!
 //! Curve operations go through the safe `secp256k1` crate (rust-bitcoin's
 //! wrapper over the vendored bitcoin-core C library); hashes go through
@@ -41,6 +48,7 @@ use secp256k1::ecdsa::Signature;
 use secp256k1::{Message, PublicKey, Scalar, Secp256k1, SecretKey};
 use std::sync::OnceLock;
 
+mod aez;
 mod descriptor;
 
 static CONTEXT: OnceLock<Secp256k1<secp256k1::All>> = OnceLock::new();
@@ -403,6 +411,131 @@ pub unsafe extern "C" fn el_pbkdf2_hmac_sha512(
         block += 1;
     }
     out_len as i32
+}
+
+// ── scrypt and the aezeed cipher seed (the aezeed.js facade) ────────────────
+// aezeed is LND's 24-word cipher-seed scheme. The mnemonic decodes (11 bits
+// per word, JS side) to version(1) || AEZ ciphertext(23) || salt(5) ||
+// CRC-32C(4), and the ciphertext deciphers under an scrypt-derived key to
+// internal version(1) || birthday(2, big-endian days since the Bitcoin
+// genesis block) || entropy(16). LND feeds that entropy directly to BIP32 as
+// the master seed. This library only deciphers (a deterministic
+// transformation of user input); it never creates seeds. KDF parameters are
+// caller-fixed on both exports, matching el_pbkdf2_hmac_sha512: this library
+// never invents them, production callers pass LND's log_n=15, r=8, p=1, and
+// the test suite passes the weakened log_n=4 that LND's published vectors
+// were generated with.
+
+/// scrypt (RFC 7914) with parameters `2^log_n`, `r`, `p`, derived key written
+/// into `out`/`out_len`. Returns `out_len`, or -1 on invalid parameters or an
+/// output length over 128 (the app only ever asks for 32).
+#[no_mangle]
+pub unsafe extern "C" fn el_scrypt(
+    pass: *const u8,
+    pass_len: usize,
+    salt: *const u8,
+    salt_len: usize,
+    log_n: u32,
+    r: u32,
+    p: u32,
+    out: *mut u8,
+    out_len: usize,
+) -> i32 {
+    if out_len == 0 || out_len > 128 || log_n == 0 || log_n > 20 {
+        return -1;
+    }
+    let params = match scrypt::Params::new(log_n as u8, r, p) {
+        Ok(params) => params,
+        Err(_) => return -1,
+    };
+    let mut key = vec![0u8; out_len];
+    if scrypt::scrypt(read(pass, pass_len), read(salt, salt_len), &params, &mut key).is_err() {
+        wipe_bytes(&mut key);
+        return -1;
+    }
+    std::ptr::copy_nonoverlapping(key.as_ptr(), out, out_len);
+    wipe_bytes(&mut key);
+    out_len as i32
+}
+
+/// CRC-32C (Castagnoli), bitwise over the reflected polynomial 0x82F63B78,
+/// exactly Go's `crc32.MakeTable(crc32.Castagnoli)` as LND uses for the
+/// aezeed checksum. Bitwise instead of table-driven: this checks one 29-byte
+/// header per user action, and the eight-line loop is the auditable form.
+fn crc32c(data: &[u8]) -> u32 {
+    let mut crc: u32 = !0;
+    for &byte in data {
+        crc ^= u32::from(byte);
+        for _ in 0..8 {
+            let mask = (crc & 1).wrapping_neg();
+            crc = (crc >> 1) ^ (0x82F6_3B78 & mask);
+        }
+    }
+    !crc
+}
+
+/// aezeed version-0 (LND cipher seed) decipher. `seed33` is the 33-byte
+/// decoding of the 24 words; `pass` is the passphrase (the caller substitutes
+/// LND's default "aezeed" for an empty one). The key is
+/// scrypt(pass, salt, 2^log_n, r, p, 32) and the 23-byte ciphertext opens
+/// with AEZ v5 (empty nonce, the single 6-byte AD string version || salt,
+/// tau = 4). Writes the 19-byte plaintext into `out`. Returns 19, or:
+///   -1 invalid KDF parameters,
+///   -2 unsupported external version (byte 0 is not 0),
+///   -3 CRC-32C mismatch (mistyped or swapped words),
+///   -4 AEZ authentication failure (wrong passphrase).
+#[no_mangle]
+pub unsafe extern "C" fn el_aezeed_decipher(
+    seed33: *const u8,
+    pass: *const u8,
+    pass_len: usize,
+    log_n: u32,
+    r: u32,
+    p: u32,
+    out: *mut u8,
+) -> i32 {
+    let seed = read(seed33, 33);
+    if seed[0] != 0 {
+        return -2;
+    }
+    let expected = u32::from_be_bytes([seed[29], seed[30], seed[31], seed[32]]);
+    if crc32c(&seed[..29]) != expected {
+        return -3;
+    }
+    let salt = &seed[24..29];
+    if log_n == 0 || log_n > 20 {
+        return -1;
+    }
+    let params = match scrypt::Params::new(log_n as u8, r, p) {
+        Ok(params) => params,
+        Err(_) => return -1,
+    };
+    let mut key = [0u8; 32];
+    if scrypt::scrypt(read(pass, pass_len), salt, &params, &mut key).is_err() {
+        wipe_bytes(&mut key);
+        return -1;
+    }
+    let aez = aez::Aez::new(&key);
+    // The expanded key schedule now lives inside `aez` (no erase exposed, a
+    // documented residual); the caller-visible key copy is wiped at once.
+    wipe_bytes(&mut key);
+    let mut ad = [0u8; 6];
+    ad[0] = seed[0];
+    ad[1..].copy_from_slice(salt);
+    let plaintext = aez.decrypt(&[], &[&ad], 4, &seed[1..24]);
+    let mut plaintext = match plaintext {
+        Some(plaintext) => plaintext,
+        None => return -4,
+    };
+    if plaintext.len() != 19 {
+        wipe_bytes(&mut plaintext);
+        return -1;
+    }
+    std::ptr::copy_nonoverlapping(plaintext.as_ptr(), out, 19);
+    // The plaintext carries the wallet's master entropy; wipe the temporary
+    // once the boundary buffer (zeroed later by el_free) holds it.
+    wipe_bytes(&mut plaintext);
+    19
 }
 
 // ── Base58Check (bitcoin::base58 / base58ck) ────────────────────────────────
@@ -1145,5 +1278,144 @@ mod tests {
                 }
             }
         }
+    }
+
+    // The standard CRC-32C check value: crc32c("123456789") = 0xE3069283
+    // (RFC 3720 appendix B.4 lists the same reference implementation).
+    #[test]
+    fn crc32c_check_value() {
+        assert_eq!(crc32c(b"123456789"), 0xE306_9283);
+    }
+
+    /// 24 aezeed words to their 33-byte encoding: 11 bits per word,
+    /// big-endian bitstream, using the crate's own English wordlist.
+    fn aezeed_words_to_bytes(mnemonic: &str) -> [u8; 33] {
+        let list = Language::English.word_list();
+        let words: Vec<&str> = mnemonic.split_whitespace().collect();
+        assert_eq!(words.len(), 24);
+        let mut bytes = [0u8; 33];
+        let mut bit = 0usize;
+        for word in words {
+            let index = list.iter().position(|w| *w == word).expect("word on list") as u32;
+            for i in (0..11).rev() {
+                if index >> i & 1 == 1 {
+                    bytes[bit / 8] |= 0x80 >> (bit % 8);
+                }
+                bit += 1;
+            }
+        }
+        bytes
+    }
+
+    fn decipher(mnemonic: &str, pass: &str, log_n: u32) -> Result<[u8; 19], i32> {
+        let seed = aezeed_words_to_bytes(mnemonic);
+        let mut out = [0u8; 19];
+        let code = unsafe {
+            el_aezeed_decipher(seed.as_ptr(), pass.as_ptr(), pass.len(), log_n, 8, 1, out.as_mut_ptr())
+        };
+        if code == 19 {
+            Ok(out)
+        } else {
+            Err(code)
+        }
+    }
+
+    // LND's published version-0 vectors (lnd/aezeed/cipherseed_test.go at
+    // commit 63bd8e7, MIT): entropy 81b637d86359e6960de795e41e0b4cfd, salt
+    // "salt1". The vectors were generated with weakened scrypt (n=16, r=8,
+    // p=1), hence log_n = 4 here; the parameters are caller-fixed for
+    // exactly this reason.
+    #[test]
+    fn aezeed_deciphers_lnd_vectors() {
+        let entropy: [u8; 16] = [
+            0x81, 0xb6, 0x37, 0xd8, 0x63, 0x59, 0xe6, 0x96, 0x0d, 0xe7, 0x95, 0xe4, 0x1e, 0x0b,
+            0x4c, 0xfd,
+        ];
+        let plain = decipher(
+            "ability liquid travel stem barely drastic pact cupboard apple thrive \
+             morning oak feature tissue couch old math inform success suggest drink \
+             motion know royal",
+            "aezeed",
+            4,
+        )
+        .expect("default-passphrase vector deciphers");
+        assert_eq!(plain[0], 0, "internal version");
+        assert_eq!(u16::from_be_bytes([plain[1], plain[2]]), 0, "birthday");
+        assert_eq!(plain[3..], entropy, "entropy");
+
+        let plain = decipher(
+            "able tree stool crush transfer cloud cross three profit outside hen \
+             citizen plate ride require leg siren drum success suggest drink \
+             require fiscal upgrade",
+            "!very_safe_55345_password*",
+            4,
+        )
+        .expect("passphrase vector deciphers");
+        assert_eq!(plain[0], 0, "internal version");
+        assert_eq!(u16::from_be_bytes([plain[1], plain[2]]), 3365, "birthday");
+        assert_eq!(plain[3..], entropy, "entropy");
+    }
+
+    // A production-parameter (n=2^15) vector published in guggero's
+    // cryptography-toolkit e2e suite (e2e/aezeed.spec.mjs, MIT): entropy
+    // 000102030405060708090a0b0c0d0e0f, salt 0001020304, birthday 0,
+    // internal version 1, default passphrase.
+    #[test]
+    fn aezeed_deciphers_full_strength_vector() {
+        let plain = decipher(
+            "ability result leisure oven shiver wedding toe broccoli exclude \
+             mosquito kind van action waste merit bundle robust source able \
+             advice core humor kitchen siren",
+            "aezeed",
+            15,
+        )
+        .expect("full-strength vector deciphers");
+        assert_eq!(plain[0], 1, "internal version");
+        assert_eq!(u16::from_be_bytes([plain[1], plain[2]]), 0, "birthday");
+        let entropy: Vec<u8> = (0..16).collect();
+        assert_eq!(plain[3..], entropy[..], "entropy");
+    }
+
+    #[test]
+    fn aezeed_error_taxonomy() {
+        let good = "ability liquid travel stem barely drastic pact cupboard apple thrive \
+                    morning oak feature tissue couch old math inform success suggest drink \
+                    motion know royal";
+        // Wrong passphrase: checksum still passes, AEZ authentication fails.
+        assert_eq!(decipher(good, "wrong", 4), Err(-4));
+        // A swapped word breaks the CRC-32C before any KDF work happens.
+        let flipped = good.replacen("liquid", "travel", 1);
+        assert_eq!(decipher(&flipped, "aezeed", 4), Err(-3));
+        // A nonzero external version byte (checksum recomputed so only the
+        // version check can object).
+        let mut seed = aezeed_words_to_bytes(good);
+        seed[0] = 1;
+        let crc = crc32c(&seed[..29]).to_be_bytes();
+        seed[29..].copy_from_slice(&crc);
+        let mut out = [0u8; 19];
+        let code = unsafe {
+            el_aezeed_decipher(seed.as_ptr(), "aezeed".as_ptr(), 6, 4, 8, 1, out.as_mut_ptr())
+        };
+        assert_eq!(code, -2);
+    }
+
+    // el_scrypt against an RFC 7914 section 13 vector.
+    #[test]
+    fn scrypt_rfc7914_vector() {
+        let mut out = [0u8; 64];
+        let code = unsafe {
+            el_scrypt(
+                "password".as_ptr(), 8,
+                "NaCl".as_ptr(), 4,
+                10, 8, 16,
+                out.as_mut_ptr(), 64,
+            )
+        };
+        assert_eq!(code, 64);
+        let expected: [u8; 16] = [
+            0xfd, 0xba, 0xbe, 0x1c, 0x9d, 0x34, 0x72, 0x00, 0x78, 0x56, 0xe7, 0x19, 0x0d, 0x01,
+            0xe9, 0xfe,
+        ];
+        assert_eq!(out[..16], expected, "first 16 bytes of the RFC vector");
     }
 }

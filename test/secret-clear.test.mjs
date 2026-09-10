@@ -48,6 +48,16 @@ test("BIP-85 parent and derived-child fields are explicitly cleared", () => {
   assert.match(lifecycle, /bip85Out\.innerHTML\s*=\s*""/);
 });
 
+test("Lightning seed, passphrase, and derived output are explicitly cleared", () => {
+  assert.match(lifecycle, /hodlLnWipeMem\(\)/);
+  assert.match(lifecycle, /getElementById\("ln-seed"\)/);
+  assert.match(lifecycle, /getElementById\("ln-pass"\)/);
+  assert.match(lifecycle, /lnSeed\.value\s*=\s*""/);
+  assert.match(lifecycle, /lnPass\.value\s*=\s*""/);
+  assert.match(lifecycle, /lnOut\.innerHTML\s*=\s*""/);
+  assert.match(lifecycle, /lnError\.textContent\s*=\s*""/);
+});
+
 test("Entropy Journal password, entries, and encrypted session are explicitly cleared", () => {
   // The lifecycle's hodlJournalWipeMem clears both the session notepad and the
   // encrypted notebook (keys, document, and every notebook field).

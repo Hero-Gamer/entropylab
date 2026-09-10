@@ -92,6 +92,17 @@ material. Its security posture rests on the following model:
   Taproot/Schnorr nonces are not analyzed. The report marks these cases
   incomplete; a completed individual check is not a security conclusion for
   the transaction.
+- The optional ECDSA nonce-history file is an explicit user download and never
+  uses browser storage or the network. It contains check timestamps, master
+  fingerprints when available, raw `r` values, domain-separated SHA-256
+  identity tags for exact signing keys and verified message digests or source
+  contexts, plus verification flags; it does not contain raw PSBTs,
+  transactions, signatures, public keys, or digests. This is
+  correlation-sensitive metadata and should stay offline. The master
+  fingerprint is descriptive; comparisons use the exact signing-key tag, since
+  one wallet can have many child keys. A confirmed alert requires the same
+  key/`r` pair with different verified message tags; otherwise the result is
+  only a warning. The current implementation covers ECDSA, not Schnorr.
 - OP_RETURN detection is a parser of output scripts. It does not create
   data-carrier outputs, assign protocol meaning, or contact an indexer.
 - The published `CID.txt` is CIDv1 (raw, sha2-256) of the release

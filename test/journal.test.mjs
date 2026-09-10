@@ -45,6 +45,23 @@ import {
   snapshotSession,
   wipeJournal,
 } from "../src/js/journal.js";
+import {
+  NONCE_HISTORY_FORMAT,
+  compareNonceHistory,
+  mergeNonceHistory,
+  nonceHistoryRecord,
+  parseNonceHistory,
+  serializeNonceHistory,
+} from "../src/js/nonce-history.js";
+
+const nonceBytes = (hex) => Uint8Array.from(hex.match(/../g) || [], (pair) => parseInt(pair, 16));
+const nonceKeyA = nonceBytes(`02${"11".repeat(32)}`);
+const nonceKeyB = nonceBytes(`03${"22".repeat(32)}`);
+const nonceR = nonceBytes("33".repeat(32));
+const nonceDigestA = nonceBytes("44".repeat(32));
+const nonceDigestB = nonceBytes("55".repeat(32));
+const nonceContext = nonceBytes("66".repeat(36));
+const nonceCheckedAt = "2026-09-10T20:15:30.000Z";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = (path) => readFileSync(join(root, path), "utf8");
@@ -204,6 +221,7 @@ test("a public snapshot names fingerprints and omits secrets unless asked", () =
   });
   assert.match(publicText, /Updated: 2026-09-02 10:00:00/);
   assert.match(publicText, /inspector empty/);
+  assert.match(publicText, /nonce history: 0 records/);
   assert.doesNotMatch(publicText, /nonce verdict/);
   assert.match(publicText, /fingerprint a1b2c3d4/);
   assert.doesNotMatch(publicText, /abandon abandon abandon/);
@@ -224,10 +242,12 @@ test("a public snapshot names fingerprints and omits secrets unless asked", () =
     msigs: [],
     bip85: [],
     sp: { derived: false },
-    psbt: { loaded: true, nonce: "reuse", nonceKind: "psbt" },
+    psbt: { loaded: true, nonce: "reuse", nonceKind: "psbt", historyCount: 2, historyVerdict: "reuse" },
   });
   assert.match(reuseText, /payload present in the inspector/);
   assert.match(reuseText, /nonce verdict: reused ECDSA nonce in this PSBT/);
+  assert.match(reuseText, /nonce history: 2 records/);
+  assert.match(reuseText, /cross-session comparison: reused ECDSA nonce detected/);
   assert.doesNotMatch(reuseText, /\br=/);
 });
 
@@ -405,4 +425,63 @@ test("encodeFile stores the IV and iteration count next to the ciphertext", () =
   assert.throws(() => parseFile(JSON.stringify({ ...file, iterations: 7 })), /key-derivation cost/);
   assert.throws(() => parseFile(JSON.stringify({ ...file, iterations: 1e12 })), /key-derivation cost/);
   assert.throws(() => encodeFile({ iv: fill(16), ciphertext: fill(32) }), /IV must be 12 bytes/);
+});
+
+test("nonce history exports the check time, master fingerprint, raw r, and exact-key identity", () => {
+  const options = { checkedAt: nonceCheckedAt, masterFingerprint: "deadbeef", pubkey: nonceKeyA, r: nonceR, sighash: nonceDigestA, valid: true };
+  const first = nonceHistoryRecord(options);
+  const again = nonceHistoryRecord(options);
+  assert.deepEqual(first, again);
+  assert.equal(first.checkedAt, nonceCheckedAt);
+  assert.equal(first.masterFingerprint, "deadbeef");
+  assert.match(first.keyTag, /^[0-9a-f]{64}$/);
+  assert.equal(first.r, Buffer.from(nonceR).toString("hex"));
+  assert.match(first.messageTag, /^[0-9a-f]{64}$/);
+  assert.equal(first.verified, true);
+  const text = serializeNonceHistory([first]);
+  assert.equal(JSON.parse(text).format, NONCE_HISTORY_FORMAT);
+  assert.equal(text.includes(Buffer.from(nonceR).toString("hex")), true, "raw r was omitted from the history file");
+  for (const raw of [Buffer.from(nonceKeyA).toString("hex"), Buffer.from(nonceDigestA).toString("hex")]) {
+    assert.equal(text.includes(raw), false, "unneeded signature material leaked into the history file");
+  }
+  assert.deepEqual(parseNonceHistory(text), [first]);
+});
+
+test("nonce history uses context for unknown messages and upgrades verified evidence", () => {
+  const contextRecord = nonceHistoryRecord({ checkedAt: nonceCheckedAt, masterFingerprint: null, pubkey: nonceKeyA, r: nonceR, context: nonceContext, valid: true });
+  assert.match(contextRecord.messageTag, /^[0-9a-f]{64}$/);
+  assert.equal(contextRecord.verified, false);
+  const unverified = nonceHistoryRecord({ checkedAt: nonceCheckedAt, masterFingerprint: "deadbeef", pubkey: nonceKeyA, r: nonceR, sighash: nonceDigestA, valid: false });
+  const verified = nonceHistoryRecord({ checkedAt: nonceCheckedAt, masterFingerprint: "deadbeef", pubkey: nonceKeyA, r: nonceR, sighash: nonceDigestA, valid: true });
+  assert.deepEqual(mergeNonceHistory([unverified], [verified]), [verified]);
+});
+
+test("nonce history comparison separates confirmed, possible, cross-key, and duplicate matches", () => {
+  const current = nonceHistoryRecord({ checkedAt: nonceCheckedAt, masterFingerprint: "deadbeef", pubkey: nonceKeyA, r: nonceR, sighash: nonceDigestA, valid: true });
+  const reused = nonceHistoryRecord({ checkedAt: nonceCheckedAt, masterFingerprint: "deadbeef", pubkey: nonceKeyA, r: nonceR, sighash: nonceDigestB, valid: true });
+  const incomplete = nonceHistoryRecord({ checkedAt: nonceCheckedAt, masterFingerprint: "deadbeef", pubkey: nonceKeyA, r: nonceR, context: nonceContext, valid: false });
+  const otherKey = nonceHistoryRecord({ checkedAt: nonceCheckedAt, masterFingerprint: "deadbeef", pubkey: nonceKeyB, r: nonceR, sighash: nonceDigestB, valid: true });
+  assert.equal(compareNonceHistory([current], [reused]).reused.length, 1);
+  assert.equal(compareNonceHistory([current], [incomplete]).possible.length, 1);
+  assert.equal(compareNonceHistory([current], [otherKey]).crossKey.length, 1);
+  assert.deepEqual(compareNonceHistory([current], [current]), { reused: [], possible: [], crossKey: [] });
+});
+
+test("nonce history parser rejects malformed and expanded records", () => {
+  assert.throws(() => parseNonceHistory(""), /empty/);
+  assert.throws(() => parseNonceHistory("{"), /valid JSON/);
+  assert.throws(() => parseNonceHistory(JSON.stringify({ format: NONCE_HISTORY_FORMAT, version: 2, records: [] })), /Unsupported/);
+  assert.throws(() => parseNonceHistory(JSON.stringify({ format: NONCE_HISTORY_FORMAT, version: 1, records: [], payload: "psbt" })), /unsupported fields/);
+  const valid = nonceHistoryRecord({ checkedAt: nonceCheckedAt, masterFingerprint: "deadbeef", pubkey: nonceKeyA, r: nonceR, sighash: nonceDigestA, valid: true });
+  assert.throws(() => parseNonceHistory(JSON.stringify({ format: NONCE_HISTORY_FORMAT, version: 1, records: [{ ...valid, publicKey: "02" + "11".repeat(32) }] })), /unsupported fields/);
+  assert.throws(() => parseNonceHistory(JSON.stringify({ format: NONCE_HISTORY_FORMAT, version: 1, records: [{ ...valid, checkedAt: "today" }] })), /ISO 8601/);
+  assert.throws(() => parseNonceHistory(JSON.stringify({ format: NONCE_HISTORY_FORMAT, version: 1, records: [{ ...valid, masterFingerprint: "DEADBEEF" }] })), /master fingerprints/);
+});
+
+test("nonce findings stay out of the activity log and session state follows the inspected payload", () => {
+  const app = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src/js/app.js"), "utf8");
+  assert.doesNotMatch(app, /hodlJournalLog\("inspect-nonce-/);
+  assert.match(app, /loaded: hodlPsbtNonceInspected/);
+  assert.match(app, /getElementById\("psbt-text"\)\.addEventListener\("input", hodlPsbtResetNonceInspection\)/);
+  assert.match(app, /hodlPsbtClearNonceHistory\(true\)/);
 });

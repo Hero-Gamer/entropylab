@@ -2784,6 +2784,38 @@
     assert(out.includes("Nonce analysis — Incomplete"), "single-signature nonce limitation was not exposed");
     assert(!out.includes("LISTED CHECKS COMPLETE"), "an incomplete report was presented as complete");
     sameBytes(await downloadedBytes("inspected.psbt"), vectorBytes, "downloaded PSBT differs from its binary upload");
+    // Cross-session nonce history saves the requested timestamp, master
+    // fingerprint field, and raw r, then loads the same file after a clear.
+    const historyDownload = document.getElementById("psbt-nonce-history-download");
+    const historyClear = document.getElementById("psbt-nonce-history-clear");
+    const historyInput = document.getElementById("psbt-nonce-history-file");
+    const historyStatus = document.getElementById("psbt-nonce-history-status");
+    assert(!historyDownload.disabled && !historyClear.disabled, "inspected nonce was not added to history");
+    state.lastBlob = null;
+    state.downloadName = "";
+    historyDownload.click();
+    const historyBlob = await until(() => state.downloadName === "entropylab-nonce-history.json" && state.lastBlob, "nonce history download");
+    const historyText = await historyBlob.text();
+    const historyJson = JSON.parse(historyText);
+    equal(historyJson.format, "entropylab-nonce-history", "nonce history format marker missing");
+    equal(historyJson.version, 1, "nonce history version missing");
+    equal(historyJson.records.length, 1, "nonce history should contain the one inspected ECDSA value");
+    const historyRecord = historyJson.records[0];
+    equal(Object.keys(historyRecord).sort().join("|"), "checkedAt|keyTag|masterFingerprint|messageTag|r|verified", "nonce history exported unexpected metadata");
+    const displayedR = out.match(/r values:\s*([0-9a-f]{64})/)?.[1];
+    assert(displayedR && historyRecord.r === displayedR, "nonce history did not export the inspected raw r value");
+    assert(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(historyRecord.checkedAt), "nonce history did not export the check time");
+    assert(historyRecord.masterFingerprint === null || /^[0-9a-f]{8}$/.test(historyRecord.masterFingerprint), "nonce history master fingerprint field is invalid");
+    assert(!historyText.includes(vector), "nonce history retained the PSBT payload");
+    historyClear.click();
+    assert(historyDownload.disabled && historyClear.disabled, "cleared nonce history remained available");
+    Object.defineProperty(historyInput, "files", {
+      configurable: true,
+      value: [new File([historyText], "entropylab-nonce-history.json", { type: "application/json" })],
+    });
+    historyInput.dispatchEvent(new Event("change", { bubbles: true }));
+    await until(() => historyStatus.textContent.includes("Loaded 1 nonce history record"), "nonce history upload");
+    assert(!historyDownload.disabled && !historyClear.disabled, "uploaded nonce history did not restore its controls");
     // Change the finalized signature's SIGHASH_ALL suffix to SIGHASH_NONE.
     // The report remains incomplete for unverified prevouts, but the real
     // policy problem must dominate the overall banner and its severity.

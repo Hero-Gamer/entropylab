@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { runInNewContext } from "node:vm";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,6 +17,64 @@ import { createDocument, openExport, sealExport } from "../src/js/journal.js";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = (path) => readFileSync(join(root, path), "utf8");
 const password = "correct horse battery staple";
+
+function stationHarness(keys, pending, ignored = []) {
+  const source = read("src/js/app.js");
+  const slice = (name, next) => source.slice(source.indexOf(`function ${name}(`), source.indexOf(`function ${next}(`));
+  const calls = [];
+  const context = {
+    hodlKeys: keys, hodlKeyManagerPending: pending, hodlKeyManagerIgnored: ignored,
+    hodlActiveKey: 0, keyVaultIdentity,
+    hodlJournalLog: (...args) => calls.push(args),
+    hodlRenderKeyTabs: () => calls.push(["tabs"]),
+    hodlKeyManagerRender: () => calls.push(["manager"]),
+    hodlShowWorkspace: (id) => calls.push(["workspace", id]),
+  };
+  runInNewContext(slice("hodlKeyManagerStates", "hodlKeyManagerEntry") +
+    slice("hodlKeyManagerUseAllInStation", "hodlKeyManagerIgnore"), context);
+  return { context, calls };
+}
+
+test("Add all transfers pending keys once, preserving existing and ignored keys", () => {
+  const existing = key(), first = key({ result: { masterFingerprint: "11111111" } }),
+    second = key({ result: { masterFingerprint: "22222222" } }), ignored = key({ name: "Ignored" });
+  const lab = { isLab: true, fields: { seed: "unfinished input" } };
+  const keys = [lab, existing], pending = [first, second], ignoredKeys = [ignored];
+  const before = JSON.stringify([first, second, lab, ignored]);
+  const { context, calls } = stationHarness(keys, pending, ignoredKeys);
+  context.hodlKeyManagerUseAllInStation();
+  assert.deepEqual(keys, [lab, existing, first, second]);
+  assert.equal(pending.length, 0);
+  assert.equal(context.hodlActiveKey, 2);
+  assert.equal(JSON.stringify([first, second, lab, ignored]), before);
+  assert.deepEqual(ignoredKeys, [ignored]);
+  assert.deepEqual(calls, [
+    ["key-manager-use", "11111111", "journal"], ["key-manager-use", "22222222", "journal"],
+    ["tabs"], ["manager"], ["workspace", "calc"],
+  ]);
+  context.hodlKeyManagerUseAllInStation();
+  assert.equal(keys.length, 4);
+  assert.equal(calls.length, 5, "repeated activation does nothing");
+});
+
+test("Add all ignores duplicate identities and does nothing without pending keys", () => {
+  const existing = key(), duplicate = key({ name: "Duplicate" });
+  const { context, calls } = stationHarness([existing], [duplicate]);
+  context.hodlKeyManagerUseAllInStation();
+  assert.equal(context.hodlKeys.length, 1);
+  assert.equal(context.hodlActiveKey, 0);
+  assert.deepEqual(calls, []);
+  const empty = stationHarness([], []);
+  empty.context.hodlKeyManagerUseAllInStation();
+  assert.deepEqual(empty.calls, []);
+});
+
+test("Add all is disabled initially and refreshed from available managed keys", () => {
+  assert.match(read("src/shell.html"), /id="journal-keymanager-add-all" type="button" disabled>Add all to Key Station/);
+  const source = read("src/js/app.js");
+  assert.match(source, /addAll\.disabled = !states\.some\(\(state\) => !hodlKeys\.includes\(state\)\)/);
+  assert.match(source, /addAll\.onclick = hodlKeyManagerUseAllInStation/);
+});
 
 function key(overrides = {}) {
   return {

@@ -10217,6 +10217,11 @@ function hodlKeyManagerRender() {
   let tabs = document.getElementById("journal-keymanager-tabs"), panel = document.getElementById("journal-keymanager-panel");
   if (!tabs || !panel) return;
   let states = hodlKeyManagerStates();
+  let addAll = document.getElementById("journal-keymanager-add-all");
+  if (addAll) {
+    addAll.disabled = !states.some((state) => !hodlKeys.includes(state));
+    addAll.onclick = hodlKeyManagerUseAllInStation;
+  }
   tabs.replaceChildren();
   panel.replaceChildren();
   if (!states.length) {
@@ -10350,6 +10355,21 @@ function hodlKeyManagerUseInStation(state) {
   }
   hodlRenderKeyTabs();
   hodlJournalLog("key-manager-use", identity, "journal");
+  hodlShowWorkspace("calc");
+}
+function hodlKeyManagerUseAllInStation() {
+  let states = hodlKeyManagerStates().filter((state) => !hodlKeys.includes(state));
+  if (!states.length) return;
+  states.forEach((state) => {
+    let pending = hodlKeyManagerPending.indexOf(state);
+    if (pending < 0) return;
+    hodlKeyManagerPending.splice(pending, 1);
+    hodlKeys.push(state);
+    hodlJournalLog("key-manager-use", keyVaultIdentity(state), "journal");
+  });
+  hodlActiveKey = hodlKeys.indexOf(states[0]);
+  hodlRenderKeyTabs();
+  hodlKeyManagerRender();
   hodlShowWorkspace("calc");
 }
 function hodlKeyManagerIgnore(state) {
@@ -12414,7 +12434,7 @@ async function hodlKeyManagerImportFile(file) {
     });
     hodlKeyManagerActiveId = hodlKeyManagerActiveId || keyVaultIdentity(hodlKeyManagerStates()[0]);
     hodlKeyManagerRender();
-    hodlKeyManagerStatus(`${added} new key${added === 1 ? "" : "s"} imported${duplicates ? `; ${duplicates} duplicate${duplicates === 1 ? "" : "s"} kept unchanged` : ""}. Use “Use in Key Station” to load one.`);
+    hodlKeyManagerStatus(`${added} new key${added === 1 ? "" : "s"} imported${duplicates ? `; ${duplicates} duplicate${duplicates === 1 ? "" : "s"} kept unchanged` : ""}. ` + hodlTText("Use “Use in Key Station” to load one, or “Add all to Key Station” to load every waiting key."));
     hodlJournalLog("key-manager-import", `${added} keys; ${duplicates} duplicates`, "journal");
   } catch (error) {
     hodlKeyManagerStatus(error?.message || "The key file could not be imported.", true);

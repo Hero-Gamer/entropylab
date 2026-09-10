@@ -161,7 +161,9 @@ Official website: [entropylab.online](https://entropylab.online)
   ignored-key metadata into an `.elkeys` file. It reuses the unlocked
   Journal's password setting, so it adds no password prompt, random salt,
   or random nonce. Imported keys remain in Key Manager until the user chooses
-  **Use in Key Station**; deleting a Key Station tab while a Journal is open
+  **Use in Key Station** for one key or **Add all to Key Station** for every
+  waiting key. Adding all skips keys already in the station and leaves ignored
+  keys untouched. Deleting a Key Station tab while a Journal is open
   likewise removes it from the station without discarding it from Key Manager.
   The Journal also includes a paged notepad. Pages use
   the Key Station's numbered naming convention, can be added or removed with

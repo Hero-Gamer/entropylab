@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseKeyVault, serializeKeyVault } from "../src/js/keymanager.js";
+import { addressQrButtonHtml } from "../src/js/address-qr.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const app = readFileSync(join(root, "src/js/app.js"), "utf8");
@@ -45,7 +46,11 @@ const source = [
   loadSlice("hodlAddressTableRows"),
 ].join("\n");
 const loadRows = (revealPrivate = false) =>
-  new Function("hodlRevealPrivate", "hodlT", `${source}; return hodlAddressTableRows;`)(revealPrivate, (text) => text);
+  new Function("hodlRevealPrivate", "hodlT", "hodlAddressQrButton", `${source}; return hodlAddressTableRows;`)(
+    revealPrivate,
+    (text, vars) => text.replace("{n}", String(vars?.n ?? "{n}")),
+    addressQrButtonHtml,
+  );
 
 const ATTACK_INDEX = '<svg onload="alert(document.domain)">';
 const craftedRow = { index: ATTACK_INDEX, path: "m/84'/0'/0'/0/0", address: "bc1qexampleaddress000000000000000000000000" };

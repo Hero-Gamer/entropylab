@@ -1303,7 +1303,7 @@
       document.getElementById("journal-commit").click();
       await until(() => [...document.querySelectorAll("#journal-list .journal-item-label")].some((el) => el.textContent === entryLabel), "committed entry in the list");
       assert(document.getElementById("journal-editor").hidden, "Committing should close the editor");
-      assert([...document.querySelectorAll("#journal-list .journal-item-meta")].some((el) => el.textContent.startsWith("Hex · ")), "The entry should list its method and date");
+      assert([...document.querySelectorAll("#journal-list .journal-item-meta")].some((el) => el.textContent.startsWith("Number bases · ")), "The entry should list its method and date");
 
       // Store: the Save file button downloads the sealed journal.
       const journalText = await captureDownload("entropylab-journal.json", "journal file download", () => document.getElementById("journal-save").click());

@@ -54,7 +54,7 @@ import { hodlSanitizeCatalogHtml } from "./i18n-sanitize.js";
 import hodlShellHtml from "../shell.html";
 import { hodlKeyModeLabels, hodlNetworkNames, hodlHexFormatLabels, hodlScriptBeginnerTexts, hodlFairnessVerdictLabels } from "./i18n-labels.js";
 import {
-  METHOD_LABELS as hodlJournalMethodLabels,
+  entryMethodLabel as hodlJournalEntryMethodLabel,
   addEntry as hodlJournalAddEntry,
   appendLog as hodlJournalAppend,
   createDocument as hodlJournalCreateDocument,
@@ -12807,7 +12807,11 @@ function hodlScheduleJournalStateRefresh() {
 }
 // The encrypted entropy notebook gates the Journal tools and keeps its
 // document and Web Crypto keys apart from the session notepad.
-var hodlJournalKeys = null, hodlJournalDoc = null, hodlJournalFileText = "", hodlJournalDirty = false, hodlJournalGate = "create", hodlJournalReveal = false, hodlJournalEditingId = null, hodlJournalDeleteArmed = false;
+var hodlJournalKeys = null, hodlJournalDoc = null, hodlJournalFileText = "", hodlJournalDirty = false, hodlJournalGate = "create", hodlJournalReveal = false, hodlJournalEditingId = null, hodlJournalDeleteArmed = false, hodlJournalEntryVariants = {};
+function hodlJournalReadEntryVariants(entry) {
+  if (!entry) return {};
+  return Object.fromEntries(["diceMethod", "entropyFormat", "cardMethod", "seedMethod"].filter((field) => entry[field]).map((field) => [field, entry[field]]));
+}
 // Bumped by every notebook teardown (clear, lock, lifecycle disposal). An
 // async unlock/create that completes against an older generation must discard
 // its decrypted material, not install it over a wiped session (issue #389).
@@ -13035,7 +13039,7 @@ function hodlJournalRenderList() {
   box.innerHTML = entries.map((entry) => `<button type="button" class="journal-item" data-journal-id="${entry.id}">
       <img class="journal-item-lifehash" alt="" width="32" height="32" hidden>
       <span class="journal-item-label">${hodlEscapeHtml(entry.label)}</span>
-      <span class="journal-item-meta">${hodlEscapeHtml(hodlJournalMethodLabels[entry.method] || entry.method)} \xB7 ${hodlEscapeHtml(String(entry.created).slice(0, 10))}</span>
+      <span class="journal-item-meta">${hodlEscapeHtml(hodlJournalEntryMethodLabel(entry))} \xB7 ${hodlEscapeHtml(String(entry.created).slice(0, 10))}</span>
     </button>`).join("");
   [...box.querySelectorAll(".journal-item")].forEach((button, index) => {
     let entry = entries[index];
@@ -13058,6 +13062,7 @@ function hodlJournalHideEditor() {
   }
   let method = document.getElementById("journal-method");
   if (method) method.value = "dice";
+  hodlJournalEntryVariants = {};
   hodlJournalFillWallets("");
 }
 function hodlJournalApplySnapshot(snapshot) {
@@ -13072,6 +13077,7 @@ function hodlJournalApplySnapshot(snapshot) {
   if (label && !label.value.trim()) label.value = snapshot.label;
   let notes = document.getElementById("journal-entry-notes");
   if (notes && !notes.value.trim()) notes.value = snapshot.notes;
+  hodlJournalEntryVariants = hodlJournalReadEntryVariants(snapshot);
   hodlJournalFillWallets(snapshot.walletId ?? "");
 }
 function hodlJournalShowEditor(entry) {
@@ -13087,6 +13093,7 @@ function hodlJournalShowEditor(entry) {
   document.getElementById("journal-phrase").value = entry?.phrase || "";
   document.getElementById("journal-label").value = entry?.label || "";
   document.getElementById("journal-entry-notes").value = entry?.notes || "";
+  hodlJournalEntryVariants = hodlJournalReadEntryVariants(entry);
   hodlJournalFillWallets(entry?.walletId ?? "");
 }
 function hodlJournalPrivateValue(value) {
@@ -13125,7 +13132,7 @@ function hodlJournalOpenView(id) {
         <button class="btn secondary" id="journal-back" type="button">Back</button>
       </div>
       <div class="wallet-data-fields">
-        ${hodlPublicFieldHtml("Method", hodlJournalMethodLabels[entry.method] || entry.method)}
+        ${hodlPublicFieldHtml("Method", hodlJournalEntryMethodLabel(entry))}
         ${hodlPublicFieldHtml("Recorded", entry.created)}
         ${wallet ? hodlPublicFieldHtml("Session wallet", wallet) : ""}
         ${entry.fingerprint ? hodlPublicFieldHtml("Master fingerprint", entry.fingerprint) : ""}
@@ -13237,6 +13244,7 @@ function hodlJournalCommit() {
     let state = walletId == null ? null : hodlKeys.find((item) => item.id === walletId);
     let fields = {
       method: document.getElementById("journal-method")?.value || "dice",
+      ...hodlJournalEntryVariants,
       input: document.getElementById("journal-input")?.value || "",
       phrase: document.getElementById("journal-phrase")?.value || "",
       label: document.getElementById("journal-label")?.value || "",
@@ -13301,6 +13309,7 @@ function hodlInitJournalNotebook() {
   document.getElementById("journal-global-download")?.addEventListener("click", hodlJournalSaveFile);
   document.getElementById("journal-global-clear")?.addEventListener("click", hodlJournalWipeMem);
   document.getElementById("journal-commit")?.addEventListener("click", hodlJournalCommit);
+  document.getElementById("journal-method")?.addEventListener("change", () => { hodlJournalEntryVariants = {}; });
   document.getElementById("journal-use-calc")?.addEventListener("click", hodlJournalUseActiveKey);
   document.getElementById("journal-cancel")?.addEventListener("click", () => {
     hodlJournalHideEditor();

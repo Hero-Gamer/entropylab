@@ -347,11 +347,40 @@ const JOURNAL_EXPORT_KINDS = new Set(["notebook", "key-manager", "session-state"
 export const METHOD_LABELS = Object.freeze({
   dice: "Dice rolls",
   coin: "Coin flips",
-  hex: "Hex",
+  hex: "Number bases",
   brain: "Brain-wallet text",
   seed: "Manual seed",
   cards: "Playing cards",
 });
+const ENTRY_VARIANTS = Object.freeze({
+  diceMethod: Object.freeze({ coldcard: "COLDCARD / SeedSigner", coleman: "Ian Coleman / Keystone", bitbox: "BitBox diceware", dplus: "D++ direct word selection" }),
+  entropyFormat: Object.freeze({ bin: "Binary (Base 2)", base4: "Base 4", base8: "Base 8", hex: "Hexadecimal (Base 16)", base32: "Crockford Base32", base64: "Base64" }),
+  cardMethod: Object.freeze({ hashed: "Hashed transcript", direct: "Direct word selection" }),
+  seedMethod: Object.freeze({ words: "Direct words", numbers: "BIP39 word numbers" }),
+});
+
+// Each entry method owns at most one variant field. normalizeEntry keeps only
+// the field that belongs to the entry's method, so a stale variant cannot
+// survive a method switch through replaceEntry's merge of the previous entry.
+const METHOD_VARIANT_FIELD = Object.freeze({
+  dice: "diceMethod",
+  hex: "entropyFormat",
+  cards: "cardMethod",
+  seed: "seedMethod",
+});
+
+function normalizeEntryVariant(field, value) {
+  const variant = String(value ?? "");
+  return Object.hasOwn(ENTRY_VARIANTS[field], variant) ? variant : "";
+}
+
+export function entryMethodLabel(entry) {
+  const method = String(entry?.method || "");
+  const base = METHOD_LABELS[method] || method;
+  const field = METHOD_VARIANT_FIELD[method] || "";
+  const variant = field ? ENTRY_VARIANTS[field][normalizeEntryVariant(field, entry?.[field])] : "";
+  return variant ? `${base} · ${variant}` : base;
+}
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -445,7 +474,7 @@ export function normalizeEntry(entry, now = new Date()) {
   if (!/^\d{4}-\d{2}-\d{2}T/.test(created)) throw new Error("Journal timestamp must be ISO-8601.");
   const walletId = entry?.walletId == null || entry.walletId === "" ? null : Number(entry.walletId);
   if (walletId != null && (!Number.isInteger(walletId) || walletId < 0)) throw new Error("Session wallet id must be a whole number.");
-  return {
+  const normalized = {
     id: Number.isInteger(entry?.id) && entry.id > 0 ? entry.id : 0,
     method,
     input: String(entry?.input ?? ""),
@@ -457,6 +486,12 @@ export function normalizeEntry(entry, now = new Date()) {
     walletName: String(entry?.walletName ?? ""),
     fingerprint: String(entry?.fingerprint ?? "").toLowerCase(),
   };
+  const variantField = METHOD_VARIANT_FIELD[method] || "";
+  for (const field of Object.keys(ENTRY_VARIANTS)) {
+    const variant = field === variantField ? normalizeEntryVariant(field, entry?.[field]) : "";
+    if (variant) normalized[field] = variant;
+  }
+  return normalized;
 }
 
 export function addEntry(doc, fields, now = new Date()) {
@@ -503,18 +538,23 @@ export function snapshotFromKeyState(state) {
   const mode = state.mode || "";
   let method = "seed";
   let input = "";
+  let variants = {};
   if (mode === "dice") {
     method = "dice";
+    variants.diceMethod = normalizeEntryVariant("diceMethod", state.diceMethod) || "coldcard";
     input = state.diceMethod === "dplus" ? fields.dplusDice || "" : state.diceMethod === "bitbox" ? fields.bitboxDice || "" : fields.dice || "";
   } else if (mode === "cards") {
     method = "cards";
+    variants.cardMethod = normalizeEntryVariant("cardMethod", state.cardMethod) || "hashed";
     input = state.cardMethod === "direct" ? fields.directCards || "" : fields.cards || "";
   } else if (mode === "hex") {
     method = "hex";
     const format = state.entropyFormat || "hex";
     input = fields[format] || fields.hex || "";
+    variants.entropyFormat = fields[format] ? normalizeEntryVariant("entropyFormat", format) || "hex" : "hex";
   } else if (mode === "seed") {
     method = "seed";
+    variants.seedMethod = normalizeEntryVariant("seedMethod", state.seedMethod) || "words";
     input = state.seedMethod === "numbers" ? fields.seedNumbers || "" : fields.seed || "";
   } else if (mode === "key") {
     const kind = fields.keyKind || "";
@@ -530,6 +570,7 @@ export function snapshotFromKeyState(state) {
   if (!String(input).trim() && !String(phrase).trim()) return null;
   return {
     method,
+    ...variants,
     input: String(input),
     phrase: String(phrase),
     label: String(state.name || state.result?.masterFingerprint || "").trim(),

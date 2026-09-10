@@ -2043,6 +2043,7 @@ test("Key Station stays put and a derived key opens a fingerprint tab with a sum
   assert.match(appSource, /hodlT\("Base 10 \[0-9\] \/ Hashed rolls \(recommended\)"\)/);
   assert.match(appSource, /hodlT\("Dice \[1-6\] \/ Hashed rolls"\)/);
   assert.match(css, /\.key-summary-lifehash \{[^}]*width: 72px;[^}]*height: 72px;/s);
+  assert.match(appSource, /function hodlSizeKeySummaryLifehash\(\) \{[\s\S]*getBoundingClientRect\(\)\.height[\s\S]*image\.style\.height = image\.style\.width = `\$\{height\}px`/);
   assert.match(appSource, /function hodlSnapshotKeySummary\(/);
   assert.match(appSource, /state\.createdScript = hodlKeySummaryScript\(state\)/);
   assert.match(appSource, /state\.createdPath = hodlKeySummaryPath\(state\)/);

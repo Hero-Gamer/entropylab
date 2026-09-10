@@ -10506,6 +10506,16 @@ function hodlFillKeyTabLifehash(image, fingerprint) {
     image.hidden = false;
   });
 }
+function hodlSizeKeySummaryLifehash() {
+  // Fonts and wrapping set the four-line summary's height, so a fixed pixel
+  // size can only approximate it; measure the text block and square the
+  // LifeHash to it once layout settles. The 72px stylesheet size is the
+  // fallback before this runs.
+  let image = document.getElementById("key-summary-lifehash"), text = document.querySelector("#key-summary .key-summary-text");
+  if (!image || !text) return;
+  let height = text.getBoundingClientRect().height;
+  if (height > 0) image.style.height = image.style.width = `${height}px`;
+}
 function hodlPaintKeySummary() {
   let state = hodlKeys[hodlActiveKey], fingerprint = state?.result?.masterFingerprint || "", node = document.getElementById("key-summary-fingerprint"), method = document.getElementById("key-summary-method"), script = document.getElementById("key-summary-script"), path = document.getElementById("key-summary-path"), image = document.getElementById("key-summary-lifehash"), edit = document.getElementById("key-edit-inputs");
   if (node) {
@@ -10524,6 +10534,7 @@ function hodlPaintKeySummary() {
     if (fingerprint) hodlFillKeyTabLifehash(image, fingerprint);
   }
   if (edit) edit.onclick = hodlEditKeyInputs;
+  requestAnimationFrame(hodlSizeKeySummaryLifehash);
 }
 function hodlSyncKeyResultView() {
   let card = document.getElementById("calc-card"), lab = document.getElementById("key-lab"), summary = document.getElementById("key-summary"), result = hodlKeyHasResult();
@@ -13360,6 +13371,7 @@ function hodlSyncWorkspaceOverflow() {
   let strip = document.getElementById("workspace-tabs"), hint = document.getElementById("workspace-more");
   if (!strip || !hint) return;
   hint.hidden = strip.scrollWidth - strip.clientWidth - strip.scrollLeft <= 1;
+  hodlSizeKeySummaryLifehash();
 }
 // ── Vanity grinder (workspace tab) ─────────────────────────────────────────
 // The engine (src/js/vanity.js + vanity-wasm) is a calculator over one Key

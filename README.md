@@ -147,6 +147,16 @@ Official website: [entropylab.online](https://entropylab.online)
   account index back to the key and re-derives it, so the Keys tab, its
   exports, and the Journal show the vanity wallet. Found passphrases stay in
   page memory, are masked until revealed, and are wiped with the session.
+- Derives Lightning node identity public keys (Lightning tab) from a seed
+  phrase: an LND 24-word **aezeed** cipher seed is deciphered in WebAssembly
+  (scrypt key derivation, AEZ v5, CRC-32C checksum; a wrong passphrase is
+  detected, unlike BIP39) and its entropy derives the node key at LND's
+  `m/1017'/coinType'/6'/0/0` keychain path, while a BIP-39 phrase follows the
+  ldk-node convention (BIP39 seed, master key, re-seeded second BIP32 tree,
+  node secret at `m/0'`). The decoded cipher seed's internal version and
+  wallet birthday are shown alongside the node key; the decoded entropy and
+  salt and the BIP32 root xprv (what `chantools showrootkey` prints) sit
+  behind a reveal toggle. Decoding only: the tab never creates seeds.
 - A session **Journal** (last workspace tab) holds an **Entropy
   Journal** notebook, a notepad stamped with this computer's date and time,
   a Key Manager, a live summary of everything derived in this sitting, and a debug log

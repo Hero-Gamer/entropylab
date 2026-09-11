@@ -86,6 +86,39 @@ const favicon = readFileSync(join(root, "assets/favicon.png")).toString("base64"
 const faviconSvg = read("assets/favicon.svg").trim()
   .replace(/\s+/g, " ")
   .replace(/[#<>"%]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+// The app bundle is minified with legalComments "none", which strips the
+// generated WASM module's header comment — but that module compiles in the
+// MIT-licensed AEZ v5 vendored at entropylab-wasm/src/aez/ (zears 0.2.1),
+// whose notice must survive into this derived artifact. esbuild's banner
+// prepends it after minification, the same way the LifeHash notice survives
+// via its raw-inlined file header.
+const wasmAezNotice = `/*!
+ * This application bundles the entropylab-wasm WebAssembly module, which
+ * compiles in the AEZ v5 implementation vendored from the zears crate 0.2.1
+ * (https://codeberg.org/dunj3/zears), MIT-licensed and not public domain:
+ *
+ *   Copyright 2025 Daniel Schadt
+ *
+ *   Permission is hereby granted, free of charge, to any person obtaining a
+ *   copy of this software and associated documentation files (the
+ *   "Software"), to deal in the Software without restriction, including
+ *   without limitation the rights to use, copy, modify, merge, publish,
+ *   distribute, sublicense, and/or sell copies of the Software, and to
+ *   permit persons to whom the Software is furnished to do so, subject to
+ *   the following conditions:
+ *
+ *   The above copyright notice and this permission notice shall be included
+ *   in all copies or substantial portions of the Software.
+ *
+ *   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ *   OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ *   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ *   IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ *   CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ *   TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ *   SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+`;
 const jsMain = buildSync({
   entryPoints: [join(SRC, "js/app.js")],
   bundle: true,
@@ -97,6 +130,7 @@ const jsMain = buildSync({
   legalComments: "none",
   charset: "utf8",
   loader: { ".html": "text" },
+  banner: { js: wasmAezNotice },
   define: { __ENTROPYLAB_TEST_HOOKS__: testHooks ? "true" : "false" },
 }).outputFiles[0].text.split(siteLogoSpan).join(siteLogo);
 const jsSqliteWriter = read("js/sqlite-writer.js");

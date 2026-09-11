@@ -61,6 +61,7 @@
         <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="Multi Signature"><span class="workspace-tab-full">Multi Signature</span><span class="workspace-tab-short">MultiSig</span></button>
         <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="Silent Payments"><span class="workspace-tab-full">Silent Payments</span><span class="workspace-tab-short">SP</span></button>
         <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="PSBT"><span class="workspace-tab-full">PSBT</span><span class="workspace-tab-short">PSBT</span></button>
+        <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="Lightning"><span class="workspace-tab-full">Lightning</span><span class="workspace-tab-short">LN</span></button>
         <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="Journal"><span class="workspace-tab-full">Journal</span><span class="workspace-tab-short">Journal</span></button>
       </div>
     </nav>
@@ -650,6 +651,45 @@ words, pick one of the checksum words.</span></span>
       </section>
       <p class="muted">Fees and input amounts shown here are unverified PSBT claims; the editor does not check them against previous transactions or the blockchain. Nothing is signed or broadcast.</p>
     </section>
+      <div class="tool-intro" id="ln-tool-intro" hidden>
+        <div class="kicker">Your seed, your node identity</div>
+        <h2>Derive a Lightning node key</h2>
+        <p class="muted ln-intro">Turn a seed phrase into the node identity public key its Lightning implementation would announce: decipher an LND 24-word aezeed cipher seed (passphrase-protected, with a wallet birthday) and derive the node key at its LND keychain path, or take a BIP-39 phrase down the ldk-node derivation. This does not invent entropy — it is a calculator, and nothing leaves this page.</p>
+      </div>
+      <section class="card no-print tool-card" id="ln-card" role="tabpanel" hidden>
+        <div class="ln-grid tool-section">
+          <label class="field">Seed format
+            <select id="ln-format" aria-describedby="ln-format-help">
+              <option value="aezeed" selected>aezeed · LND cipher seed</option>
+              <option value="bip39">BIP-39 · LDK (ldk-node)</option>
+            </select>
+            <span class="field-note" id="ln-format-help">LND prints an aezeed cipher seed; ldk-node uses a BIP-39 phrase. Both use the same English wordlist.</span>
+          </label>
+          <label class="field" id="ln-network-field">Network
+            <select id="ln-network" aria-describedby="ln-network-help">
+              <option value="mainnet" selected>Mainnet</option>
+              <option value="testnet">Testnet</option>
+            </select>
+            <span class="field-note" id="ln-network-help">Selects the coin type in the LND identity path (0' mainnet, 1' testnet/signet/regtest). Changing it clears any derived result — re-derive after switching.</span>
+          </label>
+        </div>
+        <label class="field">Seed phrase
+          <textarea id="ln-seed" placeholder="ability liquid travel stem barely …" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="ln-seed-help"></textarea>
+          <span class="field-note" id="ln-seed-help">The 24-word cipher seed LND printed at wallet creation.</span>
+        </label>
+        <label class="field">Passphrase (optional)
+          <input id="ln-pass" type="password" autocomplete="off" spellcheck="false" aria-describedby="ln-pass-help">
+          <span class="field-note" id="ln-pass-help">aezeed detects a wrong passphrase; BIP-39 cannot and simply derives a different wallet.</span>
+        </label>
+        <div class="row ln-actions tool-actions">
+          <button class="btn primary" id="ln-go" type="button">Derive node key</button>
+          <button class="btn secondary" id="ln-wipe" type="button">Clear</button>
+        </div>
+        <p class="muted" id="ln-session" aria-live="polite">No node key derived. Enter a seed phrase and derive.</p>
+        <p class="err" id="ln-error" role="alert"></p>
+        <div id="ln-out" aria-live="polite"></div>
+        <p class="muted">Seeds and derived keys remain in this page only and are never stored or sent. Memory clearing is best-effort because browsers may retain internal copies; close the page before reconnecting the computer.</p>
+      </section>
     <div class="tool-intro" id="journal-tool-intro" hidden>
         <div class="kicker">Your rolls, on paper you control.</div>
         <h2>Entropy Journal</h2>

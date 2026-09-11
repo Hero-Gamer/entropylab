@@ -7839,7 +7839,7 @@ function hodlResetMsigForm() {
   if (branchStart) branchStart.value = "0";
   if (branchRange) branchRange.value = "2";
   if (addressStart) addressStart.value = "0";
-  if (addressRange) addressRange.value = "5";
+  if (addressRange) addressRange.value = "10";
   hodlSetHardeningControls("msig-");
   hodlUpdateHardeningHelp("msig-");
   hodlUpdateAddressEstimate("msig-");
@@ -11526,7 +11526,7 @@ function hodlNewMsigState(name, msigId, msigNumber) {
       branchRange: "2",
       addressStart: "0",
       addressHarden: false,
-      addressRange: "5"
+      addressRange: "10"
     }
   }
 }
@@ -11661,7 +11661,7 @@ function hodlMsigStateNeedsClear(state) {
   let fields = state.fields || {},
     xpubs = Array.isArray(fields.xpubs) ? fields.xpubs : [];
   return Boolean(state.result) || String(state.error ?? "").length > 0 || xpubs.some(value => String(value ?? "").length > 0) ||
-    String(fields.descriptor ?? "").length > 0 || Boolean(fields.thresholdLocked) || String(fields.m ?? "2") !== "2" || String(fields.n ?? "3") !== "3" || String(fields.script ?? "p2wsh") !== "p2wsh" || String(fields.purpose ?? "48") !== "48" || fields.purposeHarden === false || Boolean(fields.legacyBip87) || String(fields.keyOrder ?? "sorted") !== "sorted" || Boolean(fields.reuseSessionKeys) || String(fields.coinType ?? (fields.network === "testnet" ? "1" : "0")) !== "0" || fields.coinTypeHarden === false || fields.accountHarden === false || String(fields.branchStart ?? "0") !== "0" || Boolean(fields.branchHarden) || String(fields.branchRange ?? "2") !== "2" || String(fields.addressStart ?? "0") !== "0" || Boolean(fields.addressHarden) || String(fields.addressRange ?? fields.count ?? "5") !== "5"
+    String(fields.descriptor ?? "").length > 0 || Boolean(fields.thresholdLocked) || String(fields.m ?? "2") !== "2" || String(fields.n ?? "3") !== "3" || String(fields.script ?? "p2wsh") !== "p2wsh" || String(fields.purpose ?? "48") !== "48" || fields.purposeHarden === false || Boolean(fields.legacyBip87) || String(fields.keyOrder ?? "sorted") !== "sorted" || Boolean(fields.reuseSessionKeys) || String(fields.coinType ?? (fields.network === "testnet" ? "1" : "0")) !== "0" || fields.coinTypeHarden === false || fields.accountHarden === false || String(fields.branchStart ?? "0") !== "0" || Boolean(fields.branchHarden) || String(fields.branchRange ?? "2") !== "2" || String(fields.addressStart ?? "0") !== "0" || Boolean(fields.addressHarden) || String(fields.addressRange ?? fields.count ?? "10") !== "10"
 }
 
 function hodlSyncMsigClearButton(capture = !1) {
@@ -11696,7 +11696,7 @@ function hodlCaptureMsig() {
   } catch {
   }
   state.fields.addressStart = document.getElementById("msig-address-start")?.value ?? "0";
-  state.fields.addressRange = document.getElementById("msig-address-range")?.value ?? "5";
+  state.fields.addressRange = document.getElementById("msig-address-range")?.value ?? "10";
   state.fields.branchStart = document.getElementById("msig-branch-start")?.value ?? "0";
   state.fields.branchRange = document.getElementById("msig-branch-range")?.value ?? "2";
   state.result = hodlWalletResult && hodlWalletResult.kind === "msig" ? hodlWalletResult : null;
@@ -11735,7 +11735,7 @@ function hodlRestoreMsig() {
   if (branchStart) branchStart.value = state.fields.branchStart ?? "0";
   if (branchRange) branchRange.value = state.fields.branchRange ?? "2";
   if (addressStart) addressStart.value = state.fields.addressStart ?? "0";
-  if (addressRange) addressRange.value = state.fields.addressRange ?? state.fields.count ?? "5";
+  if (addressRange) addressRange.value = state.fields.addressRange ?? state.fields.count ?? "10";
   hodlSetHardeningControls("msig-", hodlHardeningFromFields(state.fields));
   hodlUpdateHardeningHelp("msig-");
   hodlUpdateAddressEstimate("msig-");

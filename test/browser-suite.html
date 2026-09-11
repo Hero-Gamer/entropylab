@@ -3989,6 +3989,7 @@
     const multisigBranchHarden = document.getElementById("msig-branch-start-harden");
     equal(multisigBranchStart.value, "0", "Multisig address branches did not start at Receive by default");
     equal(multisigBranchRange.value, "2", "Multisig address branches did not include Receive and Change by default");
+    equal(multisigAddressRange.value, "10", "Multisig did not default to ten addresses per branch");
     assert(!multisigBranchHarden.checked, "Multisig address branch did not default to unhardened");
     multisigBranchHarden.click();
     assert(document.getElementById("msig-branch-start-help").textContent.includes("Hardened"), "Multisig address branch help did not reflect hardened derivation");

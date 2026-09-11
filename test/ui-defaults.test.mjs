@@ -281,11 +281,11 @@ test("key and multisig derivation use an indexed address window with an estimate
     assert.match(markup, /id="address-start"[^>]*value="0"/);
     assert.match(markup, /id="address-range"[^>]*value="10"/);
     assert.match(markup, /id="msig-address-start"[^>]*value="0"/);
-    assert.match(markup, /id="msig-address-range"[^>]*value="5"/);
+    assert.match(markup, /id="msig-address-range"[^>]*value="10"/);
     assert.match(markup, /id="address-start-help">First address index to derive (?:·|\\xB7) Unhardened (?:·|\\xB7) 0 to 2,147,483,647/);
     assert.match(markup, /id="address-range-help">Derives 10 receive and 10 change addresses (?:·|\\xB7) Max 10,000/);
     assert.match(markup, /id="msig-address-start-help">First receive and change index to derive (?:·|\\xB7) Unhardened (?:·|\\xB7) 0 to 2,147,483,647/);
-    assert.match(markup, /id="msig-address-range-help">Derives 5 receive and 5 change addresses (?:·|\\xB7) Max 10,000/);
+    assert.match(markup, /id="msig-address-range-help">Derives 10 receive and 10 change addresses (?:·|\\xB7) Max 10,000/);
     assert.match(markup, /id="derive-progress"[^>]*role="progressbar"/);
     assert.match(markup, /id="msig-derive-progress"[^>]*role="progressbar"/);
     assert.doesNotMatch(markup, /id="(?:msig-)?count"/);

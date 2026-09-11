@@ -25,12 +25,24 @@ function loadSlice(name) {
 
 const api = new Function(
   `
-  ${["hodlPathComponent", "hodlOriginPathComponent", "hodlParseCustomDerivationPath", "hodlParseDerivationIndexText", "hodlSanitizeDerivationIndexDraft", "hodlReadDerivationIndex"].map(loadSlice).join("\n")}
-  return { hodlPathComponent, hodlOriginPathComponent, hodlParseCustomDerivationPath, hodlSanitizeDerivationIndexDraft, hodlReadDerivationIndex };
+  ${["hodlPathComponent", "hodlOriginPathComponent", "hodlParseCustomDerivationPath", "hodlParseDerivationIndexText", "hodlSanitizeDerivationIndexDraft", "hodlReadDerivationIndex", "hodlDerivationPathWindowComponent", "hodlParseDerivationPathWindow", "hodlDerivationPathDisplay"].map(loadSlice).join("\n")}
+  return { hodlPathComponent, hodlOriginPathComponent, hodlParseCustomDerivationPath, hodlSanitizeDerivationIndexDraft, hodlReadDerivationIndex, hodlParseDerivationPathWindow, hodlDerivationPathDisplay };
   `,
 )();
 
-const { hodlParseCustomDerivationPath, hodlSanitizeDerivationIndexDraft, hodlReadDerivationIndex } = api;
+const { hodlParseCustomDerivationPath, hodlSanitizeDerivationIndexDraft, hodlReadDerivationIndex, hodlParseDerivationPathWindow, hodlDerivationPathDisplay } = api;
+
+test("address windows use BIP-88 range notation in the full path", () => {
+  const branch = hodlParseDerivationPathWindow("{0-1}", "Address branch", 2);
+  const address = hodlParseDerivationPathWindow("{0-9}", "Address index", 10000);
+  assert.deepEqual(branch, { start: 0, end: 1, range: 2, hardened: false });
+  assert.deepEqual(address, { start: 0, end: 9, range: 10, hardened: false });
+  assert.equal(hodlDerivationPathDisplay("m/84'/0'/0'", branch, address, { branch: false, address: false }), "m/84'/0'/0'/{0-1}/{0-9}");
+  assert.equal(hodlDerivationPathDisplay("m/84'/0'/0'", { start: 2, end: 2, range: 1 }, { start: 7, end: 7, range: 1 }, { branch: false, address: false }), "m/84'/0'/0'/2/7");
+  for (const bad of ["{0-0}", "{1-0}", "{00-1}", "{0-2}", "{0,1}", "*"]) {
+    assert.throws(() => hodlParseDerivationPathWindow(bad, "Address branch", 2), /one BIP32 index or one BIP-88 range/, bad);
+  }
+});
 
 test("custom paths parse into components, display path, and origin path", () => {
   assert.deepEqual(hodlParseCustomDerivationPath("m"), { components: [], path: "m", originPath: "", hasHardened: false });

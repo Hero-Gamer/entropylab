@@ -607,6 +607,41 @@ test("VanityGrinder pool passes the selected script type to workers", async () =
   assert.equal(hit.path, "m/86'/0'/2'/0/0");
 });
 
+// Issue #389: a Stop requested while workers were still initializing used to
+// lose the race — the readiness handler then posted the grind job (with the
+// mnemonic) anyway, and the worker reset stopRequested and ground the whole
+// range, reporting stopped: false.
+test("VanityGrinder pool: stop before worker readiness never dispatches key material", async () => {
+  const spawns = [];
+  const recordingSpawn = () => {
+    const worker = new NodeWebWorkerAdapter();
+    const record = { types: [] };
+    const post = worker.postMessage.bind(worker);
+    worker.postMessage = (message, transfer) => {
+      record.types.push(message?.type);
+      return post(message, transfer);
+    };
+    spawns.push(record);
+    return { worker, url: null };
+  };
+  const result = await new Promise((resolve, reject) => {
+    const grinder = new VanityGrinder({
+      onDone: resolve,
+      onError: (message) => reject(new Error(message)),
+    }, recordingSpawn);
+    grinder.start({ method: "passphrase", script: "p2wpkh", prefix: "bc1q", start: 0n, count: 16n, workers: 2, passLen: 1, mnemonic: MNEMONIC, passphrase: PASSPHRASE, path: [84 + H, H, H, 0, 0] });
+    // The workers' WASM instantiation is asynchronous, so this stop lands
+    // before either has posted "ready".
+    grinder.stop();
+    assert.equal(grinder.running, true, "the run settles via onDone, not before it");
+  });
+  assert.equal(result.stopped, true);
+  assert.equal(result.done, 0n, "no candidate was ground");
+  assert.equal(result.found, 0);
+  assert.ok(spawns.length >= 2, "both workers spawned");
+  for (const record of spawns) assert.ok(!record.types.includes("grind"), "no worker ever received the grind job carrying the mnemonic");
+});
+
 test("VanityGrinder pool runs the passphrase grind and reports the full candidate passphrase", async () => {
   // A found passphrase reads as the starting passphrase followed by the
   // counter odometer string, on the key's own path.

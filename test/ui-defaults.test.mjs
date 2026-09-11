@@ -27,6 +27,7 @@ const appWhitespace = transformSync(appSource, {
 }).code;
 const css = read("src/css/styles.css");
 const online = read("src/js/online.js");
+const contributing = read("CONTRIBUTING.md");
 
 
 test("top status banner omits the entropy RNG message", () => {
@@ -50,15 +51,11 @@ test("every enabled button uses orange and black momentary press feedback", () =
 });
 
 test("wallet coin type indexes enable and default to mainnet", () => {
-  for (const id of ["network", "msig-network"]) {
-    const mainnetCoinType = new RegExp(
-      `<input id="${id}" type="(?:text|number)"[^>]*inputmode="numeric" value="0${id === "network" ? "'" : ""}"`,
-    );
-    assert.match(shell, mainnetCoinType);
-  }
+  assert.match(shell, /<input id="network" type="text" inputmode="numeric" value="0'"/);
+  assert.match(shell, /id="msig-origin-state" hidden aria-hidden="true"[\s\S]*<input id="msig-network" type="number" value="0">/);
   for (const markup of [shell]) {
     assert.match(markup, /id="network-help">Coin type index (?:·|\\xB7) Mainnet (?:·|\\xB7) Hardened (?:·|\\xB7) 0 to 2,147,483,647/);
-    assert.match(markup, /id="msig-network-help">Coin type index (?:·|\\xB7) Mainnet (?:·|\\xB7) Hardened (?:·|\\xB7) 0 to 2,147,483,647/);
+    assert.match(markup, /<span id="msig-network-help"><\/span>/);
     // The PSBT tools dropped their own network selects: they read the header
     // picker's choice directly. Only the SP station keeps a select.
     assert.doesNotMatch(markup, /id="psbt-network"/);
@@ -186,24 +183,109 @@ test("the header network picker sets the network every tool defaults to", () => 
   assert.doesNotMatch(narrow, /\.network-picker \{[^}]*position: absolute/s);
   // The row keeps its 40px touch targets rather than shrinking to a chip.
   assert.doesNotMatch(narrow, /\.network-picker-button \{[^}]*min-height: 0/s);
+  // The language dropdown drops its arrow at the same breakpoint, and takes
+  // back the symmetric padding the chevron's blank edge had been paying for.
+  assert.match(narrow, /\.locale-control \.custom-select-chevron \{ display: none; \}/);
+  // Squared off against the same 40px the network picker takes.
+  assert.match(narrow, /\.locale-control \.custom-select \{ flex: 0 0 40px; width: 40px; \}/);
+  assert.match(narrow, /\.locale-control \.custom-select-button \{ width: 40px; padding: 0; justify-content: center; \}/);
+  // The menu is not squared with it: it stays readable and opens leftward.
+  assert.match(narrow, /\.locale-control \.custom-select-list \{ left: auto; right: 0; min-width: 72px; \}/);
+  // Only the header's copy: the arrow stays on every other custom select.
+  assert.doesNotMatch(narrow, /^\s*\.custom-select-chevron \{ display: none; \}/m);
 });
 
 test("advanced derivation fields use the shared responsive settings grid", () => {
-  assert.match(shell, /<div class="field network-field"><label for="network">Network<\/label>[\s\S]*?<input id="network"[^>]*>/);
-  assert.match(css, /\.derivation-advanced-fields \{ display: grid; gap: var\(--space-component\); \}/);
-  assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*?\.key-settings-row \{ grid-template-columns: minmax\(0, 1fr\); \}/);
+  // The title now shares a row with the field's Harden toggle, so it sits one
+  // level in; the input still follows it.
+  assert.match(shell, /<div class="field network-field"><div class="field-head"><label for="network">Network<\/label>[\s\S]*?<input id="network"[^>]*>/);
+  // The rules bracket the section, so the lower one sits under the toggle when
+  // shut and under the revealed fields when open. On the summary it split the
+  // label from its own content; on the revealed block it vanished with it.
+  // One rule, and it closes the section: under the toggle when shut, under the
+  // revealed fields when open, so the section grows above it.
+  // No padding above: the field the section follows already sets it off, and
+  // the toggle reads as the next line rather than the start of a new band.
+  assert.match(css, /\.derivation-advanced \{\s*margin: 0; padding: 0 0 var\(--space-control\);\s*border-bottom: 1px solid var\(--border\);\s*\}/s);
+  assert.doesNotMatch(css, /\.derivation-advanced \{[^}]*border-top/s);
+  assert.doesNotMatch(css, /\.derivation-advanced summary \{[^}]*border-bottom/s);
+  assert.doesNotMatch(css, /\.derivation-advanced-fields \{[^}]*border-top/s);
+  // With the line off the row, it hugs its text again like the toggle it
+  // matches, so the hit area is the words rather than the whole card.
+  assert.match(css, /\.derivation-advanced summary \{[\s\S]*?display: inline-flex; align-items: center; gap: 4px; width: fit-content; min-height: 32px;/);
+  assert.match(css, /\.dice-fairness-toggle \{[^}]*width: fit-content;/s);
+  // The gap under the toggle is the same either way — set on the summary
+  // itself — so opening the section moves the fields in without shifting the
+  // toggle. Open differs only in colour.
+  assert.match(css, /\.derivation-advanced summary \{[^}]*margin-bottom: var\(--space-control\);/s);
+  assert.match(css, /\.derivation-advanced\[open\] summary \{ color: var\(--fg\); \}/);
+  assert.match(css, /\.derivation-advanced-fields \{ display: grid; gap: var\(--space-component\); margin-bottom: var\(--space-control\); \}/);
+  // The field titles match the card's label style; the control below each
+  // already carries the 8px, so they take no margin of their own.
+  // Titles sit inside a .field-head now, sharing the row with a Harden toggle
+  // where the field has one, so the rule reaches both levels.
+  assert.match(css, /\.derivation-advanced-fields :is\(\.field, \.field-head\) > label:not\(\.derivation-harden\) \{\s*display: block; font-size: 14px; font-weight: 600; color: var\(--fg\);\s*\}/s);
+  // The Harden control is a label too, and a direct child of the title row: the
+  // rule above would make it display:block and collapse its own flex layout,
+  // taking the gap between box and word and its centring with it.
+  assert.match(css, /\.derivation-harden \{\s*display: inline-flex; align-items: center; justify-content: center; gap: 7px;/s);
+  assert.match(css, /\.derivation-index-control \{[^}]*margin-top: var\(--space-control\);/s);
+  // The estimate belongs to the section above it, not to the button below, so
+  // it takes a wide seam above and sits close beneath.
+  assert.match(css, /\.derivation-estimate \{ margin: var\(--space-intro\) 0 0; \}/);
+  // Nothing under it: 16px is the floor, being the action row's own margin,
+  // which every tool card shares by design and which a bottom margin here
+  // would only collapse into.
+  assert.doesNotMatch(css, /\.derivation-estimate \{[^}]*padding-bottom/s);
+  assert.match(css, /\.tool-actions \{ margin-top: var\(--space-component\); \}/);
+  assert.doesNotMatch(css, /\.key-action-row \{/);
+  // A card's closing actions are the things to press, so their labels carry
+  // the weight. Scoped to the row, not to .btn: the tabs share that class, and
+  // a tab reads as a place you are rather than an action you take.
+  assert.match(css, /\.tool-actions \.btn \{ font-weight: 700; transition: background-color \.14s ease, border-color \.14s ease, color \.14s ease; \}/);
+  // Every closing action moves the same two things under the pointer, so a row
+  // of mixed button weights reads as one set of controls.
+  // One rule serves the filled primary and the quieter secondary: they differ at
+  // rest, not under the pointer. Both drop their fill to the page ground and
+  // move the accent out to the border and the label.
+  assert.match(css, /\.tool-actions \.btn:not\(:disabled\)[^{]*:hover \{\s*border-color: var\(--selection-accent\);\s*background: var\(--bg\);\s*color: var\(--selection-accent-ink\);\s*\}/s);
+  // The label takes the accent as lettering, which is theme-tuned: the fill
+  // orange manages 2.1:1 on white, so light mode uses a deeper one.
+  assert.match(css, /--selection-accent-ink: #ff9900;/);
+  assert.match(css, /:root\[data-theme="light"\][\s\S]*?--selection-accent-ink: #b36200;/);
+  // The fills keep the bright colour in both themes.
+  assert.match(css, /\.btn\.primary \{ background: var\(--selection-accent\);/);
+  assert.match(css, /\.tab\.active \{\s*background: var\(--selection-accent\);/);
+  assert.doesNotMatch(css, /\.tool-actions \.btn\.primary:not\(:disabled\):hover/);
+  // The tinted fill is gone from the action row; the same mix is used elsewhere
+  // in the sheet, so the check is scoped to this rule rather than the file.
+  assert.doesNotMatch(css, /\.tool-actions \.btn:not\(:disabled\)[^{]*:hover \{[^}]*color-mix/s);
+  // Buttons that already carry a meaning colour keep it, and now move their
+  // border too so the whole row changes the same properties.
+  // The destructive one inverts the same way, in the colour that says what it
+  // does. --danger-bright, which unlike --selection-accent is theme-tuned, so
+  // the red clears AA on both grounds.
+  assert.match(css, /\.btn:is\(\.delete-key, \.clear-current-action\):not\(:disabled\):hover \{ border-color: var\(--danger-bright\); background: var\(--bg\); color: var\(--danger-bright\); \}/);
+  for (const token of ["--danger-bright"]) {
+    assert.ok(css.match(new RegExp(`\\${token}:`, "g"))?.length >= 2, `${token} needs a light and a dark value`);
+  }
+  assert.match(css, /:not\(:is\(\.clear-current-action, \.delete-key, \.download-html, \.save-recovery-sheet, \.save-wallet-dat, \.journal-download-action\)\)/);
+  // Motion is opt-out, like every other transition in the sheet.
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.tool-actions \.btn \{ transition: none; \} \}/);
+  assert.doesNotMatch(css, /\.tab, \.btn \{[^}]*font-weight/s);
+  assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*?\.key-settings-row, \.msig-origin-fields, \.msig-path-components \{ grid-template-columns: minmax\(0, 1fr\); \}/);
 });
 
 test("key and multisig derivation use an indexed address window with an estimate and progress", () => {
   for (const markup of [shell]) {
     assert.match(markup, /id="address-start"[^>]*value="0"/);
-    assert.match(markup, /id="address-range"[^>]*value="1"/);
+    assert.match(markup, /id="address-range"[^>]*value="10"/);
     assert.match(markup, /id="msig-address-start"[^>]*value="0"/);
-    assert.match(markup, /id="msig-address-range"[^>]*value="5"/);
-    assert.match(markup, /id="address-start-help">First receive index to derive (?:·|\\xB7) Unhardened (?:·|\\xB7) 0 to 2,147,483,647/);
-    assert.match(markup, /id="address-range-help">Derives 1 receive address (?:·|\\xB7) Max 10,000/);
+    assert.match(markup, /id="msig-address-range"[^>]*value="10"/);
+    assert.match(markup, /id="address-start-help">First address index to derive (?:·|\\xB7) Unhardened (?:·|\\xB7) 0 to 2,147,483,647/);
+    assert.match(markup, /id="address-range-help">Derives 10 receive and 10 change addresses (?:·|\\xB7) Max 10,000/);
     assert.match(markup, /id="msig-address-start-help">First receive and change index to derive (?:·|\\xB7) Unhardened (?:·|\\xB7) 0 to 2,147,483,647/);
-    assert.match(markup, /id="msig-address-range-help">Derives 5 receive and 5 change addresses (?:·|\\xB7) Max 10,000/);
+    assert.match(markup, /id="msig-address-range-help">Derives 10 receive and 10 change addresses (?:·|\\xB7) Max 10,000/);
     assert.match(markup, /id="derive-progress"[^>]*role="progressbar"/);
     assert.match(markup, /id="msig-derive-progress"[^>]*role="progressbar"/);
     assert.doesNotMatch(markup, /id="(?:msig-)?count"/);
@@ -247,7 +329,7 @@ test("key and multisig derivation select one or two address branches", () => {
   for (const markup of [shell]) {
     assert.match(markup, /id="branch-start"[^>]*value="0"/);
     assert.match(markup, /id="branch-start-harden"[^>]*type="checkbox"/);
-    assert.match(markup, /id="branch-range"[^>]*max="2"[^>]*value="1"/);
+    assert.match(markup, /id="branch-range"[^>]*max="2"[^>]*value="2"/);
     assert.match(markup, /id="msig-branch-start"[^>]*value="0"/);
     assert.match(markup, /id="msig-branch-start-harden"[^>]*type="checkbox"/);
     assert.match(markup, /id="msig-branch-range"[^>]*max="2"[^>]*value="2"/);
@@ -276,17 +358,73 @@ test("a running derivation yields off the main thread, survives hidden tabs, and
   assert.equal(appSource.match(/hodlTText\("A derivation is already running\."\)/g)?.length, 2);
 });
 
-test("entropy progress messages sit directly below their inputs and above keypads", () => {
-  assert.match(app, /<textarea id="dice"[^>]*><\/textarea><\/div>\s*\$\{hodlSeedMetaRowMarkup\("dice-meta",!0\)\}\s*\$\{dicePad\}/);
-  assert.match(appSource, /<textarea id="\$\{inputId\}"[^>]*><\/textarea><\/div>\s*\$\{hodlSeedMetaRowMarkup\("cards-meta"\)\}/);
-  assert.match(app, /<textarea id="\$\{inputId\}"[\s\S]*?<\/textarea><\/div>\s*\$\{hodlSeedMetaRowMarkup\("entropy-meta",!0\)\}\s*\$\{base64Keyboard\}\s*\$\{entropyPad\}/);
+test("entropy progress messages sit next to their inputs and above keypads", () => {
+  // Dice is the exception: its progress line sits above the input, not below,
+  // so the textarea and the roll keypad stay adjacent. You read the count,
+  // then type and tap without a line of text wedged between the two controls.
+  assert.match(app, /\$\{hodlSeedMetaRowMarkup\("dice-meta",!0\)\}\s*<div class="dice-input-shell">[\s\S]*?<textarea id="dice"[^>]*><\/textarea><\/div>\s*\$\{dicePad\}/);
+  // Cards reads like dice: the progress line above the transcript, so the field
+  // and the card keypad below it stay together.
+  assert.match(appSource, /\$\{hodlSeedMetaRowMarkup\("cards-meta"\)\}\s*<div class="dice-input-shell cards-input-shell">/);
+  assert.match(app, /<textarea id="\$\{inputId\}"[\s\S]*?<\/textarea><\/div>\s*\$\{hodlSeedMetaRowMarkup\("entropy-meta",!0\)\}\s*\$\{numberBaseKeyboard\}\s*\$\{entropyPad\}/);
   assert.match(app, /<textarea id="seed"[^>]*><\/textarea><\/div><p class="muted" id="seed-meta"[^>]*><\/p>\$\{hodlSeedKeyboardMarkup\(\)\}/);
   assert.match(app, /<textarea id="key"[^>]*><\/textarea><\/div><p class="muted" id="private-key-meta"[^>]*><\/p>/);
 });
 
+test("the dice progress numbers are coloured against what the seed needs", () => {
+  // Red while short, green once met, in the same bright pair the network status
+  // tag uses: a few characters of live status is what those shades are held for.
+  // One node builder serves every dice method, so their colours cannot drift.
+  assert.match(appSource, /span\.className = "meta-value " \+ \(met \? "is-met" : "is-short"\);/);
+  // The count answers to the roll shortfall; the bits answer to the entropy the
+  // selected seed length needs, not a fixed 256, so a 12-word seed can go green.
+  assert.match(appSource, /hodlMetaValue\(String\(rolls\.length\), !missing\)/);
+  assert.match(appSource, /hodlMetaValue\(metaBitsValue\.toFixed\(1\), metaBitsValue >= config\.bits\)/);
+  // Spliced in as nodes around a sentinel, never as markup: the status line
+  // quotes what was typed, so it must not become an HTML sink.
+  assert.match(appSource, /for \(let piece of text\.split\(\/\(\\u0000\)\/\)\)/);
+  assert.doesNotMatch(appSource, /#dice-meta"\)\.innerHTML/);
+  // Every sentence is its own line, joined by a break rather than a separator
+  // buried inside one catalog string that every translation would have to keep.
+  assert.match(appSource, /if \(nodes\.length\) nodes\.push\(document\.createElement\("br"\)\);/);
+  assert.doesNotMatch(appSource, /"\{have\} (of \{n\} )?recommended rolls · \{bits\}/);
+});
+
+test("the BitBox word counter is coloured and its next roll sits on its own line", () => {
+  // The word number is the count to act on: red until every lookup-table word
+  // is in, green once the phrase is down to its final checksum pick.
+  assert.match(appSource, /hodlMetaValue\(String\(result\.words\.length\), true\)/);
+  assert.match(appSource, /hodlMetaValue\(String\(result\.words\.length \+ 1\), false\)/);
+  // What to roll next is its own sentence, so it lands on its own line.
+  assert.match(appSource, /hodlTText\("Word \{word\} of \{partial\}", \{ word: hodlMetaToken, partial: result\.neededPartial \}\)/);
+  assert.match(appSource, /hodlTText\("Die \{die\} of 5 \(only faces 1–4 used\)", \{ die: result\.diceInWord \+ 1 \}\)/);
+  assert.match(appSource, /hodlTText\("6th die \(interpreted as a coin flip\)"\)/);
+  // BitBox carries no tail at all now: the invalid-input note is redundant with
+  // the highlighted transcript above, and ignored extras still reach the user
+  // as a derive-time warning.
+  assert.match(appSource, /hodlRenderMeta\("dice-meta", bitboxLines\);/);
+  assert.doesNotMatch(appSource, /bitboxTail/);
+  assert.match(appSource, /"Extra rolls after the final lookup-table word are ignored\./);
+  // The other methods keep the invalid-input tail, so the variable stays live.
+  assert.match(appSource, /statusTail \+ invalidStatus/);
+  assert.doesNotMatch(css, /\.meta-cue \{[^}]*font-weight/);
+  assert.match(appSource, /hodlMetaCue\(hodlTText\("Choose final checksum word below"\)\)/);
+  // The dot-joined single sentences are gone from every BitBox state.
+  assert.doesNotMatch(appSource, /"Word \{word\} of \{partial\} ·/);
+  assert.doesNotMatch(appSource, /"\{n\} words · choose the final checksum word"/);
+  // It builds nodes, not markup, like every other dice progress line.
+  assert.doesNotMatch(appSource, /#dice-meta"\)\.textContent = status/);
+  assert.doesNotMatch(appSource, /#dice-meta"\)\.innerHTML/);
+  // Zero rolls is the short case with a count of 0, so one sentence serves both
+  // and each number is always a placeholder the colour can wrap.
+  assert.doesNotMatch(appSource, /"0 of \{n\} recommended rolls/);
+});
+
 test("seed phrase calculations and copy controls precede every numbered word grid", () => {
-  assert.match(appSource, /\$\{dicePad\}[\s\S]*?manual-calculations-container[\s\S]*?\$\{hodlSeedCopyRowMarkup\(hodlDiceFairnessToggleMarkup\([\s\S]*?\)\)\}[\s\S]*?<div id="dice-words"/);
-  assert.match(appSource, /<div class="dealt-cards"[^>]*><\/div>[\s\S]*?manual-calculations-container[\s\S]*?\$\{hodlSeedCopyRowMarkup\(\)\}\s*<div id="dice-words"/);
+  // Fairness toggle, then its panel, then the seed phrase title row carrying
+  // the copy button, then the grid it copies from.
+  assert.match(appSource, /\$\{dicePad\}[\s\S]*?manual-calculations-container[\s\S]*?<div class="dice-fairness-row" hidden>\$\{hodlDiceFairnessToggleMarkup\([\s\S]*?\)\}<\/div>[\s\S]*?\$\{hodlDerivedSeedRowMarkup\(\)\}\s*<div id="dice-words"/);
+  assert.match(appSource, /<div class="dealt-cards"[^>]*><\/div>[\s\S]*?manual-calculations-container[\s\S]*?\$\{hodlDerivedSeedRowMarkup\(\)\}\s*<div id="dice-words"/);
   assert.match(appSource, /\$\{entropyPad\}\s*<div id="number-base-calculations"[^>]*><\/div>\s*\$\{hodlSeedCopyRowMarkup\(\)\}\s*<div id="entropy-words"/);
   assert.match(appSource, /<\/div>\$\{hodlSeedCopyRowMarkup\(\)\}<div id="seed-number-words"/);
   assert.match(appSource, /function hodlSeedMetaRowMarkup\(metaId, live = false\) \{\s*return `<div class="seed-word-meta"><p[^`]+<\/p><\/div>`;\s*\}/);
@@ -294,6 +432,32 @@ test("seed phrase calculations and copy controls precede every numbered word gri
 
 test("direct dice and card methods expose manual BIP39 calculations before copying", () => {
   assert.match(appSource, /id="show-manual-calculations"/);
+  // Two rows like the sync switch, and no bordered chip: the control reads as
+  // part of the card rather than a box floating on it.
+  // The chrome is the card's shared switch, asserted once; a component states
+  // only how it sits in its own container.
+  assert.match(css, /\.switch-toggle \{ width: 100%; min-height: 24px; margin-top: 0; padding: 0; border: 0; background: none; \}/);
+  assert.match(css, /\.manual-calculations-toggle \{ display: flex; min-height: 32px; \}/);
+  assert.match(css, /\.switch-note \{ display: block; margin: 0; font-size: 13px; line-height: 1\.45; \}/);
+  // The note left the label, so the checkbox has to point at it explicitly or
+  // it stops being announced with the control.
+  assert.match(appSource, /id="show-manual-calculations" aria-describedby="manual-calculations-note"/);
+  // The switch waits for something to be behind it. It ships hidden, because a
+  // fresh form runs no update: the field restore only dispatches input when
+  // there is a stored value to put back.
+  assert.equal(appSource.match(/class="switch-row manual-calculations-row" hidden>/g)?.length, 2);
+  assert.match(css, /\.manual-calculations-row\[hidden\] \{ display: none; \}/);
+  // The row follows the calculations; only the panel follows the checkbox.
+  assert.match(appSource, /if \(row\?\.classList\.contains\("manual-calculations-row"\)\) row\.hidden = !markup;/);
+  assert.match(appSource, /panel\.hidden = !hodlManualCalculationsOpen \|\| !markup;/);
+  // The row is the panel's immediate previous sibling in every form that has one.
+  assert.equal(appSource.match(/<\/div><div id="[a-z-]*manual-calculations" class="manual-calculations-container" hidden>/g)?.length, 2);
+  assert.match(appSource, /<p class="seed-autocomplete-note switch-note" id="manual-calculations-note">/);
+  // Both methods that offer calculations use the same two-row shape.
+  // Built on the card's shared switch; the component class carries only its own
+  // margin and hidden state.
+  assert.equal(appSource.match(/class="switch-row manual-calculations-row"/g)?.length, 2);
+  assert.doesNotMatch(appSource, /\("\(show how direct (word|card) selection/);
   assert.match(appSource, /id="dice-manual-calculations" class="manual-calculations-container"/);
   assert.match(appSource, /id="cards-manual-calculations" class="manual-calculations-container"/);
   assert.match(appSource, /function hodlManualCalculationMarkup\(method, value, targetWords = hodlTargetWordCount\)/);
@@ -335,22 +499,25 @@ test("hashed cards can match Ian Coleman's suit-symbol SHA-256 transcript", () =
   assert.match(appSource, /show and hash A\\u2660 2\\u2663 instead of As 2c/);
   assert.match(appSource, /placeholder = direct \? "A284 37A2 \\u2026" : hodlCardColemanSymbols \? "A\\u2660 2\\u2663 T\\u2665 T\\u2666\\u2026" : "As 2c Th Td\\u2026"/);
   assert.match(appSource, /autocapitalize="off" aria-labelledby="cards-input-label"/);
+  // Titled like every other entry field in the card, so the shared label
+  // spacing reaches it; the transcript is still named through its labelledby.
+  assert.match(appSource, /<p class="label" id="cards-input-label">\$\{inputLabel\}<\/p>/);
   assert.match(appSource, /function hodlCardsHashInput\(cards, coleman = false\)/);
   assert.match(appSource, /transcript\.replace\(\/c\/g, "\\u2663"\)\.replace\(\/d\/g, "\\u2666"\)\.replace\(\/h\/g, "\\u2665"\)\.replace\(\/s\/g, "\\u2660"\)/);
   assert.match(appSource, /hodlFilterCards\(value, hodlCardColemanSymbols\)/);
   assert.match(appSource, /input\.value = hodlFilterCards\(input\.value, hodlCardColemanSymbols\)/);
 });
 
-test("Number bases offers exact Base 2, 4, 8, 16, Crockford Base32, and Base64-alphabet input", () => {
+test("Number bases offers exact Base 2, 4, 8, 16, Bech32 Base32, and Base64-alphabet input", () => {
   assert.match(appSource, /hodlTText\(hodlKeyModeLabels\[mode\]\)/);
   assert.doesNotMatch(shell, />Hex or binary<\/button>/);
   assert.ok(app.includes('formatChoices=["bin","base4","base8","hex","base32","base64"]'));
   assert.match(app, /name="entropy-format" value="\$\{id\}"/);
   const labelsModule = read("src/js/i18n-labels.js");
-  for (const label of ["Binary (Base 2)", "Base 4", "Octal (Base 8)", "Hexadecimal (Base 16)", "Crockford Base32", "Base64 (RFC 4648 alphabet)"]) {
+  for (const label of ["Binary (Base 2)", "Quaternary (Base 4)", "Octal (Base 8)", "Hexadecimal (Base 16)", "Base32 (Bech32)", "Base64 (RFC 4648 alphabet)"]) {
     assert.ok(labelsModule.includes(`label: "${label}"`), label);
   }
-  assert.match(app, /alphabet:"0123456789ABCDEFGHJKMNPQRSTVWXYZ"/);
+  assert.match(app, /alphabet:"qpzry9x8gf2tvdw0s3jn54khce6mua7l"/);
   assert.match(app, /alphabet:"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789\+\/"/);
   assert.match(app, /function hodlNumberBaseEntropy\(value,format,targetWords=hodlTargetWordCount\)/);
   assert.match(app, /function hodlNumberBasePreviewWords\(value,format,targetWords=hodlTargetWordCount\)/);
@@ -368,31 +535,43 @@ test("Number bases offers exact Base 2, 4, 8, 16, Crockford Base32, and Base64-a
   // The sync control stacks: switch and title on one row, explanation beneath.
   assert.match(appSource, /<div class="global-sync-head">/);
   assert.match(appSource, /<span class="label">\$\{hodlT\("Sync entropy across methods"\)\}<\/span><\/label>/);
-  assert.match(appSource, /<p class="seed-autocomplete-note global-sync-note" id="global-sync-note">/);
+  assert.match(appSource, /<p class="seed-autocomplete-note switch-note" id="global-sync-note">/);
+  assert.match(css, /\.switch-note \{ display: block; margin: 0; font-size: 13px; line-height: 1\.45; \}/);
   // The explanation describes the switch instead of naming it.
   assert.match(appSource, /id="global-entropy-sync" aria-describedby="global-sync-note"/);
   assert.doesNotMatch(appSource, /<strong>Sync entropy across methods<\/strong>/);
-  assert.match(css, /\.global-sync-row \{ display: block; \}/);
   assert.match(css, /\.global-sync-head \{ display: flex; align-items: center;/);
   // It gives up the shared toggle's chip chrome, but not its 44px target, and
   // the chip elsewhere keeps both.
   // The chip's 44px box left 13px of its own height under the title; the row
   // hugs its content instead, staying full width and above the 24px floor.
-  assert.match(css, /\.global-sync-toggle \{[^}]*min-height: 32px;[^}]*padding: 0; border: 0; background: none; \}/);
+  // The chrome is the card's shared switch, asserted once; a component states
+  // only how it sits in its own container.
+  assert.match(css, /\.switch-toggle \{ width: 100%; min-height: 24px; margin-top: 0; padding: 0; border: 0; background: none; \}/);
+  assert.match(css, /\.global-sync-toggle \{ flex: 1 1 auto; \}/);
   assert.match(css, /\.seed-autocomplete-toggle \{[^}]*min-height: 44px;[^}]*border: 1px solid var\(--border\);[^}]*background: var\(--surface-2\);/s);
   // The title matches the Method label above it.
   assert.match(css, /\.global-sync-toggle \.label \{ margin: 0; \}/);
   // The explanation is subordinate to that title and sits directly under it.
-  assert.match(css, /\.global-sync-note \{ display: block; margin: 0; font-size: 13px; line-height: 1\.45; \}/);
-  // Whatever comes off the top is given back below, so the control sits with
-  // the method it qualifies rather than centred in its own gap. Padding, not
-  // margin: a bottom margin would collapse into .seed-length-control's larger
-  // top margin and buy nothing.
-  assert.match(css, /\.global-sync-host \{ margin-top: var\(--space-control\); padding-bottom: var\(--space-control\); \}/);
+  assert.match(css, /\.switch-note \{ display: block; margin: 0; font-size: 13px; line-height: 1\.45; \}/);
+  // The control sits with the method it qualifies rather than centred in its
+  // own gap, and it carries the rule that closes the Method section — the
+  // length band below opens without one, so the gap either side is even.
+  assert.match(css, /\.global-sync-host \{ margin-top: var\(--space-control\); padding-bottom: var\(--space-component\); border-bottom: 1px solid var\(--border\); \}/);
+  // The length band closes with its own rule and opens with the Method
+  // section's, so it never carries a border-top of its own.
+  assert.match(
+    css,
+    /\.seed-length-control \{ margin-top: var\(--space-component\); padding-bottom: var\(--space-component\); border-bottom: 1px solid var\(--border\); \}/,
+  );
+  assert.doesNotMatch(css, /\.seed-length-control \{[^}]*border-top/s);
   assert.match(css, /\.number-base-calculation-list \{/);
   assert.match(app, /fields:\{[\s\S]*?base4:"",base8:"",base32:"",base64:""/);
   assert.match(app, /function hodlBase64KeyboardMarkup\(\)\{return hodlKeyboardMarkup\(!0,"Base64 entropy","base64-keyboard"\)\}/);
   assert.match(app, /function hodlBindBase64Keyboard\(input\)/);
+  assert.match(app, /function hodlBase32KeyboardMarkup\(\)\{return hodlKeyboardMarkup\(!0,"Bech32 entropy","base32-keyboard",!1,"a1"\)\}/);
+  assert.match(app, /function hodlBindBase32Keyboard\(input\)/);
+  assert.match(app, /usesKeyboard=format\.id==="base32"\|\|format\.id==="base64"/);
   assert.match(app, /hodlT\("Heads \(0\)"\)/);
   assert.match(app, /hodlT\("Tails \(1\)"\)/);
   assert.match(css, /\.dice-input-pad\.entropy-keypad \{ grid-template-columns: repeat\(8[^}]*grid-auto-flow: row;/);
@@ -409,8 +588,16 @@ test("dealt playing cards use theme-appropriate surfaces", () => {
   assert.match(css, /\.dealt-card\.is-red \{ color: var\(--playing-card-red\); \}/);
 });
 
-test("card undo uses the keyboard delete icon and one rank-grid column", () => {
+test("card undo uses the keyboard delete icon, a visible word, and closes the row", () => {
+  // The word sits after the icon, and the accessible name begins with it, so
+  // what is seen and what is announced agree.
+  assert.match(appSource, /id="card-undo"[^>]*aria-label="\$\{hodlT\("Undo last card"\)\}"[^>]*><svg[\s\S]*?<\/svg><span>\$\{hodlT\("Undo"\)\}<\/span><\/button>/);
+  // Show cards is the card's shared switch, titled like the rest.
+  assert.match(appSource, /class="seed-autocomplete-toggle switch-toggle card-visibility-toggle"><input type="checkbox" id="show-cards"[^>]*><span class="label">/);
   assert.match(app, /class="card-undo-button seed-keyboard-delete" id="card-undo"[^>]*aria-label="\$\{hodlT\("Undo last card"\)\}"[^>]*><svg viewBox="0 0 24 18"/);
+  // Show cards leads the row and undo closes it, in source order as well as on
+  // screen, so keyboard focus meets them in the order the eye does.
+  assert.match(app, /<div class="card-controls-row"><label class="seed-autocomplete-toggle switch-toggle card-visibility-toggle">[\s\S]*?<\/label><button class="card-undo-button/);
   assert.match(appSource, /function hodlSetInputValueAtEnd\(input, value\)/);
   assert.match(appSource, /hodlSetInputValueAtEnd\(input, value\);\s*input\.dispatchEvent\(new Event\("input"\)\)/);
   assert.match(css, /\.card-controls-row \{[\s\S]*?grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/);
@@ -459,7 +646,8 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   assert.match(app, /data-seed-delete aria-label="Delete previous character"/);
   assert.match(app, /data-seed-keyboard-mode="lower"/);
   assert.match(app, /passphraseOnly\?`Change \$\{inputName\} character mode`:"Character mode switching is available for the passphrase"/);
-  assert.match(app, />aA1<\/button><button[^>]*class="seed-keyboard-space"/);
+  assert.match(app, /modeLabel="aA1"/);
+  assert.match(app, />\$\{modeLabel\}<\/button><button[^>]*class="seed-keyboard-space"/);
   assert.match(app, /data-seed-key=" " aria-label="Enter space">space/);
   assert.ok(app.includes('number:["1234567890","!@#$%^&*()","-_+=/?\\\\"]'));
   assert.match(app, /Array\.from\(\{length:hodlSeedKeyboardLayouts\.number\[index\]\.length\}/);
@@ -545,7 +733,11 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   // Only one on-screen keyboard toggle per section: the seed keyboard and the
   // private-key keyboard each already serve the passphrase field too.
   assert.match(app, /ownToggle\?hodlPassphraseKeyboardToggleMarkup\(\):""/);
-  assert.match(app, /passphrase\?\(ownToggle\?hodlPassphraseKeyboardToggleMarkup\(\):""\)\+hodlPassphraseBip39ToggleMarkup\(\)/);
+  // The checkbox leads the row and the keyboard toggle follows. Swapped in the
+  // markup rather than with row-reverse, so tab order still follows the eye.
+  assert.match(app, /passphrase\?hodlPassphraseBip39ToggleMarkup\(\)\+\(ownToggle\?hodlPassphraseKeyboardToggleMarkup\(\):""\)/);
+  assert.match(appSource, /<div class="passphrase-keyboard-tools">\$\{hodlBrainWalletTrimToggleMarkup\(\)\}\$\{hodlKeyboardToggleMarkup\("private-keyboard-toggle"/);
+  assert.doesNotMatch(css, /\.passphrase-keyboard-tools \{[^}]*row-reverse/s);
   assert.match(app, /hodlPassphraseKeyboardToggleMarkup\(\)/);
   assert.match(app, /function hodlPassphraseBip39ToggleMarkup\(checked=hodlPassphraseBip39Enabled\(\)\)/);
   assert.match(app, /function hodlAnalyzeBip39Passphrase\(value,activeCaret=null\)/);
@@ -555,7 +747,19 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   assert.match(app, /hodlPrivateKeyKeyboardToggleMarkup\(\)/);
   assert.match(app, /function hodlBrainWalletTrimEnabled\(\)/);
   assert.match(app, /id="brain-wallet-trim"/);
-  assert.match(app, />Trim leading and trailing whitespace<\/strong>/);
+  // Borderless, and the title takes the shared label style rather than a bare
+  // <strong>, like every other checkbox in this card.
+  assert.match(app, /<span class="label">Trim leading and trailing whitespace<\/span>/);
+  assert.match(app, /<span class="label">Build passphrase from BIP39 words<\/span>/);
+  assert.match(app, /<span class="label">Autocomplete BIP39 words<\/span>/);
+  // The chrome is the card's shared switch, asserted once; a component states
+  // only how it sits in its own container.
+  assert.match(css, /\.switch-toggle \{ width: 100%; min-height: 24px; margin-top: 0; padding: 0; border: 0; background: none; \}/);
+  // The one with an explanation gets two rows, and the checkbox points at the
+  // note now that it sits outside the label.
+  assert.match(app, /id="passphrase-bip39-words" aria-describedby="passphrase-bip39-note"/);
+  assert.match(app, /<p class="seed-autocomplete-note switch-note" id="passphrase-bip39-note">lowercase words separated by single spaces<\/p>/);
+  assert.match(css, /\.switch-note \{ display: block; margin: 0; font-size: 13px; line-height: 1\.45; \}/);
   assert.match(app, /brainWalletTrim:!1/);
   assert.match(css, /\.brain-wallet-trim-toggle\[hidden\] \{ display: none; \}/);
   assert.doesNotMatch(appSource, /bitaddress\.org-style brain wallet/);
@@ -591,7 +795,10 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   assert.match(css, /\.passphrase-keyboard-tools \{[^}]*display: flex[^}]*align-items: flex-start[^}]*gap: var\(--space-control\)/s);
   assert.match(css, /\.dice-input-shell\.passphrase-input-shell input \{[^}]*position: relative[^}]*margin-top: 0[^}]*background: transparent[^}]*color: transparent/s);
   assert.match(css, /\.passphrase-bip39-options \{[^}]*flex: 1 1 auto[^}]*gap: var\(--space-control\)/s);
-  assert.match(css, /\.passphrase-bip39-toggle, \.passphrase-autocomplete-toggle \{[^}]*width: 100%[^}]*margin-top: 0/s);
+  // The chrome is the card's shared switch, asserted once; a component states
+  // only how it sits in its own container.
+  assert.match(css, /\.switch-toggle \{ width: 100%; min-height: 24px; margin-top: 0; padding: 0; border: 0; background: none; \}/);
+  assert.match(appSource, /class="seed-autocomplete-toggle switch-toggle passphrase-bip39-toggle"/);
   assert.match(css, /\.passphrase-keyboard-host \.seed-keyboard \{ margin-top: var\(--space-control\); margin-right: auto; margin-left: 0; \}/);
   assert.match(css, /\.seed-keyboard-toggle,\s*\.theme-toggle\s*\{[^}]*width: 44px[^}]*min-height: 44px[^}]*height: auto/s);
   assert.match(css, /\.seed-keyboard-toggle svg \{[^}]*width: 30px[^}]*height: 22px/s);
@@ -605,15 +812,15 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   assert.match(css, /\.seed-keyboard-key:disabled,[\s\S]*?\.seed-keyboard-space:disabled \{[^}]*cursor: not-allowed[^}]*opacity: \.3/s);
 });
 
-test("multisig derivation settings follow the key inputs", () => {
-  const fieldOrder = /id="msig-keys"[\s\S]*id="msig-key-order-status"[\s\S]*id="msig-hint"[\s\S]*id="msig-script-type"[\s\S]*id="msig-purpose"[\s\S]*id="msig-network"[\s\S]*id="msig-account"[\s\S]*id="msig-address-start"[\s\S]*id="msig-address-range"[\s\S]*id="msig-key-order"[\s\S]*id="msig-go"/;
+test("multisig policy settings precede the key inputs and output settings follow them", () => {
+  const fieldOrder = /id="msig-script-type"[\s\S]*id="msig-key-order"[\s\S]*id="msig-legacy-bip87"[\s\S]*id="msig-key-order-status"[\s\S]*id="msig-keys"[\s\S]*id="msig-hint"[\s\S]*id="msig-origin-state"[\s\S]*id="msig-purpose"[\s\S]*id="msig-network"[\s\S]*id="msig-account"[\s\S]*id="msig-address-start"[\s\S]*id="msig-address-range"[\s\S]*id="msig-go"/;
   assert.match(shell, fieldOrder);
 });
 
 test("key derivation and multisig use the accurate Script type label", () => {
   for (const markup of [shell]) {
     assert.match(markup, /id="script-type-field"[^>]*>[\s\S]*?Script type[\s\S]*?<select/);
-    assert.match(markup, /<label class="field">(?:<span[^>]*>)?Script type(?:<\/span>)?\s*<select id="msig-script-type"[^>]*>/);
+    assert.match(markup, /<label class="field msig-script-type-field">(?:<span[^>]*>)?Script type(?:<\/span>)?\s*<select id="msig-script-type"[^>]*>/);
     assert.match(markup, /<option value="p2wsh" selected(?:="selected")?(?:\s[^>]*)?>Native SegWit<\/option>/);
     assert.match(markup, /<option value="p2tr"(?:\s[^>]*)?>Taproot<\/option>/);
     assert.doesNotMatch(markup, /<option value="p2wsh"[^>]*>[^<]*BIP48/);
@@ -634,12 +841,12 @@ test("key derivation separates script type from the hardened purpose index", () 
   assert.match(appSource, /hodlSetSelectedScriptType\(target\.value, true\)/);
   assert.match(appSource, /let derivedDefinition = \{ \.\.\.definition, purpose: purposeIndex, purposeHardened: hardening\.purpose \}/);
   assert.match(appSource, /originPath = derivationPlan\?\.originPath \?\?/);
-  assert.match(appSource, /fields: \{ pass: "", script: "bip84", derivationPath: `m\/84'\/\$\{hodlDefaultCoinType\(\)\}'\/0'\/0\/0`, derivationAccountPath: `m\/84'\/\$\{hodlDefaultCoinType\(\)\}'\/0'`, purpose: "84'", purposeHarden: true, coinType: `\$\{hodlDefaultCoinType\(\)\}'`, coinTypeHarden: true, network: hodlNetworkDefault/);
+  assert.match(appSource, /fields: \{ pass: "", script: "bip84", derivationPath: `m\/84'\/\$\{hodlDefaultCoinType\(\)\}'\/0'\/\{0-1\}\/\{0-9\}`, derivationAccountPath: `m\/84'\/\$\{hodlDefaultCoinType\(\)\}'\/0'`, purpose: "84'", purposeHarden: true, coinType: `\$\{hodlDefaultCoinType\(\)\}'`, coinTypeHarden: true, network: hodlNetworkDefault/);
 });
 
 test("one editable derivation path replaces schemes and accepts arbitrary depth", () => {
   for (const markup of [shell]) {
-    assert.match(markup, /id="script-type-field">Script type[\s\S]*?id="derivation-path-field">Derivation path[\s\S]*?id="derivation-path" type="text" value="m\/84'\/0'\/0'\/0\/0"/);
+    assert.match(markup, /id="script-type-field">Script type[\s\S]*?id="derivation-path-field">Derivation path[\s\S]*?id="derivation-path" type="text" value="m\/84'\/0'\/0'\/\{0-1\}\/\{0-9\}"/);
     assert.match(markup, /<details class="derivation-advanced" id="derivation-advanced">[\s\S]*?<summary>Advanced entry<\/summary>/);
     assert.doesNotMatch(markup, /id="derivation-scheme"|id="custom-derivation-path"|id="scheme-script-index"/);
   }
@@ -659,16 +866,37 @@ test("advanced derivation indexes constrain and restore hardening suffixes", () 
   assert.match(appSource, /draft === "'" \? "0'" : hodlDefaultAdvancedDerivationIndex\(input\.id\)/);
 });
 
-test("derivation indexes keep adjacent Harden controls with safe defaults", () => {
+test("derivation indexes title their Harden controls with safe defaults", () => {
+  // The toggle sits in the field's title row, beside the name it qualifies,
+  // rather than trailing the value. That leaves every input in a settings grid
+  // the same width whether or not its field offers a Harden.
   for (const markup of [shell]) {
-    for (const id of ["purpose", "network", "account", "msig-purpose", "msig-network", "msig-account"]) {
-      assert.match(markup, new RegExp(`id="${id}"[\\s\\S]*?id="${id}-harden" type="checkbox" checked`));
+    for (const id of ["purpose", "network", "account"]) {
+      assert.match(markup, new RegExp(`<div class="field-head"><label for="${id}"[^>]*>[^<]*</label><label class="derivation-harden"><input id="${id}-harden" type="checkbox" checked`));
     }
+    // The multisig purpose, network and account are hidden state rather than
+    // fields — co-signer origins are the source of truth — so they stay bare
+    // input pairs with no title row to sit in.
+    for (const id of ["msig-purpose", "msig-network", "msig-account"]) {
+      assert.match(markup, new RegExp(`<input id="${id}"[^>]*><input id="${id}-harden" type="checkbox" checked`));
+    }
+    assert.match(markup, /<div id="msig-origin-state" hidden aria-hidden="true">/);
     for (const id of ["branch-start", "address-start", "msig-branch-start", "msig-address-start"]) {
-      assert.match(markup, new RegExp(`id="${id}"[\\s\\S]*?id="${id}-harden" type="checkbox"(?! checked)`));
+      assert.match(markup, new RegExp(`<div class="field-head"><label for="${id}"[^>]*>[^<]*</label><label class="derivation-harden"><input id="${id}-harden" type="checkbox"(?! checked)`));
     }
+    // None of them trails its input any more.
+    assert.doesNotMatch(markup, /<\/span><label class="derivation-harden">/);
   }
-  assert.match(css, /\.derivation-index-control \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) auto;[\s\S]*?white-space: nowrap;/);
+  // The right inset answers the input below: its 12px corner radius pulls the
+  // visible edge inward, so a qualifier flush to the true edge reads as
+  // overhanging it and as crowding the next column of the settings grid.
+  assert.match(css, /\.field-head \{\s*display: flex; align-items: center; justify-content: space-between;\s*gap: var\(--space-control\); padding-right: var\(--space-control\);\s*\}/s);
+  assert.match(css, /textarea, select,\s*input:not\(\[type="radio"\]\):not\(\[type="checkbox"\]\) \{[^}]*border-radius: 12px;/s);
+  // One column now that the control holds only the value.
+  assert.match(css, /\.derivation-index-control \{\s*display: grid; grid-template-columns: minmax\(0, 1fr\); align-items: stretch;/s);
+  // The prime answers to the field, not the control the toggle just left.
+  assert.match(css, /\.field:has\(\.derivation-harden input:not\(:checked\)\) \.derivation-index-prime \{ display: none; \}/);
+  assert.doesNotMatch(css, /\.derivation-index-control:has\(\.derivation-harden/);
   assert.match(css, /\.derivation-index-prime \{[\s\S]*?left: 12px;[\s\S]*?white-space: pre;/);
   assert.match(css, /\.derivation-index-prime::before \{ content: attr\(data-index-value\); color: transparent; \}/);
   assert.match(appSource, /function hodlReadHardening\(prefix = ""\)/);
@@ -684,8 +912,9 @@ test("multisig script type and placeholders follow detected co-signer exports", 
     assert.match(markup, /id="msig-script-warning" role="status" hidden/);
     assert.match(markup, /id="msig-go"[^>]*aria-describedby="msig-script-warning"/);
   }
-  assert.match(shell, /placeholder="\[fingerprint\/48h\/0h\/0h\/2h\]xpub…"/);
+  assert.match(shell, /placeholder="xpub…"/);
   assert.match(app, /function hodlMultisigKeyPlaceholder\(kind,network,purpose,coinType=hodlCoinTypeFromNetwork\(network\),hardening=/);
+  assert.match(appSource, /hodlMultisigKeyPlaceholder\(kind, network, purpose, coinType, hodlReadHardening\("msig-"\)\)\.replace\(\/\^\\\[[\s\S]*?, ""\)/);
   assert.match(appWhitespace, /kind==="p2sh"&&purpose===45\)return`\[fingerprint\/\$\{purposeStep\}\]\$\{testnet\?"tpub":"xpub"\}(?:…|\\u2026)`/);
   assert.match(appWhitespace, /kind==="p2sh"\|\|purpose===87\)return`\[fingerprint\/\$\{purposeStep\}\/\$\{coin\}\/\$\{account\}\]\$\{testnet\?"tpub":"xpub"\}(?:…|\\u2026)`/);
   assert.match(appWhitespace, /kind==="p2sh-p2wsh"\)return`\[fingerprint\/\$\{purposeStep\}\/\$\{coin\}\/\$\{account\}\/1h\]\$\{testnet\?"tpub":"xpub"\}(?:…|\\u2026)`/);
@@ -750,15 +979,15 @@ test("derived wallets offer an address match check", () => {
   assert.match(css, /\.address-match-field/);
 });
 
-test("multisig key order is sorted by default and listed order is advanced", () => {
+test("multisig key order is sorted by default and visible with the policy settings", () => {
   for (const markup of [shell]) {
-    assert.match(markup, /id="msig-advanced"/);
-    assert.match(markup, /id="msig-key-order"/);
+    assert.match(markup, /class="key-settings-row">[\s\S]*id="msig-script-type"[\s\S]*id="msig-key-order"[\s\S]*id="msig-legacy-bip87"/);
+    assert.doesNotMatch(markup, /id="msig-advanced"/);
     assert.match(markup, /<option value="sorted" selected(?:="selected")?(?:\s[^>]*)?>Sorted (?:·|\\xB7) sortedmulti<\/option>/);
     assert.match(markup, /<option value="listed"(?:\s[^>]*)?>As listed (?:·|\\xB7) multi<\/option>/);
     assert.match(markup, /id="msig-key-order-status" hidden/);
   }
-  assert.match(css, /\.msig-advanced summary/);
+  assert.doesNotMatch(css, /\.msig-advanced/);
   assert.match(css, /\.msig-key-move-btn/);
   assert.match(app, /function hodlMsigKeysSorted\(\)/);
   assert.match(app, /function hodlBindMsigKeyReorder\(box\)/);
@@ -773,10 +1002,8 @@ test("multisig key order is sorted by default and listed order is advanced", () 
 
 test("multisig separates script type from purpose and keeps the Legacy BIP87 shortcut", () => {
   for (const markup of [shell]) {
-    assert.match(markup, /id="msig-script-type"[\s\S]*id="msig-purpose"[\s\S]*id="msig-network"[\s\S]*id="msig-account"/);
-    assert.match(markup, /id="msig-purpose" type="number" min="0" max="2147483647" step="1" inputmode="numeric" value="48"/);
-    assert.match(markup, /id="msig-purpose-help"[^>]*>Purpose index (?:·|\\xB7) Hardened (?:·|\\xB7) 0 to 2,147,483,647/);
-    assert.match(markup, /id="msig-account-help"[^>]*>Account index (?:·|\\xB7) Hardened (?:·|\\xB7) Derived from co-signer key origins/);
+    assert.match(markup, /id="msig-origin-state" hidden aria-hidden="true"[\s\S]*id="msig-purpose"[^>]*value="48"[\s\S]*id="msig-network"[^>]*value="0"[\s\S]*id="msig-account"/);
+    assert.doesNotMatch(markup, /<label for="msig-purpose">Purpose<\/label>|<label for="msig-network">Network<\/label>|<label for="msig-account">Account<\/label>/);
     assert.match(markup, /id="msig-legacy-account-toggle" hidden/);
     assert.match(markup, /id="msig-legacy-bip87" type="checkbox"/);
     assert.match(markup, />Use standardized BIP87 accounts</);
@@ -869,9 +1096,9 @@ test("account results do not repeat derivation settings shown above", () => {
   assert.doesNotMatch(css, /\.account-summary-grid/);
 });
 
-test("multisig account is displayed as a disabled value derived from key origins", () => {
+test("multisig account is retained internally as a value derived from key origins", () => {
   for (const markup of [shell]) {
-    assert.match(markup, /<input id="msig-account" type="text" value="" placeholder="Derived from keys"[^>]*disabled/);
+    assert.match(markup, /id="msig-origin-state" hidden aria-hidden="true"[\s\S]*<input id="msig-account" type="text" value="" disabled>/);
     assert.match(markup, /id="msig-account-warning" role="status" hidden/);
   }
   assert.match(app, /function hodlUpdateMsigAccount\(\)/);
@@ -891,6 +1118,7 @@ test("multisig threshold labels describe signatures and keys", () => {
     assert.match(markup, /id="msig-n" type="range" min="1" max="15"[^>]*value="3"/);
     assert.doesNotMatch(markup, /msig-threshold-ratio|msig-[mn]-output/);
     assert.doesNotMatch(markup, /<select id="msig-[mn]"/);
+    assert.ok(markup.indexOf('id="msig-import"') < markup.indexOf('class="msig-threshold-labels"'));
     assert.ok(markup.indexOf('class="msig-threshold-labels"') < markup.indexOf('<fieldset class="msig-threshold-control"'));
   }
   assert.match(css, /\.msig-threshold-number\s*\{[^}]*appearance: textfield[^}]*text-align: center/s);
@@ -932,16 +1160,45 @@ test("multisig consistently uses derive for its heading and action", () => {
   assert.match(app, /let\{network,coinType,count,addressStart,branchStart,branchRange,n,m,kind,purpose,hardening,legacyStandard,nodes,xpubs,keyTokens,accountSummary,accountWarning\}=hodlValidatedMsigInputs\(\)/);
 });
 
-test("Station add controls stay pinned to the right of their tab strips", () => {
+test("Station tabs stay pinned left while add controls stay pinned right", () => {
   assert.match(css, /\.key-tab-strip \{ display: flex; align-items: flex-end; min-width: 0; margin-top: 12px; \}/);
   assert.match(css, /\.key-tabs \{\s*display: flex;[^}]*flex: 1 1 auto; min-width: 0;/s);
+  assert.match(css, /\.key-tabs > \.key-tab\.station-tab \{\s*position: sticky; left: 0; z-index: 4; background: var\(--bg\);/);
+  assert.match(css, /\.key-tabs > \.key-tab\.station-tab\.active \{ background: var\(--surface\); \}/);
   assert.match(css, /\.add-item-control \{ position: relative; display: inline-flex; flex: 0 0 auto; \}/);
+  assert.match(appSource, /button\.className = "tab key-tab" \+ \(state\.isLab \? " is-lab station-tab" : ""\)/);
+  assert.match(appSource, /button\.className = "tab key-tab bip85-tab" \+ \(state\.isLab \? " is-lab station-tab" : ""\)/);
+  assert.match(appSource, /button\.className = "tab key-tab msig-tab" \+ \(state\.isLab \? " is-lab station-tab" : ""\)/);
+  assert.match(appSource, /button\.className = "tab key-tab is-lab station-tab active"/);
+  assert.match(appSource, /pinnedWidth = station && tab !== station \? station\.offsetWidth : 0/);
+  assert.match(appSource, /start < left \+ pinnedWidth/);
+});
+
+test("a disabled add or remove control shows no tooltip", () => {
+  // The wrapper takes :hover even when the button inside cannot, so the hint
+  // has to be suppressed from the button's own disabled state.
+  assert.match(css, /\.add-key:disabled \+ \.add-item-tooltip \{\s*opacity: 0; visibility: hidden;/s);
+  // It must come after the reveal rule: equal specificity, so order decides.
+  assert.ok(
+    css.indexOf(".add-key:disabled + .add-item-tooltip") >
+      css.indexOf(".add-item-control:focus-within .add-item-tooltip"),
+    "the suppression rule must follow the reveal rule",
+  );
+  // Every strip pairs the button with its tooltip as an immediate sibling,
+  // which is what the combinator relies on.
+  for (const id of ["add-key", "delete-key", "add-bip85", "delete-bip85", "add-msig", "delete-msig", "add-journal-page", "delete-journal-page"]) {
+    assert.match(
+      shell,
+      new RegExp(`id="${id}"[^>]*>[^<]*</button><span class="add-item-tooltip"`),
+      `${id} must sit immediately before its tooltip`,
+    );
+  }
 });
 
 test("the Key Station method picker is one dropdown carrying every method's mark", () => {
   for (const markup of [shell]) {
     // #modes hosts the title and the dropdown; the segmented row is gone.
-    assert.match(markup, /<div class="key-mode-select" id="modes"><p class="label" id="key-method-label"[^>]*>Method<\/p><\/div>/);
+    assert.match(markup, /<div class="key-mode-select" id="modes"><p class="label" id="key-method-label"[^>]*>Derivation Method<\/p><\/div>/);
     assert.doesNotMatch(markup, /key-mode-control|key-mode-label/);
   }
   // The title is the control's accessible name, so speech input can say it.
@@ -1025,6 +1282,30 @@ test("the delete control reads as unavailable on a Station tab", () => {
   assert.match(css, /\.add-key:not\(:disabled\):active \{ background: transparent; color: var\(--accent\); \}/);
 });
 
+test("the Keys plus control reads as unavailable until a key exists", () => {
+  // + does one thing: return to the Key Station. With only the Station open
+  // there is nowhere to return from, so it ships disabled and app.js keeps it
+  // that way until a non-lab key is in the strip.
+  assert.match(
+    shell,
+    /<button class="add-key" id="add-key"[^>]*disabled/,
+    "add-key must ship disabled",
+  );
+  assert.match(appSource, /function hodlSyncKeyAddButton\(\) \{[\s\S]*?button\.disabled = !hodlKeys\.some\(\(state\) => !state\.isLab\);/);
+  // Both controls are resynced together wherever the strip is rebuilt.
+  assert.match(appSource, /hodlSyncKeyDeleteButton\(\);\n  hodlSyncKeyAddButton\(\);/);
+});
+
+test("the Multi Signature plus control reads as unavailable until a multisig exists", () => {
+  assert.match(
+    shell,
+    /<button class="add-key" id="add-msig"[^>]*disabled/,
+    "add-msig must ship disabled",
+  );
+  assert.match(appSource, /function hodlSyncMsigAddButton\(\) \{[\s\S]*?button\.disabled = !hodlMsigs\.some\(\(state\) => !state\.isLab\);/);
+  assert.match(appSource, /hodlSyncMsigDeleteButton\(\);\n  hodlSyncMsigAddButton\(\);/);
+});
+
 test("seed-entry tools keep a square keyboard toggle and a block note on narrow screens", () => {
   assert.match(
     css,
@@ -1044,12 +1325,12 @@ test("the tools' closing button groups stack full width on narrow screens", () =
   // ragged lines. Below 520px every child takes the whole row instead.
   assert.match(
     css,
-    /@media \(max-width: 520px\)[\s\S]*\.current-item-actions,\s*\.bip85-actions,\s*\.psbt-actions \{ align-items: stretch; \}[\s\S]*\.current-item-actions > \*,\s*\.bip85-actions > \*,\s*\.psbt-actions > \* \{ width: 100%; justify-content: center; \}/,
+    /@media \(max-width: 520px\)[\s\S]*\.tool-actions \{ align-items: stretch; \}[\s\S]*\.tool-actions > \* \{ width: 100%; justify-content: center; \}/,
   );
   // .psbted-actions pins the editor's row to flex-end, so the stacking rule has
   // to follow it to win on order.
   assert.ok(
-    css.indexOf(".psbt-actions > *") > css.indexOf(".psbted-actions { align-items: flex-end; }"),
+    css.indexOf(".tool-actions > *") > css.indexOf(".psbted-actions { align-items: flex-end; }"),
     "the narrow-screen stack must follow .psbted-actions so its alignment wins",
   );
 });
@@ -1376,6 +1657,12 @@ test("the site header is fixed, carries the logo, and holds the version, downloa
   // Content clears the fixed header on screen, and reclaims the space in print.
   assert.match(css, /\.wrap \{ max-width: 1000px; margin: 0 auto; padding: calc\(var\(--site-header-height\) \+ 20px\) 16px 0; \}/);
   assert.match(css, /@media print \{[\s\S]*?\.wrap \{ padding-top: 20px; \}/);
+  // Narrow screens take the same 12px side padding the bar takes, so the page
+  // edge and the header edge stay on one line.
+  assert.match(
+    css.slice(css.indexOf("@media (max-width: 719px)")),
+    /\.wrap \{ padding-left: 12px; padding-right: 12px; \}/,
+  );
   assert.match(css, /html \{[^}]*scroll-padding-top: calc\(var\(--site-header-height\) \+ 12px\)/);
   // Every header control is one height, and Journal file actions deliberately
   // reuse that same compact sizing.
@@ -1386,7 +1673,7 @@ test("the site header is fixed, carries the logo, and holds the version, downloa
   // the form control's 44px minimum, control margin, and mono face, which
   // bulged out of the 52px bar.
   assert.match(css, /\.locale-control \.custom-select \{[^}]*margin-top: 0;[^}]*font-family: inherit;[^}]*font-size: 14px;/s);
-  assert.match(css, /\.locale-control \.custom-select-button \{[^}]*min-height: 40px;[^}]*padding: 0 12px;[^}]*border-radius: 8px;[^}]*background: var\(--surface-2\)/s);
+  assert.match(css, /\.locale-control \.custom-select-button \{[^}]*min-height: 40px;[^}]*padding: 0 9px 0 12px;[^}]*border-radius: 8px;[^}]*background: var\(--surface-2\)/s);
   assert.match(css, /\.custom-select-chevron \{[^}]*width: 12px; height: 12px;[^}]*stroke: currentColor;[^}]*stroke-linecap: round; stroke-linejoin: round;/s);
   assert.match(shell, /class="network-picker-chevron"[^>]*>[\s\S]*?<path d="m6 9 6 6 6-6"\/>/);
   assert.match(read("src/js/enhanced-inputs.js"), /chevronPath\.setAttribute\("d", "m6 9 6 6 6-6"\)/);
@@ -1517,13 +1804,37 @@ test("seed-length selector offers all five BIP39 sizes as a dropdown", () => {
 test("D++ uses the published hexadecimal D16 transcript without a notation toggle", () => {
   assert.match(appSource, /let dplusFaces = \["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D", "E", "F"\]/);
   // The label text lives in the locale catalogs now; the key call stays in the source.
-  assert.match(appSource, /hodlT\("D\+\+ rolls \(D8, D16, D16; then \{final\}\)", \{ final: hodlDPlusFinalDescription/);
-  assert.match(appSource, /"D\+\+ rolls \(D8, D16, D16; then \{final\}\)"/);
+  assert.match(appSource, /hodlT\("D\+\+ rolls \(each word D8 and two D16 hexadice; then \{final\} for checksum\)", \{ final: hodlDPlusFinalPhrase/);
+  // The closing step stays a placeholder: 24 words end on one D8, but 21 end on
+  // one D16 and 18 on a D16 plus a coin flip, so it cannot be a fixed string.
+  assert.match(appSource, /function hodlDPlusFinalPhrase\(words = hodlTargetWordCount\) \{/);
+  assert.doesNotMatch(appSource, /then one D8 for checksum/);
   assert.doesNotMatch(appSource, /D\+\+ rolls \(D8 1\\u20138, D16 0\\u2013F/);
   assert.match(appSource, /accessibleRange\.className = "sr-only";\s*accessibleRange\.textContent = rollRange;/);
   assert.doesNotMatch(appSource, /meta\.append\(document\.createTextNode\(" \\xB7 "\), emphasis, document\.createTextNode\(rollRange\)\)/);
+  // D++ shows the same two lines BitBox does: a coloured word count, then
+  // what to roll next. The old "Group x of y" prefix counted completed
+  // groups beside the active word, two numbers that disagreed by one.
+  assert.doesNotMatch(appSource, /Group \$\{result\.completedGroups\}/);
+  assert.doesNotMatch(appSource, /groupsEntered|rollsComplete|d16Range/);
+  // D++ rolls all 24 words — the last is a checksum roll, not a pick from a
+  // list — so the count runs to config.words, not partialWords.
+  assert.match(appSource, /activeWord = partialDone \? config\.words : result\.activeGroupIndex \+ 1;/);
+  // One sentence throughout: the wording never changes, only the colour, so
+  // the count reads the same before and after the checksum roll lands.
+  assert.match(appSource, /hodlMetaValue\(String\(activeWord\), complete\)/);
+  assert.doesNotMatch(appSource, /partial: config\.partialWords \}\), hodlMetaValue\(String\(activeWord\)/);
+  // Green is gated on the same flag that reveals the checksum-valid line,
+  // so the count and the cue can never contradict each other.
+  // Completion tints nothing but the count: a blanket .ok on the line put a
+  // second, olive green beside the bright one. Errors still take the line.
+  assert.match(appSource, /meta\.className = "muted" \+ \(result\.invalidCount \? " err" : ""\);/);
+  assert.match(appSource, /else nextCue = hodlTText\("Checksum valid · ready to derive"\);/);
+  // The next roll is the card instructions' orange next-step cue, withheld
+  // while the transcript has an error, and it keeps its screen-reader range.
+  assert.match(appSource, /hodlDPlusRollNode\(rollPhrase, rollRange, !result\.invalidCount\)/);
+  assert.match(appSource, /let node = next \? hodlMetaCue\(rollPhrase, "next"\)/);
   assert.match(shell, /D8 labeled 1(?:–|\\u2013)8 and two hexadecimal D16 dice labeled 0(?:–|\\u2013)F/);
-  assert.match(appSource, /hodlT\("Enter the D8 face from 1–8, then both hexadecimal D16 faces from 0–F exactly as shown on the dice\./);
   assert.doesNotMatch(appSource, /data-dplus-die|hodlDPlusNumberedD16|dplusNumberedD16|Decimal D16/);
   assert.doesNotMatch(css, /dplus-die-pad|dplus-key-decimal|dplus-key-face/);
 });
@@ -1535,8 +1846,27 @@ test("dice rolls hide Pearson chi-squared fairness behind a text expand button",
   assert.match(app, /data-dice-fairness-glyph/);
   assert.match(app, /hodlT\("Die Distribution \/ Fairness Analysis"\)/);
   assert.match(appSource, /<div class="seed-word-copy-row">\$\{leading\}<span class="seed-phrase-copied"/);
-  assert.match(css, /\.seed-word-copy-row \.dice-fairness-toggle \{ margin-right: auto; \}/);
+  // The toggle has its own row now: it heads the panel under it rather than
+  // trailing the copy button, which belongs with the seed phrase title.
+  assert.match(css, /\.dice-fairness-row \{ display: flex; align-items: center; margin-top: var\(--space-control\); \}/);
+  assert.match(css, /\.seed-word-copy-row \.label \{ margin: 0; margin-right: auto; \}/);
+  assert.doesNotMatch(css, /\.seed-word-copy-row \.dice-fairness-toggle/);
+  assert.match(css, /\.seed-word-copy-row \{[^}]*margin-top: var\(--space-component\);/s);
+  // The copy button sits in the title row, directly above the word grid.
+  // One builder titles the derived words for every method that has them.
+  assert.match(appSource, /function hodlDerivedSeedRowMarkup\(\) \{\s*return hodlSeedCopyRowMarkup\(`<p class="label">\$\{hodlT\("Derived seed phrase"\)\}<\/p>`\);/);
+  assert.equal(appSource.match(/\$\{hodlDerivedSeedRowMarkup\(\)\}\s*<div id="dice-words"/g)?.length, 2);
   assert.match(app, /id="dice-fairness" class="dice-fairness" hidden role="status" aria-live="polite"/);
+  // The word grid is titled like every other section, in both the rendered
+  // markup and the pre-boot shell so the two do not disagree at boot.
+  assert.match(shell, /<div class="seed-word-copy-row"><p class="label">Derived seed phrase<\/p>[\s\S]*?<\/div>\s*<div id="dice-words"/);
+  // The pre-boot markup shows the same shape the app renders: the meta row in
+  // its wrapper above the input, two lines, each number a coloured value.
+  assert.match(shell, /<div class="seed-word-meta"><p class="muted" id="dice-meta" aria-live="polite">/);
+  assert.match(shell, /<span class="meta-value is-short">0<\/span> of 99 recommended rolls<br><span class="meta-value is-short">0\.0<\/span> bits estimated/);
+  assert.match(shell, /id="dice-meta"[\s\S]*?<div class="dice-input-shell">[\s\S]*?<div class="dice-input-pad/);
+  // No trace of the single-line form with its trailing method restatement.
+  assert.doesNotMatch(shell, /0\.0 bits estimated · 24-word seed/);
   assert.match(app, /function hodlSetDiceFairnessOpen\(open\)/);
   assert.match(app, /function hodlChiSquaredCdf\(/);
   assert.match(app, /function hodlDiceFairnessAssess\(rolls,\s*labels,\s*title\)/);
@@ -1547,6 +1877,44 @@ test("dice rolls hide Pearson chi-squared fairness behind a text expand button",
   assert.match(app, /hodlT\("Hide die distribution \/ fairness analysis"\)/);
   assert.match(css, /\.dice-fairness \{/);
   assert.match(css, /\.dice-fairness-toggle \{/);
+  // It heads the panel it opens, so it matches the labels above it rather than
+  // inheriting the browser default a step larger than every title around it.
+  // Grey at rest, white while hovered or open. The arrow is a child span with
+  // no colour of its own, so it follows the label through every state.
+  assert.match(css, /\.dice-fairness-toggle \{[^}]*color: var\(--muted\); font-size: 14px; font-weight: 600;/s);
+  assert.match(css, /\.dice-fairness-toggle:hover, \.dice-fairness-toggle\[aria-expanded="true"\] \{ color: var\(--fg\); \}/);
+  // It waits for rolls, the way the calculations switch waits for a word.
+  assert.match(appSource, /<div class="dice-fairness-row" hidden>/);
+  assert.match(css, /\.dice-fairness-row\[hidden\] \{ display: none; \}/);
+  assert.match(appSource, /if \(row\?\.classList\.contains\("dice-fairness-row"\)\) row\.hidden = !markup;/);
+  // The panel goes with it: clearing the rolls must not strand it open with no
+  // control left to close it.
+  assert.match(appSource, /panel\.hidden = !open \|\| !markup;/);
+  // Same size, weight and colour the shared title class uses.
+  assert.match(css, /\.label \{ font-size: 14px; font-weight: 600;[^}]*color: var\(--fg\); \}/);
+  // A heading-styled control takes no press flash: the global button rule
+  // paints one orange, which reads as a fault rather than feedback here.
+  assert.match(css, /\.dice-fairness-toggle:not\(:disabled\):active \{\s*background: transparent !important; color: var\(--fg\) !important;/s);
+  // With no rolls the note is the whole panel, so its lead would leave 18px
+  // above against 12px below. Populated reports keep the lead under a head.
+  assert.match(css, /\.dice-fairness > \.dice-fairness-note:first-child \{ margin-top: 0; \}/);
+  assert.match(css, /\.dice-fairness-note, \.dice-fairness-caveat \{ margin: 6px 0 0;/);
+  assert.match(css, /\.dice-fairness \{[^}]*padding: 12px 14px;/s);
+  // The panel sits directly under the row that opens it.
+  assert.match(css, /\.dice-fairness \{\s*margin-top: 0;/s);
+  // The arrow is the only open/closed cue, so it is readable at a glance.
+  // Wide enough that swapping the two triangles cannot shift the title, and no
+  // wider: at 18px a 0.9em box left a run of empty space before the text.
+  // Optical: centred boxes leave the triangle reading low beside the label, and
+  // a transform corrects it without touching the 44px row height.
+  assert.match(css, /\[data-dice-fairness-glyph\] \{\s*display: inline-block; width: 0\.7em; font-size: 22px; line-height: 1; transform: translateY\(-2px\);\s*\}/s);
+  assert.match(css, /\.dice-fairness-toggle \{[^}]*gap: 4px;/s);
+  // Sized as a heading rather than a tap target, matching the sync switch:
+  // the 44px default padded the row and pushed the panel away from its title.
+  assert.match(css, /\.dice-fairness-toggle \{[^}]*min-height: 32px;/s);
+  assert.match(css, /\.manual-calculations-toggle \{[^}]*min-height: 32px;/s);
+  // The flex gap alone sets that spacing; no literal space in the markup.
+  assert.match(appSource, /<\/span>\$\{hodlT\("Die Distribution \/ Fairness Analysis"\)\}<\/button>/);
   assert.match(css, /\.dice-fairness\[data-tone="danger"\] \{/);
   assert.match(shell, /dicefairness\.johnellmore\.com/);
   assert.match(shell, /How can I test whether a die is fair/);
@@ -1607,6 +1975,12 @@ test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
   }
   assert.match(shell, /data-psbt-tool="nonce"[^>]*>PSBT \/ Nonce/);
   assert.match(shell, /data-psbt-tool="editor"[^>]*>PSBT Editor/);
+  assert.match(shell, /id="psbt-nonce-history-upload"/);
+  assert.match(shell, /id="psbt-nonce-history-download"[^>]*disabled/);
+  assert.match(shell, /id="psbt-nonce-history-clear"[^>]*disabled/);
+  assert.match(shell, /id="psbt-nonce-history-result" aria-live="assertive"/);
+  assert.match(appSource, /parseNonceHistory, serializeNonceHistory/);
+  assert.match(appSource, /"entropylab-nonce-history\.json"/);
   assert.match(appSource, /getElementById\("psbt-manager"\)/);
   assert.match(appSource, /getElementById\("psbt-tool-intros"\)/);
   assert.match(appSource, /function hodlShowPsbtTool\(id, focus = false\)/);
@@ -1630,19 +2004,19 @@ test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
     assert.match(markup, /rust-bitcoin compiled to WebAssembly/);
     // The row must carry psbted-actions in both markups so the editor's
     // button rows keep their compact, text-sized buttons.
-    assert.match(markup, /<div class="row psbt-actions psbted-actions">/);
+    assert.match(markup, /<div class="row psbt-actions psbted-actions tool-actions">/);
   }
   assert.match(css, /\.psbted-actions \{ align-items: flex-end; \}/);
   assert.match(css, /\.psbted-actions \.btn, \.psbted-actions \.custom-select-button \{ min-height: 36px; padding: 6px 10px; border-radius: 8px; \}/);
-  assert.match(appSource, /import \{ initPsbtEditor \} from "\.\/psbt-editor\.js"/);
+  assert.match(appSource, /import \{ initPsbtEditor, psbtBytesFromUpload \} from "\.\/psbt-editor\.js"/);
   // The editor reads the header picker's network through the passed getter.
   assert.match(appSource, /initPsbtEditor\(\{ networkDefault: \(\) => hodlNetworkDefault \}\)/);
   assert.match(css, /#psbted-card\[hidden\]/);
-  assert.match(css, /#psbt-card:not\(\[hidden\]\), #psbted-card:not\(\[hidden\]\), #vanity-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
+  assert.match(css, /#psbt-card:not\(\[hidden\]\), #psbted-card:not\(\[hidden\]\), #vanity-card:not\(\[hidden\]\), #ln-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
 });
 
-test("Journal gates its four tools behind the encrypted notebook", () => {
-  assert.match(appSource, /\["psbt", "PSBT", "PSBT"\], \["journal", "Journal", "Journal"\]\];/);
+test("Journal gates its five tools behind the local notebook", () => {
+  assert.match(appSource, /\["psbt", "PSBT", "PSBT"\], \["ln", "Lightning", "LN"\], \["journal", "Journal", "Journal"\]\];/);
   assert.match(appSource, /import \{[\s\S]*wipeJournal,[\s\S]*\} from "\.\/journal\.js"/);
   assert.match(appSource, /import \{[\s\S]*sealDocument as hodlJournalSealDocument,[\s\S]*\} from "\.\/journal\.js"/);
   assert.match(appSource, /openExport as hodlJournalOpenExport/);
@@ -1667,13 +2041,13 @@ test("Journal gates its four tools behind the encrypted notebook", () => {
     assert.match(markup, /class="btn clear-current-action" id="journal-global-clear"[^>]*disabled aria-disabled="true"[^>]*>Clear journal<\/button>/);
     assert.match(markup, /<section class="key-manager no-print" id="journal-manager" hidden>/);
     assert.match(markup, /<div class="key-tabs" id="journal-tool-tabs" role="tablist" aria-label="Journal stations">/);
-    assert.doesNotMatch(markup, /id="journal-book-tab"|data-journal-tool="book"/);
+    assert.match(markup, /id="journal-book-tab"[^>]*data-journal-tool="book"[^>]*disabled>Entries<\/button>/);
     assert.match(markup, /id="journal-notes-tab"[^>]*aria-disabled="true"[^>]*data-journal-tool="notes"[^>]*disabled/);
     assert.match(markup, /id="journal-keymanager-tab"[^>]*aria-disabled="true"[^>]*data-journal-tool="keymanager"[^>]*disabled/);
     assert.match(markup, /id="journal-state-tab"[^>]*aria-disabled="true"[^>]*data-journal-tool="state"[^>]*disabled/);
     assert.match(markup, /id="journal-log-tab"[^>]*aria-disabled="true"[^>]*data-journal-tool="log"[^>]*disabled/);
     assert(markup.indexOf('id="journal-notes-tab"') < markup.indexOf('id="journal-keymanager-tab"') && markup.indexOf('id="journal-keymanager-tab"') < markup.indexOf('id="journal-state-tab"'), "Key manager should follow Notepad in the Journal tab strip");
-    assert.match(markup, /id="journal-card" role="region" aria-label="Encrypted Journal"/);
+    assert.match(markup, /id="journal-card" role="region" aria-label="Journal"/);
     assert.match(markup, /id="journal-create"/);
     assert.match(markup, /id="journal-unlock"/);
     assert.match(markup, /id="journal-save"/);
@@ -1685,9 +2059,13 @@ test("Journal gates its four tools behind the encrypted notebook", () => {
     assert.match(markup, /id="journal-create-password"[^>]*aria-describedby="journal-create-password-note journal-create-password-status"/);
     assert.match(markup, /class="journal-password-validation" id="journal-create-confirm-status" role="status" aria-live="polite" hidden/);
     assert.match(markup, /id="journal-create-confirm"[^>]*aria-describedby="journal-create-confirm-status"/);
-    assert.match(markup, /class="row bip85-actions journal-create-actions">\s*<button class="btn primary" id="journal-create"[^>]*>Create journal<\/button>\s*<span class="journal-create-ready" id="journal-create-ready" hidden><span class="journal-create-ready-arrow" aria-hidden="true">←<\/span> Ready to create journal<\/span>/);
+    assert.match(markup, /Journal password \(optional\)/);
+    assert.match(markup, /placeholder="Leave blank for no password"/);
+    assert.match(markup, /Confirm password \(optional\)/);
+    assert.match(markup, /placeholder="Repeat password or leave blank"/);
+    assert.match(markup, /class="row bip85-actions journal-create-actions tool-actions">\s*<button class="btn primary" id="journal-create"[^>]*>Create journal<\/button>\s*<span class="journal-create-ready" id="journal-create-ready" hidden><span class="journal-create-ready-arrow" aria-hidden="true">←<\/span> <span class="journal-create-ready-text">Ready to create without a password<\/span><\/span>/);
     assert.match(markup, /does not invent entropy/);
-    assert.match(markup, /The journal lives in this page until you save the encrypted file/);
+    assert.match(markup, /files created without one can be opened by anyone/);
     assert.match(markup, /id="journal-notes-card"/);
     assert.match(markup, /id="journal-keymanager-card"/);
     assert.match(markup, /id="journal-state-card"/);
@@ -1711,9 +2089,9 @@ test("Journal gates its four tools behind the encrypted notebook", () => {
     assert.match(markup, /class="btn secondary journal-upload-action journal-file-button" id="journal-keymanager-upload"[^>]*aria-label="Upload managed keys"[^>]*>[\s\S]*?<span class="control-label">Upload<\/span><\/button>/);
     assert.match(markup, /id="journal-keymanager-file"[^>]*accept="\.elkeys,\.json,application\/json"/);
     assert.equal([...markup.matchAll(/class="journal-encrypt-download"/g)].length, 3, "each Journal tab should carry the shared encryption choice");
-    assert.match(markup, /id="journal-notes-encrypt" type="checkbox" checked><span>Use journal password to encrypt<\/span>/);
-    assert.match(markup, /id="journal-state-encrypt" type="checkbox" checked><span>Use journal password to encrypt<\/span>/);
-    assert.match(markup, /id="journal-log-encrypt" type="checkbox" checked><span>Use journal password to encrypt<\/span>/);
+    assert.match(markup, /id="journal-notes-encrypt" type="checkbox" checked><span>Use Journal file encryption<\/span>/);
+    assert.match(markup, /id="journal-state-encrypt" type="checkbox" checked><span>Use Journal file encryption<\/span>/);
+    assert.match(markup, /id="journal-log-encrypt" type="checkbox" checked><span>Use Journal file encryption<\/span>/);
     assert.match(markup, /id="journal-notes-file"[^>]*accept="\.json,\.txt,application\/json,text\/plain"/);
     assert.doesNotMatch(markup, /id="journal-notes-download-text"|Download plain-text notes/);
     assert.doesNotMatch(markup, /id="journal-note-add"|>Add note</);
@@ -1725,7 +2103,7 @@ test("Journal gates its four tools behind the encrypted notebook", () => {
     assert.match(markup, /<div class="journal-log-wrap"><pre class="journal-log" id="journal-log-out"[^>]*>No events yet\.<\/pre><button class="seed-phrase-copy journal-log-copy" id="journal-log-copy"[^>]*aria-label="Copy session log"[^>]*><svg[^>]*><rect class="seed-copy-icon-clip"[^>]*\/><path class="seed-copy-icon-board"[^>]*\/><\/svg><\/button><\/div>/);
     assert.match(markup, /class="btn secondary journal-download-action journal-file-button" id="journal-log-download"[^>]*aria-label="Download session log"[^>]*>[\s\S]*?<span class="control-label">Download session log<\/span><\/button>/);
     assert.match(markup, /class="btn clear-current-action" id="journal-log-clear"[^>]*>Clear log<\/button>/);
-    assert.match(markup, /class="row psbt-actions journal-log-actions"/);
+    assert.match(markup, /class="row psbt-actions journal-log-actions tool-actions"/);
   }
   assert.match(shell, /data-journal-tool="notes"[^>]*>Notepad/);
   assert.match(shell, /data-journal-tool="keymanager"[^>]*>Key manager/);
@@ -1743,9 +2121,9 @@ test("Journal gates its four tools behind the encrypted notebook", () => {
   assert.match(css, /\.journal-create-ready \{[^}]*display: inline-flex;[^}]*color: var\(--ok\);/);
   assert.match(css, /\.journal-create-ready-arrow \{[^}]*font-size: 18px;/);
   assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*\.journal-create-ready-arrow \{ transform: rotate\(90deg\); \}/);
-  assert.match(css, /\.journal-section-intro \{ margin: 0 0 24px; \}/);
+  assert.match(css, /\.journal-section-intro \{ margin: 0 0 var\(--space-intro\); \}/);
   assert.match(css, /\.journal-section-intro > \.muted \{ max-width: 760px; margin: 0; \}/);
-  assert.match(css, /\.journal-global-actions \{[^}]*margin-top: var\(--space-component\);/);
+  assert.match(css, /\.journal-global-actions \{ align-items: center; \}/);
   assert.match(css, /#journal-tool-tabs \.key-tab:disabled,[\s\S]*opacity: \.52; cursor: not-allowed;/);
   assert.match(css, /#journal-card:not\(\[hidden\]\), #journal-notes-card:not\(\[hidden\]\), #journal-keymanager-card:not\(\[hidden\]\), #journal-state-card:not\(\[hidden\]\), #journal-log-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
   assert.match(css, /\.journal-notes-wrap \{[^}]*--journal-font-family:[^}]*position: relative;/s);
@@ -1816,21 +2194,27 @@ test("Journal gates its four tools behind the encrypted notebook", () => {
   assert.match(appSource, /hodlJournalTool === "state"\) hodlJournalRefreshSessionState\(\)/);
   assert.doesNotMatch(appSource, /hodlJournalLog\("capture"|hodlJournalCaptureSession/);
   assert.match(appSource, /hodlJournalLog\("inspect", kind, "psbt"\)[\s\S]*hodlJournalLog\("inspect-error", "", "psbt"\)/);
+  assert.doesNotMatch(appSource, /hodlJournalLog\("inspect-nonce-/);
   assert.match(appSource, /hodlJournalLog\("calculate", hodlSpMode, "sp"\)[\s\S]*hodlJournalLog\("calculate-error", hodlSpMode, "sp"\)/);
   assert.match(appSource, /hodlJournalLog\("derive-error", "", "bip85"\)/);
   assert.match(appSource, /hodlJournalLog\("note-delete", "", "journal"\)/);
   assert.match(appSource, /hodlJournal\.log\.length = 0;\s*hodlJournalLog\("clear", "session-log", "journal"\)/);
   assert.match(css, /#journal-notes-card:not\(\[hidden\]\), #journal-keymanager-card:not\(\[hidden\]\), #journal-state-card:not\(\[hidden\]\), #journal-log-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
   assert.match(appSource, /\["journal", "Journal", "Journal"\]/);
-  assert.match(appSource, /PASSWORD_MIN_LENGTH as hodlJournalPasswordMinLength/);
-  assert.match(appSource, /function hodlSyncJournalCreatePasswordValidation\(\) \{[\s\S]*Array\.from\(passwordValue\)\.length >= hodlJournalPasswordMinLength[\s\S]*Password has too few characters[\s\S]*Passwords do not match/);
-  assert.match(appSource, /if \(ready\) ready\.hidden = !\(passwordLongEnough && confirmValue && passwordsMatch\);/);
+  assert.doesNotMatch(appSource, /PASSWORD_MIN_LENGTH|hodlJournalPasswordMinLength|Password has too few characters/);
+  assert.match(appSource, /function hodlSyncJournalCreatePasswordValidation\(\) \{[\s\S]*Password protection enabled[\s\S]*Passwords do not match/);
+  assert.match(appSource, /ready\.hidden = !passwordsMatch/);
+  assert.match(appSource, /Ready to create without a password/);
   assert.match(appSource, /\["journal-create-password", "journal-create-confirm"\][\s\S]*addEventListener\("input", hodlSyncJournalCreatePasswordValidation\)/);
-  assert.match(appSource, /function hodlJournalCreatePasswordKeydown\(event\) \{[\s\S]*event\.key !== "Enter"[\s\S]*Array\.from\(password\.value\)\.length < hodlJournalPasswordMinLength[\s\S]*confirm\.focus\(\)[\s\S]*confirm\.value === password\.value\) hodlJournalCreate\(\)/);
+  assert.match(appSource, /function hodlJournalCreatePasswordKeydown\(event\) \{[\s\S]*event\.key !== "Enter"[\s\S]*confirm\.focus\(\)[\s\S]*confirm\.value === password\.value\) hodlJournalCreate\(\)/);
   assert.match(appSource, /\["journal-create-password", "journal-create-confirm"\][\s\S]*addEventListener\("keydown", hodlJournalCreatePasswordKeydown\)/);
   assert.match(appSource, /function hodlSyncJournalTool\(\) \{[\s\S]*unlocked = hodlJournalUnlocked\(\)[\s\S]*button\.disabled = !unlocked;[\s\S]*button\.setAttribute\("aria-disabled", String\(!unlocked\)\)[\s\S]*journal-notes-card"\)\.hidden = !visible \|\| !unlocked/);
-  assert.match(appSource, /async function hodlJournalCreate\(\) \{[\s\S]*hodlJournalShowWork\(\);\s*hodlShowJournalTool\("notes"\)/);
-  assert.match(appSource, /async function hodlJournalUnlock\(\) \{[\s\S]*hodlJournalShowWork\(\);\s*hodlShowJournalTool\("notes"\)/);
+  assert.match(appSource, /async function hodlJournalCreate\(\) \{[\s\S]*hodlJournalBackfillDerivedKeys\(\);[\s\S]*hodlJournalShowWork\(\);\s*hodlShowJournalTool\("book"\)/);
+  assert.match(appSource, /async function hodlJournalUnlock\(\) \{[\s\S]*hodlJournalBackfillDerivedKeys\(\);[\s\S]*hodlJournalShowWork\(\);\s*hodlShowJournalTool\("book"\)/);
+  assert.match(appSource, /function hodlJournalSyncDerivedKeys\(states\) \{\s*if \(!hodlJournalUnlocked\(\)\) return \{ added: 0, updated: 0, matched: 0 \}/);
+  assert.match(appSource, /hodlJournalKeyEntries\.clear\(\)/);
+  assert.match(appSource, /hodlCommitDerivedKey\(\);\s*hodlJournalCaptureDerivedKey\(hodlKeys\[hodlActiveKey\]\)/);
+  assert.match(appSource, /Unsaved changes \\u2014 download the journal file to preserve them/);
   assert.match(appSource, /function hodlJournalLock\(\) \{[\s\S]*hodlJournalTool = "book";[\s\S]*hodlSyncJournalTool\(\)/);
   assert.match(appSource, /function hodlJournalWipeMem\(\) \{[\s\S]*hodlJournalTool = "book";[\s\S]*hodlSyncJournalTool\(\)/);
   // The notebook never seals or opens without an explicit click.
@@ -1850,15 +2234,16 @@ test("fixed inner tabs reserve the height of their longest introduction", () => 
   assert.match(appSource, /editorIntro\.classList\.toggle\("active", visible && hodlPsbtTool === "editor"\);\s*editorIntro\.setAttribute\("aria-hidden", String\(!visible \|\| hodlPsbtTool !== "editor"\)\);/);
 });
 
-test("BIP-85 stays available as a workspace without a duplicate Key Station action", () => {
+test("Key Station keeps derivation actions focused and BIP-85 remains its own workspace", () => {
   // BIP-85 has its own tab, so the shortcut that used to sit beside Derive Key
-  // is gone; the row is Derive, progress, Save to Journal, Clear.
+  // is gone; automatic Journal capture also removes the old manual shortcut.
   for (const markup of [shell]) {
-    assert.match(markup, /id="go"[^>]*>Derive Key<\/button>[\s\S]*?id="derive-progress"[\s\S]*?id="journal-open"[^>]*>Save to Journal<\/button>[\s\S]*?id="wipe"/);
+    assert.match(markup, /id="go"[^>]*>Derive Key<\/button>[\s\S]*?id="derive-progress"[\s\S]*?id="wipe"/);
+    assert.doesNotMatch(markup, /id="journal-open"|>Save to Journal<\/button>|id="journal-use-calc"|>Use active key<\/button>/);
     assert.doesNotMatch(markup, /id="bip85-open"|>Derive BIP-85 child<\/button>/);
   }
   assert.doesNotMatch(appSource, /getElementById\("bip85-open"\)/);
-  assert.match(appSource, /getElementById\("journal-open"\)/);
+  assert.doesNotMatch(appSource, /getElementById\("journal-open"\)|getElementById\("journal-use-calc"\)|hodlJournalUseActiveKey|hodlJournalApplySnapshot/);
   assert.match(appSource, /\["calc", "Keys", "Keys"\], \["vanity", "Vanity", "Vanity"\], \["bip85", "BIP-85", "BIP85"\]/);
   // The tab keeps its own way to adopt a key, so the removal must not have
   // taken the underlying session-key path with it.
@@ -1911,9 +2296,9 @@ test("the workspace switcher keeps every tool on screen as a tab strip", () => {
   assert.match(appSource, /function hodlInitWorkspace\(\) \{\s*let box = hodlElement\("#workspace"\);\s*box\.innerHTML = "";/);
   assert.doesNotMatch(shell, /segmented-control" id="workspace"/);
   assert.match(shell, /<div class="workspace-tabs" id="workspace-tabs" role="tablist" aria-label="Tool">/);
-  // All seven tools ship in the static markup, each with a full name and the
+  // All eight tools ship in the static markup, each with a full name and the
   // short form narrow screens show instead.
-  for (const [full, short] of [["Keys", "Keys"], ["Vanity", "Vanity"], ["BIP-85", "BIP85"], ["Multi Signature", "MultiSig"], ["Silent Payments", "SP"], ["PSBT", "PSBT"], ["Journal", "Journal"]]) {
+  for (const [full, short] of [["Keys", "Keys"], ["Vanity", "Vanity"], ["BIP-85", "BIP85"], ["Multi Signature", "MultiSig"], ["Silent Payments", "SP"], ["PSBT", "PSBT"], ["Lightning", "LN"], ["Journal", "Journal"]]) {
     assert.ok(
       shell.includes(`<span class="workspace-tab-full">${full}</span><span class="workspace-tab-short">${short}</span>`),
       `${full} is missing from the workspace strip`,
@@ -1927,7 +2312,7 @@ test("the workspace switcher keeps every tool on screen as a tab strip", () => {
   // Hidden text leaves the accessibility tree, so the full name is stated on
   // the tab itself and assistive tech hears it at every width.
   assert.match(appSource, /button\.setAttribute\("aria-label", hodlTText\(label\)\);/);
-  for (const full of ["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "Journal"]) {
+  for (const full of ["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "Lightning", "Journal"]) {
     assert.match(shell, new RegExp(`aria-label="${full.replace("/", "\\/")}">[\\s\\S]*?<span class="workspace-tab-full">${full.replace("/", "\\/")}</span>`), `${full} tab needs its accessible name`);
   }
   // A tablist owes arrow keys; the key and multisig strips already answer them.
@@ -1965,7 +2350,7 @@ test("the workspace switcher keeps every tool on screen as a tab strip", () => {
   // Every tool panel lives inside it, and the closing Sources card does not.
   for (const markup of [shell]) {
     const panel = markup.slice(markup.indexOf('<div class="workspace-panel"'), markup.indexOf('class="card muted sources"'));
-    for (const id of ["calc-card", "bip85-card", "msig-card", "sp-card", "psbt-card", "journal-card", "journal-notes-card", "journal-keymanager-card", "journal-state-card", "journal-log-card"]) {
+    for (const id of ["calc-card", "bip85-card", "msig-card", "sp-card", "psbt-card", "ln-card", "journal-card", "journal-notes-card", "journal-keymanager-card", "journal-state-card", "journal-log-card"]) {
       assert.ok(panel.includes(`id="${id}"`), `${id} must sit inside the workspace panel`);
     }
     assert.ok(panel.includes('<div id="out">'), "the results region must sit inside the workspace panel");
@@ -2027,7 +2412,13 @@ test("Key Station stays put and a derived key opens a fingerprint tab with a sum
     assert.match(markup, /id="key-edit-inputs"/);
     assert.match(markup, /id="key-summary-path"/);
     assert.match(markup, /Open Key Station to derive another key/);
+    assert.match(markup, /Base 10 \[0-9\] \/ Hashed rolls \(recommended\)/);
+    assert.match(markup, /Dice \[1-6\] \/ Hashed rolls/);
   }
+  assert.match(appSource, /hodlT\("Base 10 \[0-9\] \/ Hashed rolls \(recommended\)"\)/);
+  assert.match(appSource, /hodlT\("Dice \[1-6\] \/ Hashed rolls"\)/);
+  assert.match(css, /\.key-summary-lifehash \{[^}]*width: 72px;[^}]*height: 72px;/s);
+  assert.match(appSource, /function hodlSizeKeySummaryLifehash\(\) \{[\s\S]*getBoundingClientRect\(\)\.height[\s\S]*image\.style\.height = image\.style\.width = `\$\{height\}px`/);
   assert.match(appSource, /function hodlSnapshotKeySummary\(/);
   assert.match(appSource, /state\.createdScript = hodlKeySummaryScript\(state\)/);
   assert.match(appSource, /state\.createdPath = hodlKeySummaryPath\(state\)/);
@@ -2037,6 +2428,20 @@ test("Key Station stays put and a derived key opens a fingerprint tab with a sum
   assert.match(appSource, /if \(edit\) edit\.onclick = hodlEditKeyInputs;/);
   assert.match(css, /#calc-card\.is-result-view #modes/);
   assert.match(css, /#calc-card:not\(\.is-result-view\) #out/);
+});
+
+test("derived-key summaries put the selected sub-method after the method", () => {
+  const source = appSource.match(/(function hodlKeySummaryMethod\(state\) \{[\s\S]*?\n\})\nfunction hodlKeySummaryScript/);
+  assert.ok(source, "key summary method formatter");
+  const summary = new Function(`${source[1]}; return hodlKeySummaryMethod;`)();
+  assert.equal(summary({ mode: "dice", diceMethod: "coldcard" }), "Dice rolls: Base 10 [0-9] / Hashed rolls");
+  assert.equal(summary({ mode: "dice", diceMethod: "coleman" }), "Dice rolls: Dice [1-6] / Hashed rolls");
+  assert.equal(summary({ mode: "dice", diceMethod: "bitbox" }), "Dice rolls: BitBox diceware / Direct word selection");
+  assert.equal(summary({ mode: "dice", diceMethod: "dplus" }), "Dice rolls: D++ / Direct word selection");
+  assert.equal(summary({ mode: "cards", cardMethod: "direct" }), "Cards: Direct word selection");
+  assert.equal(summary({ mode: "hex", entropyFormat: "hex" }), "Number bases: Hexadecimal (Base 16)");
+  assert.equal(summary({ mode: "seed", seedMethod: "numbers" }), "Seed phrase: BIP39 word numbers");
+  assert.equal(summary({ mode: "key", fields: { keyKind: "minikey" } }), "Private key: Mini key");
 });
 
 test("derived key results put private recovery before script type and addresses", () => {
@@ -2055,7 +2460,7 @@ test("derived key results put private recovery before script type and addresses"
 test("derived wallet results stay within the mobile layout (#238)", () => {
   assert.match(css, /\.key-result \{ min-width: 0; max-width: 100%;/);
   assert.match(css, /\.key-result-main \{ min-width: 0; max-width: 100%;/);
-  assert.match(css, /\.secret-placeholder \{ display: grid; min-width: 0; max-width: 100%;/);
+  assert.match(css, /\.secret-placeholder \{ position: relative; display: grid; min-width: 0; max-width: 100%;/);
   assert.match(css, /\.secret-placeholder-mask \{[^}]*max-width: 100%;[^}]*overflow-wrap: anywhere;[^}]*word-break: break-all;/);
   assert.match(css, /\.qr \{ max-width: 100%;/);
   assert.match(css, /\.qr svg \{[^}]*max-width: 100%;[^}]*height: auto;[^}]*aspect-ratio: 1;/);
@@ -2064,42 +2469,139 @@ test("derived wallet results stay within the mobile layout (#238)", () => {
   assert.match(css, /\.wallet-table \{[^}]*width: 100%; max-width: 100%;[^}]*overflow: auto;/);
 });
 
-test("every MS Station co-signer row can pick any session key, and key reuse offers a derivation path", () => {
+test("every MS Station co-signer keeps its key and full path visible with synchronized advanced components", () => {
   for (const markup of [shell]) {
-    assert.match(markup, /class="station-key-source msig-station-key-source"[\s\S]*id="msig-session-keys"[\s\S]*id="msig-reuse-session-keys"[\s\S]*id="msig-session-key-status"/);
-    assert.match(markup, /Bring in a key from Key Station/);
+    assert.doesNotMatch(markup, /class="station-key-source msig-station-key-source"/);
+    assert.doesNotMatch(markup, /id="msig-session-keys"/);
+    assert.doesNotMatch(markup, /id="msig-session-key-status"/);
+    assert.match(markup, /id="msig-reuse-session-keys"[\s\S]*Keep selected Key Station keys available for more than one co-signer input/);
   }
   assert.match(appSource, /function hodlSessionMsigKeys\(\) \{/);
   assert.match(appSource, /function hodlMatchingMsigExport\(result\) \{/);
-  assert.match(appSource, /function hodlSyncMsigKeyAvatar\(row\) \{/);
   assert.match(appSource, /chips\.className = "msig-session-keys"/);
+  assert.match(appSource, /rail\.className = "msig-key-rail"/);
+  assert.match(appSource, /railLabel\.className = "msig-key-rail-label"/);
+  assert.match(appSource, /railLabel\.textContent = hodlTText\("Co-signer \{n\}"/);
+  assert.match(appSource, /row\.setAttribute\("aria-labelledby", railLabel\.id\)/);
+  assert.match(appSource, /advanced\.className = "derivation-advanced msig-cosigner-advanced"/);
+  assert.match(appSource, /advancedSummary\.textContent = hodlTText\("Advanced entry"\)/);
+  assert.match(appSource, /pathLabel\.textContent = hodlTText\("Full derivation path"\)/);
+  assert.match(appSource, /pathInput\.className = "msig-full-path"/);
+  assert.match(appSource, /fingerprintLabel\.textContent = hodlTText\("Master fingerprint"\)/);
+  assert.match(appSource, /fingerprintInput\.className = "msig-master-fingerprint"/);
+  assert.match(appSource, /originFields\.append\(fingerprintLabel, pathLabel\)/);
+  assert.match(appSource, /pathComponents\.className = "derivation-advanced-fields msig-path-components"/);
+  assert.match(appSource, /advanced\.append\(advancedSummary, pathComponents\)/);
+  assert.match(appSource, /content\.append\(chips, lab, originFields, advanced\)/);
   assert.match(appSource, /hodlCreateMsigSessionKeyButton\(option, "msig-session-key"/);
-  assert.match(appSource, /function hodlPickMsigSessionKey\(state, row = hodlMsigNextKeyRow\(\)\) \{/);
-  assert.match(appSource, /\(\) => hodlPickMsigSessionKey\(option\.state, row\)/);
+  assert.match(appSource, /function hodlPickMsigSessionKey\(option, row\) \{/);
+  assert.match(appSource, /ta\.value = deselect \? "" : value/);
+  assert.match(appSource, /\(\) => hodlPickMsigSessionKey\(option, row\)/);
+  assert.match(appSource, /let unavailable = !reuse && !active && Boolean\(option\.baseId\) && usedElsewhere\.has\(option\.baseId\)/);
+  assert.match(appSource, /button\.disabled = unavailable/);
+  assert.match(appSource, /is already selected for another co-signer/);
+  assert.match(appSource, /\$\{selected \? "Remove" : "Use"\} Key Station key/);
   assert.match(appSource, /hodlFillKeyTabLifehash\(image, fingerprint\)/);
   assert.match(appSource, /hodlRefreshMsigSessionPickers\(\)/);
-  // Reusing a key for another co-signer must come with a derivation path so
-  // every slot derives distinct public keys in the descriptor.
-  assert.match(appSource, /className = "msig-key-reuse"/);
-  assert.match(appSource, /function hodlSyncMsigKeyReuse\(row\) \{/);
+  // Reusing a key appends a public child to the one visible full path; there
+  // is no second, special-purpose child-path control to reconcile.
   assert.match(appSource, /function hodlMsigSuggestedDerivationPath\(parsed, row\) \{/);
-  assert.match(appSource, /function hodlStripMsigKeyPath\(value\) \{/);
+  assert.match(appSource, /value \+= "\/" \+ hodlMsigSuggestedDerivationPath\(optionParsed, row\)/);
+  assert.match(appSource, /function hodlUpdateMsigFullPathFromComponents\(row\) \{/);
+  assert.match(appSource, /hodlApplyMsigRowPath\(row, false\)/);
+  assert.match(appSource, /function hodlApplyMsigRowPath\(row, renderComponents = true\) \{/);
+  assert.match(appSource, /if \(renderComponents\) hodlRenderMsigPathComponents\(row\)/);
+  assert.match(appSource, /row\.dataset\.msigPathUpdate = "true"/);
+  assert.match(appSource, /if \(row\.dataset\.msigPathUpdate !== "true"\) hodlSyncMsigRowPathFromKey\(row\)/);
+  assert.match(appSource, /value\.setSelectionRange\(/);
+  assert.match(appSource, /hodlHint\(ta, null, hodlTText\("Choose a Key Station key above, or paste a co-signer extended public key\."\)\)/);
+  assert.match(css, /\.hint\.neutral \{ color: var\(--muted\); \}/);
+  assert.match(appSource, /function hodlMsigRowValue\(row, strict = false\) \{/);
+  assert.match(appSource, /Master fingerprint must be exactly 8 hexadecimal characters\./);
+  assert.match(appSource, /return `\[\$\{fingerprint\}\/\$\{originComponents\.map/);
   assert.match(appSource, /function hodlMsigBaseKeyId\(parsed\) \{/);
-  assert.match(appSource, /Append a different derivation path so this co-signer derives a different public key in the descriptor\./);
   assert.match(appSource, /parsed\.derivationPath = parsedOrigin\.derivationPath \|\| ""/);
   assert.match(appSource, /must be unhardened \(like \/1\); hardened steps cannot be derived from an extended public key/);
   assert.match(appSource, /function hodlMsigDerivedNode\(parsed\) \{/);
   assert.match(appSource, /let node = hodlMsigDerivedNode\(parsed\);\s*return hodlHex\.encode\(node\.publicKey\)/);
   assert.match(appSource, /\]\$\{canonical\}\$\{parsed\.derivationPath \? "\/" \+ parsed\.derivationPath : ""\}/);
-  assert.match(appSource, /var hodlMsigKeyTarget = null/);
-  assert.match(appSource, /function hodlMsigNextKeyRow\(\) \{/);
+  assert.doesNotMatch(appSource, /hodlMsigKeyTarget|hodlMsigNextKeyRow|msig-session-key-status/);
   assert.match(appSource, /reuseSessionKeys\?\.addEventListener\("change"/);
   assert.match(shell, /Reused keys need different derivation paths\./);
-  assert.match(css, /\.msig-session-keys \{/);
-  assert.match(css, /\.msig-session-key \{/);
-  assert.match(css, /\.msig-session-key\.active/);
-  assert.match(css, /\.msig-key-reuse \{/);
-  assert.match(css, /\.msig-key-ident \{/);
+  assert.match(css, /\.msig-session-keys \{\s*display: flex; flex-wrap: nowrap; gap: 8px; max-width: 100%;[\s\S]*?overflow-x: auto; overflow-y: hidden;/);
+  assert.match(css, /\.msig-session-key \{\s*display: inline-flex; flex: 0 0 auto;/);
+  assert.match(css, /\.msig-session-key\.active \{\s*background: var\(--selection-accent\); color: var\(--selection-fg\); border-color: var\(--selection-accent\);\s*box-shadow: inset 0 2px 4px rgb\(0 0 0 \/ 30%\);\s*\}/);
+  assert.match(css, /\.msig-session-key\.active \* \{ color: inherit; \}/);
+  assert.match(css, /\.msig-session-key\.active \.key-tab-lifehash \{\s*box-shadow: 0 0 0 2px rgb\(0 0 0 \/ 82%\), 0 3px 8px rgb\(0 0 0 \/ 70%\);\s*\}/);
+  assert.match(css, /\.msig-key-row \{\s*display: grid; grid-template-columns: 34px minmax\(0, 1fr\); gap: 12px;/);
+  assert.match(css, /\.msig-key-rail \{[\s\S]*?transform: translateX\(-17px\);\s*\}/);
+  assert.match(css, /\.msig-key-rail-line \{/);
+  assert.match(css, /\.msig-key-rail-line::before \{\s*content: ""; position: absolute; left: 0; width: 10px;/);
+  assert.match(css, /\.msig-key-rail-label \{\s*margin: 9px 0; writing-mode: vertical-rl; transform: rotate\(180deg\);/);
+  assert.match(css, /\.msig-session-key\.unavailable \{ opacity: 0\.45; filter: grayscale\(0\.55\); cursor: not-allowed; \}/);
+  assert.match(css, /\.msig-origin-fields \{ display: grid; grid-template-columns: minmax\(150px, \.7fr\) minmax\(0, 2fr\);/);
+  assert.match(css, /\.msig-master-fingerprint, \.msig-full-path \{ font-family: var\(--mono\); \}/);
+  assert.match(css, /\.msig-path-components \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.doesNotMatch(appSource, /msig-key-reuse-path|msig-key-reuse-apply|msig-key-reuse-clear/);
+  assert.doesNotMatch(appSource, /msig-key-ident|hodlSyncMsigKeyAvatar|hodlMsigKeyOriginFingerprint/);
+  assert.doesNotMatch(css, /\.msig-key-ident/);
+});
+
+test("input help and validation messages share the same vertical spacing", () => {
+  assert.match(css, /--space-control: 8px;/);
+  assert.match(css, /\.hint \{ font-size: 13px; margin: var\(--space-control\) 0 0; \}/);
+  assert.match(css, /\.field-note \{\s*display: block; margin-top: var\(--space-control\);/);
+  assert.match(css, /\.station-key-source > \.field-note \{ display: block; margin: var\(--space-control\) 0 0; \}/);
+  assert.match(css, /\.msig-full-path \{ font-family: var\(--mono\); \}/);
+});
+
+test("tool cards follow the shared spacing contract", () => {
+  assert.match(css, /--space-control: 8px;/);
+  assert.match(css, /--space-component: 16px;/);
+  assert.match(css, /--space-section: 20px;/);
+  assert.match(css, /--space-intro: 24px;/);
+  assert.match(css, /\.tool-card > :first-child \{ margin-top: 0; \}/);
+  assert.match(css, /\.tool-card > :last-child \{ margin-bottom: 0; \}/);
+  assert.match(css, /\.tool-section \{ margin: var\(--space-section\) 0; \}/);
+  assert.match(css, /\.tool-card > :first-child > \.tool-section:first-child \{ margin-top: 0; \}/);
+  assert.match(css, /\.tool-actions \{ margin-top: var\(--space-component\); \}/);
+  assert.match(css, /\.tool-intro \{ margin: 0 0 var\(--space-intro\); \}/);
+  assert.match(css, /\.last-word-options \{ margin-top: var\(--space-control\); \}/);
+
+  const cardIds = [
+    "calc-card", "vanity-card", "bip85-card", "msig-card", "sp-card",
+    "psbt-card", "psbted-card", "ln-card", "journal-card", "journal-notes-card",
+    "journal-keymanager-card", "journal-state-card", "journal-log-card",
+  ];
+  for (const id of cardIds) {
+    assert.match(shell, new RegExp(`<section class="card no-print tool-card" id="${id}"`));
+  }
+  assert.equal((shell.match(/class="station-key-source tool-section"/g) || []).length, 3);
+  assert.match(shell, /class="vanity-source tool-section" id="vanity-source"/);
+
+  const actionRows = [...shell.matchAll(/class="row ([^"]*(?:current-item-actions|bip85-actions|psbt-actions|journal-global-actions)[^"]*)"/g)];
+  assert.ok(actionRows.length > 0);
+  for (const [, classes] of actionRows) {
+    assert.ok(classes.split(/\s+/).includes("tool-actions"), `missing tool-actions: ${classes}`);
+  }
+  assert.doesNotMatch(`${shell}\n${appSource}`, /style="[^"]*(?:margin|padding|gap)\s*:/);
+  assert.match(contributing, /## 6\. UI layout and spacing[\s\S]*class="card no-print tool-card"[\s\S]*class="row tool-actions"/);
+});
+
+test("test mode can preload a bounded sequence of hashed-dice keys", () => {
+  const packageJson = JSON.parse(read("package.json"));
+  const launcher = read("scripts/testmode.mjs");
+  assert.equal(packageJson.scripts.testmode, "node scripts/testmode.mjs");
+  assert.match(launcher, /Usage: npm run testmode -- --keys=12 \[--port=4173\]/);
+  assert.match(launcher, /integerFlag\("keys", 12, 1, 100\)/);
+  assert.match(launcher, /"--test-hooks", "--out", outDir/);
+  assert.match(launcher, /server\.listen\(port, "127\.0\.0\.1"/);
+  assert.match(appSource, /function hodlTestDiceTranscript\(index\) \{\s*return String\(index % 6 \+ 1\)\.repeat\(Math\.floor\(index \/ 6\) \+ 1\);\s*\}/);
+  assert.match(appSource, /new URLSearchParams\(location\.search\)\.get\("test-keys"\)/);
+  assert.match(appSource, /return Math\.min\(Number\(raw\), 100\);/);
+  assert.match(appSource, /hodlDiceEntropy\(transcript, "coldcard", 24\)/);
+  assert.match(appSource, /addEventListener\("load", \(\) => hodlRenderKeyTabs\(\), \{ once: true \}\);/);
+  assert.match(appSource, /if \(__ENTROPYLAB_TEST_HOOKS__\) await hodlLoadTestKeys\(\);/);
 });
 
 test("BIP-85 and SP Stations can bring in compatible Key Station roots", () => {
@@ -2121,7 +2623,8 @@ test("BIP-85 and SP Stations can bring in compatible Key Station roots", () => {
   assert.match(appSource, /document\.getElementById\("sp-pass"\)\.value = state\.result\?\.mnemonic \? state\.fields\?\.pass \|\| "" : "";/);
   assert.match(appSource, /document\.getElementById\("bip85-key"\)\.addEventListener\("input"/);
   assert.match(appSource, /document\.getElementById\("sp-key"\)\.addEventListener\("input", detachStationKey\)/);
-  assert.match(css, /\.session-key-picker \{ display: flex; flex-wrap: wrap; gap: 8px; \}/);
+  assert.match(css, /\.session-key-picker \{\s*display: flex; flex-wrap: nowrap; gap: 8px; max-width: 100%;\s*overflow-x: auto; overflow-y: hidden;/);
+  assert.match(css, /\.session-key-option \{\s*display: inline-flex; flex: 0 0 auto;/);
   // The selected chip is unmistakable: accent border and tint plus a check
   // mark, so the selection never rests on the border colour alone.
   assert.match(css, /\.session-key-option\.active \{[^}]*border-color: var\(--selection-accent\)[^}]*box-shadow: inset 0 0 0 1px var\(--selection-accent\)/s);
@@ -2181,7 +2684,7 @@ test("session wallets use folder tabs that merge into the card", () => {
   assert.match(css, /\.key-manager \{ margin: 14px 0 -1px;/);
   assert.match(css, /\.key-tab \{[^}]*border-radius: 10px 10px 0 0;/s);
   assert.match(css, /\.key-tab\.active, \.key-tab-editing \{[^}]*border-bottom-color: var\(--surface\);/s);
-  assert.match(css, /#calc-card:not\(\[hidden\]\), #msig-card:not\(\[hidden\]\), #bip85-card:not\(\[hidden\]\), #sp-card:not\(\[hidden\]\), #psbt-card:not\(\[hidden\]\), #psbted-card:not\(\[hidden\]\), #vanity-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
+  assert.match(css, /#calc-card:not\(\[hidden\]\), #msig-card:not\(\[hidden\]\), #bip85-card:not\(\[hidden\]\), #sp-card:not\(\[hidden\]\), #psbt-card:not\(\[hidden\]\), #psbted-card:not\(\[hidden\]\), #vanity-card:not\(\[hidden\]\), #ln-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
   assert.match(css, /\.workspace-tab \{[^}]*border-radius: 10px 10px 0 0;/s);
   assert.match(appSource, /let lifehash = tab\.querySelector\("\.key-tab-lifehash"\);/);
   assert.doesNotMatch(appSource, /editor\.append\(hodlCreateKeyIcon\(state\.color\), input\)/);
@@ -2198,13 +2701,13 @@ test("the vanity grinder is a workspace tab that ships collapsed and never auto-
   // picked; the card is a tabpanel and stays out of print output.
   for (const markup of [shell]) {
     assert.match(markup, /<div class="tool-intro" id="vanity-tool-intro" hidden>/);
-    assert.match(markup, /<section class="card no-print" id="vanity-card" role="tabpanel" hidden>/);
+    assert.match(markup, /<section class="card no-print tool-card" id="vanity-card" role="tabpanel" hidden>/);
     // The key comes in through the same clickable Key Station picker the
     // BIP-85 and Silent Payments tabs use; the selected key is restated with
     // its starting passphrase, labelled and read-only.
     assert.match(markup, /<p class="label">Bring in a key from Key Station<\/p>/);
     assert.match(markup, /<div class="session-key-picker" id="vanity-session-keys" role="group" aria-label="Key Station keys" hidden><\/div>/);
-    assert.match(markup, /<div class="vanity-source" id="vanity-source" hidden>/);
+    assert.match(markup, /<div class="vanity-source tool-section" id="vanity-source" hidden>/);
     assert.match(markup, /<span class="vanity-source-kicker">Selected key<\/span>/);
     assert.match(markup, /<label class="field" for="vanity-pass">Starting passphrase <span class="vanity-source-from" id="vanity-pass-from"><\/span><\/label>/);
     assert.match(markup, /<input id="vanity-pass" readonly autocomplete="off" spellcheck="false"[^>]*aria-describedby="vanity-pass-note">/);
@@ -2222,7 +2725,7 @@ test("the vanity grinder is a workspace tab that ships collapsed and never auto-
     assert.match(markup, /<p class="muted" id="vanity-estimate" aria-live="polite"><\/p>/);
     assert.match(markup, /<button class="btn primary" id="vanity-go" type="button">Start grinding<\/button>/);
     assert.match(markup, /id="vanity-progress" role="progressbar"[^>]*hidden>/);
-    assert.match(markup, /<button class="btn secondary" id="vanity-stop" type="button" disabled>Stop<\/button>/);
+    assert.doesNotMatch(markup, /id="vanity-stop"/);
     assert.match(markup, /<button class="btn clear-current-action" id="vanity-wipe" type="button" disabled aria-disabled="true">Clear results<\/button>/);
     assert.match(markup, /<p class="muted" id="vanity-status" aria-live="polite">/);
     assert.match(markup, /<p class="err" id="vanity-error" role="alert"><\/p>/);
@@ -2236,12 +2739,13 @@ test("the vanity grinder is a workspace tab that ships collapsed and never auto-
   // The tab rides the same show/hide plumbing as every other tool, and
   // leaving the tab stops the grind instead of grinding unseen.
   assert.match(appSource, /getElementById\("vanity-card"\)\.hidden = id !== "vanity"/);
-  assert.match(appSource, /\["bip85", "sp", "msig", "calc", "vanity"\]\.forEach/);
+  assert.match(appSource, /\["bip85", "sp", "msig", "calc", "vanity", "ln"\]\.forEach/);
   assert.match(appSource, /else if \(hodlWorkspace === "vanity"\) hodlVanityCancel\(\);/);
   assert.match(appSource, /function hodlInitWorkspace\(\) \{[\s\S]*?hodlInitVanity\(\);/);
   // The workers spawn only from the button handler; nothing starts on boot,
   // on tab switches, or on input.
-  assert.match(appSource, /go\.onclick = hodlRunVanity;/);
+  assert.match(appSource, /go\.onclick = \(\) => hodlVanityRunning \? hodlVanityStop\(\) : hodlRunVanity\(\);/);
+  assert.match(appSource, /go\.dataset\.derivationWidth[\s\S]*go\.style\.width = `\$\{width\}px`[\s\S]*go\.textContent = hodlTText\("Stop"\)[\s\S]*go\.dataset\.derivationState = "running"/);
   assert.match(appSource, /function hodlRunVanity\(\) \{[\s\S]*?new VanityGrinder\(/);
   assert.equal(appSource.indexOf("new VanityGrinder"), appSource.indexOf("new VanityGrinder", appSource.indexOf("function hodlRunVanity")));
   // Passphrases are private material: masked by default behind the same
@@ -2320,7 +2824,9 @@ test("the private recovery section lists the BIP39 passphrase beside the seed ph
 
 test("the vanity estimate is timed from a device sample, and Stop on first find halts the grind at the first match", () => {
   for (const markup of [shell]) {
-    assert.match(markup, /<button class="btn secondary" id="vanity-stop" type="button" disabled>Stop<\/button>\s*<button class="btn secondary" id="vanity-first" type="button" aria-pressed="false"[^>]*>Stop on first find<\/button>/);
+    assert.match(markup, /<label class="seed-autocomplete-toggle switch-toggle vanity-first-toggle"><input id="vanity-first" type="checkbox"><span>Stop on first find<\/span><\/label>[\s\S]*?<button class="btn primary" id="vanity-go"/);
+    assert.doesNotMatch(markup, /id="vanity-first"[^>]*>[\s\S]*?<span class="label">Stop on first find/);
+    assert.doesNotMatch(markup, /<button[^>]*id="vanity-first"/);
   }
   const vanityController = appSource.slice(appSource.indexOf("// ── Vanity grinder"), appSource.indexOf("function hodlInitWorkspace()"));
   // The sample runs on tab entry, once per session, never while a grind is
@@ -2335,11 +2841,12 @@ test("the vanity estimate is timed from a device sample, and Stop on first find 
   assert.match(vanityController, /function hodlVanityExpectedRate\(\) \{\s*if \(hodlVanityRunning && hodlVanityLiveRate > 0\) return hodlVanityLiveRate;/);
   assert.match(vanityController, /expect a match roughly every \$\{hodlVanityFormatDuration\(Number\(work\) \/ rate\)\}/);
   assert.match(vanityController, /"Measuring this device…"/);
-  // Stop on first find is a toggle that asks the pool to stop as the first
+  // Stop on first find is a checkbox that asks the pool to stop as the first
   // match lands, and the status says so.
   assert.match(vanityController, /if \(hodlVanityStopFirst && hodlVanityRunning\) hodlVanityStop\(\);/);
   assert.match(vanityController, /"Stopped at first match"/);
-  assert.match(vanityController, /document\.getElementById\("vanity-first"\)\.onclick = hodlVanityToggleStopFirst;/);
+  assert.match(vanityController, /hodlVanityStopFirst = Boolean\(document\.getElementById\("vanity-first"\)\?\.checked\);/);
+  assert.match(vanityController, /document\.getElementById\("vanity-first"\)\.onchange = hodlVanityStopFirstChanged;/);
   // Worker chunks adapt to the device so the bar moves smoothly from the start.
   const worker = read("src/js/vanity-worker.js");
   assert.match(worker, /var STEP_MS = 120;/);

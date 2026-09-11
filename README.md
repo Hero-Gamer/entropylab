@@ -1,5 +1,7 @@
 # EntropyLab
 
+## DO NOT USE WITH ACTUAL BITCOIN IN ANY WAY. ENTROPY LAB IS FOR TESTNET | SIGNET | REGTEST USE ONLY
+
 EntropyLab is a self-contained Bitcoin key and wallet calculator designed for
 offline, air-gapped use. It converts user-supplied entropy, seed phrases, and
 private keys into wallet recovery information without intentionally sending
@@ -26,12 +28,17 @@ Official website: [entropylab.online](https://entropylab.online)
   next to its deterministic [LifeHash](https://lifehash.info) icon so two
   keys can be told apart at a glance. The icon hashes the raw fingerprint
   bytes, so it matches the image Sparrow Wallet shows for the same key.
+  Every row of the address tables has a QR button that opens that address as
+  a scannable QR code, so any derived address — not just the first — can be
+  verified on a signing device without retyping it.
 - Supports legacy, nested SegWit, native SegWit, and Taproot single-signature
   address types. Derivation-scheme presets cover the BIP44, BIP49, BIP84,
   BIP86, and six-level BIP48 layouts and label each path level accordingly.
   A custom mode accepts an arbitrary-depth BIP32 account path, keeps Bitcoin
   network selection explicit, and appends the selected branch and address
-  ranges. Typing `h` or `'` after a preset index enables its Harden control.
+  ranges. The default derives receive and change branches `{0-1}` and address
+  indexes `{0-9}`, displayed as a full BIP-88 path template. Typing `h` or `'`
+  after a preset index enables its Harden control.
  - Supports numeric coin-type and account indexes for single-signature and
    multisignature derivation. Purpose, coin type, and account indexes are
    hardened by default; the starting address index is unhardened by default.
@@ -54,7 +61,9 @@ Official website: [entropylab.online](https://entropylab.online)
   indexes and hardening choices. Addresses are derived from the exported
   output descriptor itself by rust-miniscript (in the WASM crate), so the two
   cannot drift.
-- Inspects PSBT v0 transactions, reports PSBT-provided amounts and fees, checks
+- Inspects PSBT v0 transactions (paste, or upload a binary .psbt / hex or
+  base64 text export; the loaded bytes download as .psbt or .txn), reports
+  PSBT-provided amounts and fees, checks
   for repeated ECDSA nonces from the same public key — including signatures
   carried by finalized scriptSig/witness fields, which are decoded and analyzed
   rather than skipped — verifies optional Jade
@@ -71,6 +80,17 @@ Official website: [entropylab.online](https://entropylab.online)
 - Accepts a fully signed raw Bitcoin transaction (hex or base64) in the same
   inspector: outputs, extracted ECDSA nonces, and inscription-envelope hints.
   Fee and RFC 6979 cannot be checked without previous outputs.
+- Keeps an optional cross-session ECDSA nonce history in page memory and lets
+  the user download or upload it as versioned JSON. The file contains only
+  the check time, master fingerprint when available, raw `r`, a
+  domain-separated SHA-256 tag for the exact signing key, a tagged message or
+  source identity, and a verification flag — never the PSBT, transaction,
+  signature, public key, or message digest. The exact-key tag prevents child
+  keys sharing a master fingerprint from being conflated. It can confirm reuse
+  only when the same key/`r` pair has different verified message digests;
+  incomplete records produce a warning instead. The file is
+  correlation-sensitive metadata and should remain offline. Nothing persists
+  unless it is downloaded.
 - With a session seed, root xprv, WIF, or hex key, labels each output as
   change, receive, or not in this wallet (accounts 0–2, 50 receive + 50
   change, all four script types). A two-or-more-output transaction with no
@@ -129,22 +149,34 @@ Official website: [entropylab.online](https://entropylab.online)
   account index back to the key and re-derives it, so the Keys tab, its
   exports, and the Journal show the vanity wallet. Found passphrases stay in
   page memory, are masked until revealed, and are wiped with the session.
-- A session **Journal** (last workspace tab) holds an encrypted **Entropy
+- Derives Lightning node identity public keys (Lightning tab) from a seed
+  phrase: an LND 24-word **aezeed** cipher seed is deciphered in WebAssembly
+  (scrypt key derivation, AEZ v5, CRC-32C checksum; a wrong passphrase is
+  detected, unlike BIP39) and its entropy derives the node key at LND's
+  `m/1017'/coinType'/6'/0/0` keychain path, while a BIP-39 phrase follows the
+  ldk-node convention (BIP39 seed, master key, re-seeded second BIP32 tree,
+  node secret at `m/0'`). The decoded cipher seed's internal version and
+  wallet birthday are shown alongside the node key; the decoded entropy and
+  salt and the BIP32 root xprv (what `chantools showrootkey` prints) sit
+  behind a reveal toggle. Decoding only: the tab never creates seeds.
+- A session **Journal** (last workspace tab) holds an **Entropy
   Journal** notebook, a notepad stamped with this computer's date and time,
-  an encrypted Key Manager, a live summary of everything derived in this sitting, and a debug log
+  a Key Manager, a live summary of everything derived in this sitting, and a debug log
   of tool switches and derives (fingerprints, not seeds). Its introduction
   remains above the Journal controls. Notepad, Key manager, Session state, and Session log
-  stay visible but disabled until the user creates a journal with a valid
-  password or successfully opens an existing journal; the create/open gate
+  stay visible but disabled until the user creates a journal, with or without
+  a password, or successfully opens an existing journal; the create/open gate
   then disappears and the Journal starts on Notepad. The create form reports
-  password length and confirmation matches live without exposing what was
-  typed. Journal-wide **Download journal** and **Clear journal** actions stay
+  whether password protection is enabled and checks confirmation matches live
+  without exposing what was typed. A blank password is accepted and provides
+  no access protection: anyone holding the resulting file can open it by
+  leaving the password blank. Journal-wide **Download journal** and **Clear journal** actions stay
   below the introduction once a journal is unlocked; clearing wipes the
-  encrypted entries, notepad, session snapshot, and log from page memory and
+  entries, notepad, session snapshot, and log from page memory and
   returns to the create/open gate. The notebook keeps
   entropy the user already produced — dice, coins, hex, brain-wallet text, or
-  a seed — under AES-256-GCM; the key is PBKDF2-SHA-256 (600,000 rounds) of a
-  password the user chooses, with the salt derived from the password itself
+  a seed — under AES-256-GCM; the key is PBKDF2-SHA-256 (600,000 rounds) of the
+  optional password the user chooses, with the salt derived from that password
   and the IV HMAC-SHA-256 of the plaintext, so the file is a pure function of
   password and entries and no CSPRNG is ever called. One JSON file the user
   downloads and loads back. Nothing is stored in the browser; download a file
@@ -152,10 +184,12 @@ Official website: [entropylab.online](https://entropylab.online)
   calculator companion, not a password manager: it only stores material the
   user generated themselves.
   The **Key manager** tab packages selected derived Key Station keys and
-  ignored-key metadata into an encrypted `.elkeys` file. It reuses the
-  unlocked Journal password keys, so it adds no password prompt, random salt,
+  ignored-key metadata into an `.elkeys` file. It reuses the unlocked
+  Journal's password setting, so it adds no password prompt, random salt,
   or random nonce. Imported keys remain in Key Manager until the user chooses
-  **Use in Key Station**; deleting a Key Station tab while a Journal is open
+  **Use in Key Station** for one key or **Add all to Key Station** for every
+  waiting key. Adding all skips keys already in the station and leaves ignored
+  keys untouched. Deleting a Key Station tab while a Journal is open
   likewise removes it from the station without discarding it from Key Manager.
   The Journal also includes a paged notepad. Pages use
   the Key Station's numbered naming convention, can be added or removed with
@@ -165,11 +199,13 @@ Official website: [entropylab.online](https://entropylab.online)
   typeface, text size, and line spacing. Its key picker lists the currently
   derived Key Station keys with their LifeHashes; choosing one inserts a
   public inline reference with a line-height LifeHash and master fingerprint.
-  Notepad, Session state, and Session log downloads use the unlocked journal password by
-  default. Their matching checkboxes stay synchronized, so one change applies
+  Notepad, Session state, and Session log downloads use the unlocked Journal's
+  file encryption by default. If the Journal has a password, that password
+  protects the downloads; without one, the encoded downloads have no access
+  protection. Their matching checkboxes stay synchronized, so one change applies
   to Notepad, Session state, and Session log; unchecking exports the original
   plain JSON or text. Notepad can upload either its plain notebook JSON or its
-  password-encrypted export while that journal is unlocked.
+  Journal-format export while that journal is unlocked.
   Each page opens
   with a live local timestamp and freezes it when note text is entered. Delete
   the note back to its timestamp to return to the live new-note prompt. Press
@@ -220,6 +256,7 @@ Official website: [entropylab.online](https://entropylab.online)
   sync while input is entered. Each destination waits for enough bits to emit
   its next complete character. Hashed inputs update the non-hashed methods in
   one direction; edits to non-hashed methods never overwrite hashed inputs.
+  With sync off, every dice-roll method retains its own independent transcript.
 - SLIP-132 extended-key display is a prefix swap only (same payload, new
   version bytes and checksum). Import/derive shows the key as pasted, the
   Bitcoin Core xprv/xpub or tprv/tpub, and the descriptor (script in the

@@ -39,11 +39,13 @@ const stubClient = ({ failKeys = [], auditFail = [] } = {}) => {
 };
 
 test("the workload derives from the same extraction as the sync check", async () => {
-  const { keep, dead, missing } = await languageWorkload(root, "es");
+  const { sources, catalog, keep, dead, missing } = await languageWorkload(root, "es");
   // The committed es catalog is partial by design; the invariants that must
-  // hold regardless of how many keys are missing today:
+  // hold regardless of how many keys are missing or awaiting post-merge
+  // dead-key pruning after an English UI change:
   assert.ok(Object.keys(keep).length > 800, "committed entries survive");
-  assert.equal(dead, 0, "sync --write keeps dead keys pruned");
+  assert.ok(Object.keys(keep).every((key) => sources.has(key)), "kept entries come from the shared source extraction");
+  assert.equal(Object.keys(keep).length + dead, Object.keys(catalog).length, "every committed entry is retained or queued for dead-key pruning");
   for (const key of missing) assert.equal(typeof key, "string");
 });
 
@@ -183,4 +185,3 @@ test("chat(): a non-retryable 4xx fails immediately", async () => {
     server.close();
   }
 });
-

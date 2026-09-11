@@ -28,13 +28,13 @@ const formats = {
   base4: { id: "base4", bitsPerDigit: 2, alphabet: "0123" },
   base8: { id: "base8", bitsPerDigit: 3, alphabet: "01234567" },
   hex: { id: "hex", bitsPerDigit: 4, alphabet: "0123456789ABCDEF" },
-  base32: { id: "base32", bitsPerDigit: 5, alphabet: "0123456789ABCDEFGHJKMNPQRSTVWXYZ" },
+  base32: { id: "base32", bitsPerDigit: 5, alphabet: "qpzry9x8gf2tvdw0s3jn54khce6mua7l" },
   base64: { id: "base64", bitsPerDigit: 6, alphabet: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/" },
 };
 
 const numberValue = new Function("formats", `
   function hodlEntropyFormatConfig(format) {
-    return { ...formats[format], fullDigits: Math.floor(128 / formats[format].bitsPerDigit), remainderBits: 128 % formats[format].bitsPerDigit, binaryRemainder: format === "base32" || format === "base64", seed: { bits: 128 } };
+    return { ...formats[format], fullDigits: Math.floor(128 / formats[format].bitsPerDigit), remainderBits: 128 % formats[format].bitsPerDigit, binaryRemainder: format === "base64", seed: { bits: 128 } };
   }
   function hodlGroupedBinary(value) { return value.match(/.{1,11}/g)?.join(" ") || ""; }
   ${loadSlice("hodlGlobalSyncNumberValue")}
@@ -47,7 +47,7 @@ test("global sync emits only complete destination symbols", () => {
   assert.equal(numberValue(bits, "base4", 12), "22");
   assert.equal(numberValue(bits, "base8", 12), "5");
   assert.equal(numberValue(bits, "hex", 12), "A");
-  assert.equal(numberValue(bits, "base32", 12), "N");
+  assert.equal(numberValue(bits, "base32", 12), "4");
   assert.equal(numberValue(bits, "base64", 12), "");
 });
 
@@ -82,10 +82,21 @@ test("hashed methods publish one way without being overwritten", () => {
   assert.doesNotMatch(loadSlice("hodlGlobalSyncControlMarkup"), /disabled/);
 });
 
-test("BitBox direct input is isolated from hashed dice input", () => {
+test("each dice method has an isolated transcript", () => {
+  const fieldName = loadSlice("hodlDiceFieldName");
+  assert.match(app, /colemanDice: ""/);
   assert.match(app, /bitboxDice: ""/);
-  assert.match(app, /previousMethod === "bitbox" \? "bitboxDice" : "dice"/);
-  assert.match(app, /hodlDiceMethod === "bitbox" \? state\.fields\.bitboxDice/);
+  assert.match(app, /dplusDice: ""/);
+  assert.match(fieldName, /method === "coleman"\) return "colemanDice"/);
+  assert.match(fieldName, /method === "bitbox"\) return "bitboxDice"/);
+  assert.match(fieldName, /method === "dplus"\) return "dplusDice"/);
+  assert.match(fieldName, /return "dice"/);
+  const storedValue = loadSlice("hodlStoredDiceValue");
+  assert.match(storedValue, /method === "coleman"/);
+  assert.match(storedValue, /hasOwnProperty\.call\(fields \|\| \{\}, name\)/);
+  const importedState = loadSlice("hodlKeyManagerImportedState");
+  assert.match(importedState, /!Object\.prototype\.hasOwnProperty\.call\(entry\.fields, "colemanDice"\)/);
+  assert.match(importedState, /state\.fields\.colemanDice = legacyColemanDice/);
 });
 
 test("pads and pickers that skip bubbling input events still trigger the sync", () => {

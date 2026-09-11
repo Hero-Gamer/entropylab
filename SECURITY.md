@@ -70,6 +70,12 @@ material. Its security posture rests on the following model:
 - Wallet security depends on the quality and secrecy of the entropy, seed
   phrase, passphrase, or private key supplied by the user, and on the
   integrity of the machine it runs on.
+- Silent Payment sender inputs use BIP-341 tweaked output-key scalars for
+  P2TR key-path spends. Session-derived sender keys are handed over as byte
+  buffers and wiped on success, construction failure, and partial resolution
+  failure. The UI suppresses the vector API's private-key-sum diagnostic.
+  Immutable BigInts and internal curve-library representations still depend
+  on garbage collection; this is best-effort cleanup, not guaranteed erasure.
 - Silent Payments (BIP-352) support is a calculator: it derives reusable
   addresses, sender outputs, and spend tweaks from user-supplied keys and
   pasted transaction data. It does not connect to a node, Electrum server, or
@@ -86,6 +92,17 @@ material. Its security posture rests on the following model:
   Taproot/Schnorr nonces are not analyzed. The report marks these cases
   incomplete; a completed individual check is not a security conclusion for
   the transaction.
+- The optional ECDSA nonce-history file is an explicit user download and never
+  uses browser storage or the network. It contains check timestamps, master
+  fingerprints when available, raw `r` values, domain-separated SHA-256
+  identity tags for exact signing keys and verified message digests or source
+  contexts, plus verification flags; it does not contain raw PSBTs,
+  transactions, signatures, public keys, or digests. This is
+  correlation-sensitive metadata and should stay offline. The master
+  fingerprint is descriptive; comparisons use the exact signing-key tag, since
+  one wallet can have many child keys. A confirmed alert requires the same
+  key/`r` pair with different verified message tags; otherwise the result is
+  only a warning. The current implementation covers ECDSA, not Schnorr.
 - OP_RETURN detection is a parser of output scripts. It does not create
   data-carrier outputs, assign protocol meaning, or contact an indexer.
 - The published `CID.txt` is CIDv1 (raw, sha2-256) of the release
@@ -98,27 +115,31 @@ material. Its security posture rests on the following model:
   this page's memory. It is never written to `localStorage`, IndexedDB, or the
   network. Closing or hiding the page discards it with the other secret
   fields. Downloads from all three tabs reuse the unlocked Entropy Journal
-  keys and are password-encrypted by default; the synchronized checkbox can
-  explicitly switch them back to plain JSON or text. The log records tool
+  keys and use Journal file encryption by default; the synchronized checkbox
+  can explicitly switch them back to plain JSON or text. If the Journal was
+  created without a password, its encoded downloads have no access protection.
+  The log records tool
   names, timestamps, and fingerprints — not seed phrases, xprvs, or typed
   secrets.
 - Key Manager lives behind the same unlocked Journal gate. Its `.elkeys`
-  exports reuse the Journal's deterministic export encryption and password;
+  exports reuse the Journal's deterministic export encryption and optional password;
   the Key Manager does not generate a salt, nonce, password, or key material.
   Imported private material remains in page memory and is not loaded into Key
   Station until the user explicitly chooses it. Locking or clearing the
   Journal drops pending and ignored Key Manager entries on a best-effort basis.
-- The Entropy Journal notebook is an encrypted notebook of entropy the user
+- The Entropy Journal notebook holds entropy the user
   already produced, not a password manager and not a key generator. The
-  AES-256-GCM key is PBKDF2-SHA-256 (600,000 rounds) of a password the user
-  types, with the salt derived from the password itself; the IV is
+  AES-256-GCM key is PBKDF2-SHA-256 (600,000 rounds) of the optional password
+  the user types, with the salt derived from the password itself; the IV is
   HMAC-SHA-256 of the plaintext under a second derived key. The file is
   therefore a deterministic function of the password and the entries — the
   journal never calls a CSPRNG. The trade-off is brute-force cost: anyone
-  holding the file can test passwords at 600,000 SHA-256 rounds per guess, so
-  the password needs real length. The plaintext never goes to localStorage,
-  IndexedDB, or the network. Anyone with the file and the journal password
-  can read every entry.
+  holding a password-protected file can test passwords at 600,000 SHA-256
+  rounds per guess, so a password should have real length. An empty password
+  is allowed to preserve a frictionless local workflow and the same file
+  format, but it provides no access protection: anyone with the file can open
+  every entry by leaving the password blank. The plaintext never goes to
+  localStorage, IndexedDB, or the network.
 - Low-entropy dice and card transcripts are accepted intentionally so the
   calculator can be used for deterministic tests, demonstrations, and
   recovery experiments. EntropyLab does not claim that hashing a short input
@@ -150,6 +171,25 @@ material. Its security posture rests on the following model:
   that root (the same rule COLDCARD uses). Anyone who has the parent seed,
   the exact passphrase, the application, and the index can reproduce every
   child; protect the parent for the combined value of all derived wallets.
+- The Lightning tab deciphers LND aezeed cipher seeds and derives node
+  identity keys in WebAssembly; it never creates seeds. The scrypt KDF runs
+  at LND's parameters (N=2^15, r=8, p=1) and both scrypt exports bound the
+  parameters — a 32 MiB working-buffer cap and p ≤ 16 on `el_scrypt`, only
+  LND's two legitimate parameter sets on `el_aezeed_decipher` — because WASM
+  linear memory never shrinks, so an unbounded call would grow the heap
+  permanently (32 MiB after the first production decode) or trap on
+  allocation failure and take every export down with it. The scrypt crate
+  does not zeroize its working buffers, so the exports overwrite them after
+  every call by re-allocating and wiping the same sizes; without that scrub,
+  the buffer's first block retains one PBKDF2 iteration of the passphrase,
+  which would let a later reader of page memory test passphrase guesses
+  without paying the scrypt cost. The vendored AEZ v5 module
+  (MIT-licensed, not public domain; see `entropylab-wasm/src/aez/mod.rs`)
+  erases its expanded key schedule on drop and its key-expansion hasher
+  after use, and a wide zeroing stack frame runs before the exports return
+  to overwrite spilled frame temporaries. The Node suite asserts the derived
+  key and the scrypt buffers are absent from linear memory after a decode;
+  closing the tab remains the only guaranteed erasure.
 - The single-file design inlines all scripts (`script-src 'unsafe-inline'`),
   and the secp256k1 WebAssembly module adds `wasm-unsafe-eval` to the
   content security policy: Chromium and WebKit engines refuse to compile a

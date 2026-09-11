@@ -14,7 +14,8 @@
 //!
 //! `psbt_inspect` decodes every key-value pair in every map (known BIP-174 /
 //! BIP-371 types get a structured decode; unknown pairs stay raw hex), plus the
-//! unsigned transaction and a fee summary. `psbt_build` takes the same document
+//! unsigned transaction, a fee summary, and a two-family sanitize report
+//! (duplicate keys; origin derivation). `psbt_build` takes the same document
 //! shape back, re-serializes the transaction and maps, and validates the result
 //! with rust-bitcoin's `Psbt::deserialize` before returning it. Nothing here
 //! generates randomness or touches the network.
@@ -38,6 +39,8 @@ use serde_json::{json, Map, Value};
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::str::FromStr;
+
+mod sanitize;
 
 // Keep the inspector bounded like the JS side (src/js/app.js): 5 MB of PSBT,
 // 10k pairs per map, 100k transaction inputs/outputs.
@@ -163,7 +166,7 @@ unsafe fn write_out(payload: &[u8], out: *mut u8, out_cap: usize) -> i32 {
 
 // ── Hex and compact-size helpers ────────────────────────────────────────────
 
-fn hex_encode(bytes: &[u8]) -> String {
+pub(crate) fn hex_encode(bytes: &[u8]) -> String {
     const DIGITS: &[u8; 16] = b"0123456789abcdef";
     let mut out = String::with_capacity(bytes.len() * 2);
     for &b in bytes {
@@ -195,7 +198,7 @@ fn hex_decode(text: &str) -> Result<Vec<u8>, String> {
 
 /// Reads a BIP-174 compact-size (bitcoin VarInt) at `off`, rejecting
 /// non-canonical encodings exactly like the JS parser does.
-fn read_varint(bytes: &[u8], off: &mut usize) -> Result<u64, String> {
+pub(crate) fn read_varint(bytes: &[u8], off: &mut usize) -> Result<u64, String> {
     if *off >= bytes.len() {
         return Err("PSBT ended early".into());
     }
@@ -241,9 +244,9 @@ fn span_end(off: usize, len: u64, total: usize) -> Option<usize> {
 
 // ── Raw map parsing ─────────────────────────────────────────────────────────
 
-struct RawPair {
-    key: Vec<u8>,     // type byte + keydata, exactly as serialized
-    value: Vec<u8>,
+pub(crate) struct RawPair {
+    pub(crate) key: Vec<u8>,     // type byte + keydata, exactly as serialized
+    pub(crate) value: Vec<u8>,
 }
 
 fn read_map(bytes: &[u8], off: &mut usize) -> Result<Vec<RawPair>, String> {
@@ -628,13 +631,9 @@ fn fingerprint_and_path(value: &[u8]) -> Result<(String, String), String> {
     Ok((fingerprint, path))
 }
 
-/// Decodes one key-value pair into a display JSON object. `kind` is "global",
-/// "input" or "output"; `input_index` is the pair's input-map index when
-/// `kind` is "input". Unknown types decode to null and stay raw.
-fn decode_pair(kind: &str, pair: &RawPair, tx: &Transaction, input_index: Option<usize>) -> Value {
-    let type_byte = pair.key[0];
-    let keydata = &pair.key[1..];
-    let name = match (kind, type_byte) {
+/// BIP-174 / BIP-370 / BIP-371 type names used by inspect and sanitize.
+pub(crate) fn pair_type_name(kind: &str, type_byte: u8) -> &'static str {
+    match (kind, type_byte) {
         ("global", 0x00) => "PSBT_GLOBAL_UNSIGNED_TX",
         ("global", 0x01) => "PSBT_GLOBAL_XPUB",
         ("global", 0x02) => "PSBT_GLOBAL_TX_VERSION",
@@ -683,7 +682,15 @@ fn decode_pair(kind: &str, pair: &RawPair, tx: &Transaction, input_index: Option
         ("output", _) => "PSBT_OUT_UNKNOWN",
         _ => "PSBT_UNKNOWN",
     }
-    .to_string();
+}
+
+/// Decodes one key-value pair into a display JSON object. `kind` is "global",
+/// "input" or "output"; `input_index` is the pair's input-map index when
+/// `kind` is "input". Unknown types decode to null and stay raw.
+fn decode_pair(kind: &str, pair: &RawPair, tx: &Transaction, input_index: Option<usize>) -> Value {
+    let type_byte = pair.key[0];
+    let keydata = &pair.key[1..];
+    let name = pair_type_name(kind, type_byte).to_string();
 
     let decoded: Result<Value, String> = (|| {
         Ok(match (kind, type_byte) {
@@ -1026,12 +1033,12 @@ fn resolve_input_amount(pairs: &[RawPair], tx: &Transaction, index: usize) -> Am
     AmountClaim::Claimed(first)
 }
 
-/// Bitcoin Core's CheckTransaction sanity, minus the coinbase cases an
-/// unsigned PSBT transaction can never hit: nonempty vin/vout, the block
-/// weight bound, per-output and aggregate MoneyRange, and unique prevouts.
-/// Structural PSBT validity (Psbt::deserialize) says nothing about any of
-/// these. Returns Core's rejection reason when the transaction is
-/// consensus-invalid (issues #322, #361).
+/// Bitcoin Core's CheckTransaction sanity, applied to an unsigned PSBT
+/// transaction: nonempty vin/vout, the block weight bound, per-output and
+/// aggregate MoneyRange, no null prevouts, and unique prevouts. Structural
+/// PSBT validity (Psbt::deserialize) says nothing about any of these. Returns
+/// Core's rejection reason when the transaction is consensus-invalid (issues
+/// #322, #361).
 fn tx_sanity_error(tx: &Transaction) -> Option<&'static str> {
     if tx.input.is_empty() {
         return Some("bad-txns-vin-empty");
@@ -1052,6 +1059,14 @@ fn tx_sanity_error(tx: &Transaction) -> Option<&'static str> {
             _ => return Some("bad-txns-txouttotal-toolarge"),
         };
     }
+    // A null prevout (txid 0, vout u32::MAX) is never spendable: Core rejects
+    // it as bad-cb-length when it is the only input (IsCoinBase, and the
+    // PSBT-forced empty scriptSig fails the 2..100 coinbase rule) and as
+    // bad-txns-prevout-null otherwise. The editor's free-text txid/vout fields
+    // put it one edit away, so it is checked here like any other sanity rule.
+    if tx.input.iter().any(|input| input.previous_output.is_null()) {
+        return Some("bad-txns-prevout-null");
+    }
     let mut prevouts = BTreeSet::new();
     for input in &tx.input {
         if !prevouts.insert(input.previous_output) {
@@ -1063,6 +1078,7 @@ fn tx_sanity_error(tx: &Transaction) -> Option<&'static str> {
 
 fn inspect(bytes: &[u8]) -> Result<String, String> {
     let raw = parse_raw(bytes)?;
+    let sanitize = sanitize::analyze(&raw.globals, &raw.inputs, &raw.outputs);
     let tx = &raw.unsigned_tx;
 
     let tx_json = json!({
@@ -1161,6 +1177,7 @@ fn inspect(bytes: &[u8]) -> Result<String, String> {
         "fee": fee,
         "rustBitcoinError": rust_bitcoin_error,
         "txSanityError": tx_sanity,
+        "sanitize": sanitize,
     });
     let text = serde_json::to_string(&doc).map_err(|e| format!("JSON encode failed: {e}"))?;
     if text.len() > MAX_JSON_BYTES {

@@ -140,6 +140,58 @@
     element.dispatchEvent(new Event("input", { bubbles: true }));
   };
 
+  await test("test mode preloads the requested deterministic hashed-dice keys", async () => {
+    const tabs = await until(() => {
+      const node = document.getElementById("key-tabs");
+      return node?.children.length === 9 ? node : null;
+    }, "eight test-mode Key Station keys");
+    equal(document.documentElement.dataset.testKeys, "8");
+    equal(
+      [...tabs.querySelectorAll(".key-tab:not(.is-lab) .key-tab-label")].map((label) => label.textContent).join("|"),
+      "Test dice 1|Test dice 2|Test dice 3|Test dice 4|Test dice 5|Test dice 6|Test dice 11|Test dice 22",
+    );
+    const lifehashes = await until(() => {
+      const images = [...tabs.querySelectorAll(".key-tab:not(.is-lab) .key-tab-lifehash")];
+      return images.length === 8 && images.every((image) => !image.hidden && image.src.startsWith("data:image/png")) ? images : null;
+    }, "all test-mode Key Station LifeHashes");
+    equal(new Set(lifehashes.map((image) => image.dataset.fingerprint)).size, 8, "each test key should paint its own LifeHash");
+    const previousMaxWidth = tabs.style.maxWidth;
+    try {
+      tabs.style.maxWidth = "320px";
+      const station = tabs.firstElementChild;
+      assert(station.classList.contains("station-tab"), "Key Station is not marked as the strip's pinned tab");
+      await until(() => tabs.scrollWidth > tabs.clientWidth, "the test key tabs to overflow their strip");
+      tabs.scrollLeft = tabs.scrollWidth;
+      await wait(0);
+      const stripLeft = tabs.getBoundingClientRect().left, stationAtEnd = station.getBoundingClientRect();
+      assert(Math.abs(stationAtEnd.left - stripLeft) < 1, "Key Station did not remain pinned at the left edge");
+      assert(stationAtEnd.right >= tabs.children[1].getBoundingClientRect().right, "derived key tabs did not scroll underneath Key Station");
+      tabs.children[1].click();
+      await until(() => {
+        const currentStation = tabs.firstElementChild, selected = tabs.children[1];
+        return selected.classList.contains("active") && selected.getBoundingClientRect().left >= currentStation.getBoundingClientRect().right - 1;
+      }, "the selected derived key tab to clear the pinned Station");
+      equal(document.getElementById("key-summary-method").textContent, "Dice rolls: Base 10 [0-9] / Hashed rolls", "the key overview names the method before its sub-method");
+      const summaryLifehash = await until(() => {
+        const image = document.getElementById("key-summary-lifehash");
+        return !image.hidden ? image : null;
+      }, "the key overview LifeHash to render");
+      const summaryText = document.querySelector(".key-summary-text");
+      const lifehashHeight = summaryLifehash.getBoundingClientRect().height, textHeight = summaryText.getBoundingClientRect().height;
+      assert(lifehashHeight <= textHeight && textHeight - lifehashHeight < 8, `the key overview LifeHash (${lifehashHeight}px) does not visually match its four information rows (${textHeight}px)`);
+    } finally {
+      tabs.style.maxWidth = previousMaxWidth;
+      tabs.scrollLeft = 0;
+      while (tabs.children.length > 1) {
+        tabs.lastElementChild.click();
+        document.getElementById("delete-key").click();
+        await wait(0);
+      }
+    }
+    equal(tabs.children.length, 1, "test-mode cleanup should leave only Key Station");
+    assert(tabs.firstElementChild.classList.contains("is-lab"), "test-mode cleanup removed Key Station");
+  });
+
   await test("hosted preview enables its warning and inline branding", () => {
     const warning = document.getElementById("online-warning");
     const logo = document.querySelector(".site-logo");
@@ -566,12 +618,24 @@
     assert(show && !show.checked && dealt.hidden, "Dealt cards were not hidden by default");
     equal(undo.getAttribute("aria-label"), "Undo last card");
     assert(undo.querySelector("svg"), "Card undo does not use the keyboard delete icon");
-    assert(Math.abs(undo.getBoundingClientRect().width - document.querySelector(".card-rank-pad button").getBoundingClientRect().width) < 0.5, "Card undo does not match the rank-button width");
-    assert(Boolean(cards.compareDocumentPosition(document.getElementById("cards-meta")) & Node.DOCUMENT_POSITION_FOLLOWING), "Card status is not below the transcript input");
+    assert(undo.textContent.trim() === "Undo", "Card undo lost its visible label");
+    // Two keys wide so the word fits, and aligned to the keypad's grid: it runs
+    // from the left of the second-last rank column to the right of the last.
+    const rankBoxes = [...document.querySelectorAll(".card-rank-pad button")].map((key) => key.getBoundingClientRect());
+    const lastRight = Math.max(...rankBoxes.map((box) => box.right));
+    const secondLastLeft = Math.max(...rankBoxes.filter((box) => box.right < lastRight - 1).map((box) => box.left));
+    const undoSpan = undo.getBoundingClientRect();
+    assert(Math.abs(undoSpan.left - secondLastLeft) < 1 && Math.abs(undoSpan.right - lastRight) < 1, "Card undo does not span the last two rank columns");
+    // Above the transcript, as the dice line is, so the field and the card
+    // keypad below it stay together.
+    assert(Boolean(cards.compareDocumentPosition(document.getElementById("cards-meta")) & Node.DOCUMENT_POSITION_PRECEDING), "Card status is not above the transcript input");
     assert(Boolean(document.getElementById("cards-meta").compareDocumentPosition(document.querySelector(".card-suit-pad")) & Node.DOCUMENT_POSITION_FOLLOWING), "Card status is not above the card buttons");
     assert(Boolean(cards.compareDocumentPosition(document.querySelector(".card-suit-pad")) & Node.DOCUMENT_POSITION_FOLLOWING), "Card buttons are not below the transcript input");
     assert(Boolean(document.querySelector(".card-rank-pad").compareDocumentPosition(undo) & Node.DOCUMENT_POSITION_FOLLOWING), "Undo is not below the card ranks");
-    assert(Boolean(undo.compareDocumentPosition(show) & Node.DOCUMENT_POSITION_FOLLOWING), "Undo is not left of Show cards");
+    assert(Boolean(show.compareDocumentPosition(undo) & Node.DOCUMENT_POSITION_FOLLOWING), "Show cards does not lead the card controls");
+    // Undo closes the row at its right edge, clear of Show cards.
+    const controlsRow = undo.closest(".card-controls-row").getBoundingClientRect(), undoBox = undo.getBoundingClientRect();
+    assert(Math.abs(controlsRow.right - undoBox.right) < 1 && undoBox.left > show.getBoundingClientRect().right, "Undo is not at the right end of the card controls");
     assert(Boolean(show.compareDocumentPosition(dealt) & Node.DOCUMENT_POSITION_FOLLOWING), "Card controls are not above the dealt cards");
     assert(Boolean(dealt.compareDocumentPosition(document.getElementById("dice-words")) & Node.DOCUMENT_POSITION_FOLLOWING), "Dealt cards are not above the seed words");
     show.click();
@@ -581,7 +645,11 @@
     await wait(0);
     equal(cards.value, "As ");
     assert(!document.getElementById("go").disabled, "One valid card did not enable derivation");
-    assert(document.getElementById("cards-meta").textContent.includes("seed available for testing"), "One-card warning is missing");
+    // One card is far short of the recommendation, and the line says so by
+    // colouring the count rather than spelling out a caveat — the same way the
+    // dice line does.
+    assert(document.getElementById("cards-meta").querySelector(".meta-value.is-short"), "One-card deal did not mark the count as short");
+    assert(document.getElementById("cards-meta").textContent.includes("recommended cards"), "Card status lost its count line");
     equal([...document.querySelectorAll("#dice-words [data-word]")].filter((word) => word.textContent !== "—").length, 24);
     const cardCopy = document.querySelector('[data-copy-seed-phrase]');
     assert(cardCopy && !cardCopy.disabled && cardCopy.dataset.phrase.split(" ").length === 24, "Testing seed preview was not copyable");
@@ -590,13 +658,20 @@
     input(cards, "AS ZZ");
     await wait(0);
     assert(document.querySelector("#cards-highlight .dice-roll-invalid")?.textContent === "ZZ", "Invalid card was not highlighted red");
-    assert(document.getElementById("go").disabled && document.getElementById("cards-meta").classList.contains("err"), "Invalid card did not disable derivation");
+    assert(document.getElementById("go").disabled, "Invalid card did not disable derivation");
+    // Line three is the error or the next step, never both: the error shows
+    // until it is fixed, and the deck instruction waits behind it.
+    const cardsMeta = document.getElementById("cards-meta");
+    assert(cardsMeta.querySelector(".meta-cue.is-error") && !cardsMeta.querySelector(".meta-cue.is-next"), "Invalid card did not replace the next step with an error");
+    assert(document.getElementById("cards-reshuffle").hidden, "The deck instruction still shows in its old box");
     input(cards, "AS AS");
     assert(document.querySelector("#cards-highlight .dice-roll-invalid")?.textContent === "As", "Repeated card was not highlighted red");
+    assert(cardsMeta.querySelector(".meta-cue.is-error")?.textContent.includes("Repeated") && !cardsMeta.querySelector(".meta-cue.is-next"), "Repeated card did not replace the next step with an error");
     input(cards, "as, 10♥; td");
     await wait(0);
     equal(cards.value, "As Th Td ");
     assert(!document.getElementById("go").disabled, "Normalized valid cards did not enable derivation");
+    assert(!cardsMeta.querySelector(".meta-cue.is-error") && cardsMeta.querySelector(".meta-cue.is-next"), "Fixing the transcript did not bring the next step back");
     cards.focus();
     const disallowed = new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertText", data: "B" });
     assert(cards.dispatchEvent(disallowed) === false, "A character unused by card transcripts was accepted from typing");
@@ -634,18 +709,18 @@
     chooseSeedWords(12);
     await chooseMode("Number bases");
     const cases = [
-      ["bin", 128, "0"],
-      ["base4", 64, "0"],
-      ["base8", 43, "0"],
-      ["hex", 32, "0"],
-      ["base32", 28, "0"],
-      ["base64", 23, "A"],
+      ["bin", "0".repeat(128)],
+      ["base4", "0".repeat(64)],
+      ["base8", "0".repeat(43)],
+      ["hex", "0".repeat(32)],
+      ["base32", "q".repeat(26)],
+      ["base64", `${"A".repeat(21)}00`],
     ];
     equal(document.querySelectorAll('input[name="entropy-format"]').length, 6);
-    for (const [format, count, zero] of cases) {
+    for (const [format, value] of cases) {
       document.querySelector(`input[name="entropy-format"][value="${format}"]`).click();
       const field = await until(() => document.getElementById(format), `${format} entropy input`);
-      input(field, format === "base64" ? `${zero.repeat(21)}00` : zero.repeat(count));
+      input(field, value);
       await wait(0);
       assert(!document.getElementById("go").disabled, `${format} did not accept exact zero entropy`);
       equal(document.querySelector("#entropy-words [data-word]").textContent, "abandon");
@@ -671,22 +746,22 @@
     assert(!document.querySelector('[data-entropy-digit="2"]').disabled, "Valid final Base 8 digit was disabled");
     document.querySelector('input[name="entropy-format"][value="base32"]').click();
     const base32 = await until(() => document.getElementById("base32"), "Base32 entropy input");
-    input(base32, `o${"0".repeat(27)}`);
+    input(base32, "Q".repeat(26));
     await wait(0);
-    assert(base32.value.startsWith("0") && !document.getElementById("go").disabled, "Crockford O alias did not normalize to 0");
+    assert(base32.value === "q".repeat(26) && !document.getElementById("go").disabled, "Bech32 Base32 did not normalize uppercase input");
     chooseSeedWords(24);
     const base32For24 = await until(() => document.getElementById("base32"), "24-word Base32 input");
-    input(base32For24, "0".repeat(51));
-    assert(document.getElementById("entropy-meta").textContent.includes("coin flip 1 of 1 · Heads (0) or Tails (1)"), "Base32 progress did not switch to coin-flip guidance");
-    assert(document.querySelector(".entropy-keypad").classList.contains("coin-phase"), "Base32 keypad did not switch to its coin-flip layout");
-    equal(document.querySelector('[data-entropy-digit="0"]').textContent, "Heads (0)");
-    equal(document.querySelector('[data-entropy-digit="1"]').textContent, "Tails (1)");
-    assert(!document.querySelector('[data-entropy-digit="1"]').disabled, "Final binary 1 was disabled for 24-word Base32");
-    assert(document.querySelector('[data-entropy-digit="2"]').disabled, "A non-binary final Base32 character remained enabled");
-    input(base32For24, `${"0".repeat(51)}1`);
+    input(base32For24, "q".repeat(51));
+    assert(document.getElementById("entropy-meta").textContent.includes("51 of 52 Bech32 characters"), "Base32 progress did not retain Bech32 guidance for the final character");
+    const base32Keyboard = document.getElementById("base32-keyboard");
+    const bech32Key = (character) => [...base32Keyboard.querySelectorAll("[data-seed-character-key]")].find((key) => key.dataset.seedKey === character);
+    assert(!bech32Key("q").disabled, "Valid final Bech32 q was disabled");
+    assert(!bech32Key("p").disabled, "Valid final Bech32 p was disabled");
+    assert(bech32Key("z").disabled, "A Bech32 character outside the final one-bit range remained enabled");
+    input(base32For24, `${"q".repeat(51)}p`);
     await wait(0);
-    assert(!document.getElementById("go").disabled, "24-word Base32 did not accept a final single entropy bit");
-    input(base32For24, "0".repeat(51));
+    assert(!document.getElementById("go").disabled, "24-word Base32 did not accept a valid final one-bit Bech32 character");
+    input(base32For24, "q".repeat(51));
     assert(document.getElementById("global-entropy-sync").checked, "Global sync turned off for incomplete entropy");
     const incompleteStatus = document.getElementById("global-sync-status");
     assert(incompleteStatus.textContent.includes("Key synced") && !incompleteStatus.querySelector(".global-sync-shortfall"), "Entropy past the minimum did not report a healthy sync");
@@ -695,8 +770,86 @@
     assert(preservedHex.value.length === 63, "Global sync did not wait for a complete next hexadecimal character");
     document.querySelector('input[name="entropy-format"][value="base32"]').click();
     const preservedBase32 = await until(() => document.getElementById("base32"), "preserved incomplete Base32 input");
-    equal(preservedBase32.value, "0".repeat(51));
+    equal(preservedBase32.value, "q".repeat(51));
     input(preservedBase32, "");
+  });
+
+  await test("Base32 uses the shared lowercase and number keyboard without an uppercase mode", async () => {
+    chooseSeedWords(24);
+    await chooseMode("Number bases");
+    document.querySelector('input[name="entropy-format"][value="base32"]').click();
+    const base32 = await until(() => document.getElementById("base32"), "Base32 input");
+    input(base32, "");
+    const toggle = document.getElementById("base32-keyboard-toggle");
+    const keyboard = document.getElementById("base32-keyboard");
+    assert(toggle && keyboard, "Base32 keyboard control is missing");
+    if (keyboard.hidden) toggle.click();
+    const mode = keyboard.querySelector("[data-seed-keyboard-mode]");
+    if (keyboard.dataset.seedKeyboardLayout !== "lower") mode.click();
+    const characterKey = (character) => [...keyboard.querySelectorAll("[data-seed-character-key]")].find((key) => key.dataset.seedKey === character);
+    assert(characterKey("q") && !characterKey("q").hidden && !characterKey("q").disabled, "Bech32 q is unavailable on the lowercase keyboard");
+    assert(characterKey("b")?.hidden, "A letter outside the Bech32 alphabet remained visible");
+    characterKey("q").click();
+    mode.click();
+    equal(keyboard.dataset.seedKeyboardLayout, "number", "Base32 did not switch from lowercase to numbers");
+    assert(characterKey("2") && !characterKey("2").hidden && !characterKey("2").disabled, "Bech32 digit 2 is unavailable");
+    assert(characterKey("1") && !characterKey("1").hidden && characterKey("1").disabled, "Digit 1 did not remain visible and disabled");
+    for (const character of ["!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "-", "_", "+", "=", "/", "?", "\\"]) {
+      assert(characterKey(character) && !characterKey(character).hidden && characterKey(character).disabled, `Unsupported Base32 character ${character} did not remain visible and disabled`);
+    }
+    characterKey("2").click();
+    mode.click();
+    equal(keyboard.dataset.seedKeyboardLayout, "lower", "Base32 cycled through an uppercase keyboard");
+    equal(mode.textContent, "a1", "Base32 mode control still advertises an uppercase layout");
+    equal(base32.value, "q2");
+    if (!keyboard.hidden) toggle.click();
+    input(base32, "");
+  });
+
+  await test("dice methods retain separate transcripts while global sync is off", async () => {
+    const existingSync = document.getElementById("global-entropy-sync");
+    if (existingSync?.checked) existingSync.click();
+    document.getElementById("wipe").click();
+    await chooseMode("Dice rolls");
+    assert(!document.getElementById("global-entropy-sync").checked, "Global entropy syncing was enabled during the isolation check");
+
+    input(document.getElementById("dice"), "123");
+    document.querySelector('input[name="dm"][value="coleman"]').click();
+    equal(document.getElementById("dice").value, "", "Coleman inherited the COLDCARD transcript with sync off");
+    input(document.getElementById("dice"), "654");
+
+    document.querySelector('input[name="dm"][value="bitbox"]').click();
+    equal(document.getElementById("dice").value, "", "BitBox inherited another dice method's transcript with sync off");
+    input(document.getElementById("dice"), "112");
+
+    document.querySelector('input[name="dm"][value="dplus"]').click();
+    equal(document.getElementById("dice").value, "", "D++ inherited another dice method's transcript with sync off");
+    input(document.getElementById("dice"), "100");
+
+    for (const [method, transcript] of [["coldcard", "123"], ["coleman", "654"], ["bitbox", "112"], ["dplus", "100"]]) {
+      document.querySelector(`input[name="dm"][value="${method}"]`).click();
+      equal(document.getElementById("dice").value, transcript, `${method} did not restore its own transcript`);
+    }
+    document.getElementById("wipe").click();
+  });
+
+  await test("BitBox keeps all six die buttons available for its coin-flip roll", async () => {
+    await chooseMode("Dice rolls");
+    document.querySelector('input[name="dm"][value="bitbox"]').click();
+    const dice = document.getElementById("dice");
+    input(dice, "11111");
+    const buttons = [...document.querySelectorAll('.faces-1-6 button[data-d]')];
+    equal(buttons.length, 6);
+    buttons.forEach((button, index) => {
+      equal(button.textContent, String(index + 1), `BitBox face ${index + 1} changed into a coin-side button`);
+      assert(!button.hidden && !button.disabled, `BitBox face ${index + 1} was unavailable for the sixth roll`);
+    });
+    buttons[1].click();
+    equal(dice.value, "111112", "A Heads-mapped die face was not recorded verbatim");
+    input(dice, "11111");
+    buttons[4].click();
+    equal(dice.value, "111115", "A Tails-mapped die face was not recorded verbatim");
+    document.getElementById("wipe").click();
   });
 
   await test("global entropy sync follows partial direct input and supports one-way hashed input", async () => {
@@ -717,7 +870,6 @@
     const dplusRange = dplusProgress.querySelector(".sr-only");
     assert(/D8 roll|D16 roll/.test(dplusProgress.textContent) && /^ \([01]–[8F]\)$/.test(dplusRange?.textContent || ""), "D++ progress lost its accessible next-roll range");
     assert([...dplusProgress.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE).every((node) => !/[01]–[8F]/.test(node.textContent)), "D++ progress left the face range in the visible narrow-screen line");
-    assert(document.getElementById("dice-help").textContent.includes("D8 face from 1–8") && document.getElementById("dice-help").textContent.includes("D16 faces from 0–F"), "D++ input guidance lost its face ranges");
     equal(document.getElementById("dice").value, "1", "Three bits did not emit the first complete D++ D8 result");
     document.querySelector('input[name="dm"][value="bitbox"]').click();
     equal(document.getElementById("dice").value, "1", "BitBox emitted a second die before four bits were available");
@@ -974,9 +1126,9 @@
   await test("tool tabs answer the arrow keys and name themselves in full", async () => {
     const strip = document.getElementById("workspace-tabs");
     const tabs = [...strip.querySelectorAll("[data-workspace]")];
-    assert(tabs.length === 7, `Expected seven tool tabs, found ${tabs.length}`);
+    assert(tabs.length === 8, `Expected eight tool tabs, found ${tabs.length}`);
     // The visible label may be abbreviated; the accessible name never is.
-    const names = ["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "Journal"];
+    const names = ["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "Lightning", "Journal"];
     tabs.forEach((tab, i) => {
       assert(tab.getAttribute("aria-label") === names[i], `Tab ${i} should be named "${names[i]}"`);
     });
@@ -1002,13 +1154,13 @@
         document.querySelector("#bip85-manager > .key-tab-strip"),
       );
       // End jumps to the last tool. Journal begins at its create/open gate while
-      // keeping the four destination tabs visible but unavailable.
+      // keeping the five destination tabs visible but unavailable.
       tabs[2].dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
       await until(() => !document.getElementById("journal-card").hidden, "End to reach the Journal tool");
-      assert(document.activeElement === tabs[6], "End should move focus to the last tab");
+      assert(document.activeElement === tabs[7], "End should move focus to the last tab");
       const journalTabs = [...document.querySelectorAll("#journal-tool-tabs [data-journal-tool]")];
-      equal(journalTabs.length, 4, "Journal should expose exactly four internal tabs");
-      equal(journalTabs.map((tab) => tab.textContent.trim()).join("|"), "Notepad|Key manager|Session state|Session log");
+      equal(journalTabs.length, 5, "Journal should expose exactly five internal tabs");
+      equal(journalTabs.map((tab) => tab.textContent.trim()).join("|"), "Entries|Notepad|Key manager|Session state|Session log");
       const journalManager = document.getElementById("journal-manager");
       assert(journalManager && !journalManager.hidden, "Journal station tabs should be visible inside the Journal tool");
       const journalIntro = document.getElementById("journal-tool-intro");
@@ -1032,53 +1184,46 @@
       const journalPasswordStatus = document.getElementById("journal-create-password-status");
       const journalConfirmStatus = document.getElementById("journal-create-confirm-status");
       const journalCreateReady = document.getElementById("journal-create-ready");
-      assert(journalPasswordStatus.hidden && journalConfirmStatus.hidden && journalCreateReady.hidden, "Empty Journal password fields should not show validation messages");
-      input(journalPasswordInput, "too short");
-      assert(!journalPasswordStatus.hidden && journalPasswordStatus.classList.contains("is-invalid"), "A short Journal password should show a red warning");
-      equal(journalPasswordStatus.textContent, "Password has too few characters");
-      journalPasswordInput.focus();
-      journalPasswordInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
-      assert(document.activeElement === journalPasswordInput, "Enter should not advance past a short Journal password");
+      assert(journalPasswordStatus.hidden && journalConfirmStatus.hidden && !journalCreateReady.hidden, "Blank Journal password fields should be ready without validation errors");
+      equal(journalCreateReady.textContent.trim(), "← Ready to create without a password");
+      document.getElementById("journal-create").click();
+      await until(() => !document.getElementById("journal-card").hidden && !document.getElementById("journal-work-panel").hidden, "passwordless journal creation to open Entries");
+      assert(document.getElementById("journal-status-title").textContent.includes("No password protection"), "A passwordless Journal should disclose that its file has no access protection");
+      journalGlobalClear.click();
+      await until(() => !document.getElementById("journal-card").hidden, "Journal gate after clearing the passwordless Journal");
+      journalTabs.forEach((tab) => assert(tab.disabled, "Clearing a passwordless Journal should disable its tabs"));
+      const journalPassword = "too short";
+      input(journalPasswordInput, journalPassword);
+      assert(!journalPasswordStatus.hidden && journalPasswordStatus.classList.contains("is-valid"), "A short Journal password should be accepted");
+      equal(journalPasswordStatus.textContent, "✓ Password protection enabled");
       assert(Math.abs(journalPasswordStatus.getBoundingClientRect().right - journalPasswordInput.getBoundingClientRect().right) <= 2, "Password validation should align to the right of its label");
-      input(journalPasswordInput, "");
-      assert(journalPasswordStatus.hidden, "Clearing the Journal password should hide its validation message");
-      input(journalPasswordInput, "too short");
       input(journalConfirmInput, "different");
       assert(!journalConfirmStatus.hidden && journalConfirmStatus.classList.contains("is-invalid"), "A mismatched confirmation should show a red warning");
       equal(journalConfirmStatus.textContent, "Passwords do not match");
-      const journalPassword = "correct horse battery staple";
-      input(journalPasswordInput, journalPassword);
-      assert(journalPasswordStatus.classList.contains("is-valid") && journalPasswordStatus.textContent.includes("Password is long enough"), "A long Journal password should show a green check");
       journalPasswordInput.focus();
       journalPasswordInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
-      assert(document.activeElement === journalConfirmInput, "Enter should advance a valid Journal password to confirmation");
+      assert(document.activeElement === journalConfirmInput, "Enter should advance a Journal password to confirmation");
       input(journalConfirmInput, journalPassword);
       assert(journalConfirmStatus.classList.contains("is-valid"), "Matching Journal passwords should show a green check");
       equal(journalConfirmStatus.textContent, "\u2713 Passwords match");
-      assert(!journalCreateReady.hidden, "Valid matching passwords should show readiness beside Create journal");
-      equal(journalCreateReady.textContent.trim(), "← Ready to create journal");
+      assert(!journalCreateReady.hidden, "Matching passwords should show readiness beside Create journal");
+      equal(journalCreateReady.textContent.trim(), "← Ready to create with a password");
       assert(document.getElementById("journal-create").getBoundingClientRect().right < journalCreateReady.getBoundingClientRect().left, "The ready message should sit to the right of Create journal");
       input(journalConfirmInput, "");
       assert(journalConfirmStatus.hidden && journalCreateReady.hidden, "Clearing the confirmation should hide its validation and ready messages");
-      input(journalPasswordInput, "too short");
-      input(journalConfirmInput, "too short");
-      document.getElementById("journal-create").click();
-      await until(() => document.getElementById("journal-error").textContent.includes("12"), "short journal password error");
-      assert(!document.getElementById("journal-card").hidden, "A rejected password should leave the Journal gate visible");
-      journalTabs.forEach((tab) => assert(tab.disabled, "A rejected password should not unlock Journal tabs"));
       input(journalPasswordInput, journalPassword);
       input(journalConfirmInput, journalPassword);
       journalConfirmInput.focus();
       journalConfirmInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
-      await until(() => !document.getElementById("journal-notes-card").hidden, "valid journal creation to open Notepad");
-      assert(document.getElementById("journal-card").hidden, "The create/open gate should disappear after journal creation");
+      await until(() => !document.getElementById("journal-card").hidden && !document.getElementById("journal-work-panel").hidden, "valid journal creation to open Entries");
+      assert(document.getElementById("journal-locked-panel").hidden, "The create/open gate should disappear after journal creation");
       assert(!journalIntro.hidden, "Entropy Journal introduction should remain visible after journal creation");
       journalTabs.forEach((tab) => {
         assert(!tab.disabled, "Journal station tabs should enable after journal creation");
         equal(tab.getAttribute("aria-disabled"), "false", "An unlocked Journal tab should expose its enabled state");
       });
-      assert(journalTabs[0].classList.contains("active"), "A newly created journal should start on Notepad");
-      equal(journalTabs[0].getAttribute("aria-selected"), "true", "Notepad should be selected after journal creation");
+      assert(journalTabs[0].classList.contains("active"), "A newly created journal should start on Entries");
+      equal(journalTabs[0].getAttribute("aria-selected"), "true", "Entries should be selected after journal creation");
       assert(!journalGlobalDownload.disabled && !journalGlobalClear.disabled, "Journal-wide actions should enable after journal creation");
       state.lastBlob = null;
       journalGlobalDownload.click();
@@ -1094,18 +1239,20 @@
       input(document.getElementById("journal-open-password"), journalPassword);
       await wait(250);
       document.getElementById("journal-unlock").click();
-      await until(() => !document.getElementById("journal-notes-card").hidden || document.getElementById("journal-error").textContent, "successful Journal file open result");
-      assert(!document.getElementById("journal-notes-card").hidden, `Opening the encrypted Journal failed: ${document.getElementById("journal-error").textContent}`);
-      assert(document.getElementById("journal-card").hidden, "The create/open gate should disappear after opening a journal");
+      await until(() => !document.getElementById("journal-card").hidden && !document.getElementById("journal-work-panel").hidden || document.getElementById("journal-error").textContent, "successful Journal file open result");
+      assert(!document.getElementById("journal-work-panel").hidden, `Opening the encrypted Journal failed: ${document.getElementById("journal-error").textContent}`);
+      assert(document.getElementById("journal-locked-panel").hidden, "The create/open gate should disappear after opening a journal");
       assert(!journalIntro.hidden, "Entropy Journal introduction should remain visible after opening a journal");
-      journalTabs.forEach((tab) => assert(!tab.disabled, "Opening a journal should enable its four tabs"));
-      assert(journalTabs[0].classList.contains("active"), "An opened journal should start on Notepad");
+      journalTabs.forEach((tab) => assert(!tab.disabled, "Opening a journal should enable its five tabs"));
+      assert(journalTabs[0].classList.contains("active"), "An opened journal should start on Entries");
+      journalTabs[1].click();
+      await until(() => !document.getElementById("journal-notes-card").hidden, "Notepad after opening a journal");
       equal(getComputedStyle(document.getElementById("journal-notes-card")).borderTopLeftRadius, "0px", "The active Notepad card should join its folder tab");
-      journalTabs[0].focus();
-      journalTabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      journalTabs[1].focus();
+      journalTabs[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
       await until(() => !document.getElementById("journal-keymanager-card").hidden, "ArrowRight to open Key manager");
       equal(documentTop(journalManager), journalManagerTop, "Key manager moved the Journal tab strip");
-      assert(document.activeElement === journalTabs[1], "Focus should follow the Journal subtab arrow key");
+      assert(document.activeElement === journalTabs[2], "Focus should follow the Journal subtab arrow key");
       const keyManagerCard = document.getElementById("journal-keymanager-card");
       const keyManagerDownload = document.getElementById("journal-keymanager-download");
       const keyManagerUpload = document.getElementById("journal-keymanager-upload");
@@ -1114,14 +1261,14 @@
       for (const property of ["backgroundColor", "color", "borderTopColor"]) equal(getComputedStyle(keyManagerDownload)[property], keyManagerDownloadReference[property], `Key Manager download should use the header download button's ${property}`);
       equal(keyManagerUpload.querySelector(".download-mark path")?.getAttribute("d"), "M12 17V5M7 10l5-5 5 5M5 21h14", "Key Manager upload should use the shared upward-arrow icon");
       assert(keyManagerUpload.getBoundingClientRect().left > keyManagerDownload.getBoundingClientRect().right, "Key Manager upload should sit at the right edge of the action row");
-      journalTabs[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
-      await until(() => !document.getElementById("journal-state-card").hidden, "ArrowRight to open Session state");
       journalTabs[2].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      await until(() => !document.getElementById("journal-state-card").hidden, "ArrowRight to open Session state");
+      journalTabs[3].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
       await until(() => !document.getElementById("journal-log-card").hidden, "ArrowRight to open Session log");
-      journalTabs[3].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+      journalTabs[4].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
       equal(documentTop(journalManager), journalManagerTop, "Session log moved the Journal tab strip");
       await until(() => !document.getElementById("journal-state-card").hidden, "ArrowLeft to open Session state");
-      assert(document.activeElement === journalTabs[2], "Focus should return to Session state");
+      assert(document.activeElement === journalTabs[3], "Focus should return to Session state");
       // PSBT stays a workspace of its own, with station tabs inside it.
       document.querySelector('#workspace [data-workspace="psbt"]').click();
       await until(() => !document.getElementById("psbt-card").hidden, "PSBT tool");
@@ -1143,15 +1290,99 @@
       await until(() => !document.getElementById("psbt-card").hidden, "ArrowLeft to open PSBT / Nonce");
       assert(document.activeElement === psbtTabs[0], "Focus should return to PSBT / Nonce");
       // Home returns to the first top-level tool.
-      tabs[6].dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+      tabs[7].dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
       await until(() => document.activeElement === tabs[0], "Home to return to the first tab");
       // Left from the first wraps round to the last.
       tabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
-      await until(() => document.activeElement === tabs[6], "ArrowLeft to wrap to the last tab");
+      await until(() => document.activeElement === tabs[7], "ArrowLeft to wrap to the last tab");
     } finally {
       document.querySelector('#journal-tool-tabs [data-journal-tool="notes"]').click();
       document.querySelector('#workspace [data-workspace="calc"]').click();
       await until(() => !document.getElementById("key-manager").hidden, "key workspace");
+    }
+  });
+
+  await test("a disabled primary action looks unavailable, but a stopping derivation stays red", async () => {
+    // Read after the colour transitions settle; a mid-fade value would pass
+    // or fail by timing alone.
+    const go = document.getElementById("go");
+    const was = { disabled: go.disabled, state: go.dataset.derivationState };
+    const accent = getComputedStyle(document.documentElement).getPropertyValue("--selection-accent").trim();
+    const paint = async () => { await wait(300); return getComputedStyle(go).backgroundColor; };
+    const probe = document.createElement("span");
+    probe.style.color = accent;
+    document.body.append(probe);
+    const accentRgb = getComputedStyle(probe).color;
+    probe.remove();
+    try {
+      go.disabled = false; delete go.dataset.derivationState;
+      equal(await paint(), accentRgb, "An enabled Derive Key lost its orange fill");
+      go.disabled = true;
+      assert(await paint() !== accentRgb, "A disabled Derive Key still wears the orange fill that invites a press");
+      // Stopping is disabled too, and must still read as the red stop state.
+      go.dataset.derivationState = "stopping";
+      const stopping = await paint();
+      assert(stopping !== accentRgb && stopping === getComputedStyle(go).borderTopColor, "A stopping derivation lost its red state to the disabled treatment");
+    } finally {
+      go.disabled = was.disabled;
+      if (was.state) go.dataset.derivationState = was.state; else delete go.dataset.derivationState;
+    }
+  });
+
+  await test("every tool card uses the shared spacing rhythm", async () => {
+    const rootStyle = getComputedStyle(document.documentElement);
+    const token = (name) => parseFloat(rootStyle.getPropertyValue(name));
+    equal(token("--space-control"), 8);
+    equal(token("--space-component"), 16);
+    equal(token("--space-section"), 20);
+    equal(token("--space-intro"), 24);
+
+    const cardIds = [
+      "calc-card", "vanity-card", "bip85-card", "msig-card", "sp-card",
+      "psbt-card", "psbted-card", "ln-card", "journal-card", "journal-notes-card",
+      "journal-keymanager-card", "journal-state-card", "journal-log-card",
+    ];
+    cardIds.forEach((id) => {
+      const card = document.getElementById(id);
+      const style = getComputedStyle(card);
+      assert(card.classList.contains("tool-card"), `${id} is missing the shared tool-card shell`);
+      equal(parseFloat(style.paddingTop), token("--space-section"), `${id} top padding`);
+      equal(parseFloat(style.paddingRight), token("--space-section"), `${id} right padding`);
+      equal(parseFloat(getComputedStyle(card.firstElementChild).marginTop), 0, `${id} first-child margin`);
+      equal(parseFloat(getComputedStyle(card.lastElementChild).marginBottom), 0, `${id} last-child margin`);
+    });
+    document.querySelectorAll(".tool-actions").forEach((row) => {
+      equal(parseFloat(getComputedStyle(row).marginTop), token("--space-component"), "tool action-row spacing");
+    });
+    document.querySelectorAll(".tool-intro, .journal-section-intro").forEach((intro) => {
+      equal(parseFloat(getComputedStyle(intro).marginBottom), token("--space-intro"), "tool intro spacing");
+    });
+
+    const gap = (before, after) => Math.round(after.getBoundingClientRect().top - before.getBoundingClientRect().bottom);
+    try {
+      document.querySelector('#workspace [data-workspace="vanity"]').click();
+      await until(() => !document.getElementById("vanity-card").hidden, "Vanity spacing audit");
+      const vanityMessages = document.querySelector("#vanity-card > .wallet-result-messages");
+      const vanityKeys = document.querySelector("#vanity-card > .station-key-source");
+      assert(vanityMessages && vanityKeys, "Vanity spacing blocks are missing");
+      equal(gap(vanityMessages, vanityKeys), token("--space-section"), "Vanity warning-to-key-source spacing");
+
+      document.querySelector('#workspace [data-workspace="sp"]').click();
+      await until(() => !document.getElementById("sp-card").hidden, "Silent Payments spacing audit");
+      const spModes = document.getElementById("sp-modes");
+      const spKeys = document.querySelector("#sp-card > .station-key-source");
+      assert(spModes && spKeys, "Silent Payments spacing blocks are missing");
+      equal(gap(spModes, spKeys), token("--space-section"), "Silent Payments mode-to-key-source spacing");
+
+      document.querySelector('#workspace [data-workspace="bip85"]').click();
+      await until(() => !document.getElementById("bip85-card").hidden, "BIP-85 spacing audit");
+      const bipCard = document.getElementById("bip85-card");
+      const bipSection = bipCard.querySelector(".station-key-source");
+      assert(bipSection, "BIP-85 key-source block is missing");
+      equal(Math.round(bipSection.getBoundingClientRect().top - bipCard.getBoundingClientRect().top - parseFloat(getComputedStyle(bipCard).borderTopWidth)), token("--space-section"), "BIP-85 first-section card inset");
+    } finally {
+      document.querySelector('#workspace [data-workspace="calc"]').click();
+      await until(() => !document.getElementById("key-manager").hidden, "key workspace after spacing audit");
     }
   });
 
@@ -1190,9 +1421,8 @@
       input(document.getElementById("journal-create-confirm"), journalPassword);
       document.getElementById("journal-create").click();
       await until(() => !document.getElementById("journal-global-download").disabled, "Journal unlocked after creation");
-      // The entry book has no tab of its own: "Save to Journal" is the way in.
-      document.getElementById("journal-open").click();
-      await until(() => !document.getElementById("journal-card").hidden && !document.getElementById("journal-editor").hidden, "entry editor to open");
+      document.getElementById("journal-add").click();
+      await until(() => !document.getElementById("journal-editor").hidden, "entry editor to open");
       document.getElementById("journal-method").value = "hex";
       input(document.getElementById("journal-input"), entryInput);
       input(document.getElementById("journal-phrase"), entryPhrase);
@@ -1201,7 +1431,7 @@
       document.getElementById("journal-commit").click();
       await until(() => [...document.querySelectorAll("#journal-list .journal-item-label")].some((el) => el.textContent === entryLabel), "committed entry in the list");
       assert(document.getElementById("journal-editor").hidden, "Committing should close the editor");
-      assert([...document.querySelectorAll("#journal-list .journal-item-meta")].some((el) => el.textContent.startsWith("Hex · ")), "The entry should list its method and date");
+      assert([...document.querySelectorAll("#journal-list .journal-item-meta")].some((el) => el.textContent.startsWith("Number bases · ")), "The entry should list its method and date");
 
       // Store: the Save file button downloads the sealed journal.
       const journalText = await captureDownload("entropylab-journal.json", "journal file download", () => document.getElementById("journal-save").click());
@@ -1221,16 +1451,13 @@
       input(document.getElementById("journal-open-password"), "a long enough but wrong password");
       await wait(250); // the change handler reads the file asynchronously
       document.getElementById("journal-unlock").click();
-      await until(() => document.getElementById("journal-error").textContent.includes("Wrong password"), "wrong-password error on open");
+      await until(() => document.getElementById("journal-error").textContent.includes("password is incorrect"), "wrong-password error on open");
       assert(document.getElementById("journal-work-panel").hidden, "A wrong password must not open the work panel");
       input(document.getElementById("journal-open-password"), journalPassword);
       document.getElementById("journal-unlock").click();
       await until(() => !document.getElementById("journal-global-download").disabled, "Journal unlocked from the stored file");
 
       // The stored entry survived: listed, viewable, and revealed on demand.
-      document.getElementById("journal-open").click();
-      await until(() => !document.getElementById("journal-editor").hidden, "editor over the loaded journal");
-      document.getElementById("journal-cancel").click();
       const restoredItem = await until(() => [...document.querySelectorAll("#journal-list .journal-item")].find((el) => el.querySelector(".journal-item-label")?.textContent === entryLabel), "stored entry listed after load");
       restoredItem.click();
       await until(() => !document.getElementById("journal-view").hidden, "stored entry view");
@@ -1303,8 +1530,21 @@
     await until(() => !document.getElementById("go").disabled, "Derive Key to enable");
     document.getElementById("go").click();
     await until(() => [...document.querySelectorAll("#key-tabs .key-tab")].some((tab) => tab.textContent.includes("ef94d090")), "the derived key tab ef94d090");
+    document.querySelector('#workspace [data-workspace="journal"]').click();
+    document.querySelector('#journal-tool-tabs [data-journal-tool="book"]').click();
+    const capturedEntry = await until(() => document.querySelector("#journal-list .journal-item"), "automatically captured Key Station entry");
+    equal(document.querySelectorAll("#journal-list .journal-item").length, 1, "a Key Station derivation should add one journal entry");
+    assert(document.getElementById("journal-status-note").textContent.includes("download the journal file to preserve them"), "automatic capture should explain that the journal still needs downloading");
+    capturedEntry.click();
+    await until(() => !document.getElementById("journal-view").hidden, "automatically captured entry view");
+    assert(document.getElementById("journal-view").textContent.includes("passphrase was in effect"), "automatic capture should retain the passphrase-in-use note");
+    assert(!document.getElementById("journal-view").textContent.includes("correct horse battery staple"), "automatic capture must not store the BIP39 passphrase");
     document.querySelector('#workspace [data-workspace="vanity"]').click();
     await until(() => document.querySelector("#vanity-session-keys .session-key-option"), "the Key Station chip to appear");
+    const vanityKeyPickerStyle = getComputedStyle(document.getElementById("vanity-session-keys"));
+    const vanityKeyOptionStyle = getComputedStyle(document.querySelector("#vanity-session-keys .session-key-option"));
+    assert(vanityKeyPickerStyle.flexWrap === "nowrap" && vanityKeyPickerStyle.overflowX === "auto", "The shared Key Station picker was not a single horizontally scrollable row");
+    assert(vanityKeyOptionStyle.flexShrink === "0", "A shared Key Station key could shrink inside its horizontal row");
     const chips = [...document.querySelectorAll("#vanity-session-keys .session-key-option")].map((chip) => chip.textContent.trim());
     equal(chips.join(","), "ef94d090", "only the derived key is a chip — never the Key Station lab tab");
     document.querySelector("#vanity-session-keys .session-key-option").click();
@@ -1336,19 +1576,37 @@
     // The device sample taken on tab entry turns the odds into a time.
     await until(() => /expect a match roughly every/.test(document.getElementById("vanity-estimate").textContent), "the estimate to be timed from the device sample", 60000);
     assert(/on 1 worker,/.test(document.getElementById("vanity-estimate").textContent), "the estimate scales by the worker count");
-    // Stop on first find is a toggle: counter 0 matches inside the first
+    const vanityGo = document.getElementById("vanity-go"), vanityGoWidth = vanityGo.getBoundingClientRect().width;
+    vanityGo.click();
+    equal(vanityGo.textContent.trim(), "Stop", "Start grinding did not become the Stop button while running");
+    assert(!vanityGo.disabled && vanityGo.dataset.derivationState === "running", "The grinding Stop button was not available");
+    assert(Math.abs(vanityGo.getBoundingClientRect().width - vanityGoWidth) < 0.5, "The grinding Stop button changed width");
+    vanityGo.click();
+    await until(() => document.getElementById("vanity-status").textContent.startsWith("Stopped:"), "the shared grinding action to stop the run", 60000);
+    equal(vanityGo.textContent.trim(), "Start grinding", "The grinder action did not return to Start grinding");
+    assert(Math.abs(vanityGo.getBoundingClientRect().width - vanityGoWidth) < 0.5, "Start grinding changed width after stopping");
+    input(document.getElementById("vanity-start"), "0");
+    // Stop on first find is a checkbox: counter 0 matches inside the first
     // (small) chunk, so the run stops there instead of grinding all 62.
     const first = document.getElementById("vanity-first");
+    const firstText = first.nextElementSibling;
+    const firstBox = first.getBoundingClientRect(), firstTextBox = firstText.getBoundingClientRect();
+    assert(Math.abs((firstBox.top + firstBox.height / 2) - (firstTextBox.top + firstTextBox.height / 2)) < 1, "the Stop on first find checkbox and label are vertically aligned");
     first.click();
     await wait(0);
-    assert(first.getAttribute("aria-pressed") === "true" && first.textContent.includes("on"), "the toggle shows it is switched on");
-    document.getElementById("vanity-go").click();
+    assert(first.checked, "the Stop on first find checkbox is checked");
+    vanityGo.click();
+    equal(vanityGo.textContent.trim(), "Stop", "Start grinding did not become the Stop button while running");
+    assert(!vanityGo.disabled && vanityGo.dataset.derivationState === "running", "The grinding Stop button was not available");
+    assert(Math.abs(vanityGo.getBoundingClientRect().width - vanityGoWidth) < 0.5, "The grinding Stop button changed width");
     await until(() => document.getElementById("vanity-status").textContent.includes("Stopped at first match"), "the grind to stop at the first match", 60000);
+    equal(vanityGo.textContent.trim(), "Start grinding", "The grinder action did not return to Start grinding");
+    assert(Math.abs(vanityGo.getBoundingClientRect().width - vanityGoWidth) < 0.5, "Start grinding changed width after the run");
     assert(document.querySelectorAll("#vanity-out table tbody tr").length === 1, "exactly one match is listed");
     assert(/1 match\b/.test(document.getElementById("vanity-status").textContent), "the status counts the single match");
     first.click();
     await wait(0);
-    assert(first.getAttribute("aria-pressed") === "false", "the toggle switches off again");
+    assert(!first.checked, "the Stop on first find checkbox switches off again");
     document.getElementById("vanity-wipe").click();
     await until(() => !document.querySelector("#vanity-out table"), "Clear results to drop the table");
     input(document.getElementById("vanity-start"), "0");
@@ -1420,7 +1678,7 @@
     equal(document.getElementById("vanity-account-start").value, "10", "Start account continues where the range ended");
     document.querySelector("#vanity-out [data-vanity-apply]").click();
     await until(() => document.getElementById("vanity-status").textContent.includes("account 3 is now on the key"), "Update key to set the account", 60000);
-    assert(document.getElementById("vanity-source-kind").textContent.includes("m/84'/0'/3'/0/0"), "the selected-key panel shows the new path");
+    assert(document.getElementById("vanity-source-kind").textContent.includes("m/84'/0'/3'/{0-1}/{0-9}"), "the selected-key panel shows the new BIP-88 path template");
     equal([...document.querySelectorAll("#key-tabs .key-tab")].map((tab) => tab.textContent.trim()).join(","), "Key Station,c55401c7", "an account change keeps the same fingerprint and tab");
     // Silent Payments: the prefix filter lowercases, "sp1qq" is fixed, and
     // account 1' of this key is sp1qqtjetnp0fgkeulzm….
@@ -1889,6 +2147,76 @@
     document.querySelector('#workspace [data-workspace="calc"]').click();
     await until(() => !document.getElementById("key-manager").hidden, "key workspace");
   });
+  await test("the Lightning tab derives LND and LDK node keys, gates secrets, and names a wrong passphrase", async () => {
+    // Expected values are @scure/bip32 derivations pinned in
+    // test/lightning.test.mjs: the toolkit aezeed vector's entropy
+    // 000102030405060708090a0b0c0d0e0f at m/1017'/0'/6'/0/0, and the trezor
+    // "abandon … about" mnemonic down the ldk-node two-stage path at m/0'.
+    const GOLDEN_AEZEED =
+      "ability result leisure oven shiver wedding toe broccoli exclude " +
+      "mosquito kind van action waste merit bundle robust source able " +
+      "advice core humor kitchen siren";
+    const LND_PUBKEY = "0282faf17eeae0aa1dbdbe49c4fcbdb6738595ead9afdd7f8fb4a22c6c44d2849b";
+    const LDK_PUBKEY = "027cf7c81dc777e46572ff964f17650a0f6f783319fcc140fb9a69425e2fbdc93c";
+    document.querySelector('#workspace [data-workspace="ln"]').click();
+    await until(() => !document.getElementById("ln-card").hidden, "Lightning workspace");
+    assert(!document.getElementById("ln-network-field").hidden, "the network picker shows for aezeed");
+    try {
+      // aezeed (LND): the golden vector deciphers and derives the node key.
+      document.getElementById("ln-seed").value = GOLDEN_AEZEED;
+      document.getElementById("ln-go").click();
+      await until(() => document.getElementById("ln-node-pubkey"), "the node key to derive");
+      equal(document.getElementById("ln-node-pubkey").textContent, LND_PUBKEY, "LND node pubkey");
+      assert(document.getElementById("ln-out").textContent.includes("m/1017'/0'/6'/0/0"), "the LND path is named");
+      // Secrets stay behind the reveal toggle.
+      assert(!document.getElementById("ln-entropy"), "entropy hidden before reveal");
+      document.getElementById("ln-reveal").click();
+      await until(() => document.getElementById("ln-entropy"), "reveal to show the entropy");
+      equal(document.getElementById("ln-entropy").textContent, "000102030405060708090a0b0c0d0e0f", "decoded entropy");
+      assert(document.getElementById("ln-root-xprv").textContent.startsWith("xprv"), "the root xprv is shown");
+      // Changing the network select wipes even a revealed result; switching
+      // back and re-deriving reproduces the mainnet key.
+      const network = document.getElementById("ln-network");
+      network.value = "testnet";
+      network.dispatchEvent(new Event("change", { bubbles: true }));
+      assert(!document.getElementById("ln-node-pubkey"), "a network change wipes the revealed result");
+      assert(!document.getElementById("ln-entropy"), "the revealed entropy is gone with it");
+      network.value = "mainnet";
+      network.dispatchEvent(new Event("change", { bubbles: true }));
+      document.getElementById("ln-go").click();
+      await until(() => document.getElementById("ln-node-pubkey"), "re-derive after switching back");
+      equal(document.getElementById("ln-node-pubkey").textContent, LND_PUBKEY, "mainnet node pubkey again");
+      // A wrong passphrase is a named failure, not a different wallet.
+      document.getElementById("ln-pass").value = "wrong";
+      document.getElementById("ln-go").click();
+      await until(() => document.getElementById("ln-error").textContent.length > 0, "the passphrase error");
+      assert(/passphrase/i.test(document.getElementById("ln-error").textContent), "the error names the passphrase");
+      assert(!document.getElementById("ln-node-pubkey"), "no stale result behind an error");
+      // BIP-39 (LDK): the network picker hides and the two-stage key derives.
+      document.getElementById("ln-pass").value = "";
+      const format = document.getElementById("ln-format");
+      format.value = "bip39";
+      format.dispatchEvent(new Event("change", { bubbles: true }));
+      await until(() => document.getElementById("ln-network-field").hidden, "the network picker to hide for BIP-39");
+      document.getElementById("ln-seed").value =
+        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+      document.getElementById("ln-go").click();
+      await until(() => document.getElementById("ln-node-pubkey"), "the LDK node key to derive");
+      equal(document.getElementById("ln-node-pubkey").textContent, LDK_PUBKEY, "LDK node pubkey");
+      assert(document.getElementById("ln-out").textContent.includes("m/0'"), "the LDK path is named");
+      // Clear empties the fields and the result.
+      document.getElementById("ln-wipe").click();
+      await until(() => !document.getElementById("ln-node-pubkey"), "wipe to clear the result");
+      equal(document.getElementById("ln-seed").value, "", "the seed field is cleared");
+    } finally {
+      const format = document.getElementById("ln-format");
+      format.value = "aezeed";
+      format.dispatchEvent(new Event("change", { bubbles: true }));
+      document.getElementById("ln-wipe").click();
+      document.querySelector('#workspace [data-workspace="calc"]').click();
+      await until(() => !document.getElementById("key-manager").hidden, "key workspace");
+    }
+  });
   await test("Key Station methods are one dropdown carrying every method's mark", async () => {
     const modes = document.getElementById("modes");
     const select = document.getElementById("key-mode-select");
@@ -1896,7 +2224,7 @@
     assert(!modes.querySelector(".tab"), "The segmented method row should be gone at every width");
     equal([...select.options].map((option) => option.value).join(","), "dice,cards,hex,seed,key");
     equal(select.getAttribute("aria-labelledby"), "key-method-label");
-    equal(document.getElementById("key-method-label").textContent, "Method");
+    equal(document.getElementById("key-method-label").textContent, "Derivation Method");
     const root = modes.querySelector(".custom-select");
     assert(root, "The method select was not upgraded to the shared dropdown");
     const button = root.querySelector(".custom-select-button");
@@ -1957,6 +2285,9 @@
         const candidate = document.querySelector(selector);
         return candidate?.getClientRects().length ? candidate : null;
       }, `${workspace} Station icon`);
+      const stationTab = icon.closest(".key-tab");
+      assert(stationTab?.classList.contains("station-tab"), `${workspace} Station tab is not marked as pinned`);
+      equal(getComputedStyle(stationTab).position, "sticky", `${workspace} Station tab is not sticky`);
       const box = icon.getBoundingClientRect();
       assert(Math.abs(box.height - expectedHeight) < 0.5, `${workspace} Station icon has the wrong decorative height`);
       assert(Math.abs(box.width - expectedWidth) < 0.5, `${workspace} Station icon has the wrong optical width`);
@@ -2361,10 +2692,18 @@
     const toggle = await until(() => document.getElementById("dice-fairness-toggle"), "dice fairness toggle");
     const glyph = toggle.querySelector("[data-dice-fairness-glyph]");
     assert(toggle.textContent.includes("Die Distribution / Fairness Analysis") && glyph && glyph.textContent === "▸", "Fairness toggle did not use a text glyph and Die Distribution / Fairness Analysis label");
-    assert(toggle.closest(".seed-word-copy-row")?.querySelector(":scope > .seed-phrase-copy"), "Fairness toggle did not share the copy row");
+    // The toggle heads the panel it opens, so it has its own row; the copy
+    // button sits with the seed phrase title, above the grid it copies from.
+    assert(toggle.closest(".dice-fairness-row"), "Fairness toggle left its own row");
+    assert(!toggle.closest(".seed-word-copy-row"), "Fairness toggle is back in the copy row");
+    const titleRow = document.querySelector(".seed-word-copy-row:has(> .seed-phrase-copy)");
+    assert(titleRow?.querySelector(":scope > .label")?.textContent.trim(), "Copy button row lost its seed phrase title");
     input(dice, "");
     assert(panel.hidden && toggle.getAttribute("aria-expanded") === "false", "Empty rolls still showed the fairness panel");
+    const fairnessRow = toggle.closest(".dice-fairness-row");
+    assert(fairnessRow.hidden, "Fairness control showed with no rolls to analyse");
     input(dice, "123456".repeat(5));
+    assert(!fairnessRow.hidden, "Fairness control stayed hidden once rolls arrived");
     assert(panel.hidden, "Uniform d6 rolls opened the fairness panel without the expand button");
     toggle.click();
     assert(!panel.hidden && toggle.getAttribute("aria-expanded") === "true" && glyph.textContent === "▾", "Die Distribution / Fairness Analysis button did not expand the fairness panel");
@@ -2377,6 +2716,7 @@
     assert(panel.hidden && toggle.getAttribute("aria-expanded") === "false" && glyph.textContent === "▸", "Die Distribution / Fairness Analysis button did not collapse the fairness panel");
     input(dice, "");
     assert(panel.hidden, "Cleared rolls did not keep the fairness panel hidden");
+    assert(fairnessRow.hidden, "Cleared rolls left the fairness control behind");
   });
 
   await test("dice, binary, passphrase, multisig, and PSBT inputs cannot inject markup", async () => {
@@ -2468,12 +2808,87 @@
     }
     assert(!document.querySelector("#psbted-qr-code svg"), "stale bytes still animated as QR");
     assert(outText().includes("last valid build"), "stale note missing");
+    // The byte text itself leaves the screen: a disabled, readonly textarea's
+    // content is still selectable and copyable in Firefox.
+    equal(document.getElementById("psbted-result-b64").value, "", "stale base64 stayed selectable on screen");
+    equal(document.getElementById("psbted-result-hex").value, "", "stale hex stayed selectable on screen");
+    // Nor does the DOM keep a copy: value= alone leaves the bytes in the
+    // textarea's textContent/defaultValue.
+    equal(document.getElementById("psbted-result-b64").textContent, "", "stale base64 stayed in the DOM text");
+    equal(document.getElementById("psbted-result-hex").textContent, "", "stale hex stayed in the DOM text");
+    // Disabled only blocks user activation — a synthetic click still fires
+    // the retained handlers, and the stale guard must keep the bytes off
+    // the clipboard.
+    let copied = null;
+    const clipboard = navigator.clipboard;
+    const writeText = clipboard.writeText;
+    clipboard.writeText = (value) => { copied = value; return Promise.resolve(); };
+    document.getElementById("psbted-copy-b64").dispatchEvent(new MouseEvent("click"));
+    document.getElementById("psbted-copy-hex").dispatchEvent(new MouseEvent("click"));
+    clipboard.writeText = writeText;
+    equal(copied, null, "a synthetic click exported the stale bytes");
     // Typing back to a buildable value re-enables every export control.
     input(document.querySelector("[data-txout-val='0']"), "199902000");
     await until(() => document.getElementById("psbted-error").textContent === "" && document.getElementById("psbted-result-b64").value.includes("cHNidP8B"), "rebuild after stale");
     assert(!document.getElementById("psbted-copy-b64").disabled, "copy stayed disabled after a clean rebuild");
     assert(!document.getElementById("psbted-download").disabled, "download stayed disabled after a clean rebuild");
     assert(document.querySelector("#psbted-qr-code svg"), "QR did not resume after a clean rebuild");
+    // Structural edits round-trip too: add an input and an output, delete
+    // them again. The row delete buttons share the psbted-del styling class
+    // with the pair deletes; the pair handler must not fire for them (it
+    // threw and falsely marked the fresh build stale).
+    document.querySelector("[data-tx-add='input']").click();
+    await until(() => document.querySelectorAll("[data-txin]").length === 3, "added input row");
+    equal(document.getElementById("psbted-error").textContent, "", "add input failed");
+    document.querySelector("[data-tx-add='output']").click();
+    await until(() => document.querySelectorAll(".psbted-txouts tbody tr").length === 3, "added output row");
+    equal(document.getElementById("psbted-error").textContent, "", "add output failed");
+    document.querySelector("[data-txout-del='2']").click();
+    await until(() => document.querySelectorAll(".psbted-txouts tbody tr").length === 2, "deleted output row");
+    equal(document.getElementById("psbted-error").textContent, "", "output delete raised a spurious error");
+    assert(!document.getElementById("psbted-stale-note"), "a clean delete was marked stale");
+    document.querySelector("[data-txin-del='2']").click();
+    await until(() => document.querySelectorAll("[data-txin]").length === 2, "deleted input row");
+    equal(document.getElementById("psbted-error").textContent, "", "input delete raised a spurious error");
+    assert(!document.getElementById("psbted-stale-note"), "a clean delete was marked stale");
+    assert(document.getElementById("psbted-result-b64").value.startsWith("cHNidP8B"), "result missing after structural edits");
+    // Focus stays in the table's sats field while typing: the diagram's sats
+    // field shares the data-txout-val attribute, so the restore selector
+    // must be qualified by the edited element, not resolve to the diagram.
+    const tableValue = document.querySelector("td input.psbted-num[data-txout-val='0']");
+    tableValue.focus();
+    input(tableValue, "199903000");
+    await until(() => outText().includes("199903000") || document.getElementById("psbted-error").textContent, "live rebuild from the table field");
+    equal(document.getElementById("psbted-error").textContent, "", "table-field rebuild failed");
+    equal(document.activeElement, document.querySelector("td input.psbted-num[data-txout-val='0']"), "focus left the table field while typing");
+    // A rejected structural edit rolls back the WHOLE pre-edit state (issues
+    // #325/#360): the signing anchor and the signing pairs survive together,
+    // so a later accepted transaction edit still drops the pairs, and the
+    // restored fields are the last valid build — not stale. The PSBT below
+    // is test/fixtures/psbt/p2wpkh-1in-2out.b64 minus output 1 (removed at
+    // the pipeline level, so input 0 keeps its partial signature).
+    const signedOneOut = "cHNidP8BAFICAAAAARERERERERERERERERERERERERERERERERERERERERERAAAAAAD/////AcBcFQAAAAAAFgAUBq/Ua839Iu+UrBIqoR8kEkSjfswAAAAATwEEiLIeAhI0VngAAACAzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMwCeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gMEjRWeFQAAIAAAACAAAEBHwA/FwAAAAAAFgAUdR526BmRltRUlBxF0bOjI/FDO9YiAgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmEcwRAIgERERERERERERERERERERERERERERERERERERERERERECICIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAQEDBAEAAAAiBgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmBgSNFZ4VAAAgAAAAIAAAACAAAAAAAAAAAAAAA==";
+    input(box, signedOneOut);
+    document.getElementById("psbted-load").click();
+    await until(() => document.getElementById("psbted-result-b64")?.value.startsWith("cHNidP8B"), "signed one-output PSBT loads and builds");
+    assert(vizText().includes("1 signature"), "partial signature missing after load");
+    const signedBuild = document.getElementById("psbted-result-b64").value;
+    // Deleting the only output is rejected (bad-txns-vout-empty); the
+    // rollback restores the building document, its pairs, and its anchor.
+    document.querySelector("[data-txout-del='0']").click();
+    await until(() => document.getElementById("psbted-error").textContent, "last-output delete rejection");
+    assert(document.getElementById("psbted-error").textContent.includes("vout-empty"), "unexpected rejection for the last-output delete");
+    equal(document.querySelectorAll(".psbted-txouts tbody tr").length, 1, "the rejected delete removed the output row");
+    assert(vizText().includes("1 signature"), "signing pairs lost on rollback");
+    assert(!document.getElementById("psbted-stale-note"), "the restored, building document was marked stale");
+    assert(!document.getElementById("psbted-copy-b64").disabled, "export disabled on the restored, building document");
+    equal(document.getElementById("psbted-result-b64").value, signedBuild, "the restored document is not the last valid build");
+    // The anchor survived the rollback: an accepted transaction edit drops
+    // the pairs that committed to the pre-edit transaction.
+    input(document.getElementById("psbted-tx-locktime"), "500000");
+    await until(() => document.getElementById("psbted-error").textContent === "" && document.getElementById("psbted-result-b64").value !== signedBuild, "locktime rebuild after rollback");
+    assert(!vizText().includes("signature"), "stale partial signature survived a transaction edit after a rejected structural edit");
+    assert(!document.getElementById("psbted-stale-note"), "stale note after a clean rebuild");
     input(box, '<img src=x onerror="window.__browserTestInjected=true">');
     document.getElementById("psbted-load").click();
     await until(() => document.getElementById("psbted-error").textContent, "editor rejection");
@@ -2565,8 +2980,27 @@
     document.querySelector('#psbt-tool-tabs [data-psbt-tool="nonce"]').click();
     await until(() => !document.getElementById("psbt-card").hidden, "PSBT / Nonce tab");
     const box = await until(() => document.getElementById("psbt-text"), "PSBT input");
-    input(box, vector);
-    document.getElementById("psbt-go").click();
+    const fileInput = document.getElementById("psbt-file");
+    const upload = (bytes, name) => {
+      Object.defineProperty(fileInput, "files", {
+        configurable: true,
+        value: [new File([bytes], name, { type: "application/octet-stream" })],
+      });
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    const downloadedBytes = async (name) => {
+      state.lastBlob = null;
+      state.downloadName = "";
+      document.getElementById("psbt-download").click();
+      const blob = await until(() => state.downloadName === name && state.lastBlob, `${name} download`);
+      return new Uint8Array(await blob.arrayBuffer());
+    };
+    const sameBytes = (actual, expected, description) => {
+      assert(actual.length === expected.length && actual.every((byte, index) => byte === expected[index]), description);
+    };
+    const vectorBytes = Uint8Array.from(atob(vector), (char) => char.charCodeAt(0));
+    upload(vectorBytes, "wallet.psbt");
+    await until(() => box.value === vector, "binary PSBT upload");
     await until(() => document.getElementById("psbt-out").textContent.includes("ECDSA nonce check") || document.getElementById("psbt-error").textContent, "inspector report");
     equal(document.getElementById("psbt-error").textContent, "", "inspector rejected a valid vector");
     const out = document.getElementById("psbt-out").textContent;
@@ -2580,6 +3014,39 @@
     assert(out.includes("Output ownership / derivation — Incomplete"), "missing session-key coverage was not exposed");
     assert(out.includes("Nonce analysis — Incomplete"), "single-signature nonce limitation was not exposed");
     assert(!out.includes("LISTED CHECKS COMPLETE"), "an incomplete report was presented as complete");
+    sameBytes(await downloadedBytes("inspected.psbt"), vectorBytes, "downloaded PSBT differs from its binary upload");
+    // Cross-session nonce history saves the requested timestamp, master
+    // fingerprint field, and raw r, then loads the same file after a clear.
+    const historyDownload = document.getElementById("psbt-nonce-history-download");
+    const historyClear = document.getElementById("psbt-nonce-history-clear");
+    const historyInput = document.getElementById("psbt-nonce-history-file");
+    const historyStatus = document.getElementById("psbt-nonce-history-status");
+    assert(!historyDownload.disabled && !historyClear.disabled, "inspected nonce was not added to history");
+    state.lastBlob = null;
+    state.downloadName = "";
+    historyDownload.click();
+    const historyBlob = await until(() => state.downloadName === "entropylab-nonce-history.json" && state.lastBlob, "nonce history download");
+    const historyText = await historyBlob.text();
+    const historyJson = JSON.parse(historyText);
+    equal(historyJson.format, "entropylab-nonce-history", "nonce history format marker missing");
+    equal(historyJson.version, 1, "nonce history version missing");
+    equal(historyJson.records.length, 1, "nonce history should contain the one inspected ECDSA value");
+    const historyRecord = historyJson.records[0];
+    equal(Object.keys(historyRecord).sort().join("|"), "checkedAt|keyTag|masterFingerprint|messageTag|r|verified", "nonce history exported unexpected metadata");
+    const displayedR = out.match(/r values:\s*([0-9a-f]{64})/)?.[1];
+    assert(displayedR && historyRecord.r === displayedR, "nonce history did not export the inspected raw r value");
+    assert(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(historyRecord.checkedAt), "nonce history did not export the check time");
+    assert(historyRecord.masterFingerprint === null || /^[0-9a-f]{8}$/.test(historyRecord.masterFingerprint), "nonce history master fingerprint field is invalid");
+    assert(!historyText.includes(vector), "nonce history retained the PSBT payload");
+    historyClear.click();
+    assert(historyDownload.disabled && historyClear.disabled, "cleared nonce history remained available");
+    Object.defineProperty(historyInput, "files", {
+      configurable: true,
+      value: [new File([historyText], "entropylab-nonce-history.json", { type: "application/json" })],
+    });
+    historyInput.dispatchEvent(new Event("change", { bubbles: true }));
+    await until(() => historyStatus.textContent.includes("Loaded 1 nonce history record"), "nonce history upload");
+    assert(!historyDownload.disabled && !historyClear.disabled, "uploaded nonce history did not restore its controls");
     // Change the finalized signature's SIGHASH_ALL suffix to SIGHASH_NONE.
     // The report remains incomplete for unverified prevouts, but the real
     // policy problem must dominate the overall banner and its severity.
@@ -2619,6 +3086,15 @@
     assert(rawOut.includes("Where this transaction sends bitcoin"), "raw transaction outputs section missing");
     assert(rawOut.includes("1Cu32FVupVCgHkMMRJdYJugxwo2Aprgk7H"), "mainnet output address missing");
     assert(rawOut.includes("r values:"), "raw transaction signatures were not inspected");
+    const rawBytes = Uint8Array.from(rawTx.match(/../g), (pair) => parseInt(pair, 16));
+    const txnDownload = await downloadedBytes("inspected.txn");
+    sameBytes(txnDownload, rawBytes, "downloaded transaction differs from the inspected bytes");
+    input(box, "");
+    document.getElementById("psbt-out").innerHTML = "";
+    upload(txnDownload, "inspected.txn");
+    await until(() => document.getElementById("psbt-out").textContent.includes("Raw Bitcoin transaction.") || document.getElementById("psbt-error").textContent, "downloaded transaction re-upload");
+    equal(document.getElementById("psbt-error").textContent, "", "inspector rejected its binary .txn download");
+    sameBytes(await downloadedBytes("inspected.txn"), rawBytes, "transaction bytes changed after download and re-upload");
     // The header network picker must reach the render as well.
     document.getElementById("network-picker-button").click();
     document.querySelector('#network-picker-menu [data-network="testnet"]').click();
@@ -2942,6 +3418,11 @@
     assert(!document.getElementById("error").textContent, "Wallet derivation failed");
     const mobileResult = document.querySelector(".key-result");
     mobileResult.style.width = "220px";
+    const tablePrivateValue = mobileResult.querySelector(".table-private-field-value.secret-placeholder");
+    assert(
+      tablePrivateValue?.querySelector(".secret-placeholder-label")?.offsetParent === tablePrivateValue,
+      "The hidden WIF label escaped its horizontally scrolling table",
+    );
     assert(
       mobileResult.scrollWidth <= mobileResult.clientWidth,
       `Derived wallet widened a mobile layout to ${mobileResult.scrollWidth}px from ${mobileResult.clientWidth}px`,
@@ -3077,6 +3558,32 @@
     await until(() => !document.getElementById("key-manager").hidden, "key workspace after Journal key reference test");
   });
 
+  await test("every address row opens a QR overlay showing that row's address", async () => {
+    const row = document.querySelector('#acct [data-address-table="hd-receive"] tbody tr');
+    const index = row?.querySelector("th")?.textContent.trim();
+    const address = row?.querySelector(".addr-text")?.textContent.trim();
+    const button = row?.querySelector(".addr-qr");
+    assert(row && index && address, "The receive table row is missing");
+    assert(button, "The receive address row has no QR button");
+    equal(button.dataset.addressQr, address, "The QR button carries a different address than the row");
+    equal(button.getAttribute("aria-label"), `Show QR code for Address #${index}`, "The QR button aria-label is wrong");
+    button.click();
+    const overlay = await until(() => {
+      const candidate = document.getElementById("addr-qr-overlay");
+      return candidate && !candidate.hidden && candidate;
+    }, "address QR overlay");
+    equal(overlay.querySelector("#addr-qr-title").textContent, `Address #${index}`, "The overlay title is wrong");
+    const overlayAddress = overlay.querySelector("#addr-qr-address");
+    equal(overlayAddress.textContent, address, "The overlay shows a different address than the row");
+    const addressRange = document.createRange();
+    addressRange.selectNodeContents(overlayAddress);
+    equal(addressRange.getClientRects().length, 1, "The native SegWit address wraps in the overlay");
+    assert(overlay.querySelector("#addr-qr-image svg"), "The overlay did not render a QR code");
+    overlay.querySelector("#addr-qr-close").click();
+    await until(() => document.getElementById("addr-qr-overlay")?.hidden, "address QR overlay close");
+    assert(!overlay.querySelector("#addr-qr-image svg"), "The closed overlay kept its QR code");
+  });
+
   await test("BIP-85 keeps its Station and opens each child in a LifeHash fingerprint tab", async () => {
     const bip85Workspace = document.querySelector('#workspace [data-workspace="bip85"]');
     const keyWorkspace = document.querySelector('#workspace [data-workspace="calc"]');
@@ -3189,62 +3696,145 @@
     await until(() => !document.getElementById("key-manager").hidden, "key workspace after SP Station test");
   });
 
-  await test("MS Station restores its Key Station import section and safely controls key reuse", async () => {
+  await test("MS Station offers Key Station keys per co-signer and safely controls key reuse", async () => {
     document.querySelector('#workspace [data-workspace="msig"]').click();
     await until(() => !document.getElementById("msig-manager").hidden, "MS Station");
-    const globalPicker = document.getElementById("msig-session-keys");
     const reuseToggle = document.getElementById("msig-reuse-session-keys");
-    assert(globalPicker, "MS Station is missing the global Key Station picker");
+    assert(!document.getElementById("msig-session-keys"), "MS Station still has the redundant global Key Station picker");
+    assert(!document.querySelector(".msig-station-key-source"), "MS Station still has the redundant Key Station import section");
     assert(reuseToggle && !reuseToggle.checked, "MS Station key reuse was not opt-in");
-    assert(document.querySelector(".msig-station-key-source .label")?.textContent.includes("Bring in a key from Key Station"), "MS Station is missing the restored key import heading");
+    const originState = document.getElementById("msig-origin-state");
+    assert(originState?.hidden, "The redundant global co-signer derivation controls are still visible");
+    const scriptType = document.getElementById("msig-script-type");
+    const keyOrder = document.getElementById("msig-key-order");
+    const bip87Toggle = document.getElementById("msig-legacy-account-toggle");
+    const keyRows = document.getElementById("msig-keys");
+    assert(keyOrder && !keyOrder.hidden && !keyOrder.closest("details"), "Key order was not a visible multisig policy control");
+    assert(scriptType.compareDocumentPosition(keyOrder) & Node.DOCUMENT_POSITION_FOLLOWING, "Key order did not follow Script type");
+    assert(keyOrder.compareDocumentPosition(bip87Toggle) & Node.DOCUMENT_POSITION_FOLLOWING, "The BIP87 setting did not follow Key order");
+    assert(bip87Toggle.compareDocumentPosition(keyRows) & Node.DOCUMENT_POSITION_FOLLOWING, "The BIP87 setting did not precede the co-signer inputs");
     let rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
     assert(rows.length >= 2, "MS Station did not start with at least two co-signer rows");
+    rows.forEach((row, index) => {
+      const railLabel = row.querySelector(".msig-key-rail-label");
+      const keyStripStyle = getComputedStyle(row.querySelector(".msig-session-keys"));
+      assert(railLabel && railLabel.textContent === `Co-signer ${index + 1}`, "A co-signer row did not render its numbered side rail");
+      assert(row.getAttribute("aria-labelledby") === railLabel.id, "A co-signer side rail did not label its row");
+      assert(row.querySelectorAll(".msig-key-rail-line").length === 2, "A co-signer side rail did not bracket its content");
+      assert(keyStripStyle.flexWrap === "nowrap" && keyStripStyle.overflowX === "auto", "A co-signer key strip was not a single horizontally scrollable row");
+      const advanced = row.querySelector(".msig-cosigner-advanced");
+      assert(advanced && !advanced.open, "A co-signer's Advanced entry did not start collapsed");
+      const fingerprint = row.querySelector(".msig-master-fingerprint");
+      const fullPath = row.querySelector(".msig-full-path");
+      assert(row.querySelector("textarea") && fingerprint && fullPath, "A co-signer's key, master fingerprint, or full derivation path is not visible");
+      assert(fingerprint.compareDocumentPosition(fullPath) & Node.DOCUMENT_POSITION_FOLLOWING, "A co-signer's master fingerprint was not placed left of its full derivation path");
+      assert(!advanced.contains(row.querySelector("textarea")) && !advanced.contains(row.querySelector(".msig-full-path")), "A co-signer's key or full path was hidden in Advanced entry");
+    });
+    const railLeft = rows[0].querySelector(".msig-key-rail-line").getBoundingClientRect().left;
+    const reuseBorderLeft = reuseToggle.closest(".choice").getBoundingClientRect().left;
+    assert(Math.abs(railLeft - reuseBorderLeft) <= 1, `The co-signer rail did not align with the key-reuse container border (${railLeft} vs ${reuseBorderLeft})`);
     const rowOption = (row) => row.querySelector(".msig-session-keys .msig-session-key");
     rows.forEach((row) => input(row.querySelector("textarea"), ""));
     rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
+    assert(rows.every((row) => row.querySelector(".msig-full-path").value.startsWith("m/") && row.querySelectorAll(".msig-path-component").length >= 1), "Cleared co-signer rows did not show a default full path with synchronized Advanced components");
+    const emptyKeyHint = rows[0].querySelector("textarea").nextElementSibling;
+    assert(emptyKeyHint?.classList.contains("neutral") && emptyKeyHint.textContent === "Choose a Key Station key above, or paste a co-signer extended public key.", "An empty co-signer input did not show neutral entry guidance");
     assert(rows.every((row) => rowOption(row)), "A co-signer row did not offer the compatible Key Station key");
 
-    const globalOption = globalPicker.querySelector(".session-key-option");
-    assert(globalOption, "MS Station did not offer the compatible key in its global picker");
-    globalOption.click();
+    rowOption(rows[0]).click();
     rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
     const first = document.getElementById("msig-x-0");
-    assert(first.value.trim(), "The global Key Station picker did not populate the first co-signer row");
-    const identity = document.querySelector("#msig-keys .msig-key-row .msig-key-ident");
-    assert(identity && !identity.hidden, "The selected key identity was not shown above its co-signer input");
+    assert(first.value.trim(), "The first co-signer's Key Station picker did not populate its input");
+    assert(/^m\//.test(rows[0].querySelector(".msig-full-path").value), "Selecting a key did not populate its visible full derivation path");
+    const firstFingerprintInput = rows[0].querySelector(".msig-master-fingerprint");
+    const firstFingerprint = firstFingerprintInput.value;
+    const bareFirstKey = first.value;
+    assert(/^[A-Za-z]pub/.test(bareFirstKey) && !bareFirstKey.includes("["), "Selecting a key did not split its extended public key from its origin fields");
+    assert(/^[0-9a-f]{8}$/.test(firstFingerprint), "Selecting a key did not populate its separate master fingerprint");
+    input(document.getElementById("msig-network"), /^(?:tpub|[UV]pub)/.test(bareFirstKey) ? "1" : "0");
+    const firstHint = first.nextElementSibling;
+    const fieldMessageGap = firstHint.getBoundingClientRect().top - first.getBoundingClientRect().bottom;
+    const standardFieldMessageGap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--space-control"));
+    assert(firstHint.classList.contains("hint") && Math.abs(fieldMessageGap - standardFieldMessageGap) <= 0.5, `The co-signer input message gap did not match the app's field-message spacing (${fieldMessageGap}px vs ${standardFieldMessageGap}px)`);
+    assert(!document.querySelector("#msig-keys .msig-key-ident"), "The selected key was repeated between its label and input");
     rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
     assert(rowOption(rows[0]).classList.contains("active"), "The picked key was not marked active on the first row");
-    assert(!rowOption(rows[1]), "An assigned key remained available on another row while reuse was off");
-    assert(globalPicker.hidden, "An assigned key remained in the global picker while reuse was off");
+    assert(rowOption(rows[0]).getAttribute("aria-pressed") === "true", "The picked key did not expose its selected state");
+    const activeKeyStyle = getComputedStyle(rowOption(rows[0]));
+    assert(activeKeyStyle.backgroundColor === "rgb(255, 153, 0)" && activeKeyStyle.color === "rgb(0, 0, 0)", "The picked key did not retain its orange pressed state");
+    assert(activeKeyStyle.boxShadow.includes("inset"), "The picked key did not retain its inset pressed appearance");
+    const activeLifeHash = rowOption(rows[0]).querySelector(".key-tab-lifehash");
+    assert(getComputedStyle(activeLifeHash).boxShadow !== "none", "The picked key's LifeHash did not gain its dark emphasis shadow");
+    assert(rowOption(rows[1]), "An assigned key disappeared from another row while reuse was off");
+    assert(rowOption(rows[1]).classList.contains("unavailable") && rowOption(rows[1]).disabled, "An assigned key was not faded and unavailable on another row while reuse was off");
+
+    input(first, "");
+    input(first, bareFirstKey);
+    assert(first.value === bareFirstKey && firstHint.classList.contains("bad") && firstHint.textContent.includes("Master fingerprint"), "A bare xpub did not remain in its field while waiting for separate origin metadata");
+    input(firstFingerprintInput, firstFingerprint);
+    assert(first.value === bareFirstKey && firstHint.classList.contains("ok"), `A bare xpub did not validate after entering its separate fingerprint and path: ${firstHint.className} ${firstHint.textContent}`);
+
+    rowOption(rows[0]).click();
+    rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
+    assert(!first.value, "Clicking the selected key did not clear its co-signer input");
+    assert(rows.every((row) => rowOption(row)), "Deselecting a key did not restore it to every co-signer row");
+    assert(rows.every((row) => !rowOption(row).classList.contains("unavailable") && !rowOption(row).disabled), "Deselecting a key did not restore its normal state on every row");
+    assert([...rows[0].querySelectorAll(".msig-session-key")].every((option) => !option.classList.contains("active") && option.getAttribute("aria-pressed") === "false"), "Deselecting a key did not reset its row choices");
+    assert(getComputedStyle(rowOption(rows[0]).querySelector(".key-tab-lifehash")).boxShadow === "none", "Deselecting a key did not remove its LifeHash emphasis shadow");
+    rowOption(rows[0]).click();
+    rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
+    assert(first.value.trim(), "The key could not be selected again after being cleared");
+    assert(rowOption(rows[1]).classList.contains("unavailable") && rowOption(rows[1]).disabled, "The reselected key was not faded on another row while reuse was off");
 
     // Opting into reuse keeps the key selectable on every row. Picking it
     // again offers a derivation path so its descriptor public keys differ.
     reuseToggle.click();
     rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
-    assert(!globalPicker.hidden && globalPicker.querySelector(".session-key-option"), "Enabling reuse did not restore the global key choice");
     const second = document.getElementById("msig-x-1");
     const secondOption = rowOption(rows[1]);
-    assert(secondOption, "Enabling reuse did not restore the assigned key on another co-signer row");
+    assert(secondOption && !secondOption.classList.contains("unavailable") && !secondOption.disabled, "Enabling reuse did not restore the assigned key on another co-signer row");
     const secondFingerprint = secondOption.dataset.fingerprint;
     secondOption.click();
     assert(second.value.trim(), "The second co-signer row did not populate the reused key");
-    const reusePanel = rows[1].querySelector(".msig-key-reuse");
-    assert(reusePanel && !reusePanel.hidden, "Reusing a key did not offer a derivation path on the second row");
-    assert(reusePanel.querySelector(".msig-key-reuse-note").textContent.includes("Co-signer 1"), "The reuse note did not name the other co-signer");
-    const reusePath = reusePanel.querySelector(".msig-key-reuse-path");
-    assert(reusePath.value === "1", `The suggested derivation path was not /1 (got ${reusePath.value || "blank"})`);
-    assert(reusePanel.querySelector(".msig-key-reuse-clear").hidden, "Remove path showed before a path was applied");
-    reusePanel.querySelector(".msig-key-reuse-apply").click();
-    assert(/\/1$/.test(second.value), "Apply path did not append /1 to the reused co-signer key");
-    assert(rows[1].querySelector(".msig-key-reuse-note").textContent.includes("/1"), "The reuse note did not confirm the applied path");
-    assert(!reusePanel.querySelector(".msig-key-reuse-clear").hidden, "Remove path did not appear once a path was applied");
-    assert(second.value.includes(secondFingerprint), "The reused key origin changed when the path was applied");
-    reusePanel.querySelector(".msig-key-reuse-clear").click();
-    assert(!/\/1$/.test(second.value), "Remove path did not strip the appended derivation path");
+    const secondPath = rows[1].querySelector(".msig-full-path");
+    assert(/\/1$/.test(secondPath.value) && !second.value.includes("/"), "Reusing a key did not keep its distinct child in the separate full path");
+    assert(rows[1].querySelector(".msig-master-fingerprint").value === secondFingerprint, "The reused key's separate master fingerprint changed");
+    const secondAdvanced = rows[1].querySelector(".msig-cosigner-advanced");
+    secondAdvanced.open = true;
+    const childComponent = [...secondAdvanced.querySelectorAll(".msig-path-component")].at(-1);
+    assert(childComponent?.textContent.includes("Extended child 1"), "The reused key's appended child was not represented in Advanced entry");
+    const childInput = childComponent.querySelector(".msig-path-component-input");
+    childInput.focus();
+    childInput.setSelectionRange(1, 1);
+    input(childInput, "2");
+    assert(/\/2$/.test(secondPath.value) && second.nextElementSibling.textContent.includes("/2"), "Changing an Advanced path component did not update the full path and effective key expression");
+    assert(document.activeElement === childInput && childInput.selectionStart === 1, "Changing an Advanced path component lost its focus or cursor position");
+    input(secondPath, secondPath.value.replace(/\/2$/, ""));
+    assert(!second.nextElementSibling.textContent.includes("/2"), "Changing the full path did not update the effective co-signer key expression");
 
+    const firstPath = rows[0].querySelector(".msig-full-path").value;
+    const importedKey = `[${rows[0].querySelector(".msig-master-fingerprint").value}/${firstPath.slice(2).replace(/'/g, "h")}]${first.value.trim()}`;
     input(document.getElementById("msig-x-0"), "");
     input(document.getElementById("msig-x-1"), "");
     if (reuseToggle.checked) reuseToggle.click();
+    const importPanel = document.getElementById("msig-import");
+    const thresholdLabels = document.querySelector(".msig-threshold-labels");
+    assert(importPanel.compareDocumentPosition(thresholdLabels) & Node.DOCUMENT_POSITION_FOLLOWING, "Descriptor import did not come before manual m-of-n selection");
+    importPanel.open = true;
+    input(document.getElementById("msig-descriptor"), `wsh(sortedmulti(1,${importedKey}/0/*))`);
+    const importButton = document.getElementById("msig-descriptor-import");
+    assert(!importButton.disabled, "A valid descriptor was not ready to import into empty co-signer fields");
+    importButton.click();
+    equal(document.getElementById("msig-m").value, "1", "The imported threshold did not populate m");
+    equal(document.getElementById("msig-n").value, "1", "The imported key count did not populate n");
+    assert(document.getElementById("msig-threshold-control").disabled, "The imported range controls were not locked");
+    assert(document.getElementById("msig-m-number").disabled && document.getElementById("msig-n-number").disabled, "The imported numeric m-of-n controls were not locked");
+    assert(document.getElementById("msig-threshold-lock").textContent.includes("1-of-1"), "The imported quorum lock was not explained");
+    document.getElementById("msig-wipe").click();
+    assert(!document.getElementById("msig-threshold-control").disabled, "Clearing the multisig did not unlock manual quorum selection");
+    equal(document.getElementById("msig-m").value, "2", "Clearing the imported multisig did not restore default m");
+    equal(document.getElementById("msig-n").value, "3", "Clearing the imported multisig did not restore default n");
+    equal(document.getElementById("msig-descriptor").value, "", "Clearing the imported multisig did not clear its descriptor");
     document.querySelector('#workspace [data-workspace="calc"]').click();
     await until(() => !document.getElementById("key-manager").hidden, "key workspace after MS Station picker test");
   });
@@ -3296,7 +3886,8 @@
     branchHarden.click();
 
     input(branchRange, "2");
-    assert(document.getElementById("derivation-path-help").textContent.includes("Multiple address branches selected"), "The truncated path did not explain its branch range");
+    assert(document.getElementById("derivation-path-help").textContent.includes("BIP-88 full path template"), "The ranged path was not identified as a BIP-88 template");
+    assert(document.getElementById("derivation-path").value.endsWith("/{2-3}/7"), "The full path omitted the selected BIP-88 branch range");
     derive.click();
     await until(() => document.querySelector('#acct [data-address-table="hd-branch-3"]'), "custom branch 3 result");
     assert(document.querySelector('#acct [data-address-table="hd-branch-2"]'), "The first selected custom branch table was missing");
@@ -3411,6 +4002,8 @@
 
     document.querySelector('#workspace [data-workspace="msig"]').click();
     await until(() => !document.getElementById("msig-card").hidden, "multisig workspace");
+    const addMultisig = document.getElementById("add-msig");
+    assert(addMultisig.disabled && addMultisig.getAttribute("aria-disabled") === "true", "The Multi Signature plus control was available before the first multisig existed");
     const multisigScript = document.getElementById("msig-script-type");
     const multisigPurpose = document.getElementById("msig-purpose");
     equal(multisigPurpose.value, "48", "Native SegWit multisig did not default to purpose 48");
@@ -3455,6 +4048,7 @@
     const multisigBranchHarden = document.getElementById("msig-branch-start-harden");
     equal(multisigBranchStart.value, "0", "Multisig address branches did not start at Receive by default");
     equal(multisigBranchRange.value, "2", "Multisig address branches did not include Receive and Change by default");
+    equal(multisigAddressRange.value, "10", "Multisig did not default to ten addresses per branch");
     assert(!multisigBranchHarden.checked, "Multisig address branch did not default to unhardened");
     multisigBranchHarden.click();
     assert(document.getElementById("msig-branch-start-help").textContent.includes("Hardened"), "Multisig address branch help did not reflect hardened derivation");
@@ -3475,6 +4069,7 @@
     deriveMultisig.click();
     await until(() => document.querySelector("#msig-out .account-result-card") || document.getElementById("msig-error").textContent, "1-of-1 BIP87 result");
     assert(!document.getElementById("msig-error").textContent, "1-of-1 BIP87 derivation failed");
+    assert(!addMultisig.disabled && addMultisig.getAttribute("aria-disabled") === "false", "The Multi Signature plus control did not enable after the first multisig was derived");
     const multisigProgress = await until(() => document.getElementById("msig-derive-progress").classList.contains("is-complete") && document.getElementById("msig-derive-progress"), "completed multisig progress");
     assert(!multisigProgress.hidden, "Completed multisig progress did not remain visible");
     equal(multisigProgress.getAttribute("aria-valuenow"), "100", "Multisig progress did not reach 100%");
@@ -3548,7 +4143,9 @@
     equal(walletTabs().length, committedBefore + 1, "Deriving did not commit exactly one new wallet tab");
     document.getElementById("msig-edit-inputs").click();
     await until(() => !document.getElementById("msig-lab").hidden && document.getElementById("msig-x-0")?.value, "lab restored with the wallet's inputs");
-    equal(document.getElementById("msig-x-0").value, decorated, "Edit input did not restore the exact co-signer paste, descriptor-path suffix included");
+    equal(document.getElementById("msig-x-0").value, decorated.match(/\]([^/]+)/)[1], "Edit input did not restore the co-signer's bare extended public key");
+    equal(document.querySelector("#msig-keys .msig-master-fingerprint").value, "932f8b09", "Edit input did not restore the separate master fingerprint");
+    equal(document.querySelector("#msig-keys .msig-full-path").value, "m/48'/0'/0'/2'", "Edit input did not restore the separate full derivation path");
     equal(document.getElementById("msig-n").value, "1", "Edit input did not restore the key count");
     equal(document.getElementById("msig-m").value, "1", "Edit input did not restore the threshold");
     // The committed wallet keeps its result while its inputs sit in the lab.

@@ -32,9 +32,9 @@ export const hodlHexFormatLabels = Object.freeze({
     desc: "Use one 0 or 1 for each coin flip.",
   }),
   base4: Object.freeze({
-    label: "Base 4",
-    shortLabel: "Base 4",
-    unit: "base-4 digits",
+    label: "Quaternary (Base 4)",
+    shortLabel: "Quaternary",
+    unit: "quaternary digits",
     desc: "Each digit contributes exactly two bits; useful with a fair four-sided source.",
   }),
   base8: Object.freeze({
@@ -50,10 +50,10 @@ export const hodlHexFormatLabels = Object.freeze({
     desc: "Each hexadecimal character contributes four bits.",
   }),
   base32: Object.freeze({
-    label: "Crockford Base32",
-    shortLabel: "Base32",
-    unit: "characters",
-    desc: "Uses the unambiguous Crockford alphabet, then switches to coin flips for any remaining bits; O becomes 0 and I or L becomes 1.",
+    label: "Base32 (Bech32)",
+    shortLabel: "Bech32",
+    unit: "Bech32 characters",
+    desc: "Uses the lowercase Bech32 data-character alphabet without an HRP or checksum; a restricted final character carries any remaining bits.",
   }),
   base64: Object.freeze({
     label: "Base64 (RFC 4648 alphabet)",

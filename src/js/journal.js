@@ -312,6 +312,21 @@ export function snapshotSession(session) {
   lines.push(session.sp?.derived ? `- fingerprint ${session.sp.fingerprint || "unknown"}${session.sp.address ? `\n  ${session.sp.address}` : ""}` : "- not derived");
   lines.push("", "PSBT");
   lines.push(session.psbt?.loaded ? "- payload present in the inspector" : "- inspector empty");
+  if (session.psbt?.loaded && session.psbt?.nonce) {
+    let kind = session.psbt?.nonceKind === "transaction" ? "raw transaction" : "PSBT";
+    if (session.psbt.nonce === "reuse") lines.push(`- nonce verdict: reused ECDSA nonce in this ${kind} (same key, different digest)`);
+    else if (session.psbt.nonce === "possible") lines.push(`- nonce verdict: possible reuse in this ${kind} (digest incomplete)`);
+    else if (session.psbt.nonce === "cross-key") lines.push(`- nonce verdict: same ECDSA r claimed under different keys in this ${kind}`);
+    else if (session.psbt.nonce === "incomplete") lines.push(`- nonce verdict: incomplete coverage in this ${kind}`);
+    else if (session.psbt.nonce === "clean") lines.push(`- nonce verdict: no repeated ECDSA r for the same key in this ${kind} (ECDSA signatures only; Taproot/Schnorr nonces are not analyzed)`);
+  }
+  let historyCount = Number.isSafeInteger(session.psbt?.historyCount) && session.psbt.historyCount > 0 ? session.psbt.historyCount : 0;
+  lines.push(`- nonce history: ${historyCount} record${historyCount === 1 ? "" : "s"} in memory`);
+  if (session.psbt?.loaded && session.psbt?.historyVerdict === "reuse") lines.push("- cross-session comparison: reused ECDSA nonce detected");
+  else if (session.psbt?.loaded && session.psbt?.historyVerdict === "possible") lines.push("- cross-session comparison: possible reuse; verification incomplete");
+  else if (session.psbt?.loaded && session.psbt?.historyVerdict === "cross-key") lines.push("- cross-session comparison: same r appears under different keys");
+  else if (session.psbt?.loaded && session.psbt?.historyVerdict === "clean") lines.push("- cross-session comparison: no matching key and r pair in earlier records");
+  else if (session.psbt?.loaded && session.psbt?.historyVerdict === "incomplete") lines.push("- cross-session comparison: incomplete or no earlier records");
   lines.push("", "This snapshot lives in this page until you download it. Closing the tab discards it.");
   return lines.join("\n");
 }
@@ -342,17 +357,45 @@ export const JOURNAL_MIN_ITERATIONS = 100_000; // never open a file cheaper than
 export const JOURNAL_MAX_ITERATIONS = 10_000_000; // a crafted file must not hang the page
 export const JOURNAL_SALT_PREFIX = "entropylab-journal-salt-v1:";
 export const IV_BYTES = 12;
-export const PASSWORD_MIN_LENGTH = 12;
 export const METHODS = Object.freeze(["dice", "coin", "hex", "brain", "seed", "cards"]);
 const JOURNAL_EXPORT_KINDS = new Set(["notebook", "key-manager", "session-state", "session-log"]);
 export const METHOD_LABELS = Object.freeze({
   dice: "Dice rolls",
   coin: "Coin flips",
-  hex: "Hex",
+  hex: "Number bases",
   brain: "Brain-wallet text",
   seed: "Manual seed",
   cards: "Playing cards",
 });
+const ENTRY_VARIANTS = Object.freeze({
+  diceMethod: Object.freeze({ coldcard: "COLDCARD / SeedSigner", coleman: "Ian Coleman / Keystone", bitbox: "BitBox diceware", dplus: "D++ direct word selection" }),
+  entropyFormat: Object.freeze({ bin: "Binary (Base 2)", base4: "Quaternary (Base 4)", base8: "Base 8", hex: "Hexadecimal (Base 16)", base32: "Base32 (Bech32)", base64: "Base64" }),
+  cardMethod: Object.freeze({ hashed: "Hashed transcript", direct: "Direct word selection" }),
+  seedMethod: Object.freeze({ words: "Direct words", numbers: "BIP39 word numbers" }),
+});
+
+// Each entry method owns at most one variant field. normalizeEntry keeps only
+// the field that belongs to the entry's method, so a stale variant cannot
+// survive a method switch through replaceEntry's merge of the previous entry.
+const METHOD_VARIANT_FIELD = Object.freeze({
+  dice: "diceMethod",
+  hex: "entropyFormat",
+  cards: "cardMethod",
+  seed: "seedMethod",
+});
+
+function normalizeEntryVariant(field, value) {
+  const variant = String(value ?? "");
+  return Object.hasOwn(ENTRY_VARIANTS[field], variant) ? variant : "";
+}
+
+export function entryMethodLabel(entry) {
+  const method = String(entry?.method || "");
+  const base = METHOD_LABELS[method] || method;
+  const field = METHOD_VARIANT_FIELD[method] || "";
+  const variant = field ? ENTRY_VARIANTS[field][normalizeEntryVariant(field, entry?.[field])] : "";
+  return variant ? `${base} · ${variant}` : base;
+}
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -380,8 +423,7 @@ export function wipeDocument(doc) {
 }
 
 export function assertPassword(password, { confirm } = {}) {
-  if (typeof password !== "string" || !password) throw new Error("Journal password is missing.");
-  if (Array.from(password).length < PASSWORD_MIN_LENGTH) throw new Error(`Journal password needs at least ${PASSWORD_MIN_LENGTH} characters.`);
+  if (typeof password !== "string") throw new Error("Journal password must be text.");
   if (confirm != null && confirm !== password) throw new Error("The two passwords do not match.");
 }
 
@@ -418,7 +460,7 @@ async function deriveMasterBits(password, iterations) {
 // One PBKDF2 run yields 512 bits: the first half keys AES-GCM, the second
 // keys the HMAC that derives IVs. Both are imported non-extractable.
 export async function deriveJournalKeys(password, iterations = JOURNAL_ITERATIONS) {
-  if (typeof password !== "string" || !password) throw new Error("Journal password is missing.");
+  if (typeof password !== "string") throw new Error("Journal password must be text.");
   if (!Number.isInteger(iterations) || iterations < JOURNAL_MIN_ITERATIONS || iterations > JOURNAL_MAX_ITERATIONS) {
     throw new Error("This journal file uses an unsupported key-derivation cost.");
   }
@@ -428,7 +470,7 @@ export async function deriveJournalKeys(password, iterations = JOURNAL_ITERATION
     const encKey = await subtle.importKey("raw", master.subarray(0, 32), { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
     const ivKey = await subtle.importKey("raw", master.subarray(32), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
     const verify = new Uint8Array(await subtle.digest("SHA-256", master));
-    return { encKey, ivKey, verify, iterations };
+    return { encKey, ivKey, verify, iterations, passwordProtected: password.length > 0 };
   } finally {
     wipeBytes(master);
   }
@@ -447,7 +489,7 @@ export function normalizeEntry(entry, now = new Date()) {
   if (!/^\d{4}-\d{2}-\d{2}T/.test(created)) throw new Error("Journal timestamp must be ISO-8601.");
   const walletId = entry?.walletId == null || entry.walletId === "" ? null : Number(entry.walletId);
   if (walletId != null && (!Number.isInteger(walletId) || walletId < 0)) throw new Error("Session wallet id must be a whole number.");
-  return {
+  const normalized = {
     id: Number.isInteger(entry?.id) && entry.id > 0 ? entry.id : 0,
     method,
     input: String(entry?.input ?? ""),
@@ -459,6 +501,12 @@ export function normalizeEntry(entry, now = new Date()) {
     walletName: String(entry?.walletName ?? ""),
     fingerprint: String(entry?.fingerprint ?? "").toLowerCase(),
   };
+  const variantField = METHOD_VARIANT_FIELD[method] || "";
+  for (const field of Object.keys(ENTRY_VARIANTS)) {
+    const variant = field === variantField ? normalizeEntryVariant(field, entry?.[field]) : "";
+    if (variant) normalized[field] = variant;
+  }
+  return normalized;
 }
 
 export function addEntry(doc, fields, now = new Date()) {
@@ -505,18 +553,26 @@ export function snapshotFromKeyState(state) {
   const mode = state.mode || "";
   let method = "seed";
   let input = "";
+  let variants = {};
   if (mode === "dice") {
     method = "dice";
-    input = state.diceMethod === "dplus" ? fields.dplusDice || "" : state.diceMethod === "bitbox" ? fields.bitboxDice || "" : fields.dice || "";
+    variants.diceMethod = normalizeEntryVariant("diceMethod", state.diceMethod) || "coldcard";
+    if (state.diceMethod === "dplus") input = fields.dplusDice || "";
+    else if (state.diceMethod === "bitbox") input = fields.bitboxDice || "";
+    else if (state.diceMethod === "coleman" && Object.prototype.hasOwnProperty.call(fields, "colemanDice")) input = fields.colemanDice || "";
+    else input = fields.dice || "";
   } else if (mode === "cards") {
     method = "cards";
+    variants.cardMethod = normalizeEntryVariant("cardMethod", state.cardMethod) || "hashed";
     input = state.cardMethod === "direct" ? fields.directCards || "" : fields.cards || "";
   } else if (mode === "hex") {
     method = "hex";
     const format = state.entropyFormat || "hex";
     input = fields[format] || fields.hex || "";
+    variants.entropyFormat = fields[format] ? normalizeEntryVariant("entropyFormat", format) || "hex" : "hex";
   } else if (mode === "seed") {
     method = "seed";
+    variants.seedMethod = normalizeEntryVariant("seedMethod", state.seedMethod) || "words";
     input = state.seedMethod === "numbers" ? fields.seedNumbers || "" : fields.seed || "";
   } else if (mode === "key") {
     const kind = fields.keyKind || "";
@@ -532,6 +588,7 @@ export function snapshotFromKeyState(state) {
   if (!String(input).trim() && !String(phrase).trim()) return null;
   return {
     method,
+    ...variants,
     input: String(input),
     phrase: String(phrase),
     label: String(state.name || state.result?.masterFingerprint || "").trim(),
@@ -540,6 +597,68 @@ export function snapshotFromKeyState(state) {
     walletName: String(state.name || ""),
     fingerprint: String(state.result?.masterFingerprint || "").toLowerCase(),
   };
+}
+
+const KEY_SNAPSHOT_MATCH_FIELDS = Object.freeze([
+  "method",
+  "diceMethod",
+  "entropyFormat",
+  "cardMethod",
+  "seedMethod",
+  "input",
+  "phrase",
+  "label",
+  "notes",
+  "walletName",
+  "fingerprint",
+]);
+
+// Session wallet ids are intentionally excluded: they are only meaningful in
+// the current page and may be reused when a journal is opened later.
+export function keySnapshotMatchesEntry(entry, snapshot) {
+  if (!entry || !snapshot) return false;
+  return KEY_SNAPSHOT_MATCH_FIELDS.every((field) => {
+    let left = String(entry[field] ?? ""), right = String(snapshot[field] ?? "");
+    if (field === "fingerprint") {
+      left = left.toLowerCase();
+      right = right.toLowerCase();
+    }
+    return left === right;
+  });
+}
+
+export function syncKeySnapshots(doc, snapshots, associations, now = new Date()) {
+  if (!doc || !Array.isArray(doc.entries)) throw new Error("Journal document is missing.");
+  if (!(associations instanceof Map)) throw new Error("Journal key associations are missing.");
+  const result = { added: 0, updated: 0, matched: 0 };
+  const claimedEntryIds = new Set();
+  for (const snapshot of snapshots || []) {
+    if (!snapshot || snapshot.walletId == null || snapshot.walletId === "") continue;
+    const stateId = Number(snapshot.walletId);
+    if (!Number.isInteger(stateId) || stateId < 0) continue;
+    let entryId = associations.get(stateId);
+    let entry = entryId == null || claimedEntryIds.has(entryId) ? null : doc.entries.find((item) => item.id === entryId);
+    if (!entry && entryId != null) associations.delete(stateId);
+    if (entry) {
+      claimedEntryIds.add(entry.id);
+      if (keySnapshotMatchesEntry(entry, snapshot)) {
+        result.matched++;
+      } else {
+        entry = replaceEntry(doc, entry.id, snapshot);
+        result.updated++;
+      }
+    } else {
+      entry = doc.entries.find((item) => !claimedEntryIds.has(item.id) && keySnapshotMatchesEntry(item, snapshot));
+      if (entry) result.matched++;
+      else {
+        entry = addEntry(doc, snapshot, now);
+        result.added++;
+      }
+      associations.set(stateId, entry.id);
+      claimedEntryIds.add(entry.id);
+    }
+  }
+  return result;
 }
 
 export function encodeFile({ iv, ciphertext, iterations = JOURNAL_ITERATIONS }) {
@@ -680,7 +799,7 @@ export async function openDocument(file, password) {
   try {
     plainBytes = new Uint8Array(await subtle.decrypt({ name: "AES-GCM", iv: parsed.iv }, keys.encKey, parsed.ciphertext));
   } catch {
-    throw new Error("Wrong password, or the file is damaged.");
+    throw new Error("The password is incorrect, or the journal file is damaged.");
   }
   try {
     return { keys, doc: parseDocument(decoder.decode(plainBytes)) };

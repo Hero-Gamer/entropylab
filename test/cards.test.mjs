@@ -101,8 +101,8 @@ function hodlTargetLastWords(value, targetWords) {
 const hodlDirectCardFinalRadices = new Function("hodlSeedConfig", `${loadSlice("hodlDirectCardFinalRadices")}; return hodlDirectCardFinalRadices;`)(hodlSeedConfig);
 const hodlDirectCardSteps = new Function("hodlSeedConfig", "hodlDirectCardFinalRadices", `${loadSlice("hodlDirectCardSteps")}; return hodlDirectCardSteps;`)(hodlSeedConfig, hodlDirectCardFinalRadices);
 const hodlDirectCardSetLabel = new Function(`${loadSlice("hodlDirectCardSetLabel")}; return hodlDirectCardSetLabel;`)();
-const hodlDirectCardInstruction = new Function("hodlDirectCardSetLabel", "hodlT", `${loadSlice("hodlDirectCardInstruction")}; return hodlDirectCardInstruction;`)(hodlDirectCardSetLabel, hodlT);
-const hodlHashedCardInstruction = new Function("hodlT", `${loadSlice("hodlHashedCardInstruction")}; return hodlHashedCardInstruction;`)(hodlT);
+const hodlDirectCardInstruction = new Function("hodlDirectCardSetLabel", "hodlTText", `${loadSlice("hodlDirectCardInstruction")}; return hodlDirectCardInstruction;`)(hodlDirectCardSetLabel, hodlT);
+const hodlHashedCardInstruction = new Function("hodlTText", `${loadSlice("hodlHashedCardInstruction")}; return hodlHashedCardInstruction;`)(hodlT);
 const hodlDirectCardRankValue = new Function(`${loadSlice("hodlDirectCardRankValue")}; return hodlDirectCardRankValue;`)();
 const hodlDirectCardSeparator = new Function("hodlSeedConfig", "hodlDirectCardFinalRadices", `${loadSlice("hodlDirectCardSeparator")}; return hodlDirectCardSeparator;`)(hodlSeedConfig, hodlDirectCardFinalRadices);
 const hodlFilterDirectCards = new Function("hodlDirectCardSeparator", `${loadSlice("hodlFilterDirectCards")}; return hodlFilterDirectCards;`)(hodlDirectCardSeparator);
@@ -355,7 +355,7 @@ test("card notices give only the physical action required before the next draw",
   let direct = hodlParseDirectCards("", 24);
   assert.equal(hodlDirectCardInstruction(direct), "Shuffle A–8 (any suit) before the first draw.");
   direct = hodlParseDirectCards("A A A", 24);
-  assert.equal(hodlDirectCardInstruction(direct), "Shuffle A–4 (any suit) before the next draw.");
+  assert.equal(hodlDirectCardInstruction(direct), "Shuffle A–4 (any suit), then draw");
 
   const needed = { first: 52, extra: 6 };
   assert.equal(hodlHashedCardInstruction({ cards: [], needed }), "Shuffle a standard 52-card deck before the first draw.");

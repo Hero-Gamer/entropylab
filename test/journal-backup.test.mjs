@@ -27,6 +27,7 @@ import {
   createJournal,
   deriveJournalKeys,
   emptyDocument,
+  entryMethodLabel,
   encodeFile,
   formatLog,
   formatNotebook,
@@ -36,6 +37,7 @@ import {
   journalKeyReferenceToken,
   journalNotebookRuns,
   journalTextFromRuns,
+  keySnapshotMatchesEntry,
   mergeNotebookImport,
   normalizeEntry,
   openDocument,
@@ -50,6 +52,7 @@ import {
   serializeNotebook,
   snapshotFromKeyState,
   snapshotSession,
+  syncKeySnapshots,
   wipeBytes,
   wipeDocument,
   wipeEntry,
@@ -148,9 +151,9 @@ test("a tampered backup is detected at open, not silently restored", async () =>
   addEntry(doc, sampleEntry(), fixedNow);
   const file = await sealDocument(doc, keys);
   const flippedCipher = { ...file, ciphertext: flip(file.ciphertext, 0) };
-  await assert.rejects(() => openDocument(pack(flippedCipher), password), /Wrong password/);
+  await assert.rejects(() => openDocument(pack(flippedCipher), password), /password is incorrect/);
   const flippedIv = { ...file, iv: flip(file.iv, 0) };
-  await assert.rejects(() => openDocument(pack(flippedIv), password), /Wrong password/);
+  await assert.rejects(() => openDocument(pack(flippedIv), password), /password is incorrect/);
 });
 
 test("a backup that decrypts to invalid entries is rejected entry by entry", async () => {
@@ -216,6 +219,7 @@ test("key derivation is deterministic, bounded, and non-extractable", async () =
   const again = await deriveJournalKeys(password);
   assert.deepEqual([...again.verify], [...keys.verify]); // same password, same verifier
   assert.equal(again.iterations, JOURNAL_ITERATIONS);
+  assert.equal(again.passwordProtected, true);
   assert.equal(again.encKey.extractable, false);
   assert.deepEqual([...again.encKey.usages].sort(), ["decrypt", "encrypt"]);
   assert.equal(again.ivKey.extractable, false);
@@ -225,7 +229,9 @@ test("key derivation is deterministic, bounded, and non-extractable", async () =
   await assert.rejects(() => deriveJournalKeys(password, JOURNAL_MIN_ITERATIONS - 1), /key-derivation cost/);
   await assert.rejects(() => deriveJournalKeys(password, JOURNAL_MAX_ITERATIONS + 1), /key-derivation cost/);
   await assert.rejects(() => deriveJournalKeys(password, 600000.5), /key-derivation cost/);
-  await assert.rejects(() => deriveJournalKeys(""), /missing/);
+  const passwordless = await deriveJournalKeys("");
+  assert.equal(passwordless.passwordProtected, false);
+  assert.ok(passwordless.verify.some((byte) => byte !== 0));
 });
 
 // --- Entry bookkeeping behind the backup ------------------------------------
@@ -305,24 +311,71 @@ test("wipe helpers zero secrets in place and reset allocation", () => {
   wipeDocument(null); // must not throw
 });
 
-// --- Session-key snapshots (what "Save to Journal" captures) ----------------
+// --- Session-key snapshots (what automatic Key Station capture stores) -------
 
 test("the snapshot captures each input method's live transcript", () => {
   const base = { id: 1, isLab: false, name: "", fields: {}, result: null };
   const dplus = snapshotFromKeyState({ ...base, mode: "dice", diceMethod: "dplus", fields: { dplusDice: "⚁⚂⚄", dice: "1 2 3" } });
   assert.equal(dplus.input, "⚁⚂⚄");
+  assert.equal(dplus.diceMethod, "dplus");
+  assert.equal(entryMethodLabel(dplus), "Dice rolls · D++ direct word selection");
   const bitbox = snapshotFromKeyState({ ...base, mode: "dice", diceMethod: "bitbox", fields: { bitboxDice: "bb", dice: "1 2 3" } });
   assert.equal(bitbox.input, "bb");
+  assert.equal(bitbox.diceMethod, "bitbox");
+  const coleman = snapshotFromKeyState({ ...base, mode: "dice", diceMethod: "coleman", fields: { colemanDice: "654321", dice: "123456" } });
+  assert.equal(coleman.input, "654321");
+  const legacyColeman = snapshotFromKeyState({ ...base, mode: "dice", diceMethod: "coleman", fields: { dice: "123456" } });
+  assert.equal(legacyColeman.input, "123456");
   const direct = snapshotFromKeyState({ ...base, mode: "cards", cardMethod: "direct", fields: { directCards: "AS KD", cards: "hashed" } });
   assert.equal(direct.method, "cards");
   assert.equal(direct.input, "AS KD");
+  assert.equal(direct.cardMethod, "direct");
+  assert.equal(entryMethodLabel(direct), "Playing cards · Direct word selection");
   const binary = snapshotFromKeyState({ ...base, mode: "hex", entropyFormat: "bin", fields: { bin: "0101", hex: "aa" } });
   assert.equal(binary.method, "hex");
   assert.equal(binary.input, "0101");
+  assert.equal(binary.entropyFormat, "bin");
+  assert.equal(entryMethodLabel(binary), "Number bases · Binary (Base 2)");
   const hexFallback = snapshotFromKeyState({ ...base, mode: "hex", entropyFormat: "base64", fields: { hex: "aa" } });
   assert.equal(hexFallback.input, "aa"); // an empty chosen format falls back to hex
+  assert.equal(hexFallback.entropyFormat, "hex");
   const numbers = snapshotFromKeyState({ ...base, mode: "seed", seedMethod: "numbers", fields: { seedNumbers: "1 2 3", seed: "words" } });
   assert.equal(numbers.input, "1 2 3");
+  assert.equal(numbers.seedMethod, "numbers");
+  assert.equal(entryMethodLabel(numbers), "Manual seed · BIP39 word numbers");
+});
+
+test("journal entry variants survive encryption while old and unknown variants stay safe", async () => {
+  const doc = emptyDocument();
+  addEntry(doc, sampleEntry({ method: "dice", diceMethod: "coleman" }), fixedNow);
+  const opened = await openDocument(pack(await sealDocument(doc, keys)), password);
+  assert.equal(opened.doc.entries[0].diceMethod, "coleman");
+  assert.equal(entryMethodLabel(opened.doc.entries[0]), "Dice rolls · Ian Coleman / Keystone");
+  const oldEntry = normalizeEntry(sampleEntry({ method: "seed" }), fixedNow);
+  assert.equal(entryMethodLabel(oldEntry), "Manual seed");
+  const hostile = normalizeEntry(sampleEntry({ method: "cards", cardMethod: "exfil", entropyFormat: "javascript:" }), fixedNow);
+  assert.equal(hostile.cardMethod, undefined);
+  assert.equal(hostile.entropyFormat, undefined);
+  assert.equal(entryMethodLabel(hostile), "Playing cards");
+  // The hex method is labeled "Number bases" with or without a variant,
+  // matching the method pickers in the rest of the app.
+  assert.equal(entryMethodLabel(normalizeEntry(sampleEntry({ method: "hex" }), fixedNow)), "Number bases");
+});
+
+test("a variant that belongs to another method is dropped, even through an edit", () => {
+  // replaceEntry merges the previous entry, so a stale diceMethod would
+  // survive a method switch if normalizeEntry did not drop it.
+  const doc = emptyDocument();
+  const entry = addEntry(doc, sampleEntry({ method: "dice", diceMethod: "coldcard" }), fixedNow);
+  const replaced = replaceEntry(doc, entry.id, sampleEntry({ method: "cards", cardMethod: "direct" }));
+  assert.equal(replaced.method, "cards");
+  assert.equal(replaced.diceMethod, undefined);
+  assert.equal(replaced.cardMethod, "direct");
+  assert.equal(entryMethodLabel(replaced), "Playing cards · Direct word selection");
+  // Methods with no variant field (coin, brain) drop every variant.
+  const coin = normalizeEntry(sampleEntry({ method: "coin", diceMethod: "coldcard", seedMethod: "numbers" }), fixedNow);
+  assert.equal(coin.diceMethod, undefined);
+  assert.equal(coin.seedMethod, undefined);
 });
 
 test("the snapshot captures private-key modes and the passphrase warning", () => {
@@ -343,6 +396,56 @@ test("the snapshot captures private-key modes and the passphrase warning", () =>
   assert.equal(snapshotFromKeyState({ isLab: true, mode: "dice", fields: { dice: "1" } }), null);
   assert.equal(snapshotFromKeyState({ ...base, fields: {}, result: null }), null);
   assert.equal(snapshotFromKeyState(null), null);
+});
+
+test("derived Key Station snapshots backfill a new journal and auto-add later keys", () => {
+  const doc = emptyDocument(), associations = new Map();
+  const beforeCreate = sampleEntry({ walletId: 11, label: "Before journal", input: "1 2 3", created: undefined });
+  const afterCreate = sampleEntry({ walletId: 12, label: "After journal", input: "4 5 6", created: undefined });
+  assert.deepEqual(syncKeySnapshots(doc, [beforeCreate], associations, fixedNow), { added: 1, updated: 0, matched: 0 });
+  assert.equal(doc.entries.length, 1);
+  assert.deepEqual(syncKeySnapshots(doc, [afterCreate], associations, fixedNow), { added: 1, updated: 0, matched: 0 });
+  assert.deepEqual(doc.entries.map((entry) => entry.label), ["Before journal", "After journal"]);
+  assert.equal(associations.get(11), doc.entries[0].id);
+  assert.equal(associations.get(12), doc.entries[1].id);
+});
+
+test("re-deriving one Key Station state updates its associated entry", () => {
+  const doc = emptyDocument(), associations = new Map();
+  const first = sampleEntry({ walletId: 21, label: "Same tab", input: "first transcript", fingerprint: "11111111", created: undefined });
+  syncKeySnapshots(doc, [first], associations, fixedNow);
+  const entryId = doc.entries[0].id, created = doc.entries[0].created;
+  const next = { ...first, input: "replacement transcript", phrase: "replacement mnemonic", fingerprint: "22222222" };
+  assert.deepEqual(syncKeySnapshots(doc, [next], associations, new Date("2026-09-02T00:00:00Z")), { added: 0, updated: 1, matched: 0 });
+  assert.equal(doc.entries.length, 1);
+  assert.equal(doc.entries[0].id, entryId);
+  assert.equal(doc.entries[0].created, created);
+  assert.equal(doc.entries[0].input, "replacement transcript");
+  assert.equal(doc.entries[0].fingerprint, "22222222");
+});
+
+test("opening a journal matches meaningful snapshots and backfills only missing keys", () => {
+  const doc = emptyDocument();
+  const matching = sampleEntry({ walletId: 31, label: "Existing", input: "same transcript", created: undefined });
+  const existing = addEntry(doc, matching, fixedNow);
+  const reusedSessionId = { ...matching, walletId: 31, input: "different transcript", phrase: "different mnemonic" };
+  const missing = sampleEntry({ walletId: 32, label: "Missing", input: "new transcript", fingerprint: "cafebabe", created: undefined });
+  const reopenedAssociations = new Map();
+  assert(keySnapshotMatchesEntry(existing, { ...matching, walletId: 999 }), "session ids must not participate in meaningful matching");
+  assert(!keySnapshotMatchesEntry(existing, reusedSessionId), "a fingerprint and reused session id must not hide changed key content");
+  assert.deepEqual(syncKeySnapshots(doc, [{ ...matching, walletId: 999 }, reusedSessionId, missing], reopenedAssociations, fixedNow), { added: 2, updated: 0, matched: 1 });
+  assert.equal(doc.entries.length, 3);
+  assert.equal(reopenedAssociations.get(999), existing.id);
+  assert.notEqual(reopenedAssociations.get(31), existing.id);
+});
+
+test("automatically captured Key Station entries survive journal download and reopen", async () => {
+  const doc = emptyDocument(), associations = new Map();
+  const snapshot = sampleEntry({ walletId: 41, label: "Automatic backup", input: "saved transcript", created: undefined });
+  syncKeySnapshots(doc, [snapshot], associations, fixedNow);
+  const opened = await openDocument(pack(await sealDocument(doc, keys)), password);
+  assert.equal(opened.doc.entries.length, 1);
+  assert(keySnapshotMatchesEntry(opened.doc.entries[0], snapshot));
 });
 
 // --- Notepad backups ---------------------------------------------------------
@@ -648,6 +751,11 @@ test("an .elkeys backup is opaque until opened with the journal password", async
 
 test("the app routes every journal backup through the sealed primitives", () => {
   const app = read("src/js/app.js");
+  // Automatic Key Station capture persists the snapshot's method variant;
+  // manual entries still keep their selected variant through the editor.
+  assert.match(app, /hodlJournalSyncKeySnapshots\(hodlJournalDoc, snapshots, hodlJournalKeyEntries\)/);
+  assert.match(app, /method: document\.getElementById\("journal-method"\)\?\.value \|\| "dice",\s+\.\.\.hodlJournalEntryVariants,/);
+  assert.equal((app.match(/hodlJournalEntryMethodLabel\(entry\)/g) || []).length, 2);
   // Downloads encrypt with the unlocked journal keys by default and mark the
   // file as encrypted.
   assert.match(app, /async function hodlJournalDownloadContent\(kind, filename, text[\s\S]*?hodlJournalSealExport\(kind, text, hodlJournalKeys\)/);

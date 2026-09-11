@@ -73,6 +73,14 @@ test("BitBox diceware reaches the checksum pick for every target size", () => {
   }
 });
 
+test("BitBox maps every sixth-die face to the corresponding coin side", () => {
+  const heads = ["1", "2", "3"].map((face) => api.hodlBitBoxRolls(`11111${face}`, 12).words[0]);
+  const tails = ["4", "5", "6"].map((face) => api.hodlBitBoxRolls(`11111${face}`, 12).words[0]);
+  assert.equal(new Set(heads).size, 1);
+  assert.equal(new Set(tails).size, 1);
+  assert.notEqual(heads[0], tails[0]);
+});
+
 // Rows transcribed from the official BitBox02 Diceware lookup table
 // (BitBox_Diceware_LookupTable.pdf): die 1 selects the page, dice 1-4 the row,
 // and die 5 plus the coin the column. "1 2 3 heads" is the even column of a

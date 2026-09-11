@@ -343,7 +343,7 @@ for (const file of htmlFiles) {
     // The __entropyLabCrypto hook lets the browser suite reach app internals;
     // it is compiled in only for the harness's --test-hooks staging variant.
     const html = read(file);
-    assert.doesNotMatch(html, /__ENTROPYLAB_TEST_HOOKS__|__entropyLabTest|__entropyLabCrypto/);
+    assert.doesNotMatch(html, /__ENTROPYLAB_TEST_HOOKS__|__entropyLabTest|__entropyLabCrypto|test-keys|Test dice/);
   });
   test(`${file} never fetches the header logo or favicon from assets`, () => {
     // The downloaded file has no assets/ beside it, so both have to travel

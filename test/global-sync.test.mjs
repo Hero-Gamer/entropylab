@@ -82,10 +82,21 @@ test("hashed methods publish one way without being overwritten", () => {
   assert.doesNotMatch(loadSlice("hodlGlobalSyncControlMarkup"), /disabled/);
 });
 
-test("BitBox direct input is isolated from hashed dice input", () => {
+test("each dice method has an isolated transcript", () => {
+  const fieldName = loadSlice("hodlDiceFieldName");
+  assert.match(app, /colemanDice: ""/);
   assert.match(app, /bitboxDice: ""/);
-  assert.match(app, /previousMethod === "bitbox" \? "bitboxDice" : "dice"/);
-  assert.match(app, /hodlDiceMethod === "bitbox" \? state\.fields\.bitboxDice/);
+  assert.match(app, /dplusDice: ""/);
+  assert.match(fieldName, /method === "coleman"\) return "colemanDice"/);
+  assert.match(fieldName, /method === "bitbox"\) return "bitboxDice"/);
+  assert.match(fieldName, /method === "dplus"\) return "dplusDice"/);
+  assert.match(fieldName, /return "dice"/);
+  const storedValue = loadSlice("hodlStoredDiceValue");
+  assert.match(storedValue, /method === "coleman"/);
+  assert.match(storedValue, /hasOwnProperty\.call\(fields \|\| \{\}, name\)/);
+  const importedState = loadSlice("hodlKeyManagerImportedState");
+  assert.match(importedState, /!Object\.prototype\.hasOwnProperty\.call\(entry\.fields, "colemanDice"\)/);
+  assert.match(importedState, /state\.fields\.colemanDice = legacyColemanDice/);
 });
 
 test("pads and pickers that skip bubbling input events still trigger the sync", () => {

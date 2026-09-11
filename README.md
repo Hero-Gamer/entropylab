@@ -36,7 +36,9 @@ Official website: [entropylab.online](https://entropylab.online)
   BIP86, and six-level BIP48 layouts and label each path level accordingly.
   A custom mode accepts an arbitrary-depth BIP32 account path, keeps Bitcoin
   network selection explicit, and appends the selected branch and address
-  ranges. Typing `h` or `'` after a preset index enables its Harden control.
+  ranges. The default derives receive and change branches `{0-1}` and address
+  indexes `{0-9}`, displayed as a full BIP-88 path template. Typing `h` or `'`
+  after a preset index enables its Harden control.
  - Supports numeric coin-type and account indexes for single-signature and
    multisignature derivation. Purpose, coin type, and account indexes are
    hardened by default; the starting address index is unhardened by default.
@@ -254,6 +256,7 @@ Official website: [entropylab.online](https://entropylab.online)
   sync while input is entered. Each destination waits for enough bits to emit
   its next complete character. Hashed inputs update the non-hashed methods in
   one direction; edits to non-hashed methods never overwrite hashed inputs.
+  With sync off, every dice-roll method retains its own independent transcript.
 - SLIP-132 extended-key display is a prefix swap only (same payload, new
   version bytes and checksum). Import/derive shows the key as pasted, the
   Bitcoin Core xprv/xpub or tprv/tpub, and the descriptor (script in the

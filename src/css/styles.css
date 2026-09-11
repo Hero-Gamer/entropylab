@@ -220,7 +220,6 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 }
 /* On the 18-word coin turn the eight D8 keys become one Tails and one Heads. */
 .dice-input-pad.dplus button.dice-key-wide { grid-column: span 4; }
-.dice-input-pad.faces-1-6 button.dice-key-wide { grid-column: span 3; }
 .dice-input-pad button[hidden] { display: none; }
 .seed-autocomplete-toggle {
   display: inline-flex; align-items: center; gap: 9px; min-height: 44px;

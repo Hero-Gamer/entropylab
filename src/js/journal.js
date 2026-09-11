@@ -557,7 +557,10 @@ export function snapshotFromKeyState(state) {
   if (mode === "dice") {
     method = "dice";
     variants.diceMethod = normalizeEntryVariant("diceMethod", state.diceMethod) || "coldcard";
-    input = state.diceMethod === "dplus" ? fields.dplusDice || "" : state.diceMethod === "bitbox" ? fields.bitboxDice || "" : fields.dice || "";
+    if (state.diceMethod === "dplus") input = fields.dplusDice || "";
+    else if (state.diceMethod === "bitbox") input = fields.bitboxDice || "";
+    else if (state.diceMethod === "coleman" && Object.prototype.hasOwnProperty.call(fields, "colemanDice")) input = fields.colemanDice || "";
+    else input = fields.dice || "";
   } else if (mode === "cards") {
     method = "cards";
     variants.cardMethod = normalizeEntryVariant("cardMethod", state.cardMethod) || "hashed";

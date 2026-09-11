@@ -48,6 +48,36 @@ Guidelines for AI coding agents.
   (the browser suite runs every installed engine — Firefox,
   Chrome/Chromium, Microsoft Edge — and skips the absent ones).
 - Make the smallest change that works. No refactors, reformatting, or new
-  dependencies.
-- Don't weaken or skip tests. New behaviour needs a test.
+  dependencies. This governs logic and functionality.
+- **UI and design work is the exception**, and is currently a site-wide
+  cleanup led by the project's design lead. There, reuse outranks minimalism:
+  before adding a style or a block of markup, look for the paradigm it
+  belongs to and extend that instead. A repeating interaction, control, or
+  layout should be expressed once — behaviour in a single CSS rule with the
+  parts that vary passed as custom properties, repeated markup in a shared
+  builder alongside the existing ones (`hodlSeedCopyRowMarkup`,
+  `hodlKeyboardToggleMarkup`) — rather than copied per component.
+  Consolidating existing duplication is in scope for this work;
+  keep such a pass in its own commit, make no visual change in it, and let
+  the suite prove nothing moved. Tests follow the same shape: assert shared
+  behaviour once, and per component assert only what it supplies.
+- Don't weaken or skip tests, and new behaviour needs a test. This too is
+  about logic and functionality — parsing, derivation, wiring, state, and the
+  contracts between components.
+- **Presentational detail is not unit-tested.** Colours, spacing, sizes,
+  radii, weights and transitions are design values: a designer tunes them by
+  eye, and a regex asserting one only restates the stylesheet in a second
+  syntax. Such assertions cannot see the cascade, specificity or computed
+  values, so they pass while the layout is visibly wrong, and they go stale
+  on every refactor — which makes the reuse asked for above more expensive,
+  not safer. Do assert what a value cannot express: DOM structure and
+  ordering, aria wiring, cross-component contracts (two controls reading one
+  token), and guards against real hazards (a status line that must never
+  become an HTML sink). Where a presentational invariant genuinely matters —
+  the shared spacing rhythm, say — put it in the browser suite as a
+  `getComputedStyle` check, which tests the outcome rather than the source
+  text. Removing existing value assertions is in scope for design work, but
+  opportunistically: delete one when a change would otherwise make you update
+  it, rather than sweeping the suite, so the design diff stays reviewable and
+  the count comes down as the work moves through each surface.
 - Before finishing, run `npm run build && npm test` and make sure they pass.

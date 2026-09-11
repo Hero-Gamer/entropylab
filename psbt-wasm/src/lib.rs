@@ -29,7 +29,8 @@ use bitcoin::bip32::{ChildNumber, DerivationPath, Xpub};
 use bitcoin::consensus::encode::{self, Decodable, Encodable};
 use bitcoin::locktime::absolute::LockTime;
 use bitcoin::psbt::{Psbt, PsbtSighashType};
-use bitcoin::taproot::{LeafVersion, TapTree, TaprootBuilder};
+use bitcoin::secp256k1::{Secp256k1, XOnlyPublicKey};
+use bitcoin::taproot::{ControlBlock, LeafVersion, TapNodeHash, TapTweakHash, TapTree, TaprootBuilder};
 use bitcoin::transaction::Version;
 use bitcoin::{
     Amount, OutPoint, Script, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Txid, VarInt, Weight,
@@ -1505,6 +1506,64 @@ fn push_count_pair(out: &mut Vec<u8>, key: u8, value: u64) {
     push_pair(out, &[key], &encoded);
 }
 
+/// BIP-341 Taproot commitment check for issue #418.
+///
+/// `None` means a required field is missing (incomplete). `Some(false)`
+/// means the control block, keys, or merkle root do not form a valid
+/// script-path commitment to `output_key`.
+pub fn verify_taproot_commitment(
+    tap_internal_key: Option<[u8; 32]>,
+    output_key: [u8; 32],
+    control_block: Option<Vec<u8>>,
+    leaf_version: Option<u8>,
+    merkle_root: Option<[u8; 32]>,
+) -> Option<bool> {
+    let (internal_bytes, control, version, root_bytes) =
+        match (tap_internal_key, control_block, leaf_version, merkle_root) {
+            (Some(internal), Some(control), Some(version), Some(root)) => {
+                (internal, control, version, root)
+            }
+            _ => return None,
+        };
+
+    if version != 0xc0 {
+        return Some(false);
+    }
+    let len = control.len();
+    if len < 33 || (len - 33) % 32 != 0 || (len - 33) / 32 > 128 {
+        return Some(false);
+    }
+    let leaf_version_cb = control[0] & 0xFE;
+    if leaf_version_cb != version {
+        return Some(false);
+    }
+
+    let cb = match ControlBlock::decode(&control) {
+        Ok(cb) => cb,
+        Err(_) => return Some(false),
+    };
+    let internal_key = match XOnlyPublicKey::from_slice(&internal_bytes) {
+        Ok(key) => key,
+        Err(_) => return Some(false),
+    };
+    if cb.internal_key.serialize() != internal_bytes {
+        return Some(false);
+    }
+
+    // Siblings are the remaining 32-byte chunks; ControlBlock::decode
+    // already rejected a non-aligned or >128-node proof. The supplied
+    // merkle_root is the reconstructed TapBranch root (the leaf hash is
+    // not an argument here), so the path is checked by the tweak below.
+    let output = match XOnlyPublicKey::from_slice(&output_key) {
+        Ok(key) => key,
+        Err(_) => return Some(false),
+    };
+    let secp = Secp256k1::verification_only();
+    let root = TapNodeHash::assume_hidden(root_bytes);
+    let tweak = TapTweakHash::from_key_and_tweak(internal_key, Some(root)).to_scalar();
+    Some(internal_key.tweak_add_check(&secp, &output, cb.output_key_parity, tweak))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1531,5 +1590,146 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn hex32(text: &str) -> [u8; 32] {
+        hex_decode(text).expect("hex").try_into().expect("32 bytes")
+    }
+
+    fn hex_bytes(text: &str) -> Vec<u8> {
+        hex_decode(text).expect("hex")
+    }
+
+    // BIP-341 wallet test vectors (scriptPubKey section).
+    // https://github.com/bitcoin/bips/blob/master/bip-0341/wallet-test-vectors.json
+    fn bip341_single_leaf_odd() -> ([u8; 32], [u8; 32], Vec<u8>, [u8; 32]) {
+        (
+            hex32("187791b6f712a8ea41c8ecdd0ee77fab3e85263b37e1ec18a3651926b3a6cf27"),
+            hex32("147c9c57132f6e7ecddba9800bb0c4449251c92a1e60371ee77557b6620f3ea3"),
+            hex_bytes("c1187791b6f712a8ea41c8ecdd0ee77fab3e85263b37e1ec18a3651926b3a6cf27"),
+            hex32("5b75adecf53548f3ec6ad7d78383bf84cc57b55a3127c72b9a2481752dd88b21"),
+        )
+    }
+
+    #[test]
+    fn taproot_commitment_missing_fields_are_incomplete() {
+        let (internal, output, control, root) = bip341_single_leaf_odd();
+        assert_eq!(
+            verify_taproot_commitment(None, output, Some(control.clone()), Some(0xc0), Some(root)),
+            None
+        );
+        assert_eq!(
+            verify_taproot_commitment(Some(internal), output, None, Some(0xc0), Some(root)),
+            None
+        );
+        assert_eq!(
+            verify_taproot_commitment(Some(internal), output, Some(control.clone()), None, Some(root)),
+            None
+        );
+        assert_eq!(
+            verify_taproot_commitment(Some(internal), output, Some(control), Some(0xc0), None),
+            None
+        );
+    }
+
+    #[test]
+    fn taproot_commitment_bip341_vectors_match() {
+        let (internal, output, control, root) = bip341_single_leaf_odd();
+        assert_eq!(
+            verify_taproot_commitment(Some(internal), output, Some(control), Some(0xc0), Some(root)),
+            Some(true)
+        );
+
+        assert_eq!(
+            verify_taproot_commitment(
+                Some(hex32("93478e9488f956df2396be2ce6c5cced75f900dfa18e7dabd2428aae78451820")),
+                hex32("e4d810fd50586274face62b8a807eb9719cef49c04177cc6b76a9a4251d5450e"),
+                Some(hex_bytes(
+                    "c093478e9488f956df2396be2ce6c5cced75f900dfa18e7dabd2428aae78451820",
+                )),
+                Some(0xc0),
+                Some(hex32(
+                    "c525714a7f49c28aedbbba78c005931a81c234b2f6c99a73e4d06082adc8bf2b",
+                )),
+            ),
+            Some(true)
+        );
+
+        assert_eq!(
+            verify_taproot_commitment(
+                Some(hex32("f9f400803e683727b14f463836e1e78e1c64417638aa066919291a225f0e8dd8")),
+                hex32("77e30a5522dd9f894c3f8b8bd4c4b2cf82ca7da8a3ea6a239655c39c050ab220"),
+                Some(hex_bytes(
+                    "c1f9f400803e683727b14f463836e1e78e1c64417638aa066919291a225f0e8dd82cb2b90daa543b544161530c925f285b06196940d6085ca9474d41dc3822c5cb",
+                )),
+                Some(0xc0),
+                Some(hex32(
+                    "ab179431c28d3b68fb798957faf5497d69c883c6fb1e1cd9f81483d87bac90cc",
+                )),
+            ),
+            Some(true)
+        );
+
+        assert_eq!(
+            verify_taproot_commitment(
+                Some(hex32("e0dfe2300b0dd746a3f8674dfd4525623639042569d829c7f0eed9602d263e6f")),
+                hex32("91b64d5324723a985170e4dc5a0f84c041804f2cd12660fa5dec09fc21783605"),
+                Some(hex_bytes(
+                    "c0e0dfe2300b0dd746a3f8674dfd4525623639042569d829c7f0eed9602d263e6f9e31407bffa15fefbf5090b149d53959ecdf3f62b1246780238c24501d5ceaf62645a02e0aac1fe69d69755733a9b7621b694bb5b5cde2bbfc94066ed62b9817",
+                )),
+                Some(0xc0),
+                Some(hex32(
+                    "ccbd66c6f7e8fdab47b3a486f59d28262be857f30d4773f2d5ea47f7761ce0e2",
+                )),
+            ),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn taproot_commitment_rejects_malformed_or_mismatching() {
+        let (internal, output, control, root) = bip341_single_leaf_odd();
+        let mut wrong_output = output;
+        wrong_output[0] ^= 1;
+        assert_eq!(
+            verify_taproot_commitment(
+                Some(internal),
+                wrong_output,
+                Some(control.clone()),
+                Some(0xc0),
+                Some(root)
+            ),
+            Some(false)
+        );
+        assert_eq!(
+            verify_taproot_commitment(
+                Some(internal),
+                output,
+                Some(control[..32].to_vec()),
+                Some(0xc0),
+                Some(root)
+            ),
+            Some(false)
+        );
+        assert_eq!(
+            verify_taproot_commitment(
+                Some(internal),
+                output,
+                Some(control.clone()),
+                Some(0xc2),
+                Some(root)
+            ),
+            Some(false)
+        );
+        assert_eq!(
+            verify_taproot_commitment(
+                Some([0xff; 32]),
+                output,
+                Some(control),
+                Some(0xc0),
+                Some(root)
+            ),
+            Some(false)
+        );
     }
 }

@@ -5,20 +5,34 @@
 //!    `type||keydata` is a finding instead of a silent overwrite.
 //! 2. `xpub_derives_child` — when a bip32/tap derivation claims an origin,
 //!    check it against *applicable* global xpubs (master fingerprint match +
-//!    path prefix + unhardened suffix). A 32-byte key is compared as x-only.
+//!    path prefix + unhardened suffix). The key encoding is fixed by the
+//!    record type — legacy BIP32 keydata is a secp256k1 public key, tap
+//!    keydata is a 32-byte x-only key — never inferred from its length.
 //!
 //! These are format / origin-consistency facts, not a safety verdict.
-//! A derivation that cannot be checked (no applicable xpub, hardened gap)
-//! is `incomplete`, never a pass. rust-bitcoin's own parse verdict stays in
-//! `rustBitcoinError` and is not replaced.
+//! A derivation that cannot be checked (no applicable xpub, hardened gap,
+//! malformed record, exhausted work budget) is `incomplete`, never a pass.
+//! rust-bitcoin's own parse verdict stays in `rustBitcoinError` and is not
+//! replaced.
 
 use crate::{hex_encode, pair_type_name, read_varint, RawPair};
 use bitcoin::bip32::{ChildNumber, Xpub};
-use bitcoin::secp256k1::{PublicKey, Secp256k1};
+use bitcoin::secp256k1::{PublicKey, Secp256k1, XOnlyPublicKey};
 use serde_json::{json, Value};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 const MAX_FINDINGS: usize = 32;
+
+/// Hard caps on origin-check work for a whole inspect, so a small hostile
+/// file cannot freeze the inspector. Every visited candidate pays both:
+/// the prefix probe costs path elements (MAX_SCAN_ELEMENTS, memcmp-cheap)
+/// and a matched prefix costs at least one CKD step (MAX_CKD_STEPS, one
+/// HMAC-SHA512 + EC operation each). Both are far above any honest PSBT (a
+/// handful of xpubs times a few hundred keys times short paths). Exhaustion
+/// degrades the family to `incomplete` — never a silent pass, never a false
+/// mismatch.
+const MAX_CKD_STEPS: u32 = 4096;
+const MAX_SCAN_ELEMENTS: u32 = 4 * 1024 * 1024;
 
 struct Origin {
     fingerprint: [u8; 4],
@@ -26,7 +40,6 @@ struct Origin {
 }
 
 struct GlobalXpub {
-    fingerprint: [u8; 4],
     path: Vec<ChildNumber>,
     xpub: Xpub,
 }
@@ -123,41 +136,38 @@ fn duplicate_keys(kind: &str, index: Option<usize>, pairs: &[RawPair]) -> (Vec<V
     (findings, truncated)
 }
 
-fn collect_xpubs(globals: &[RawPair]) -> Vec<GlobalXpub> {
-    let mut out = Vec::new();
-    for pair in globals {
-        if pair.key.first() != Some(&0x01) || pair.key.len() < 2 {
-            continue;
-        }
-        let Ok(xpub) = Xpub::decode(&pair.key[1..]) else {
-            continue;
-        };
-        let Ok(origin) = parse_origin(&pair.value) else {
-            continue;
-        };
-        out.push(GlobalXpub {
-            fingerprint: origin.fingerprint,
-            path: origin.path,
-            xpub,
-        });
-    }
-    out
+/// The key encoding a derivation record must carry, fixed by its BIP-174 /
+/// BIP-371 type — never guessed from the observed length.
+#[derive(Clone, Copy)]
+enum KeyShape {
+    /// `PSBT_IN/OUT_BIP32_DERIVATION`: a secp256k1 public key.
+    Legacy,
+    /// `PSBT_IN/OUT_TAP_BIP32_DERIVATION`: a 32-byte x-only key.
+    XOnly,
 }
 
-fn pubkeys_match(observed: &[u8], derived: &PublicKey) -> bool {
-    let compressed = derived.serialize();
-    if observed == compressed.as_slice() {
-        return true;
+/// The observed key, parsed once per record. The parse doubles as the shape
+/// validation: it accepts exactly what rust-bitcoin accepts for the type.
+enum ObservedKey {
+    Legacy(PublicKey),
+    XOnly(XOnlyPublicKey),
+}
+
+fn parse_observed(shape: KeyShape, observed: &[u8]) -> Option<ObservedKey> {
+    match shape {
+        KeyShape::Legacy => PublicKey::from_slice(observed).ok().map(ObservedKey::Legacy),
+        KeyShape::XOnly => XOnlyPublicKey::from_slice(observed)
+            .ok()
+            .map(ObservedKey::XOnly),
     }
-    // BIP-371 x-only: 32-byte keydata is the x coordinate of the compressed key.
-    if observed.len() == 32 && observed == &compressed[1..] {
-        return true;
+}
+
+/// Like-for-like comparison: full key for legacy, x coordinate for tap.
+fn key_matches(observed: &ObservedKey, derived: &PublicKey) -> bool {
+    match observed {
+        ObservedKey::Legacy(p) => p == derived,
+        ObservedKey::XOnly(x) => *x == derived.x_only_public_key().0,
     }
-    if observed.len() == 65 {
-        let uncompressed = derived.serialize_uncompressed();
-        return observed == uncompressed.as_slice();
-    }
-    false
 }
 
 fn path_prefix(prefix: &[ChildNumber], full: &[ChildNumber]) -> Option<Vec<ChildNumber>> {
@@ -170,125 +180,202 @@ fn path_prefix(prefix: &[ChildNumber], full: &[ChildNumber]) -> Option<Vec<Child
     Some(full[prefix.len()..].to_vec())
 }
 
-/// Applicable = same master fingerprint, xpub path is a prefix of the child
-/// path, and the remaining suffix is unhardened (so `Xpub::derive_pub` can
-/// actually run). Hardened suffixes are not mismatches; they are not checked.
-fn applicable<'a>(
-    xpubs: &'a [GlobalXpub],
-    origin: &Origin,
-) -> (Vec<(&'a Xpub, Vec<ChildNumber>)>, bool) {
-    let mut candidates = Vec::new();
-    let mut hardened_gap = false;
-    for xpub in xpubs {
-        if xpub.fingerprint != origin.fingerprint {
+/// Global xpubs indexed by master fingerprint. Byte-identical records (the
+/// Core #35665 duplicate case) collapse to one candidate — same key, same
+/// origin, same derived children — so a padded file cannot multiply the
+/// derivation work below.
+fn collect_xpubs(globals: &[RawPair]) -> HashMap<[u8; 4], Vec<GlobalXpub>> {
+    let mut out: HashMap<[u8; 4], Vec<GlobalXpub>> = HashMap::new();
+    let mut seen = HashSet::<(&[u8], &[u8])>::new();
+    for pair in globals {
+        if pair.key.first() != Some(&0x01) || pair.key.len() < 2 {
             continue;
         }
-        let Some(suffix) = path_prefix(&xpub.path, &origin.path) else {
+        if !seen.insert((&pair.key, &pair.value)) {
+            continue;
+        }
+        let Ok(xpub) = Xpub::decode(&pair.key[1..]) else {
             continue;
         };
-        if suffix.iter().any(|c| c.is_hardened()) {
-            hardened_gap = true;
+        let Ok(origin) = parse_origin(&pair.value) else {
             continue;
-        }
-        candidates.push((&xpub.xpub, suffix));
+        };
+        out.entry(origin.fingerprint).or_default().push(GlobalXpub {
+            path: origin.path,
+            xpub,
+        });
     }
-    (candidates, hardened_gap)
+    out
+}
+
+struct OriginScan {
+    findings: Vec<Value>,
+    truncated: bool,
+    saw_incomplete: bool,
+    saw_problem: bool,
+    ckd_left: u32,
+    scan_left: u32,
+    budget_notice: bool,
+}
+
+impl OriginScan {
+    fn new() -> Self {
+        Self {
+            findings: Vec::new(),
+            truncated: false,
+            saw_incomplete: false,
+            saw_problem: false,
+            ckd_left: MAX_CKD_STEPS,
+            scan_left: MAX_SCAN_ELEMENTS,
+            budget_notice: false,
+        }
+    }
+
+    fn push(&mut self, finding: Value) {
+        push(&mut self.findings, &mut self.truncated, finding);
+    }
+
+    /// One notice is enough; every exhaustion still flips the family to
+    /// `incomplete` via `saw_incomplete`.
+    fn budget_exhausted(
+        &mut self,
+        kind: &str,
+        index: Option<usize>,
+        pair: &RawPair,
+        fingerprint: [u8; 4],
+    ) {
+        self.saw_incomplete = true;
+        if !self.budget_notice {
+            self.budget_notice = true;
+            self.push(finding_origin(
+                kind,
+                index,
+                pair,
+                Some(fingerprint),
+                "budget_exhausted",
+            ));
+        }
+    }
 }
 
 fn check_one_derivation(
     secp: &Secp256k1<bitcoin::secp256k1::VerifyOnly>,
-    xpubs: &[GlobalXpub],
+    xpubs: &HashMap<[u8; 4], Vec<GlobalXpub>>,
     kind: &str,
     index: Option<usize>,
     pair: &RawPair,
+    shape: KeyShape,
     origin: Result<Origin, String>,
-    findings: &mut Vec<Value>,
-    truncated: &mut bool,
-    saw_incomplete: &mut bool,
-    saw_problem: &mut bool,
+    scan: &mut OriginScan,
 ) {
-    let observed = &pair.key[1..];
     let origin = match origin {
         Ok(o) => o,
         Err(_) => {
-            *saw_incomplete = true;
-            push(
-                findings,
-                truncated,
-                finding_origin(kind, index, pair, None, "malformed"),
-            );
+            scan.saw_incomplete = true;
+            scan.push(finding_origin(kind, index, pair, None, "malformed"));
             return;
         }
     };
-    let (candidates, hardened_gap) = applicable(xpubs, &origin);
-    if candidates.is_empty() {
-        *saw_incomplete = true;
+    let Some(observed) = parse_observed(shape, &pair.key[1..]) else {
+        scan.saw_incomplete = true;
+        scan.push(finding_origin(
+            kind,
+            index,
+            pair,
+            Some(origin.fingerprint),
+            "malformed_key",
+        ));
+        return;
+    };
+    let bucket = xpubs.get(&origin.fingerprint).map_or(&[][..], Vec::as_slice);
+    let mut hardened_gap = false;
+    let mut checked_any = false;
+    for xpub in bucket {
+        // The prefix probe is a memcmp of up to min(path lengths) elements;
+        // charge it before running so giant paths cannot stall the scan.
+        let probe = u32::try_from(xpub.path.len().min(origin.path.len()).max(1))
+            .unwrap_or(u32::MAX);
+        if probe > scan.scan_left {
+            scan.budget_exhausted(kind, index, pair, origin.fingerprint);
+            return;
+        }
+        scan.scan_left -= probe;
+        // Applicable = xpub path is a prefix of the child path. Hardened
+        // suffixes are not mismatches; they are not checked.
+        let Some(suffix) = path_prefix(&xpub.path, &origin.path) else {
+            continue;
+        };
+        // Charge one CKD step per suffix element (and at least one per
+        // candidate: even an empty suffix pays for the key comparison)
+        // *before* the hardened scan and derivation run.
+        let cost = u32::try_from(suffix.len()).unwrap_or(u32::MAX).max(1);
+        if cost > scan.ckd_left {
+            scan.budget_exhausted(kind, index, pair, origin.fingerprint);
+            return;
+        }
+        scan.ckd_left -= cost;
+        if suffix.iter().any(|c| c.is_hardened()) {
+            hardened_gap = true;
+            continue;
+        }
+        checked_any = true;
+        let derived = if suffix.is_empty() {
+            xpub.xpub.public_key
+        } else {
+            match xpub.xpub.derive_pub(secp, &suffix) {
+                Ok(child) => child.public_key,
+                Err(_) => continue,
+            }
+        };
+        if key_matches(&observed, &derived) {
+            return;
+        }
+    }
+    if !checked_any {
+        scan.saw_incomplete = true;
         let reason = if hardened_gap {
             "hardened_gap"
         } else {
             "no_applicable_xpub"
         };
-        push(
-            findings,
-            truncated,
-            finding_origin(kind, index, pair, Some(origin.fingerprint), reason),
-        );
+        scan.push(finding_origin(
+            kind,
+            index,
+            pair,
+            Some(origin.fingerprint),
+            reason,
+        ));
         return;
     }
-    for (xpub, suffix) in &candidates {
-        let derived = if suffix.is_empty() {
-            xpub.public_key
-        } else {
-            match xpub.derive_pub(secp, suffix) {
-                Ok(child) => child.public_key,
-                Err(_) => continue,
-            }
-        };
-        if pubkeys_match(observed, &derived) {
-            return;
-        }
-    }
-    *saw_problem = true;
-    push(
-        findings,
-        truncated,
-        finding_origin(kind, index, pair, Some(origin.fingerprint), "mismatch"),
-    );
+    scan.saw_problem = true;
+    scan.push(finding_origin(
+        kind,
+        index,
+        pair,
+        Some(origin.fingerprint),
+        "mismatch",
+    ));
 }
 
 fn scan_derivations(
     secp: &Secp256k1<bitcoin::secp256k1::VerifyOnly>,
-    xpubs: &[GlobalXpub],
+    xpubs: &HashMap<[u8; 4], Vec<GlobalXpub>>,
     kind: &str,
     index: Option<usize>,
     pairs: &[RawPair],
-    findings: &mut Vec<Value>,
-    truncated: &mut bool,
-    saw_incomplete: &mut bool,
-    saw_problem: &mut bool,
+    scan: &mut OriginScan,
 ) {
     for pair in pairs {
         if pair.key.is_empty() {
             continue;
         }
         let type_byte = pair.key[0];
-        let origin = match (kind, type_byte) {
-            ("input", 0x06) | ("output", 0x02) => parse_origin(&pair.value),
-            ("input", 0x16) | ("output", 0x07) => tap_origin(&pair.value),
+        let (origin, shape) = match (kind, type_byte) {
+            ("input", 0x06) | ("output", 0x02) => (parse_origin(&pair.value), KeyShape::Legacy),
+            ("input", 0x16) | ("output", 0x07) => (tap_origin(&pair.value), KeyShape::XOnly),
             _ => continue,
         };
-        check_one_derivation(
-            secp,
-            xpubs,
-            kind,
-            index,
-            pair,
-            origin,
-            findings,
-            truncated,
-            saw_incomplete,
-            saw_problem,
-        );
+        check_one_derivation(secp, xpubs, kind, index, pair, shape, origin, scan);
     }
 }
 
@@ -324,39 +411,16 @@ pub(crate) fn analyze(
 
     let secp = Secp256k1::verification_only();
     let xpubs = collect_xpubs(globals);
-    let mut origin_findings = Vec::new();
-    let mut origin_trunc = false;
-    let mut saw_incomplete = false;
-    let mut saw_problem = false;
+    let mut scan = OriginScan::new();
     for (i, map) in inputs.iter().enumerate() {
-        scan_derivations(
-            &secp,
-            &xpubs,
-            "input",
-            Some(i),
-            map,
-            &mut origin_findings,
-            &mut origin_trunc,
-            &mut saw_incomplete,
-            &mut saw_problem,
-        );
+        scan_derivations(&secp, &xpubs, "input", Some(i), map, &mut scan);
     }
     for (j, map) in outputs.iter().enumerate() {
-        scan_derivations(
-            &secp,
-            &xpubs,
-            "output",
-            Some(j),
-            map,
-            &mut origin_findings,
-            &mut origin_trunc,
-            &mut saw_incomplete,
-            &mut saw_problem,
-        );
+        scan_derivations(&secp, &xpubs, "output", Some(j), map, &mut scan);
     }
-    let origin_state = if saw_problem {
+    let origin_state = if scan.saw_problem {
         "problem"
-    } else if saw_incomplete {
+    } else if scan.saw_incomplete {
         "incomplete"
     } else {
         "complete"
@@ -364,6 +428,6 @@ pub(crate) fn analyze(
 
     json!({
         "duplicateKeys": family(dup_state, dup_findings, dup_trunc),
-        "xpubDerivesChild": family(origin_state, origin_findings, origin_trunc),
+        "xpubDerivesChild": family(origin_state, scan.findings, scan.truncated),
     })
 }

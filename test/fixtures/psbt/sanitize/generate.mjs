@@ -142,6 +142,19 @@ const files = {
     [],
   ),
   "origin-no-xpub.hex": psbt([unsigned], [inBip32(pubM0, originM0)], []),
+  // Malformed key shapes: the record type fixes the encoding. A 32-byte
+  // keydata in a legacy BIP32 derivation (or 33-byte in a tap derivation)
+  // must not be reinterpreted into a match; both are malformed_key.
+  "origin-malformed-legacy-key.hex": psbt(
+    [unsigned, globalXpub(xpubM, originMaster)],
+    [inBip32(xonlyM0, originM0)], // 32-byte x-only key in a BIP32 record
+    [],
+  ),
+  "origin-malformed-tap-key.hex": psbt(
+    [unsigned, globalXpub(xpubM, originMaster)],
+    [inTapBip32(pubM0, originM0)], // 33-byte compressed key in a tap record
+    [],
+  ),
   // Two xpubs, same master fingerprint, different paths. Child m/0 must
   // select the m/0 xpub and not treat the sibling as a collision.
   "multi-account-same-fp.hex": psbt(

@@ -471,7 +471,11 @@ const sanitizeFindingText = (finding) => {
           ? "not checked (hardened gap on the remaining path)"
           : finding.reason === "malformed"
             ? "origin field is malformed"
-            : "not checked (no applicable global xpub)";
+            : finding.reason === "malformed_key"
+              ? "key is not valid for this record type (not checked)"
+              : finding.reason === "budget_exhausted"
+                ? "not checked (analysis budget exhausted)"
+                : "not checked (no applicable global xpub)";
     return `${name} on ${where}${fp}: ${reason}`;
   }
   return name;
@@ -483,7 +487,9 @@ export const psbtSanitizeHtml = (doc, title = "") => {
   const dup = s.duplicateKeys || { state: "incomplete", findings: [] };
   const orig = s.xpubDerivesChild || { state: "incomplete", findings: [] };
   const problem = dup.state === "problem" || orig.state === "problem";
-  const incomplete = dup.state === "incomplete" || orig.state === "incomplete";
+  // Anything that is not a known pass/problem is incomplete — an unknown
+  // state must never render as success.
+  const incomplete = [dup, orig].some((f) => f.state !== "complete" && f.state !== "problem");
   const overall = problem && incomplete
     ? "ISSUES FOUND — ANALYSIS ALSO INCOMPLETE"
     : problem

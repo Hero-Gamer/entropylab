@@ -2,11 +2,13 @@
 // Run with: node --test test/psbt-sanitize.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHmac, createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { psbtInspectDoc } from "../src/js/psbt-wasm.js";
 import { psbtSanitizeHtml } from "../src/js/psbt-editor.js";
+import { secp256k1 } from "../src/js/secp256k1.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const fixture = (name) => {
@@ -146,6 +148,151 @@ test("13. no new workspace tab; inspect-only files stay inspect-only", () => {
   assert.doesNotMatch(shell, /id="psbt-sanitize"/);
   const b64 = readFileSync(join(root, "src/js/psbt-wasm-b64.js"), "utf8");
   assert.match(b64, /GENERATED FILE - do not edit/);
+});
+
+test("14. malformed key shapes are incomplete, never a silent match", () => {
+  const legacy = inspect("origin-malformed-legacy-key.hex");
+  assert.equal(legacy.sanitize.xpubDerivesChild.state, "incomplete");
+  assert.equal(legacy.sanitize.xpubDerivesChild.findings[0].reason, "malformed_key");
+  assert.equal(typeof legacy.rustBitcoinError, "string");
+  assert.match(psbtSanitizeHtml(legacy), /key is not valid for this record type/);
+
+  const tap = inspect("origin-malformed-tap-key.hex");
+  assert.equal(tap.sanitize.xpubDerivesChild.state, "incomplete");
+  assert.equal(tap.sanitize.xpubDerivesChild.findings[0].reason, "malformed_key");
+  assert.equal(typeof tap.rustBitcoinError, "string");
+});
+
+// Hostile-size PSBTs for the work-budget regressions, built in memory (too
+// repetitive to store as .hex). Same BIP-32 test vector 2 chain as the
+// fixtures above.
+const B = (h) => Buffer.from(h, "hex");
+const BXPUB_M = B(
+  "0488b21e00000000000000000060499f801b896d83179a4374aeb7822aaeaceaa0db1f85ee3e904c4defbd968903cbcaa9c98c877a26977d00825c956a238e8dddfbd322cce4f74b0b5bd6ace4a7",
+);
+const BTX = B(
+  "02000000" + "01" + "00".repeat(32) + "00000000" + "00" + "ffffffff" + "01" + "e803000000000000" + "0151" + "00000000",
+);
+const bCompact = (n) => {
+  if (n < 0xfd) return Buffer.from([n]);
+  const b = Buffer.alloc(3);
+  b[0] = 0xfd;
+  b.writeUInt16LE(n, 1);
+  return b;
+};
+const bKv = (key, value) => Buffer.concat([bCompact(key.length), key, bCompact(value.length), value]);
+const bLe32 = (n) => {
+  const b = Buffer.alloc(4);
+  b.writeUInt32LE(n >>> 0);
+  return b;
+};
+const bBe32 = (n) => {
+  const b = Buffer.alloc(4);
+  b.writeUInt32BE(n >>> 0);
+  return b;
+};
+const bHash160 = (bytes) => createHash("ripemd160").update(createHash("sha256").update(bytes).digest()).digest();
+const bCkdPub = (xpub, index) => {
+  const I = createHmac("sha512", xpub.subarray(13, 45))
+    .update(Buffer.concat([xpub.subarray(45, 78), bBe32(index)]))
+    .digest();
+  const childPub = secp256k1.Point.fromBytes(xpub.subarray(45, 78))
+    .add(secp256k1.Point.BASE.multiply(BigInt("0x" + I.subarray(0, 32).toString("hex"))))
+    .toBytes(true);
+  const out = Buffer.alloc(78);
+  B("0488b21e").copy(out, 0);
+  out[4] = xpub[4] + 1;
+  bHash160(xpub.subarray(45, 78)).subarray(0, 4).copy(out, 5);
+  bBe32(index).copy(out, 9);
+  I.subarray(32).copy(out, 13);
+  Buffer.from(childPub).copy(out, 45);
+  return out;
+};
+const bOriginMaster = Buffer.alloc(4);
+const bOriginM0 = Buffer.concat([bOriginMaster, bLe32(0)]);
+const bUnsigned = bKv(B("00"), BTX);
+const bGXpub = bKv(Buffer.concat([B("01"), BXPUB_M]), bOriginMaster);
+// A valid secp256k1 key that is not the m/0 child: the generator point.
+const bWrongPub = Buffer.from(secp256k1.Point.BASE.toBytes(true));
+const bBadDeriv = bKv(Buffer.concat([B("06"), bWrongPub]), bOriginM0);
+const hostilePsbt = (xpubCount, derivCount, deriv = bBadDeriv) =>
+  Buffer.concat([
+    B("70736274ff"),
+    bUnsigned,
+    ...Array(xpubCount).fill(bGXpub),
+    B("00"),
+    ...Array(derivCount).fill(deriv),
+    B("00"),
+    B("00"),
+  ]);
+
+test("15. derivation work is budgeted; exhaustion degrades to incomplete", () => {
+  // 25 matching derivations, each a 200-step unhardened suffix: 5000 CKD
+  // steps, past the 4096 budget. The first 20 verify, the rest degrade the
+  // family to incomplete with a budget_exhausted notice (no false mismatch).
+  let x = BXPUB_M;
+  for (let i = 0; i < 200; i++) x = bCkdPub(x, 0);
+  const deepOrigin = Buffer.concat([bOriginMaster, ...Array(200).fill(bLe32(0))]);
+  const deepDeriv = bKv(Buffer.concat([B("06"), Buffer.from(x.subarray(45, 78))]), deepOrigin);
+  const doc = psbtInspectDoc(new Uint8Array(hostilePsbt(1, 25, deepDeriv)));
+  assert.equal(doc.sanitize.xpubDerivesChild.state, "incomplete");
+  const reasons = doc.sanitize.xpubDerivesChild.findings.map((f) => f.reason);
+  assert.ok(reasons.includes("budget_exhausted"), JSON.stringify(reasons));
+  assert.ok(!reasons.includes("mismatch"), JSON.stringify(reasons));
+  assert.match(psbtSanitizeHtml(doc), /analysis budget exhausted/);
+});
+
+test("16. repeated xpub records dedup to one candidate (no quadratic blowup)", () => {
+  // 500 identical xpub records x 500 identical mismatching derivations.
+  // Unpatched this is 250k child derivations (~10 s); with dedup each
+  // derivation checks one candidate and the verdict is a real mismatch —
+  // anything else (timeout, incomplete, budget_exhausted) is a regression.
+  const doc = psbtInspectDoc(new Uint8Array(hostilePsbt(500, 500)));
+  assert.equal(doc.sanitize.xpubDerivesChild.state, "problem");
+  assert.equal(doc.sanitize.xpubDerivesChild.findings[0].reason, "mismatch");
+  assert.equal(doc.sanitize.duplicateKeys.state, "problem");
+});
+
+test("17. zero-length suffixes also cost budget (distinct xpub flood)", () => {
+  // 3000 *distinct* xpubs all claiming the same master fingerprint with an
+  // empty path, x 3000 derivations with an empty path: every candidate has a
+  // zero-length suffix. Each candidate must still cost budget (the key
+  // comparison is real work), so the flood degrades to incomplete instead of
+  // running 9M EC key parses at zero charge.
+  const xpubPairs = [];
+  for (let i = 0; i < 3000; i++) {
+    xpubPairs.push(bKv(Buffer.concat([B("01"), bCkdPub(BXPUB_M, i)]), bOriginMaster));
+  }
+  const deriv = bKv(Buffer.concat([B("06"), bWrongPub]), bOriginMaster);
+  const bytes = Buffer.concat([
+    B("70736274ff"),
+    bUnsigned,
+    ...xpubPairs,
+    B("00"),
+    ...Array(3000).fill(deriv),
+    B("00"),
+    B("00"),
+  ]);
+  const doc = psbtInspectDoc(new Uint8Array(bytes));
+  // The first derivation legitimately checks all 3000 candidates and is a
+  // genuine mismatch; the budget then stops the rest. problem dominates
+  // incomplete per the three-state precedence — the regression signal is
+  // that the budget fired at all instead of running 9M zero-cost parses.
+  assert.equal(doc.sanitize.xpubDerivesChild.state, "problem");
+  const reasons = doc.sanitize.xpubDerivesChild.findings.map((f) => f.reason);
+  assert.ok(reasons.includes("mismatch"), JSON.stringify(reasons));
+  assert.ok(reasons.includes("budget_exhausted"), JSON.stringify(reasons));
+});
+
+test("18. unknown family state degrades to incomplete, never success", () => {
+  const html = psbtSanitizeHtml({
+    sanitize: {
+      duplicateKeys: { state: "unrecognized", findings: [] },
+      xpubDerivesChild: { state: "complete", findings: [] },
+    },
+  });
+  assert.match(html, /ANALYSIS INCOMPLETE/);
+  assert.doesNotMatch(html, /LISTED CHECKS COMPLETE/);
 });
 
 test("findings never include proprietary values", () => {

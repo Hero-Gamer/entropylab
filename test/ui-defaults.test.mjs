@@ -397,7 +397,7 @@ test("the BitBox word counter is coloured and its next roll sits on its own line
   assert.match(appSource, /hodlMetaValue\(String\(result\.words\.length \+ 1\), false\)/);
   // What to roll next is its own sentence, so it lands on its own line.
   assert.match(appSource, /hodlTText\("Word \{word\} of \{partial\}", \{ word: hodlMetaToken, partial: result\.neededPartial \}\)/);
-  assert.match(appSource, /hodlTText\("die \{die\} of 5 \(only faces 1–4 used\)", \{ die: result\.diceInWord \+ 1 \}\)/);
+  assert.match(appSource, /hodlTText\("Die \{die\} of 5 \(only faces 1–4 used\)", \{ die: result\.diceInWord \+ 1 \}\)/);
   assert.match(appSource, /hodlTText\("6th die \(interpreted as a coin flip\)"\)/);
   // BitBox carries no tail at all now: the invalid-input note is redundant with
   // the highlighted transcript above, and ignored extras still reach the user
@@ -408,7 +408,7 @@ test("the BitBox word counter is coloured and its next roll sits on its own line
   // The other methods keep the invalid-input tail, so the variable stays live.
   assert.match(appSource, /statusTail \+ invalidStatus/);
   assert.doesNotMatch(css, /\.meta-cue \{[^}]*font-weight/);
-  assert.match(appSource, /hodlMetaCue\(hodlTText\("choose final checksum word below"\)\)/);
+  assert.match(appSource, /hodlMetaCue\(hodlTText\("Choose final checksum word below"\)\)/);
   // The dot-joined single sentences are gone from every BitBox state.
   assert.doesNotMatch(appSource, /"Word \{word\} of \{partial\} ·/);
   assert.doesNotMatch(appSource, /"\{n\} words · choose the final checksum word"/);
@@ -1815,9 +1815,11 @@ test("D++ uses the published hexadecimal D16 transcript without a notation toggl
   // Completion tints nothing but the count: a blanket .ok on the line put a
   // second, olive green beside the bright one. Errors still take the line.
   assert.match(appSource, /meta\.className = "muted" \+ \(result\.invalidCount \? " err" : ""\);/);
-  assert.match(appSource, /else nextCue = hodlTText\("checksum valid · ready to derive"\);/);
-  // The next roll keeps its emphasis and its screen-reader-only range.
-  assert.match(appSource, /hodlDPlusRollNode\(rollPhrase, rollRange\)/);
+  assert.match(appSource, /else nextCue = hodlTText\("Checksum valid · ready to derive"\);/);
+  // The next roll is the card instructions' orange next-step cue, withheld
+  // while the transcript has an error, and it keeps its screen-reader range.
+  assert.match(appSource, /hodlDPlusRollNode\(rollPhrase, rollRange, !result\.invalidCount\)/);
+  assert.match(appSource, /let node = next \? hodlMetaCue\(rollPhrase, "next"\)/);
   assert.match(shell, /D8 labeled 1(?:–|\\u2013)8 and two hexadecimal D16 dice labeled 0(?:–|\\u2013)F/);
   assert.doesNotMatch(appSource, /data-dplus-die|hodlDPlusNumberedD16|dplusNumberedD16|Decimal D16/);
   assert.doesNotMatch(css, /dplus-die-pad|dplus-key-decimal|dplus-key-face/);

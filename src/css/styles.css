@@ -183,9 +183,13 @@ button:not(:disabled):active * { color: inherit !important; }
   border-color: var(--selection-accent);
 }
 .btn.primary { background: var(--selection-accent); color: var(--selection-fg); border-color: var(--selection-accent); }
+/* A primary action that cannot run yet has to look it: the orange fill says
+   "press me", so while disabled it goes to the quiet surface, border and
+   lettering instead. A derivation that is stopping stays red — that rule sits
+   later in the sheet at the same specificity, so keep this one ahead of it. */
 .btn.primary:disabled {
   cursor: not-allowed; opacity: 1;
-  background: var(--selection-accent); border-color: var(--selection-accent); color: var(--selection-fg);
+  background: var(--surface-2); border-color: var(--border); color: var(--faint);
 }
 .btn.secondary { background: var(--surface-2); color: var(--fg); }
 .btn.secondary:disabled { cursor: not-allowed; opacity: .52; color: var(--muted); }

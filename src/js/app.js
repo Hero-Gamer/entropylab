@@ -4917,15 +4917,17 @@ function hodlMetaValue(text, met) {
   span.textContent = text;
   return span;
 }
-// The next roll is the one thing to act on, so it carries the weight. The face
-// range rides along for screen readers only: the keypad already shows it.
-function hodlDPlusRollNode(rollPhrase, rollRange) {
-  let fragment = document.createDocumentFragment(), emphasis = document.createElement("strong"), accessibleRange = document.createElement("span");
-  emphasis.textContent = rollPhrase;
+// The next roll is an instruction, so it reads the way the card instructions
+// do: the orange next-step cue, which only speaks when nothing needs fixing.
+// With an error in the transcript it stays plain. The face range rides along
+// for screen readers only: the keypad already shows it.
+function hodlDPlusRollNode(rollPhrase, rollRange, next = true) {
+  let node = next ? hodlMetaCue(rollPhrase, "next") : document.createElement("span"), accessibleRange = document.createElement("span");
+  if (!next) node.textContent = rollPhrase;
   accessibleRange.className = "sr-only";
   accessibleRange.textContent = rollRange;
-  fragment.append(emphasis, accessibleRange);
-  return fragment;
+  node.append(accessibleRange);
+  return node;
 }
 // A whole-line cue rather than a figure: it takes the met colour without the
 // weight, which stays reserved for the numbers.
@@ -5628,19 +5630,19 @@ function hodlUpdateDice() {
     // word, so the line carried two numbers that disagreed by one throughout.
     let rollPhrase = "", rollRange = "", nextText = "", nextCue = "";
     if (result.waiting === "d8") { rollPhrase = hodlTText("D8 roll"); rollRange = hodlTText(" (1–8)"); }
-    else if (result.waiting === "d16-first") { rollPhrase = hodlTText("first D16 roll"); rollRange = hodlTText(" (0–F)"); }
-    else if (result.waiting === "d16-second") { rollPhrase = hodlTText("second D16 roll"); rollRange = hodlTText(" (0–F)"); }
+    else if (result.waiting === "d16-first") { rollPhrase = hodlTText("First D16 roll"); rollRange = hodlTText(" (0–F)"); }
+    else if (result.waiting === "d16-second") { rollPhrase = hodlTText("Second D16 roll"); rollRange = hodlTText(" (0–F)"); }
     else if (result.waiting === "correction") {
       let invalid = result.firstInvalid,
         specSteps = hodlDPlusFinalSteps(config.words),
         position = invalid?.final ? hodlDPlusStepChecksumLabel(specSteps[invalid.position]) : `word ${(invalid?.groupIndex??0)+1}'s ${invalid?.position===0?"D8":invalid?.position===1?"first D16":"second D16"} roll`;
-      nextText = `correct ${result.invalidRequiredCount} highlighted invalid result${result.invalidRequiredCount===1?"":"s"}, starting with ${position}`;
+      nextText = `Correct ${result.invalidRequiredCount} highlighted invalid result${result.invalidRequiredCount===1?"":"s"}, starting with ${position}`;
     }
-    else if (selectingFinal) nextCue = selectedFinal ? hodlTText("checksum valid · ready to derive") : hodlTText("choose final checksum word below");
-    else if (result.waiting === "checksum-d8") { rollPhrase = hodlTText("final D8 checksum roll"); rollRange = hodlTText(" (1–8)"); }
-    else if (result.waiting === "checksum-d16") { rollPhrase = hodlTText("final D16 checksum roll"); rollRange = hodlTText(" (0–F)"); }
-    else if (result.waiting === "checksum-coin") { rollPhrase = hodlTText("final D8 as a coin flip"); rollRange = hodlTText(" (1–4 Heads, 5–8 Tails)"); }
-    else nextCue = hodlTText("checksum valid · ready to derive");
+    else if (selectingFinal) nextCue = selectedFinal ? hodlTText("Checksum valid · ready to derive") : hodlTText("Choose final checksum word below");
+    else if (result.waiting === "checksum-d8") { rollPhrase = hodlTText("Final D8 checksum roll"); rollRange = hodlTText(" (1–8)"); }
+    else if (result.waiting === "checksum-d16") { rollPhrase = hodlTText("Final D16 checksum roll"); rollRange = hodlTText(" (0–F)"); }
+    else if (result.waiting === "checksum-coin") { rollPhrase = hodlTText("Final D8 as a coin flip"); rollRange = hodlTText(" (1–4 Heads, 5–8 Tails)"); }
+    else nextCue = hodlTText("Checksum valid · ready to derive");
     let statusTail = result.extraAfter ? hodlT(" · {n} extra input(s) ignored", { n: result.extraAfter }) : "";
     let displayWords = result.wordSlots.slice();
     if (result.finalWord) displayWords.push(result.finalWord);
@@ -5661,7 +5663,7 @@ function hodlUpdateDice() {
       activeWord = partialDone ? config.words : result.activeGroupIndex + 1;
     hodlRenderMeta("dice-meta", [
       [hodlTText("Word {word} of {partial}", { word: hodlMetaToken, partial: config.words }), hodlMetaValue(String(activeWord), complete)],
-      rollPhrase ? [hodlMetaToken, hodlDPlusRollNode(rollPhrase, rollRange)] : nextCue ? [hodlMetaToken, hodlMetaCue(nextCue)] : [nextText, null],
+      rollPhrase ? [hodlMetaToken, hodlDPlusRollNode(rollPhrase, rollRange, !result.invalidCount)] : nextCue ? [hodlMetaToken, hodlMetaCue(nextCue)] : [nextText, null],
     ], statusTail + invalidStatus);
     let meta = hodlElement("#dice-meta");
     // No blanket colour on the completed line: the bright green on the count
@@ -5679,8 +5681,8 @@ function hodlUpdateDice() {
     // once the phrase is down to its final checksum pick.
     let result = hodlBitBoxRolls(input.value, config.words), bitboxDone = result.waiting === "last-word",
       bitboxLines = bitboxDone
-        ? [[hodlTText("{n} words", { n: hodlMetaToken }), hodlMetaValue(String(result.words.length), true)], [hodlMetaToken, hodlMetaCue(hodlTText("choose final checksum word below"))]]
-        : [[hodlTText("Word {word} of {partial}", { word: hodlMetaToken, partial: result.neededPartial }), hodlMetaValue(String(result.words.length + 1), false)], [result.waiting === "coin" ? hodlTText("6th die (interpreted as a coin flip)") : hodlTText("die {die} of 5 (only faces 1–4 used)", { die: result.diceInWord + 1 }), null]];
+        ? [[hodlTText("{n} words", { n: hodlMetaToken }), hodlMetaValue(String(result.words.length), true)], [hodlMetaToken, hodlMetaCue(hodlTText("Choose final checksum word below"))]]
+        : [[hodlTText("Word {word} of {partial}", { word: hodlMetaToken, partial: result.neededPartial }), hodlMetaValue(String(result.words.length + 1), false)], [result.waiting === "coin" ? hodlTText("6th die (interpreted as a coin flip)") : hodlTText("Die {die} of 5 (only faces 1–4 used)", { die: result.diceInWord + 1 }), null]];
     let last = result.waiting === "last-word" ? hodlTargetLastWords(result.words.join(" "), config.words) : null;
     if (last && !last.error && !last.candidates.includes(hodlPickedLastWord)) hodlPickedLastWord = "";
     if (!last || last.error) hodlPickedLastWord = "";

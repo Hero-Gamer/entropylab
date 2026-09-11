@@ -1222,6 +1222,33 @@
     }
   });
 
+  await test("a disabled primary action looks unavailable, but a stopping derivation stays red", async () => {
+    // Read after the colour transitions settle; a mid-fade value would pass
+    // or fail by timing alone.
+    const go = document.getElementById("go");
+    const was = { disabled: go.disabled, state: go.dataset.derivationState };
+    const accent = getComputedStyle(document.documentElement).getPropertyValue("--selection-accent").trim();
+    const paint = async () => { await wait(300); return getComputedStyle(go).backgroundColor; };
+    const probe = document.createElement("span");
+    probe.style.color = accent;
+    document.body.append(probe);
+    const accentRgb = getComputedStyle(probe).color;
+    probe.remove();
+    try {
+      go.disabled = false; delete go.dataset.derivationState;
+      equal(await paint(), accentRgb, "An enabled Derive Key lost its orange fill");
+      go.disabled = true;
+      assert(await paint() !== accentRgb, "A disabled Derive Key still wears the orange fill that invites a press");
+      // Stopping is disabled too, and must still read as the red stop state.
+      go.dataset.derivationState = "stopping";
+      const stopping = await paint();
+      assert(stopping !== accentRgb && stopping === getComputedStyle(go).borderTopColor, "A stopping derivation lost its red state to the disabled treatment");
+    } finally {
+      go.disabled = was.disabled;
+      if (was.state) go.dataset.derivationState = was.state; else delete go.dataset.derivationState;
+    }
+  });
+
   await test("every tool card uses the shared spacing rhythm", async () => {
     const rootStyle = getComputedStyle(document.documentElement);
     const token = (name) => parseFloat(rootStyle.getPropertyValue(name));

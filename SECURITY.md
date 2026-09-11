@@ -92,6 +92,17 @@ material. Its security posture rests on the following model:
   Taproot/Schnorr nonces are not analyzed. The report marks these cases
   incomplete; a completed individual check is not a security conclusion for
   the transaction.
+- The optional ECDSA nonce-history file is an explicit user download and never
+  uses browser storage or the network. It contains check timestamps, master
+  fingerprints when available, raw `r` values, domain-separated SHA-256
+  identity tags for exact signing keys and verified message digests or source
+  contexts, plus verification flags; it does not contain raw PSBTs,
+  transactions, signatures, public keys, or digests. This is
+  correlation-sensitive metadata and should stay offline. The master
+  fingerprint is descriptive; comparisons use the exact signing-key tag, since
+  one wallet can have many child keys. A confirmed alert requires the same
+  key/`r` pair with different verified message tags; otherwise the result is
+  only a warning. The current implementation covers ECDSA, not Schnorr.
 - OP_RETURN detection is a parser of output scripts. It does not create
   data-carrier outputs, assign protocol meaning, or contact an indexer.
 - The published `CID.txt` is CIDv1 (raw, sha2-256) of the release
@@ -160,6 +171,25 @@ material. Its security posture rests on the following model:
   that root (the same rule COLDCARD uses). Anyone who has the parent seed,
   the exact passphrase, the application, and the index can reproduce every
   child; protect the parent for the combined value of all derived wallets.
+- The Lightning tab deciphers LND aezeed cipher seeds and derives node
+  identity keys in WebAssembly; it never creates seeds. The scrypt KDF runs
+  at LND's parameters (N=2^15, r=8, p=1) and both scrypt exports bound the
+  parameters — a 32 MiB working-buffer cap and p ≤ 16 on `el_scrypt`, only
+  LND's two legitimate parameter sets on `el_aezeed_decipher` — because WASM
+  linear memory never shrinks, so an unbounded call would grow the heap
+  permanently (32 MiB after the first production decode) or trap on
+  allocation failure and take every export down with it. The scrypt crate
+  does not zeroize its working buffers, so the exports overwrite them after
+  every call by re-allocating and wiping the same sizes; without that scrub,
+  the buffer's first block retains one PBKDF2 iteration of the passphrase,
+  which would let a later reader of page memory test passphrase guesses
+  without paying the scrypt cost. The vendored AEZ v5 module
+  (MIT-licensed, not public domain; see `entropylab-wasm/src/aez/mod.rs`)
+  erases its expanded key schedule on drop and its key-expansion hasher
+  after use, and a wide zeroing stack frame runs before the exports return
+  to overwrite spilled frame temporaries. The Node suite asserts the derived
+  key and the scrypt buffers are absent from linear memory after a decode;
+  closing the tab remains the only guaranteed erasure.
 - The single-file design inlines all scripts (`script-src 'unsafe-inline'`),
   and the secp256k1 WebAssembly module adds `wasm-unsafe-eval` to the
   content security policy: Chromium and WebKit engines refuse to compile a

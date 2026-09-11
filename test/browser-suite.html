@@ -1026,9 +1026,9 @@
   await test("tool tabs answer the arrow keys and name themselves in full", async () => {
     const strip = document.getElementById("workspace-tabs");
     const tabs = [...strip.querySelectorAll("[data-workspace]")];
-    assert(tabs.length === 7, `Expected seven tool tabs, found ${tabs.length}`);
+    assert(tabs.length === 8, `Expected eight tool tabs, found ${tabs.length}`);
     // The visible label may be abbreviated; the accessible name never is.
-    const names = ["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "Journal"];
+    const names = ["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "Lightning", "Journal"];
     tabs.forEach((tab, i) => {
       assert(tab.getAttribute("aria-label") === names[i], `Tab ${i} should be named "${names[i]}"`);
     });
@@ -1057,7 +1057,7 @@
       // keeping the four destination tabs visible but unavailable.
       tabs[2].dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
       await until(() => !document.getElementById("journal-card").hidden, "End to reach the Journal tool");
-      assert(document.activeElement === tabs[6], "End should move focus to the last tab");
+      assert(document.activeElement === tabs[7], "End should move focus to the last tab");
       const journalTabs = [...document.querySelectorAll("#journal-tool-tabs [data-journal-tool]")];
       equal(journalTabs.length, 4, "Journal should expose exactly four internal tabs");
       equal(journalTabs.map((tab) => tab.textContent.trim()).join("|"), "Notepad|Key manager|Session state|Session log");
@@ -1188,11 +1188,11 @@
       await until(() => !document.getElementById("psbt-card").hidden, "ArrowLeft to open PSBT / Nonce");
       assert(document.activeElement === psbtTabs[0], "Focus should return to PSBT / Nonce");
       // Home returns to the first top-level tool.
-      tabs[6].dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+      tabs[7].dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
       await until(() => document.activeElement === tabs[0], "Home to return to the first tab");
       // Left from the first wraps round to the last.
       tabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
-      await until(() => document.activeElement === tabs[6], "ArrowLeft to wrap to the last tab");
+      await until(() => document.activeElement === tabs[7], "ArrowLeft to wrap to the last tab");
     } finally {
       document.querySelector('#journal-tool-tabs [data-journal-tool="notes"]').click();
       document.querySelector('#workspace [data-workspace="calc"]').click();
@@ -1210,7 +1210,7 @@
 
     const cardIds = [
       "calc-card", "vanity-card", "bip85-card", "msig-card", "sp-card",
-      "psbt-card", "psbted-card", "journal-card", "journal-notes-card",
+      "psbt-card", "psbted-card", "ln-card", "journal-card", "journal-notes-card",
       "journal-keymanager-card", "journal-state-card", "journal-log-card",
     ];
     cardIds.forEach((id) => {
@@ -1994,6 +1994,76 @@
     assert(!icon.querySelector('ellipse[fill="none"]'), "SP Station coin face should not have a hole");
     document.querySelector('#workspace [data-workspace="calc"]').click();
     await until(() => !document.getElementById("key-manager").hidden, "key workspace");
+  });
+  await test("the Lightning tab derives LND and LDK node keys, gates secrets, and names a wrong passphrase", async () => {
+    // Expected values are @scure/bip32 derivations pinned in
+    // test/lightning.test.mjs: the toolkit aezeed vector's entropy
+    // 000102030405060708090a0b0c0d0e0f at m/1017'/0'/6'/0/0, and the trezor
+    // "abandon … about" mnemonic down the ldk-node two-stage path at m/0'.
+    const GOLDEN_AEZEED =
+      "ability result leisure oven shiver wedding toe broccoli exclude " +
+      "mosquito kind van action waste merit bundle robust source able " +
+      "advice core humor kitchen siren";
+    const LND_PUBKEY = "0282faf17eeae0aa1dbdbe49c4fcbdb6738595ead9afdd7f8fb4a22c6c44d2849b";
+    const LDK_PUBKEY = "027cf7c81dc777e46572ff964f17650a0f6f783319fcc140fb9a69425e2fbdc93c";
+    document.querySelector('#workspace [data-workspace="ln"]').click();
+    await until(() => !document.getElementById("ln-card").hidden, "Lightning workspace");
+    assert(!document.getElementById("ln-network-field").hidden, "the network picker shows for aezeed");
+    try {
+      // aezeed (LND): the golden vector deciphers and derives the node key.
+      document.getElementById("ln-seed").value = GOLDEN_AEZEED;
+      document.getElementById("ln-go").click();
+      await until(() => document.getElementById("ln-node-pubkey"), "the node key to derive");
+      equal(document.getElementById("ln-node-pubkey").textContent, LND_PUBKEY, "LND node pubkey");
+      assert(document.getElementById("ln-out").textContent.includes("m/1017'/0'/6'/0/0"), "the LND path is named");
+      // Secrets stay behind the reveal toggle.
+      assert(!document.getElementById("ln-entropy"), "entropy hidden before reveal");
+      document.getElementById("ln-reveal").click();
+      await until(() => document.getElementById("ln-entropy"), "reveal to show the entropy");
+      equal(document.getElementById("ln-entropy").textContent, "000102030405060708090a0b0c0d0e0f", "decoded entropy");
+      assert(document.getElementById("ln-root-xprv").textContent.startsWith("xprv"), "the root xprv is shown");
+      // Changing the network select wipes even a revealed result; switching
+      // back and re-deriving reproduces the mainnet key.
+      const network = document.getElementById("ln-network");
+      network.value = "testnet";
+      network.dispatchEvent(new Event("change", { bubbles: true }));
+      assert(!document.getElementById("ln-node-pubkey"), "a network change wipes the revealed result");
+      assert(!document.getElementById("ln-entropy"), "the revealed entropy is gone with it");
+      network.value = "mainnet";
+      network.dispatchEvent(new Event("change", { bubbles: true }));
+      document.getElementById("ln-go").click();
+      await until(() => document.getElementById("ln-node-pubkey"), "re-derive after switching back");
+      equal(document.getElementById("ln-node-pubkey").textContent, LND_PUBKEY, "mainnet node pubkey again");
+      // A wrong passphrase is a named failure, not a different wallet.
+      document.getElementById("ln-pass").value = "wrong";
+      document.getElementById("ln-go").click();
+      await until(() => document.getElementById("ln-error").textContent.length > 0, "the passphrase error");
+      assert(/passphrase/i.test(document.getElementById("ln-error").textContent), "the error names the passphrase");
+      assert(!document.getElementById("ln-node-pubkey"), "no stale result behind an error");
+      // BIP-39 (LDK): the network picker hides and the two-stage key derives.
+      document.getElementById("ln-pass").value = "";
+      const format = document.getElementById("ln-format");
+      format.value = "bip39";
+      format.dispatchEvent(new Event("change", { bubbles: true }));
+      await until(() => document.getElementById("ln-network-field").hidden, "the network picker to hide for BIP-39");
+      document.getElementById("ln-seed").value =
+        "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+      document.getElementById("ln-go").click();
+      await until(() => document.getElementById("ln-node-pubkey"), "the LDK node key to derive");
+      equal(document.getElementById("ln-node-pubkey").textContent, LDK_PUBKEY, "LDK node pubkey");
+      assert(document.getElementById("ln-out").textContent.includes("m/0'"), "the LDK path is named");
+      // Clear empties the fields and the result.
+      document.getElementById("ln-wipe").click();
+      await until(() => !document.getElementById("ln-node-pubkey"), "wipe to clear the result");
+      equal(document.getElementById("ln-seed").value, "", "the seed field is cleared");
+    } finally {
+      const format = document.getElementById("ln-format");
+      format.value = "aezeed";
+      format.dispatchEvent(new Event("change", { bubbles: true }));
+      document.getElementById("ln-wipe").click();
+      document.querySelector('#workspace [data-workspace="calc"]').click();
+      await until(() => !document.getElementById("key-manager").hidden, "key workspace");
+    }
   });
   await test("Key Station methods are one dropdown carrying every method's mark", async () => {
     const modes = document.getElementById("modes");
@@ -2784,6 +2854,38 @@
     assert(out.includes("Nonce analysis — Incomplete"), "single-signature nonce limitation was not exposed");
     assert(!out.includes("LISTED CHECKS COMPLETE"), "an incomplete report was presented as complete");
     sameBytes(await downloadedBytes("inspected.psbt"), vectorBytes, "downloaded PSBT differs from its binary upload");
+    // Cross-session nonce history saves the requested timestamp, master
+    // fingerprint field, and raw r, then loads the same file after a clear.
+    const historyDownload = document.getElementById("psbt-nonce-history-download");
+    const historyClear = document.getElementById("psbt-nonce-history-clear");
+    const historyInput = document.getElementById("psbt-nonce-history-file");
+    const historyStatus = document.getElementById("psbt-nonce-history-status");
+    assert(!historyDownload.disabled && !historyClear.disabled, "inspected nonce was not added to history");
+    state.lastBlob = null;
+    state.downloadName = "";
+    historyDownload.click();
+    const historyBlob = await until(() => state.downloadName === "entropylab-nonce-history.json" && state.lastBlob, "nonce history download");
+    const historyText = await historyBlob.text();
+    const historyJson = JSON.parse(historyText);
+    equal(historyJson.format, "entropylab-nonce-history", "nonce history format marker missing");
+    equal(historyJson.version, 1, "nonce history version missing");
+    equal(historyJson.records.length, 1, "nonce history should contain the one inspected ECDSA value");
+    const historyRecord = historyJson.records[0];
+    equal(Object.keys(historyRecord).sort().join("|"), "checkedAt|keyTag|masterFingerprint|messageTag|r|verified", "nonce history exported unexpected metadata");
+    const displayedR = out.match(/r values:\s*([0-9a-f]{64})/)?.[1];
+    assert(displayedR && historyRecord.r === displayedR, "nonce history did not export the inspected raw r value");
+    assert(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(historyRecord.checkedAt), "nonce history did not export the check time");
+    assert(historyRecord.masterFingerprint === null || /^[0-9a-f]{8}$/.test(historyRecord.masterFingerprint), "nonce history master fingerprint field is invalid");
+    assert(!historyText.includes(vector), "nonce history retained the PSBT payload");
+    historyClear.click();
+    assert(historyDownload.disabled && historyClear.disabled, "cleared nonce history remained available");
+    Object.defineProperty(historyInput, "files", {
+      configurable: true,
+      value: [new File([historyText], "entropylab-nonce-history.json", { type: "application/json" })],
+    });
+    historyInput.dispatchEvent(new Event("change", { bubbles: true }));
+    await until(() => historyStatus.textContent.includes("Loaded 1 nonce history record"), "nonce history upload");
+    assert(!historyDownload.disabled && !historyClear.disabled, "uploaded nonce history did not restore its controls");
     // Change the finalized signature's SIGHASH_ALL suffix to SIGHASH_NONE.
     // The report remains incomplete for unverified prevouts, but the real
     // policy problem must dominate the overall banner and its severity.

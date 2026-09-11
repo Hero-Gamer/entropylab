@@ -78,6 +78,17 @@ Official website: [entropylab.online](https://entropylab.online)
 - Accepts a fully signed raw Bitcoin transaction (hex or base64) in the same
   inspector: outputs, extracted ECDSA nonces, and inscription-envelope hints.
   Fee and RFC 6979 cannot be checked without previous outputs.
+- Keeps an optional cross-session ECDSA nonce history in page memory and lets
+  the user download or upload it as versioned JSON. The file contains only
+  the check time, master fingerprint when available, raw `r`, a
+  domain-separated SHA-256 tag for the exact signing key, a tagged message or
+  source identity, and a verification flag — never the PSBT, transaction,
+  signature, public key, or message digest. The exact-key tag prevents child
+  keys sharing a master fingerprint from being conflated. It can confirm reuse
+  only when the same key/`r` pair has different verified message digests;
+  incomplete records produce a warning instead. The file is
+  correlation-sensitive metadata and should remain offline. Nothing persists
+  unless it is downloaded.
 - With a session seed, root xprv, WIF, or hex key, labels each output as
   change, receive, or not in this wallet (accounts 0–2, 50 receive + 50
   change, all four script types). A two-or-more-output transaction with no
@@ -136,6 +147,16 @@ Official website: [entropylab.online](https://entropylab.online)
   account index back to the key and re-derives it, so the Keys tab, its
   exports, and the Journal show the vanity wallet. Found passphrases stay in
   page memory, are masked until revealed, and are wiped with the session.
+- Derives Lightning node identity public keys (Lightning tab) from a seed
+  phrase: an LND 24-word **aezeed** cipher seed is deciphered in WebAssembly
+  (scrypt key derivation, AEZ v5, CRC-32C checksum; a wrong passphrase is
+  detected, unlike BIP39) and its entropy derives the node key at LND's
+  `m/1017'/coinType'/6'/0/0` keychain path, while a BIP-39 phrase follows the
+  ldk-node convention (BIP39 seed, master key, re-seeded second BIP32 tree,
+  node secret at `m/0'`). The decoded cipher seed's internal version and
+  wallet birthday are shown alongside the node key; the decoded entropy and
+  salt and the BIP32 root xprv (what `chantools showrootkey` prints) sit
+  behind a reveal toggle. Decoding only: the tab never creates seeds.
 - A session **Journal** (last workspace tab) holds an **Entropy
   Journal** notebook, a notepad stamped with this computer's date and time,
   a Key Manager, a live summary of everything derived in this sitting, and a debug log

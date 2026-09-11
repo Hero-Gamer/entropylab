@@ -37,9 +37,35 @@ const crates = [
     symbol: "ENTROPYLAB_WASM_B64",
     blurb: `// libsecp256k1 v0.4.1 (vendored by secp256k1-sys 0.10.1 via secp256k1 0.29.1),
 // bitcoin_hashes 0.14.101, rust-bitcoin 0.32.11, rust-bip39 2.2.2,
-// base58ck 0.1.101, and bech32 0.11.1 (see entropylab-wasm/Cargo.lock)
-// compiled to WebAssembly from entropylab-wasm/ with the pinned Rust 1.95.0
-// toolchain.
+// base58ck 0.1.101, bech32 0.11.1, and scrypt 0.12.0 (see
+// entropylab-wasm/Cargo.lock) compiled to WebAssembly from entropylab-wasm/
+// with the pinned Rust 1.95.0 toolchain.
+//
+// This artifact also compiles in the AEZ v5 module vendored at
+// entropylab-wasm/src/aez/ from the zears crate 0.2.1
+// (https://codeberg.org/dunj3/zears). Unlike the rest of EntropyLab (public
+// domain), that module — and this derived artifact — carry the MIT license:
+//
+//   Copyright 2025 Daniel Schadt
+//
+//   Permission is hereby granted, free of charge, to any person obtaining a
+//   copy of this software and associated documentation files (the
+//   "Software"), to deal in the Software without restriction, including
+//   without limitation the rights to use, copy, modify, merge, publish,
+//   distribute, sublicense, and/or sell copies of the Software, and to
+//   permit persons to whom the Software is furnished to do so, subject to
+//   the following conditions:
+//
+//   The above copyright notice and this permission notice shall be included
+//   in all copies or substantial portions of the Software.
+//
+//   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+//   OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+//   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+//   IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+//   CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+//   TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+//   SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //`,
   },
   {

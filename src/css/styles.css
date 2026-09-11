@@ -1188,8 +1188,8 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .segmented-control.is-stacked > .tab:first-child { border-radius: 8px 8px 0 0; }
 .segmented-control.is-stacked > .tab:last-child { border-radius: 0 0 8px 8px; }
 .segmented-control.is-stacked > .tab:only-child { border-radius: 8px; }
-#msig-card[hidden], #calc-card[hidden], #psbt-card[hidden], #psbted-card[hidden], #bip85-card[hidden], #sp-card[hidden], #vanity-card[hidden] { display: none !important; }
-#calc-card:not([hidden]), #msig-card:not([hidden]), #bip85-card:not([hidden]), #sp-card:not([hidden]), #psbt-card:not([hidden]), #psbted-card:not([hidden]), #vanity-card:not([hidden]) { margin-top: 0; border-radius: 0 0 20px 20px; position: relative; z-index: 1; }
+#msig-card[hidden], #calc-card[hidden], #psbt-card[hidden], #psbted-card[hidden], #bip85-card[hidden], #sp-card[hidden], #vanity-card[hidden], #ln-card[hidden] { display: none !important; }
+#calc-card:not([hidden]), #msig-card:not([hidden]), #bip85-card:not([hidden]), #sp-card:not([hidden]), #psbt-card:not([hidden]), #psbted-card:not([hidden]), #vanity-card:not([hidden]), #ln-card:not([hidden]) { margin-top: 0; border-radius: 0 0 20px 20px; position: relative; z-index: 1; }
 #journal-card[hidden], #journal-notes-card[hidden], #journal-keymanager-card[hidden], #journal-state-card[hidden], #journal-log-card[hidden] { display: none !important; }
 #journal-card:not([hidden]), #journal-notes-card:not([hidden]), #journal-keymanager-card:not([hidden]), #journal-state-card:not([hidden]), #journal-log-card:not([hidden]) { margin-top: 0; border-radius: 0 0 20px 20px; position: relative; z-index: 1; }
 #journal-locked-panel[hidden], #journal-work-panel[hidden], #journal-create-panel[hidden], #journal-open-panel[hidden], #journal-editor[hidden], #journal-view[hidden] { display: none; }
@@ -1929,6 +1929,13 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 @media (min-width: 720px) {
   .bip85-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .bip85-grid > .field { margin-top: 0; }
+}
+.ln-intro { margin: var(--space-control) 0 0; }
+.ln-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 14px; margin-top: var(--space-component); }
+.ln-grid .field[hidden] { display: none !important; }
+@media (min-width: 720px) {
+  .ln-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ln-grid > .field { margin-top: 0; }
 }
 .bip85-path-row { margin: var(--space-component) 0 0; }
 .bip85-path-row code { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }

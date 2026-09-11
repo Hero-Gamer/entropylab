@@ -1612,6 +1612,12 @@ test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
   }
   assert.match(shell, /data-psbt-tool="nonce"[^>]*>PSBT \/ Nonce/);
   assert.match(shell, /data-psbt-tool="editor"[^>]*>PSBT Editor/);
+  assert.match(shell, /id="psbt-nonce-history-upload"/);
+  assert.match(shell, /id="psbt-nonce-history-download"[^>]*disabled/);
+  assert.match(shell, /id="psbt-nonce-history-clear"[^>]*disabled/);
+  assert.match(shell, /id="psbt-nonce-history-result" aria-live="assertive"/);
+  assert.match(appSource, /parseNonceHistory, serializeNonceHistory/);
+  assert.match(appSource, /"entropylab-nonce-history\.json"/);
   assert.match(appSource, /getElementById\("psbt-manager"\)/);
   assert.match(appSource, /getElementById\("psbt-tool-intros"\)/);
   assert.match(appSource, /function hodlShowPsbtTool\(id, focus = false\)/);
@@ -1643,11 +1649,11 @@ test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
   // The editor reads the header picker's network through the passed getter.
   assert.match(appSource, /initPsbtEditor\(\{ networkDefault: \(\) => hodlNetworkDefault \}\)/);
   assert.match(css, /#psbted-card\[hidden\]/);
-  assert.match(css, /#psbt-card:not\(\[hidden\]\), #psbted-card:not\(\[hidden\]\), #vanity-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
+  assert.match(css, /#psbt-card:not\(\[hidden\]\), #psbted-card:not\(\[hidden\]\), #vanity-card:not\(\[hidden\]\), #ln-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
 });
 
 test("Journal gates its four tools behind the local notebook", () => {
-  assert.match(appSource, /\["psbt", "PSBT", "PSBT"\], \["journal", "Journal", "Journal"\]\];/);
+  assert.match(appSource, /\["psbt", "PSBT", "PSBT"\], \["ln", "Lightning", "LN"\], \["journal", "Journal", "Journal"\]\];/);
   assert.match(appSource, /import \{[\s\S]*wipeJournal,[\s\S]*\} from "\.\/journal\.js"/);
   assert.match(appSource, /import \{[\s\S]*sealDocument as hodlJournalSealDocument,[\s\S]*\} from "\.\/journal\.js"/);
   assert.match(appSource, /openExport as hodlJournalOpenExport/);
@@ -1825,6 +1831,7 @@ test("Journal gates its four tools behind the local notebook", () => {
   assert.match(appSource, /hodlJournalTool === "state"\) hodlJournalRefreshSessionState\(\)/);
   assert.doesNotMatch(appSource, /hodlJournalLog\("capture"|hodlJournalCaptureSession/);
   assert.match(appSource, /hodlJournalLog\("inspect", kind, "psbt"\)[\s\S]*hodlJournalLog\("inspect-error", "", "psbt"\)/);
+  assert.doesNotMatch(appSource, /hodlJournalLog\("inspect-nonce-/);
   assert.match(appSource, /hodlJournalLog\("calculate", hodlSpMode, "sp"\)[\s\S]*hodlJournalLog\("calculate-error", hodlSpMode, "sp"\)/);
   assert.match(appSource, /hodlJournalLog\("derive-error", "", "bip85"\)/);
   assert.match(appSource, /hodlJournalLog\("note-delete", "", "journal"\)/);
@@ -1921,9 +1928,9 @@ test("the workspace switcher keeps every tool on screen as a tab strip", () => {
   assert.match(appSource, /function hodlInitWorkspace\(\) \{\s*let box = hodlElement\("#workspace"\);\s*box\.innerHTML = "";/);
   assert.doesNotMatch(shell, /segmented-control" id="workspace"/);
   assert.match(shell, /<div class="workspace-tabs" id="workspace-tabs" role="tablist" aria-label="Tool">/);
-  // All seven tools ship in the static markup, each with a full name and the
+  // All eight tools ship in the static markup, each with a full name and the
   // short form narrow screens show instead.
-  for (const [full, short] of [["Keys", "Keys"], ["Vanity", "Vanity"], ["BIP-85", "BIP85"], ["Multi Signature", "MultiSig"], ["Silent Payments", "SP"], ["PSBT", "PSBT"], ["Journal", "Journal"]]) {
+  for (const [full, short] of [["Keys", "Keys"], ["Vanity", "Vanity"], ["BIP-85", "BIP85"], ["Multi Signature", "MultiSig"], ["Silent Payments", "SP"], ["PSBT", "PSBT"], ["Lightning", "LN"], ["Journal", "Journal"]]) {
     assert.ok(
       shell.includes(`<span class="workspace-tab-full">${full}</span><span class="workspace-tab-short">${short}</span>`),
       `${full} is missing from the workspace strip`,
@@ -1937,7 +1944,7 @@ test("the workspace switcher keeps every tool on screen as a tab strip", () => {
   // Hidden text leaves the accessibility tree, so the full name is stated on
   // the tab itself and assistive tech hears it at every width.
   assert.match(appSource, /button\.setAttribute\("aria-label", hodlTText\(label\)\);/);
-  for (const full of ["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "Journal"]) {
+  for (const full of ["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "Lightning", "Journal"]) {
     assert.match(shell, new RegExp(`aria-label="${full.replace("/", "\\/")}">[\\s\\S]*?<span class="workspace-tab-full">${full.replace("/", "\\/")}</span>`), `${full} tab needs its accessible name`);
   }
   // A tablist owes arrow keys; the key and multisig strips already answer them.
@@ -1975,7 +1982,7 @@ test("the workspace switcher keeps every tool on screen as a tab strip", () => {
   // Every tool panel lives inside it, and the closing Sources card does not.
   for (const markup of [shell]) {
     const panel = markup.slice(markup.indexOf('<div class="workspace-panel"'), markup.indexOf('class="card muted sources"'));
-    for (const id of ["calc-card", "bip85-card", "msig-card", "sp-card", "psbt-card", "journal-card", "journal-notes-card", "journal-keymanager-card", "journal-state-card", "journal-log-card"]) {
+    for (const id of ["calc-card", "bip85-card", "msig-card", "sp-card", "psbt-card", "ln-card", "journal-card", "journal-notes-card", "journal-keymanager-card", "journal-state-card", "journal-log-card"]) {
       assert.ok(panel.includes(`id="${id}"`), `${id} must sit inside the workspace panel`);
     }
     assert.ok(panel.includes('<div id="out">'), "the results region must sit inside the workspace panel");
@@ -2195,7 +2202,7 @@ test("tool cards follow the shared spacing contract", () => {
 
   const cardIds = [
     "calc-card", "vanity-card", "bip85-card", "msig-card", "sp-card",
-    "psbt-card", "psbted-card", "journal-card", "journal-notes-card",
+    "psbt-card", "psbted-card", "ln-card", "journal-card", "journal-notes-card",
     "journal-keymanager-card", "journal-state-card", "journal-log-card",
   ];
   for (const id of cardIds) {
@@ -2309,7 +2316,7 @@ test("session wallets use folder tabs that merge into the card", () => {
   assert.match(css, /\.key-manager \{ margin: 14px 0 -1px;/);
   assert.match(css, /\.key-tab \{[^}]*border-radius: 10px 10px 0 0;/s);
   assert.match(css, /\.key-tab\.active, \.key-tab-editing \{[^}]*border-bottom-color: var\(--surface\);/s);
-  assert.match(css, /#calc-card:not\(\[hidden\]\), #msig-card:not\(\[hidden\]\), #bip85-card:not\(\[hidden\]\), #sp-card:not\(\[hidden\]\), #psbt-card:not\(\[hidden\]\), #psbted-card:not\(\[hidden\]\), #vanity-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
+  assert.match(css, /#calc-card:not\(\[hidden\]\), #msig-card:not\(\[hidden\]\), #bip85-card:not\(\[hidden\]\), #sp-card:not\(\[hidden\]\), #psbt-card:not\(\[hidden\]\), #psbted-card:not\(\[hidden\]\), #vanity-card:not\(\[hidden\]\), #ln-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
   assert.match(css, /\.workspace-tab \{[^}]*border-radius: 10px 10px 0 0;/s);
   assert.match(appSource, /let lifehash = tab\.querySelector\("\.key-tab-lifehash"\);/);
   assert.doesNotMatch(appSource, /editor\.append\(hodlCreateKeyIcon\(state\.color\), input\)/);
@@ -2364,7 +2371,7 @@ test("the vanity grinder is a workspace tab that ships collapsed and never auto-
   // The tab rides the same show/hide plumbing as every other tool, and
   // leaving the tab stops the grind instead of grinding unseen.
   assert.match(appSource, /getElementById\("vanity-card"\)\.hidden = id !== "vanity"/);
-  assert.match(appSource, /\["bip85", "sp", "msig", "calc", "vanity"\]\.forEach/);
+  assert.match(appSource, /\["bip85", "sp", "msig", "calc", "vanity", "ln"\]\.forEach/);
   assert.match(appSource, /else if \(hodlWorkspace === "vanity"\) hodlVanityCancel\(\);/);
   assert.match(appSource, /function hodlInitWorkspace\(\) \{[\s\S]*?hodlInitVanity\(\);/);
   // The workers spawn only from the button handler; nothing starts on boot,

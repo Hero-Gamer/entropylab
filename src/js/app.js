@@ -11879,6 +11879,12 @@ function hodlSyncMsigDeleteButton() {
   button.disabled = !state || state.isLab;
   button.setAttribute("aria-disabled", String(button.disabled));
 }
+function hodlSyncMsigAddButton() {
+  let button = hodlElement("#add-msig");
+  if (!button) return;
+  button.disabled = !hodlMsigs.some((state) => !state.isLab);
+  button.setAttribute("aria-disabled", String(button.disabled));
+}
 function hodlRenderMsigTabs() {
   let box = hodlElement("#msig-tabs"), panel = hodlElement("#msig-card");
   box.innerHTML = "";
@@ -11891,6 +11897,7 @@ function hodlRenderMsigTabs() {
   });
   hodlRevealTab(box, hodlActiveMsig);
   hodlSyncMsigDeleteButton();
+  hodlSyncMsigAddButton();
 }
 function hodlSelectMsig(index) {
   if (index === hodlActiveMsig || !hodlMsigs[index]) return;
@@ -11907,6 +11914,7 @@ function hodlDeleteActiveMsig() {
   let state = hodlMsigs[hodlActiveMsig];
   if (!state || state.isLab) {
     hodlSyncMsigDeleteButton();
+    hodlSyncMsigAddButton();
     return;
   }
   let deletedIndex = hodlActiveMsig, deletedState = state;

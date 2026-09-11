@@ -1292,6 +1292,16 @@ test("the Keys plus control reads as unavailable until a key exists", () => {
   assert.match(appSource, /hodlSyncKeyDeleteButton\(\);\n  hodlSyncKeyAddButton\(\);/);
 });
 
+test("the Multi Signature plus control reads as unavailable until a multisig exists", () => {
+  assert.match(
+    shell,
+    /<button class="add-key" id="add-msig"[^>]*disabled/,
+    "add-msig must ship disabled",
+  );
+  assert.match(appSource, /function hodlSyncMsigAddButton\(\) \{[\s\S]*?button\.disabled = !hodlMsigs\.some\(\(state\) => !state\.isLab\);/);
+  assert.match(appSource, /hodlSyncMsigDeleteButton\(\);\n  hodlSyncMsigAddButton\(\);/);
+});
+
 test("seed-entry tools keep a square keyboard toggle and a block note on narrow screens", () => {
   assert.match(
     css,

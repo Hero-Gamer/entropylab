@@ -3945,6 +3945,8 @@
 
     document.querySelector('#workspace [data-workspace="msig"]').click();
     await until(() => !document.getElementById("msig-card").hidden, "multisig workspace");
+    const addMultisig = document.getElementById("add-msig");
+    assert(addMultisig.disabled && addMultisig.getAttribute("aria-disabled") === "true", "The Multi Signature plus control was available before the first multisig existed");
     const multisigScript = document.getElementById("msig-script-type");
     const multisigPurpose = document.getElementById("msig-purpose");
     equal(multisigPurpose.value, "48", "Native SegWit multisig did not default to purpose 48");
@@ -4010,6 +4012,7 @@
     deriveMultisig.click();
     await until(() => document.querySelector("#msig-out .account-result-card") || document.getElementById("msig-error").textContent, "1-of-1 BIP87 result");
     assert(!document.getElementById("msig-error").textContent, "1-of-1 BIP87 derivation failed");
+    assert(!addMultisig.disabled && addMultisig.getAttribute("aria-disabled") === "false", "The Multi Signature plus control did not enable after the first multisig was derived");
     const multisigProgress = await until(() => document.getElementById("msig-derive-progress").classList.contains("is-complete") && document.getElementById("msig-derive-progress"), "completed multisig progress");
     assert(!multisigProgress.hidden, "Completed multisig progress did not remain visible");
     equal(multisigProgress.getAttribute("aria-valuenow"), "100", "Multisig progress did not reach 100%");

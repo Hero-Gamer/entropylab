@@ -444,6 +444,74 @@ export const psbtDiffHtml = (diff, before, after, network) => {
   return `<p class="muted">before = the PSBT in the editor · after = the pasted PSBT. Only differences are listed.</p>${summary.join("")}${sections.join("")}`;
 };
 
+// Sanitize banner (inspect + compare footer). Three-state per issue #217:
+// complete / problem / incomplete. Duplicate keys are a format fact; origin
+// derivation is a consistency fact. Neither is a safety verdict.
+const sanitizeFamilyLabel = {
+  complete: ["Completed", "ok"],
+  problem: ["Problem found", "bad"],
+  incomplete: ["Incomplete", "warn"],
+};
+
+const sanitizeFindingText = (finding) => {
+  const where =
+    finding.scope === "global"
+      ? "global map"
+      : finding.index == null
+        ? finding.scope
+        : `${finding.scope} ${finding.index}`;
+  const name = finding.name || "key";
+  if (finding.code === "duplicate_key") return `duplicate ${name} in ${where}`;
+  if (finding.code === "xpub_derives_child") {
+    const fp = finding.fingerprint ? ` fingerprint ${finding.fingerprint}` : "";
+    const reason =
+      finding.reason === "mismatch"
+        ? "does not derive from the matching global xpub"
+        : finding.reason === "hardened_gap"
+          ? "not checked (hardened gap on the remaining path)"
+          : finding.reason === "malformed"
+            ? "origin field is malformed"
+            : finding.reason === "malformed_key"
+              ? "key is not valid for this record type (not checked)"
+              : finding.reason === "budget_exhausted"
+                ? "not checked (analysis budget exhausted)"
+                : "not checked (no applicable global xpub)";
+    return `${name} on ${where}${fp}: ${reason}`;
+  }
+  return name;
+};
+
+export const psbtSanitizeHtml = (doc, title = "") => {
+  const s = doc?.sanitize;
+  if (!s) return "";
+  const dup = s.duplicateKeys || { state: "incomplete", findings: [] };
+  const orig = s.xpubDerivesChild || { state: "incomplete", findings: [] };
+  const problem = dup.state === "problem" || orig.state === "problem";
+  // Anything that is not a known pass/problem is incomplete — an unknown
+  // state must never render as success.
+  const incomplete = [dup, orig].some((f) => f.state !== "complete" && f.state !== "problem");
+  const overall = problem && incomplete
+    ? "ISSUES FOUND — ANALYSIS ALSO INCOMPLETE"
+    : problem
+      ? "ISSUES FOUND"
+      : incomplete
+        ? "ANALYSIS INCOMPLETE"
+        : "LISTED CHECKS COMPLETE";
+  const tone = problem ? "bad" : incomplete ? "warn" : "ok";
+  const row = (label, family) => {
+    const [word, cls] = sanitizeFamilyLabel[family.state] || sanitizeFamilyLabel.incomplete;
+    const extra = family.truncated ? " (report truncated)" : "";
+    const details = (family.findings || []).slice(0, 8).map(sanitizeFindingText).join("; ");
+    return `<li><strong>${escapeHtml(label)}</strong> — <span class="psbted-note-${cls}">${word}</span>${extra}${details ? ` — ${escapeHtml(details)}` : ""}</li>`;
+  };
+  const heading = title ? `${escapeHtml(title)} — ` : "";
+  return `<section class="psbted-sanitize" aria-label="${title ? escapeHtml(title) + " " : ""}PSBT format and origin checks">
+    <p class="psbted-note-${tone}"><strong>${heading}${overall}</strong></p>
+    <ul>${row("Duplicate keys", dup)}${row("Origin derivation", orig)}</ul>
+    <p class="muted">Format and origin-consistency facts from this file. Not a safety verdict.</p>
+  </section>`;
+};
+
 // The editor has no network control of its own: addresses decode against the
 // header network picker's choice, read through the `networkDefault` getter
 // (mainnet/testnet), and re-decoded live when the picker changes it (the
@@ -617,6 +685,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
 
     out.innerHTML = `
       <p class="psbt-kv"><strong>PSBT v${escapeHtml(String(doc.psbtVersion))}</strong> · ${tx.inputs.length} input(s) · ${tx.outputs.length} output(s) · fee ${fee} · ${verdict} · ${sanity}</p>
+      ${psbtSanitizeHtml(doc)}
       <p class="muted" id="psbted-status" aria-live="polite">${stale ? "The fields do not build right now — see the error above; the result below is the last valid build." : "Every edit rebuilds the PSBT immediately; the fields show rust-bitcoin's decode of the current build."}</p>
 
       ${psbtVizHtml(doc, network(), selected)}
@@ -1204,7 +1273,8 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
           setCompareError(exception.message || String(exception));
           return;
         }
-        compareOut.innerHTML = psbtDiffHtml(comparePsbtDocs(beforeDoc, afterDoc), beforeDoc, afterDoc, network());
+        compareOut.innerHTML = `${psbtDiffHtml(comparePsbtDocs(beforeDoc, afterDoc), beforeDoc, afterDoc, network())}
+        <footer class="psbted-sanitize-compare">${psbtSanitizeHtml(beforeDoc, "Editor PSBT")}${psbtSanitizeHtml(afterDoc, "Pasted PSBT")}</footer>`;
       })
       .catch((exception) => setCompareError(exception.message || String(exception)));
   });

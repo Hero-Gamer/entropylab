@@ -75,7 +75,7 @@ function encodeInFormat(hex, format, words) {
 test("number-base character counts preserve exact BIP39 entropy lengths", () => {
   assert.deepEqual(
     ["bin", "base4", "base8", "hex", "base32", "base64"].map((format) => api.hodlEntropyFormatConfig(format, 12).digits),
-    [128, 64, 43, 32, 28, 23],
+    [128, 64, 43, 32, 26, 23],
   );
   assert.deepEqual(
     ["bin", "base4", "base8", "hex", "base32", "base64"].map((format) => api.hodlEntropyFormatConfig(format, 15).digits),
@@ -83,11 +83,11 @@ test("number-base character counts preserve exact BIP39 entropy lengths", () => 
   );
   assert.deepEqual(
     ["bin", "base4", "base8", "hex", "base32", "base64"].map((format) => api.hodlEntropyFormatConfig(format, 18).digits),
-    [192, 96, 64, 48, 40, 32],
+    [192, 96, 64, 48, 39, 32],
   );
   assert.deepEqual(
     ["bin", "base4", "base8", "hex", "base32", "base64"].map((format) => api.hodlEntropyFormatConfig(format, 21).digits),
-    [224, 112, 75, 56, 48, 39],
+    [224, 112, 75, 56, 45, 39],
   );
   assert.deepEqual(
     ["bin", "base4", "base8", "hex", "base32", "base64"].map((format) => api.hodlEntropyFormatConfig(format, 24).digits),
@@ -113,7 +113,7 @@ test("all six formats decode to the same entropy bytes", () => {
   }
 });
 
-test("Base 8 uses a mixed-radix final character and Base32 switches to coin flips", () => {
+test("Base 8 and Base32 use restricted mixed-radix final characters", () => {
   const base8 = api.hodlEntropyFormatConfig("base8", 12);
   assert.equal(base8.remainderBits, 2);
   assert.equal(base8.finalCharacters, "0123");
@@ -125,17 +125,17 @@ test("Base 8 uses a mixed-radix final character and Base32 switches to coin flip
 
   const base32 = api.hodlEntropyFormatConfig("base32", 24);
   assert.equal(base32.remainderBits, 1);
-  assert.equal(base32.finalCharacters, "01");
-  assert.equal(api.hodlAnalyzeEntropyInput(`${"0".repeat(51)}2`, "base32", 24).finalInvalid, true);
-  assert.equal(api.hodlNumberBaseEntropy(`${"0".repeat(51)}1`, "base32", 24).ok, true);
+  assert.equal(base32.finalCharacters, "qp");
+  assert.equal(api.hodlAnalyzeEntropyInput(`${"q".repeat(51)}z`, "base32", 24).finalInvalid, true);
+  assert.equal(api.hodlNumberBaseEntropy(`${"q".repeat(51)}p`, "base32", 24).ok, true);
 
   assert.equal(api.hodlEntropyFormatConfig("base8", 24).finalCharacters, "01");
-  assert.equal(api.hodlEntropyFormatConfig("base32", 12).digits, 28);
-  assert.equal(api.hodlEntropyFormatConfig("base32", 12).finalCharacters, "01");
-  assert.equal(api.hodlAnalyzeEntropyInput(`${"0".repeat(25)}010`, "base32", 12).ready, true);
-  assert.equal(api.hodlAnalyzeEntropyInput(`${"0".repeat(25)}02`, "base32", 12).finalInvalid, true);
-  assert.equal(api.hodlEntropyFormatConfig("base32", 18).digits, 40);
-  assert.equal(api.hodlEntropyFormatConfig("base32", 18).finalCharacters, "01");
+  assert.equal(api.hodlEntropyFormatConfig("base32", 12).digits, 26);
+  assert.equal(api.hodlEntropyFormatConfig("base32", 12).finalCharacters, "qpzry9x8");
+  assert.equal(api.hodlAnalyzeEntropyInput(`${"q".repeat(25)}q`, "base32", 12).ready, true);
+  assert.equal(api.hodlAnalyzeEntropyInput(`${"q".repeat(25)}g`, "base32", 12).finalInvalid, true);
+  assert.equal(api.hodlEntropyFormatConfig("base32", 18).digits, 39);
+  assert.equal(api.hodlEntropyFormatConfig("base32", 18).finalCharacters, "qpzr");
   assert.equal(api.hodlEntropyFormatConfig("base8", 18).remainderBits, 0);
 });
 
@@ -157,7 +157,7 @@ test("binary calculation rows expose BIP39 place values and word numbers", () =>
   assert.deepEqual(rows[0].terms.map(({ place, bit, value }) => [place, bit, value]), [[1024, "0", 0], [512, "0", 0], [256, "0", 0], [128, "0", 0], [64, "0", 0], [32, "0", 0], [16, "0", 0], [8, "0", 0], [4, "0", 0], [2, "0", 0], [1, "1", 1]]);
 });
 
-test("Base 4 calculation rows use the same normalized 11-bit BIP39 mapping", () => {
+test("Quaternary (Base 4) calculation rows use the same normalized 11-bit BIP39 mapping", () => {
   const rows = api.hodlNumberBaseCalculationRows("333333", "base4", 12);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].index, 2047);
@@ -169,9 +169,11 @@ test("hex conversion displays each source digit and its binary value", () => {
   assert.match(markup, />A<\/strong><b>\u2192<\/b><span>1010<\/span>/);
 });
 
-test("Crockford Base32 normalizes its documented aliases", () => {
-  assert.equal(api.hodlFilterNumberBase("o i-l", "base32"), "0 11");
-  assert.equal(api.hodlFilterNumberBase("u!", "base32"), "");
+test("Base32 uses the lowercase Bech32 alphabet", () => {
+  const alphabet = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+  assert.equal(api.hodlEntropyFormats.base32.alphabet, alphabet);
+  assert.equal(api.hodlFilterNumberBase(alphabet.toUpperCase(), "base32"), alphabet);
+  assert.equal(api.hodlFilterNumberBase("bio1!", "base32"), "");
 });
 
 test("Base64 uses the RFC 4648 alphabet followed by individual remaining bits", () => {

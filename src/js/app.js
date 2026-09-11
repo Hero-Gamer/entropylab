@@ -75,6 +75,7 @@ import {
   searchEntries as hodlJournalSearch,
   sealDocument as hodlJournalSealDocument,
   sealExport as hodlJournalSealExport,
+  syncKeySnapshots as hodlJournalSyncKeySnapshots,
   snapshotFromKeyState as hodlJournalKeySnapshot,
   snapshotSession as hodlJournalSnapshot,
   wipeBytes as hodlJournalWipeBytes,
@@ -2234,7 +2235,7 @@ var hodlEntropyFormats = Object.freeze({
   base4: Object.freeze({ id: "base4", base: 4, bitsPerDigit: 2, alphabet: "0123", ...hodlHexFormatLabels.base4, method: "base4" }),
   base8: Object.freeze({ id: "base8", base: 8, bitsPerDigit: 3, alphabet: "01234567", ...hodlHexFormatLabels.base8, method: "base8" }),
   hex: Object.freeze({ id: "hex", base: 16, bitsPerDigit: 4, alphabet: "0123456789ABCDEF", ...hodlHexFormatLabels.hex, method: "hex" }),
-  base32: Object.freeze({ id: "base32", base: 32, bitsPerDigit: 5, alphabet: "0123456789ABCDEFGHJKMNPQRSTVWXYZ", ...hodlHexFormatLabels.base32, method: "base32", binaryRemainder: true }),
+  base32: Object.freeze({ id: "base32", base: 32, bitsPerDigit: 5, alphabet: "qpzry9x8gf2tvdw0s3jn54khce6mua7l", ...hodlHexFormatLabels.base32, method: "base32" }),
   base64: Object.freeze({ id: "base64", base: 64, bitsPerDigit: 6, alphabet: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", ...hodlHexFormatLabels.base64, method: "base64", binaryRemainder: true })
 });
 var hodlBip39WordSet = new Set(hodlBip39Wordlist), hodlBip39WordIndex = new Map(hodlBip39Wordlist.map((word, index) => [word, index])), hodlLastWordCache = /* @__PURE__ */ new Map();
@@ -2919,12 +2920,7 @@ function hodlBinaryDigits(value) {
 function hodlNormalizeEntropyCharacter(character, format) {
   let id = hodlNormalizeEntropyFormat(format), normalized = String(character ?? "");
   if (id === "base64") return normalized;
-  normalized = normalized.toUpperCase();
-  if (id === "base32") {
-    if (normalized === "O") return "0";
-    if (normalized === "I" || normalized === "L") return "1";
-  }
-  return normalized;
+  return id === "base32" ? normalized.toLowerCase() : normalized.toUpperCase();
 }
 function hodlFilterNumberBase(value, format) {
   let meta = hodlEntropyFormatConfig(format), filtered = "";
@@ -3715,15 +3711,18 @@ function hodlPrivateKeyKeyboardToggleMarkup() {
 function hodlBase64KeyboardToggleMarkup() {
   return hodlKeyboardToggleMarkup("base64-keyboard-toggle", "on-screen Base64 keyboard", "base64-keyboard");
 }
+function hodlBase32KeyboardToggleMarkup() {
+  return hodlKeyboardToggleMarkup("base32-keyboard-toggle", "on-screen Bech32 keyboard", "base32-keyboard");
+}
 var hodlSeedKeyboardLayouts = { lower: ["abcdefghij", "klmnopqrs", "tuvwxyz"], upper: ["ABCDEFGHIJ", "KLMNOPQRS", "TUVWXYZ"], number: ["1234567890", "!@#$%^&*()", "-_+=/?\\"] };
-function hodlKeyboardMarkup(passphraseOnly = false, inputName = passphraseOnly ? "passphrase" : "seed phrase", keyboardId = "seed-keyboard", privateInitialOptions = false) {
+function hodlKeyboardMarkup(passphraseOnly = false, inputName = passphraseOnly ? "passphrase" : "seed phrase", keyboardId = "seed-keyboard", privateInitialOptions = false, modeLabel = "aA1") {
   let letters = hodlSeedKeyboardLayouts.lower.map((row, index) => `<div class="seed-keyboard-row" data-seed-keyboard-row="${index + 1}">${Array.from({ length: hodlSeedKeyboardLayouts.number[index].length }, (_, keyIndex) => {
     let letter = row[keyIndex];
     return `<button type="button" class="seed-keyboard-key" data-seed-character-key${letter ? ` data-seed-key="${letter}" aria-label="Enter ${letter}"` : ` hidden disabled aria-hidden="true"`}>${letter || ""}</button>`;
   }).join("")}${index === 2 ? `<button type="button" class="seed-keyboard-key seed-keyboard-delete" data-seed-delete aria-label="Delete previous character"><svg viewBox="0 0 24 18" aria-hidden="true" focusable="false"><path d="M9 2h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9L2 9l7-7Z"/><path d="m12 6 6 6m0-6-6 6"/></svg></button>` : ""}</div>`).join("");
   let initialOptions = privateInitialOptions ? `<div class="seed-keyboard-initial-row" data-private-key-initial-row aria-label="Valid first characters" hidden>${Array.from({ length: 3 }, () => `<button type="button" class="seed-keyboard-key" data-seed-character-key data-private-key-initial disabled hidden></button>`).join("")}</div>` : "";
   let hexKeypad = privateInitialOptions ? `<div class="private-key-hex-keypad" data-private-key-hex-keypad aria-label="Hexadecimal keypad" hidden><div class="private-key-hex-row" aria-label="Hexadecimal numbers">${[..."0123456789"].map((character) => `<button type="button" class="seed-keyboard-key" data-seed-character-key data-private-key-hex-character data-seed-key="${character}" aria-label="Enter ${character}">${character}</button>`).join("")}</div><div class="private-key-hex-row" aria-label="Hexadecimal letters">${[..."abcdef"].map((character) => `<button type="button" class="seed-keyboard-key" data-seed-character-key data-private-key-hex-character data-seed-key="${character}" aria-label="Enter ${character}">${character}</button>`).join("")}<button type="button" class="seed-keyboard-key seed-keyboard-delete" data-seed-delete data-private-key-hex-delete aria-label="Delete previous character"><svg viewBox="0 0 24 18" aria-hidden="true" focusable="false"><path d="M9 2h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9L2 9l7-7Z"/><path d="m12 6 6 6m0-6-6 6"/></svg></button></div></div>` : "";
-  return `<div class="seed-keyboard" id="${keyboardId}" data-on-screen-keyboard role="group" aria-label="On-screen lowercase ${inputName} keyboard" data-seed-keyboard-layout="lower"${hodlOnScreenKeyboardOpen ? "" : " hidden"}>${initialOptions}${letters}${hexKeypad}<div class="seed-keyboard-space-row"><button type="button" class="seed-keyboard-mode" data-seed-keyboard-mode="lower" aria-label="${passphraseOnly ? `Change ${inputName} character mode` : "Character mode switching is available for the passphrase"}"${passphraseOnly ? "" : " disabled"}>aA1</button><button type="button" class="seed-keyboard-space" data-seed-key=" " aria-label="Enter space">space</button></div></div>`;
+  return `<div class="seed-keyboard" id="${keyboardId}" data-on-screen-keyboard role="group" aria-label="On-screen lowercase ${inputName} keyboard" data-seed-keyboard-layout="lower"${hodlOnScreenKeyboardOpen ? "" : " hidden"}>${initialOptions}${letters}${hexKeypad}<div class="seed-keyboard-space-row"><button type="button" class="seed-keyboard-mode" data-seed-keyboard-mode="lower" aria-label="${passphraseOnly ? `Change ${inputName} character mode` : "Character mode switching is available for the passphrase"}"${passphraseOnly ? "" : " disabled"}>${modeLabel}</button><button type="button" class="seed-keyboard-space" data-seed-key=" " aria-label="Enter space">space</button></div></div>`;
 }
 function hodlSeedKeyboardMarkup() {
   return hodlKeyboardMarkup(false);
@@ -3737,11 +3736,14 @@ function hodlPrivateKeyKeyboardMarkup() {
 function hodlBase64KeyboardMarkup() {
   return hodlKeyboardMarkup(true, "Base64 entropy", "base64-keyboard");
 }
+function hodlBase32KeyboardMarkup() {
+  return hodlKeyboardMarkup(true, "Bech32 entropy", "base32-keyboard", false, "a1");
+}
 function hodlSetOnScreenKeyboardOpen(open) {
   hodlOnScreenKeyboardOpen = Boolean(open);
   document.querySelectorAll("[data-on-screen-keyboard-toggle]").forEach((toggle) => {
     toggle.setAttribute("aria-expanded", String(hodlOnScreenKeyboardOpen));
-    let target = toggle.id === "passphrase-keyboard-toggle" ? "passphrase" : toggle.id === "private-keyboard-toggle" ? "private key" : toggle.id === "base64-keyboard-toggle" ? "Base64" : "seed";
+    let target = toggle.id === "passphrase-keyboard-toggle" ? "passphrase" : toggle.id === "private-keyboard-toggle" ? "private key" : toggle.id === "base64-keyboard-toggle" ? "Base64" : toggle.id === "base32-keyboard-toggle" ? "Bech32" : "seed";
     toggle.setAttribute("aria-label", `${hodlOnScreenKeyboardOpen ? "Hide" : "Show"} on-screen ${target} keyboard`);
   });
   document.querySelectorAll("[data-on-screen-keyboard]").forEach((keyboard) => {
@@ -3851,6 +3853,20 @@ function hodlUpdateBase64KeyboardKeys(input) {
   keyboard.querySelectorAll("[data-seed-character-key]").forEach((button) => {
     let character = button.dataset.seedKey || "", remainder = definition.remainderBits && analysis.count >= definition.fullDigits, invalid = !definition.alphabet.includes(character) || analysis.count >= definition.digits || remainder && !definition.finalCharacters.includes(character);
     button.disabled = invalid;
+  });
+  let space = keyboard.querySelector(".seed-keyboard-space");
+  if (space) space.disabled = !input.value || /\s$/.test(input.value) || analysis.count >= definition.digits;
+  let remove = keyboard.querySelector("[data-seed-delete]"), start = input.selectionStart ?? input.value.length, end = input.selectionEnd ?? start;
+  if (remove) remove.disabled = start === end && start === 0;
+}
+function hodlUpdateBase32KeyboardKeys(input) {
+  let keyboard = document.getElementById("base32-keyboard");
+  if (!keyboard || !input) return;
+  let analysis = hodlAnalyzeEntropyInput(input.value, "base32", hodlTargetWordCount), definition = analysis.meta;
+  keyboard.querySelectorAll("[data-seed-character-key]").forEach((button) => {
+    let character = button.dataset.seedKey || "", available = definition.alphabet.includes(character), finalCharacter = definition.remainderBits && analysis.count >= definition.fullDigits;
+    button.hidden = keyboard.dataset.seedKeyboardLayout === "lower" && !available;
+    button.disabled = !available || analysis.count >= definition.digits || finalCharacter && !definition.finalCharacters.includes(character);
   });
   let space = keyboard.querySelector(".seed-keyboard-space");
   if (space) space.disabled = !input.value || /\s$/.test(input.value) || analysis.count >= definition.digits;
@@ -4361,6 +4377,31 @@ function hodlBindBase64Keyboard(input) {
     };
   }
   ;
+  ["input", "focus", "click", "keyup", "select"].forEach((type) => input.addEventListener(type, refresh));
+  refresh();
+}
+function hodlBindBase32Keyboard(input) {
+  let toggle = document.getElementById("base32-keyboard-toggle"), keyboard = document.getElementById("base32-keyboard"), modeButton = keyboard?.querySelector("[data-seed-keyboard-mode]");
+  if (!toggle || !keyboard || !input) return;
+  let refresh = () => hodlUpdateBase32KeyboardKeys(input);
+  toggle.onclick = () => {
+    hodlSetOnScreenKeyboardOpen(!hodlOnScreenKeyboardOpen);
+    refresh();
+  };
+  hodlBindKeypadPointer(keyboard.querySelectorAll("button"), () => input);
+  keyboard.querySelectorAll("[data-seed-character-key],.seed-keyboard-space").forEach((button) => {
+    button.onclick = () => hodlApplySeedKeyboardKey(input, button.dataset.seedKey || "");
+  });
+  keyboard.querySelectorAll("[data-seed-delete]").forEach((button) => hodlBindSeedKeyboardDelete(() => input, button));
+  if (modeButton) {
+    modeButton.disabled = false;
+    modeButton.onclick = () => {
+      let next = keyboard.dataset.seedKeyboardLayout === "lower" ? "number" : "lower";
+      hodlSetSeedKeyboardLayout(keyboard, modeButton, next);
+      keyboard.setAttribute("aria-label", `On-screen ${next === "lower" ? "lowercase" : "number"} Bech32 entropy keyboard`);
+      refresh();
+    };
+  }
   ["input", "focus", "click", "keyup", "select"].forEach((type) => input.addEventListener(type, refresh));
   refresh();
 }
@@ -5390,18 +5431,19 @@ function hodlRenderKeyForm() {
       return `<label class="choice"><input type="radio" name="entropy-format" value="${id}" ${format.id === id ? "checked" : ""} /><span><strong>${hodlT(hodlHexFormatLabels[id].label)}</strong><span class="desc">${hodlT(hodlHexFormatLabels[id].desc)}</span></span></label>`;
     }).join("");
     let formatLabel = hodlT(format.label), formatShort = hodlT(format.shortLabel), formatUnit = hodlT(format.unit);
-    let entropyPad = format.id === "base64" ? "" : `<div class="dice-input-pad entropy-keypad entropy-keypad-${format.id}" role="group" aria-label="${hodlT("{label} keypad", { label: formatLabel })}">${[...format.alphabet].map((character) => `<button type="button"${format.id === "bin" ? ' class="coin-button"' : ""} data-entropy-digit="${character}" aria-label="${format.id === "bin" ? character === "0" ? hodlT("Enter Heads as binary 0") : hodlT("Enter Tails as binary 1") : hodlT("Enter {shortLabel} {character}", { shortLabel: formatShort, character })}">${format.id === "bin" ? character === "0" ? hodlT("Heads (0)") : hodlT("Tails (1)") : character}</button>`).join("")}</div>`;
-    let remainderHelp = format.remainderBits ? format.binaryRemainder ? hodlT(" Enter {fullDigits} complete {shortLabel} characters; the controls and progress message then switch to {n} coin flip(s), using Heads (0) or Tails (1).", { fullDigits: format.fullDigits, shortLabel: formatShort, n: format.remainderBits }) : hodlT(" The final character is mixed-radix: it contributes only {n} bit(s) and must be one of {chars}.", { n: format.remainderBits, chars: [...format.finalCharacters].join(", ") }) : "", base64Tools = format.id === "base64" ? `<div class="seed-entry-tools base64-entry-tools">${hodlBase64KeyboardToggleMarkup()}</div>` : "", base64Keyboard = format.id === "base64" ? hodlBase64KeyboardMarkup() : "";
+    let usesKeyboard = format.id === "base32" || format.id === "base64";
+    let entropyPad = usesKeyboard ? "" : `<div class="dice-input-pad entropy-keypad entropy-keypad-${format.id}" role="group" aria-label="${hodlT("{label} keypad", { label: formatLabel })}">${[...format.alphabet].map((character) => `<button type="button"${format.id === "bin" ? ' class="coin-button"' : ""} data-entropy-digit="${character}" aria-label="${format.id === "bin" ? character === "0" ? hodlT("Enter Heads as binary 0") : hodlT("Enter Tails as binary 1") : hodlT("Enter {shortLabel} {character}", { shortLabel: formatShort, character })}">${format.id === "bin" ? character === "0" ? hodlT("Heads (0)") : hodlT("Tails (1)") : character}</button>`).join("")}</div>`;
+    let remainderHelp = format.remainderBits ? format.binaryRemainder ? hodlT(" Enter {fullDigits} complete {shortLabel} characters; the controls and progress message then switch to {n} coin flip(s), using Heads (0) or Tails (1).", { fullDigits: format.fullDigits, shortLabel: formatShort, n: format.remainderBits }) : hodlT(" The final character is mixed-radix: it contributes only {n} bit(s) and must be one of {chars}.", { n: format.remainderBits, chars: [...format.finalCharacters].join(", ") }) : "", keyboardTools = format.id === "base32" ? `<div class="seed-entry-tools base64-entry-tools">${hodlBase32KeyboardToggleMarkup()}</div>` : format.id === "base64" ? `<div class="seed-entry-tools base64-entry-tools">${hodlBase64KeyboardToggleMarkup()}</div>` : "", numberBaseKeyboard = format.id === "base32" ? hodlBase32KeyboardMarkup() : format.id === "base64" ? hodlBase64KeyboardMarkup() : "";
     hodlFormEl.innerHTML = `
       <p class="label">${hodlT("Number base")}</p>
       <div class="choice-grid entropy-format-grid">${formatChoices}</div>
       ${["bin", "base4", "base8", "hex"].includes(format.id) ? `<label class="seed-autocomplete-toggle number-base-calculations-toggle"><input type="checkbox" id="show-number-base-calculations" ${state?.showNumberBaseCalculations ? "checked" : ""} /><span><strong>${hodlT("Show calculations")}</strong> <span class="seed-autocomplete-note">${hodlT("(show how each BIP39 word number is calculated)")}</span></span></label>` : ""}
       <p class="label" id="entropy-input-label">${format.label} entropy for a ${config.words}-word seed</p>
       <p class="muted" id="entropy-input-help">Each complete ${format.shortLabel} character contributes ${format.bitsPerDigit} bit${format.bitsPerDigit === 1 ? "" : "s"}${format.binaryRemainder ? "" : " except for a mixed-radix final character when needed"}. Seed-word cards fill as enough bits arrive; the checksum-derived final word appears when all ${format.digits} characters are entered.${format.id === "bin" ? " Spaces are added every 11 bits." : ""}${remainderHelp} No generator \u2014 enter entropy you already created.</p>
-      ${base64Tools}
-      <div class="dice-input-shell entropy-input-shell"><pre class="dice-input-highlight" id="entropy-input-highlight" aria-hidden="true"></pre><textarea id="${inputId}" placeholder="${hodlT("Exactly {digits} {unit}", { digits: format.digits, unit: formatUnit })}" aria-labelledby="entropy-input-label" aria-describedby="entropy-input-help entropy-meta" autocomplete="off" spellcheck="false" autocapitalize="${format.id === "base64" ? "off" : format.base > 10 ? "characters" : "off"}"></textarea></div>
+      ${keyboardTools}
+      <div class="dice-input-shell entropy-input-shell"><pre class="dice-input-highlight" id="entropy-input-highlight" aria-hidden="true"></pre><textarea id="${inputId}" placeholder="${hodlT("Exactly {digits} {unit}", { digits: format.digits, unit: formatUnit })}" aria-labelledby="entropy-input-label" aria-describedby="entropy-input-help entropy-meta" autocomplete="off" spellcheck="false" autocapitalize="${usesKeyboard ? "off" : format.base > 10 ? "characters" : "off"}"></textarea></div>
       ${hodlSeedMetaRowMarkup("entropy-meta", true)}
-      ${base64Keyboard}
+      ${numberBaseKeyboard}
       ${entropyPad}
       <div id="number-base-calculations" class="number-base-calculations-panel" hidden></div>
       ${hodlSeedCopyRowMarkup()}
@@ -5433,7 +5475,8 @@ function hodlRenderKeyForm() {
       hodlFormEl.querySelectorAll("[data-entropy-digit]").forEach((button) => {
         button.onclick = () => hodlInsertEntropyControl(entropyInput, button);
       });
-      if (format.id === "base64") hodlBindBase64Keyboard(entropyInput);
+      if (format.id === "base32") hodlBindBase32Keyboard(entropyInput);
+      else if (format.id === "base64") hodlBindBase64Keyboard(entropyInput);
     }
     hodlRenderPassphraseKeyboard();
     return;
@@ -6309,6 +6352,7 @@ async function hodlCalculateKey(progress) {
     hodlJournalLog("derive", hodlWalletResult?.masterFingerprint || hodlWalletResult?.kind || "key");
     hodlSnapshotKeySummary();
     hodlCommitDerivedKey();
+    hodlJournalCaptureDerivedKey(hodlKeys[hodlActiveKey]);
     hodlFocusWalletResult();
     return true;
   } catch (error) {
@@ -10837,10 +10881,10 @@ function hodlKeySummaryMethod(state) {
     ? state.cardMethod === "direct" ? "Direct word selection" : "Hashed card transcript"
     : state.mode === "hex" ? {
       bin: "Binary (Base 2)",
-      base4: "Base 4",
+      base4: "Quaternary (Base 4)",
       base8: "Octal (Base 8)",
       hex: "Hexadecimal (Base 16)",
-      base32: "Crockford Base32",
+      base32: "Base32 (Bech32)",
       base64: "Base64 (RFC 4648 alphabet)",
     }[state.entropyFormat || "bin"]
     : state.mode === "seed" ? state.seedMethod === "numbers" ? "BIP39 word numbers" : "Direct word entry"
@@ -13210,7 +13254,7 @@ function hodlScheduleJournalStateRefresh() {
 }
 // The encrypted entropy notebook gates the Journal tools and keeps its
 // document and Web Crypto keys apart from the session notepad.
-var hodlJournalKeys = null, hodlJournalDoc = null, hodlJournalFileText = "", hodlJournalDirty = false, hodlJournalGate = "create", hodlJournalReveal = false, hodlJournalEditingId = null, hodlJournalDeleteArmed = false, hodlJournalEntryVariants = {};
+var hodlJournalKeys = null, hodlJournalDoc = null, hodlJournalFileText = "", hodlJournalDirty = false, hodlJournalGate = "create", hodlJournalReveal = false, hodlJournalEditingId = null, hodlJournalDeleteArmed = false, hodlJournalEntryVariants = {}, hodlJournalKeyEntries = new Map();
 function hodlJournalReadEntryVariants(entry) {
   if (!entry) return {};
   return Object.fromEntries(["diceMethod", "entropyFormat", "cardMethod", "seedMethod"].filter((field) => entry[field]).map((field) => [field, entry[field]]));
@@ -13236,6 +13280,7 @@ function hodlJournalWipeNotebook() {
   hodlJournalReveal = false;
   hodlJournalEditingId = null;
   hodlJournalDeleteArmed = false;
+  hodlJournalKeyEntries.clear();
 }
 // A notebook whose decryption outlived its session: the generation check in
 // create/unlock routes it here, so its plaintext and verify digest are wiped
@@ -13351,7 +13396,7 @@ function hodlJournalUnlocked() {
 function hodlJournalNoteText() {
   if (!hodlJournalDoc) return "Create a journal or open a journal file.";
   let n = hodlJournalDoc.entries.length;
-  let unsaved = hodlJournalDirty ? " Unsaved changes \u2014 download the journal file before locking." : "";
+  let unsaved = hodlJournalDirty ? " Unsaved changes \u2014 download the journal file to preserve them." : "";
   if (!n) return "No entries yet. Download the journal file after you add one." + unsaved;
   return `${n} ${n === 1 ? "entry" : "entries"} in this page only.${unsaved}`;
 }
@@ -13468,21 +13513,6 @@ function hodlJournalHideEditor() {
   hodlJournalEntryVariants = {};
   hodlJournalFillWallets("");
 }
-function hodlJournalApplySnapshot(snapshot) {
-  if (!snapshot) throw new Error("Derive a key first, then return to the journal.");
-  let method = document.getElementById("journal-method");
-  if (method) method.value = snapshot.method;
-  let input = document.getElementById("journal-input");
-  if (input) input.value = snapshot.input;
-  let phrase = document.getElementById("journal-phrase");
-  if (phrase) phrase.value = snapshot.phrase;
-  let label = document.getElementById("journal-label");
-  if (label && !label.value.trim()) label.value = snapshot.label;
-  let notes = document.getElementById("journal-entry-notes");
-  if (notes && !notes.value.trim()) notes.value = snapshot.notes;
-  hodlJournalEntryVariants = hodlJournalReadEntryVariants(snapshot);
-  hodlJournalFillWallets(snapshot.walletId ?? "");
-}
 function hodlJournalShowEditor(entry) {
   if (!hodlJournalUnlocked()) throw new Error("Create or open a journal first.");
   hodlJournalEditingId = entry?.id ?? null;
@@ -13577,6 +13607,29 @@ function hodlJournalOpenView(id) {
     hodlJournalShowWork();
   };
 }
+function hodlJournalSyncDerivedKeys(states) {
+  if (!hodlJournalUnlocked()) return { added: 0, updated: 0, matched: 0 };
+  try {
+    let snapshots = (states || []).filter((state) => state && !state.isLab && state.result).map(hodlJournalKeySnapshot).filter(Boolean);
+    let result = hodlJournalSyncKeySnapshots(hodlJournalDoc, snapshots, hodlJournalKeyEntries);
+    if (result.added || result.updated) hodlJournalDirty = true;
+    return result;
+  } catch (exception) {
+    hodlJournalError(`The key was derived, but its journal entry could not be updated: ${exception.message || String(exception)}`);
+    return { added: 0, updated: 0, matched: 0 };
+  }
+}
+function hodlJournalBackfillDerivedKeys() {
+  let result = hodlJournalSyncDerivedKeys(hodlKeys);
+  if (result.added) hodlJournalLog("entry-auto-add", `${result.added} Key Station ${result.added === 1 ? "key" : "keys"}`);
+  return result;
+}
+function hodlJournalCaptureDerivedKey(state) {
+  let result = hodlJournalSyncDerivedKeys([state]);
+  if (!result.added && !result.updated) return;
+  hodlJournalLog(result.updated ? "entry-auto-update" : "entry-auto-add", state?.result?.masterFingerprint || state?.name || "Key Station key");
+  hodlJournalShowWork();
+}
 async function hodlJournalCreate() {
   hodlJournalError("");
   let generation = hodlJournalGeneration;
@@ -13588,11 +13641,12 @@ async function hodlJournalCreate() {
     hodlJournalKeys = created.keys;
     hodlJournalDoc = created.doc;
     hodlJournalDirty = true;
+    hodlJournalBackfillDerivedKeys();
     document.getElementById("journal-create-password").value = "";
     document.getElementById("journal-create-confirm").value = "";
     hodlJournalHideEditor();
     hodlJournalShowWork();
-    hodlShowJournalTool("notes");
+    hodlShowJournalTool("book");
     hodlJournalLog("journal-create");
   } catch (exception) {
     hodlJournalError(exception.message || String(exception));
@@ -13610,12 +13664,13 @@ async function hodlJournalUnlock() {
     hodlJournalKeys = opened.keys;
     hodlJournalDoc = opened.doc;
     hodlJournalDirty = false;
+    hodlJournalBackfillDerivedKeys();
     document.getElementById("journal-open-password").value = "";
     document.getElementById("journal-file").value = "";
     hodlJournalFileText = "";
     hodlJournalHideEditor();
     hodlJournalShowWork();
-    hodlShowJournalTool("notes");
+    hodlShowJournalTool("book");
     hodlJournalLog("journal-unlock", `${opened.doc.entries.length} entries`);
   } catch (exception) {
     hodlJournalError(exception.message || String(exception));
@@ -13666,15 +13721,6 @@ function hodlJournalCommit() {
     hodlJournalError(exception.message || String(exception));
   }
 }
-function hodlJournalUseActiveKey() {
-  hodlJournalError("");
-  try {
-    if (hodlWorkspace === "calc") hodlCaptureKey();
-    hodlJournalApplySnapshot(hodlJournalKeySnapshot(hodlKeys[hodlActiveKey]));
-  } catch (exception) {
-    hodlJournalError(exception.message || String(exception));
-  }
-}
 function hodlJournalLock() {
   hodlKeyManagerReset();
   hodlJournalWipeNotebook();
@@ -13713,29 +13759,11 @@ function hodlInitJournalNotebook() {
   document.getElementById("journal-global-clear")?.addEventListener("click", hodlJournalWipeMem);
   document.getElementById("journal-commit")?.addEventListener("click", hodlJournalCommit);
   document.getElementById("journal-method")?.addEventListener("change", () => { hodlJournalEntryVariants = {}; });
-  document.getElementById("journal-use-calc")?.addEventListener("click", hodlJournalUseActiveKey);
   document.getElementById("journal-cancel")?.addEventListener("click", () => {
     hodlJournalHideEditor();
     hodlJournalRenderList();
   });
   document.getElementById("journal-search")?.addEventListener("input", hodlJournalRenderList);
-  let open = document.getElementById("journal-open");
-  if (open) open.onclick = () => {
-    if (hodlWorkspace === "calc") hodlCaptureKey();
-    hodlShowWorkspace("journal");
-    hodlShowJournalTool("book");
-    hodlJournalError("");
-    try {
-      if (!hodlJournalUnlocked()) {
-        hodlJournalError("Create or open a journal, then save this key into it.");
-        return;
-      }
-      hodlJournalShowEditor(null);
-      hodlJournalUseActiveKey();
-    } catch (exception) {
-      hodlJournalError(exception.message || String(exception));
-    }
-  };
   hodlJournalSetGate("create");
   hodlJournalShowWork();
 }
@@ -13959,9 +13987,8 @@ function hodlVanityEstimate() {
     estimateEl.textContent = "";
   }
 }
-function hodlVanityToggleStopFirst() {
-  hodlVanityStopFirst = !hodlVanityStopFirst;
-  hodlVanitySyncControls();
+function hodlVanityStopFirstChanged() {
+  hodlVanityStopFirst = Boolean(document.getElementById("vanity-first")?.checked);
 }
 // Turns the key's Keys-tab settings into the grind plan: the concrete
 // derivation path (the key's own purpose, coin type, account, branch, and
@@ -14142,22 +14169,34 @@ function hodlRenderVanityOut() {
   box.querySelectorAll("img[data-vanity-lifehash]").forEach((image) => hodlFillKeyTabLifehash(image, image.dataset.vanityLifehash));
 }
 function hodlVanitySyncControls() {
-  let go = document.getElementById("vanity-go"), stop = document.getElementById("vanity-stop"), wipe = document.getElementById("vanity-wipe"), progress = document.getElementById("vanity-progress");
+  let go = document.getElementById("vanity-go"), wipe = document.getElementById("vanity-wipe"), progress = document.getElementById("vanity-progress");
   let source = hodlVanitySourceState();
   if (go) {
-    let blocked = hodlVanityRunning || hodlVanityApplying || !source;
+    if (hodlVanityRunning) {
+      if (!go.dataset.derivationWidth) {
+        let width = go.getBoundingClientRect().width;
+        if (width > 0) {
+          go.dataset.derivationWidth = String(width);
+          go.style.width = `${width}px`;
+        }
+      }
+      go.textContent = hodlTText("Stop");
+      go.dataset.derivationState = "running";
+      go.setAttribute("aria-label", hodlTText("Stop grinding"));
+    } else {
+      go.textContent = hodlTText("Start grinding");
+      delete go.dataset.derivationState;
+      delete go.dataset.derivationWidth;
+      go.removeAttribute("aria-label");
+      go.style.removeProperty("width");
+    }
+    let blocked = hodlVanityApplying || !source;
     go.disabled = blocked;
     go.setAttribute("aria-disabled", String(blocked));
-    go.textContent = hodlVanityRunning ? "Grinding…" : "Start grinding";
     go.title = source ? "" : "Pick a Key Station key first";
   }
-  if (stop) stop.disabled = !hodlVanityRunning;
   let first = document.getElementById("vanity-first");
-  if (first) {
-    first.setAttribute("aria-pressed", String(hodlVanityStopFirst));
-    first.classList.toggle("is-pressed", hodlVanityStopFirst);
-    first.textContent = hodlVanityStopFirst ? "Stop on first find: on" : "Stop on first find";
-  }
+  if (first) first.checked = hodlVanityStopFirst;
   let dirty = hodlVanityFound > 0 && !hodlVanityRunning && !hodlVanityApplying;
   if (wipe) {
     wipe.disabled = !dirty;
@@ -14341,9 +14380,8 @@ function hodlInitVanity() {
   if (!go) return;
   let workersField = document.getElementById("vanity-workers");
   if (workersField && navigator.hardwareConcurrency) workersField.value = String(Math.max(1, Math.min(64, navigator.hardwareConcurrency)));
-  go.onclick = hodlRunVanity;
-  document.getElementById("vanity-stop").onclick = hodlVanityStop;
-  document.getElementById("vanity-first").onclick = hodlVanityToggleStopFirst;
+  go.onclick = () => hodlVanityRunning ? hodlVanityStop() : hodlRunVanity();
+  document.getElementById("vanity-first").onchange = hodlVanityStopFirstChanged;
   document.getElementById("vanity-wipe").onclick = () => hodlVanityClearResults();
   workersField?.addEventListener("input", hodlVanityEstimate);
   let prefix = document.getElementById("vanity-prefix");

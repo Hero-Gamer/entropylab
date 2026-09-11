@@ -205,7 +205,6 @@ words, pick one of the checksum words.</span></span>
       <div class="row key-action-row current-item-actions tool-actions">
         <button class="btn primary" id="go" disabled aria-disabled="true">Derive Key</button>
         <div class="derive-progress" id="derive-progress" role="progressbar" aria-label="Key derivation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete" hidden><span class="derive-progress-track"><span class="derive-progress-bar"></span></span><span class="derive-progress-label">0%</span></div>
-        <button class="btn secondary" id="journal-open" type="button">Save to Journal</button>
         <button class="btn clear-current-action" id="wipe" type="button" disabled aria-disabled="true">Clear Current Key</button>
       </div>
       <p class="err" id="error"></p>
@@ -288,11 +287,12 @@ words, pick one of the checksum words.</span></span>
           </label>
         </div>
         <p class="muted" id="vanity-estimate" aria-live="polite"></p>
+        <div class="switch-row vanity-first-row">
+          <label class="seed-autocomplete-toggle switch-toggle vanity-first-toggle"><input id="vanity-first" type="checkbox"><span>Stop on first find</span></label>
+        </div>
         <div class="row current-item-actions tool-actions">
           <button class="btn primary" id="vanity-go" type="button">Start grinding</button>
           <div class="derive-progress" id="vanity-progress" role="progressbar" aria-label="Vanity grinding progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete" hidden><span class="derive-progress-track"><span class="derive-progress-bar"></span></span><span class="derive-progress-label">0%</span></div>
-          <button class="btn secondary" id="vanity-stop" type="button" disabled>Stop</button>
-          <button class="btn secondary" id="vanity-first" type="button" aria-pressed="false" title="Stop grinding as soon as the first match is found">Stop on first find</button>
           <button class="btn clear-current-action" id="vanity-wipe" type="button" disabled aria-disabled="true">Clear results</button>
         </div>
         <p class="muted" id="vanity-status" aria-live="polite">Idle. No range has been ground this session.</p>
@@ -702,6 +702,7 @@ words, pick one of the checksum words.</span></span>
     <section class="key-manager no-print" id="journal-manager" hidden>
       <div class="key-tab-strip">
         <div class="key-tabs" id="journal-tool-tabs" role="tablist" aria-label="Journal stations">
+          <button class="tab key-tab is-lab" id="journal-book-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-card" aria-disabled="true" data-journal-tool="book" disabled>Entries</button>
           <button class="tab key-tab is-lab" id="journal-notes-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-notes-card" aria-disabled="true" data-journal-tool="notes" disabled>Notepad</button>
           <button class="tab key-tab is-lab" id="journal-keymanager-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-keymanager-card" aria-disabled="true" data-journal-tool="keymanager" disabled>Key manager</button>
           <button class="tab key-tab is-lab" id="journal-state-tab" type="button" role="tab" aria-selected="false" aria-controls="journal-state-card" aria-disabled="true" data-journal-tool="state" disabled>Session state</button>
@@ -786,7 +787,6 @@ words, pick one of the checksum words.</span></span>
           </label>
           <div class="row bip85-actions tool-actions">
             <button class="btn primary" id="journal-commit" type="button">Save entry</button>
-            <button class="btn secondary" id="journal-use-calc" type="button">Use active key</button>
             <button class="btn secondary" id="journal-cancel" type="button">Cancel</button>
           </div>
         </div>

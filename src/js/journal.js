@@ -369,7 +369,7 @@ export const METHOD_LABELS = Object.freeze({
 });
 const ENTRY_VARIANTS = Object.freeze({
   diceMethod: Object.freeze({ coldcard: "COLDCARD / SeedSigner", coleman: "Ian Coleman / Keystone", bitbox: "BitBox diceware", dplus: "D++ direct word selection" }),
-  entropyFormat: Object.freeze({ bin: "Binary (Base 2)", base4: "Base 4", base8: "Base 8", hex: "Hexadecimal (Base 16)", base32: "Crockford Base32", base64: "Base64" }),
+  entropyFormat: Object.freeze({ bin: "Binary (Base 2)", base4: "Quaternary (Base 4)", base8: "Base 8", hex: "Hexadecimal (Base 16)", base32: "Base32 (Bech32)", base64: "Base64" }),
   cardMethod: Object.freeze({ hashed: "Hashed transcript", direct: "Direct word selection" }),
   seedMethod: Object.freeze({ words: "Direct words", numbers: "BIP39 word numbers" }),
 });
@@ -597,6 +597,68 @@ export function snapshotFromKeyState(state) {
     walletName: String(state.name || ""),
     fingerprint: String(state.result?.masterFingerprint || "").toLowerCase(),
   };
+}
+
+const KEY_SNAPSHOT_MATCH_FIELDS = Object.freeze([
+  "method",
+  "diceMethod",
+  "entropyFormat",
+  "cardMethod",
+  "seedMethod",
+  "input",
+  "phrase",
+  "label",
+  "notes",
+  "walletName",
+  "fingerprint",
+]);
+
+// Session wallet ids are intentionally excluded: they are only meaningful in
+// the current page and may be reused when a journal is opened later.
+export function keySnapshotMatchesEntry(entry, snapshot) {
+  if (!entry || !snapshot) return false;
+  return KEY_SNAPSHOT_MATCH_FIELDS.every((field) => {
+    let left = String(entry[field] ?? ""), right = String(snapshot[field] ?? "");
+    if (field === "fingerprint") {
+      left = left.toLowerCase();
+      right = right.toLowerCase();
+    }
+    return left === right;
+  });
+}
+
+export function syncKeySnapshots(doc, snapshots, associations, now = new Date()) {
+  if (!doc || !Array.isArray(doc.entries)) throw new Error("Journal document is missing.");
+  if (!(associations instanceof Map)) throw new Error("Journal key associations are missing.");
+  const result = { added: 0, updated: 0, matched: 0 };
+  const claimedEntryIds = new Set();
+  for (const snapshot of snapshots || []) {
+    if (!snapshot || snapshot.walletId == null || snapshot.walletId === "") continue;
+    const stateId = Number(snapshot.walletId);
+    if (!Number.isInteger(stateId) || stateId < 0) continue;
+    let entryId = associations.get(stateId);
+    let entry = entryId == null || claimedEntryIds.has(entryId) ? null : doc.entries.find((item) => item.id === entryId);
+    if (!entry && entryId != null) associations.delete(stateId);
+    if (entry) {
+      claimedEntryIds.add(entry.id);
+      if (keySnapshotMatchesEntry(entry, snapshot)) {
+        result.matched++;
+      } else {
+        entry = replaceEntry(doc, entry.id, snapshot);
+        result.updated++;
+      }
+    } else {
+      entry = doc.entries.find((item) => !claimedEntryIds.has(item.id) && keySnapshotMatchesEntry(item, snapshot));
+      if (entry) result.matched++;
+      else {
+        entry = addEntry(doc, snapshot, now);
+        result.added++;
+      }
+      associations.set(stateId, entry.id);
+      claimedEntryIds.add(entry.id);
+    }
+  }
+  return result;
 }
 
 export function encodeFile({ iv, ciphertext, iterations = JOURNAL_ITERATIONS }) {

@@ -16,6 +16,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { scrypt as nobleScrypt } from "@noble/hashes/scrypt.js";
+import { pbkdf2 as noblePbkdf2 } from "@noble/hashes/pbkdf2.js";
+import { sha256 as nobleSha256 } from "@noble/hashes/sha2.js";
 import { aezeedDecode, aezeedWordsToBytes, AEZEED_DEFAULT_PASSPHRASE } from "../src/js/aezeed.js";
 import { wordlist } from "../src/js/bip39-english.js";
 import { heap, wasmExports, withInput } from "../src/js/entropylab-wasm.js";
@@ -190,9 +192,89 @@ test("el_scrypt matches @noble/hashes on the aezeed parameter shape", () => {
   for (const [pass, salt, logN] of [
     ["aezeed", "salt1", 4],
     ["!very_safe_55345_password*", "salt1", 4],
-    ["aezeed", " ", 15],
+    ["aezeed", "  ", 15],
   ]) {
     const expected = nobleScrypt(textBytes(pass), textBytes(salt), { N: 2 ** logN, r: 8, p: 1, dkLen: 32 });
     assert.equal(bytesToHex(elScrypt(pass, salt, logN, 8, 1, 32)), bytesToHex(expected), `scrypt(${pass}, ${salt}, 2^${logN})`);
   }
+});
+
+// ── Parameter bounds and heap hygiene (the security-review fixes) ───────────
+
+const elScryptCode = (pass, salt, logN, r, p) => {
+  const passBytes = textBytes(pass);
+  const saltBytes = textBytes(salt);
+  return withInput(passBytes, (passPtr) =>
+    withInput(saltBytes, (saltPtr) => {
+      const wasm = wasmExports();
+      const outPtr = wasm.el_alloc(32);
+      try {
+        return wasm.el_scrypt(passPtr, passBytes.length, saltPtr, saltBytes.length, logN, r, p, outPtr, 32);
+      } finally {
+        wasm.el_free(outPtr, 32);
+      }
+    }));
+};
+
+test("el_scrypt rejects working buffers over 32 MiB and p over 16", () => {
+  // The working buffer is 128·r·2^log_n bytes and WASM linear memory never
+  // shrinks, so an unbounded parameter set is a permanent heap growth (or a
+  // trapping allocation failure that kills every export until reload).
+  const heapBefore = heap().length;
+  assert.equal(elScryptCode("pass", "salt", 16, 8, 1), -1, "log_n=16 is a 64 MiB buffer");
+  assert.equal(elScryptCode("pass", "salt", 15, 9, 1), -1, "r=9 at log_n=15 is 36 MiB");
+  assert.equal(elScryptCode("pass", "salt", 20, 8, 1), -1, "log_n=20 is 1 GiB");
+  assert.equal(elScryptCode("pass", "salt", 4, 8, 17), -1, "p over 16");
+  assert.equal(elScryptCode("pass", "salt", 0, 8, 1), -1, "log_n zero");
+  assert.equal(heap().length, heapBefore, "rejected calls grow no memory");
+  // The aezeed shapes stay accepted.
+  assert.equal(elScryptCode("pass", "salt", 15, 8, 1), 32, "production shape");
+  assert.equal(elScryptCode("pass", "salt", 4, 8, 1), 32, "weakened test shape");
+});
+
+test("el_aezeed_decipher accepts only LND's two parameter sets", () => {
+  const seed = aezeedWordsToBytes(LND_VECTORS[0].mnemonic.split(" "));
+  assert.equal(decipherRaw(seed, AEZEED_DEFAULT_PASSPHRASE, 4).code, 19, "weakened set deciphers");
+  assert.equal(decipherRaw(seed, AEZEED_DEFAULT_PASSPHRASE, 15).code, -4, "production set is accepted (auth fails for this seed)");
+  assert.equal(decipherRaw(seed, AEZEED_DEFAULT_PASSPHRASE, 10).code, -1, "no third log_n");
+});
+
+// Scans the whole WASM heap for a needle; returns the hit offsets.
+const heapHits = (needle) => {
+  const haystack = heap();
+  const hits = [];
+  outer: for (let i = 0; i + needle.length <= haystack.length; i++) {
+    for (let j = 0; j < needle.length; j++) if (haystack[i + j] !== needle[j]) continue outer;
+    hits.push(i);
+  }
+  return hits;
+};
+
+test("no scrypt or AEZ key material survives a decode in linear memory", () => {
+  // The scrypt crate never zeroizes its working buffers, and without the
+  // scrub the heap retains (a) V's first block = PBKDF2-HMAC-SHA256(pass,
+  // salt, 1), a one-iteration passphrase-guessing oracle, and (b) copies of
+  // the derived AEZ key itself. Decode the production-parameter vector and
+  // assert none of it is findable afterwards.
+  const words = GOLDEN_MNEMONIC.split(" ");
+  const salt = aezeedWordsToBytes(words).slice(24, 29);
+  const passphrase = textBytes(AEZEED_DEFAULT_PASSPHRASE);
+  const scryptKey = nobleScrypt(passphrase, salt, { N: 2 ** 15, r: 8, p: 1, dkLen: 32 });
+  const preRomixB = noblePbkdf2(nobleSha256, passphrase, salt, { c: 1, dkLen: 128 * 8 });
+
+  const decoded = aezeedDecode(words, "");
+  assert.equal(bytesToHex(decoded.entropy), "000102030405060708090a0b0c0d0e0f", "the decode succeeded");
+  decoded.entropy.fill(0);
+  decoded.salt.fill(0);
+
+  assert.deepEqual(heapHits(scryptKey), [], "the derived AEZ key is gone");
+  assert.deepEqual(heapHits(preRomixB.slice(0, 32)), [], "pre-ROMix B head is gone");
+  assert.deepEqual(heapHits(preRomixB.slice(512, 544)), [], "pre-ROMix B mid-block is gone");
+
+  // A second decode must not leave it either (the residue was deterministic).
+  const again = aezeedDecode(words, "");
+  again.entropy.fill(0);
+  again.salt.fill(0);
+  assert.deepEqual(heapHits(scryptKey), [], "still gone after a second decode");
+  assert.deepEqual(heapHits(preRomixB.slice(0, 32)), [], "B still gone after a second decode");
 });

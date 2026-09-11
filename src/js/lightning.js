@@ -27,6 +27,12 @@ import { t } from "./i18n.js";
 
 // ── Derivations (DOM-free, unit-tested directly) ────────────────────────────
 
+// The aezeed internal (key-derivation) version this tool understands: LND
+// writes version 0 and rejects anything else; guggero's cryptography-toolkit
+// also emits version 1. Deriving a node key from an unknown internal version
+// would print a key no Lightning implementation would ever use.
+export const isKnownInternalVersion = (version) => version === 0 || version === 1;
+
 // LND: the aezeed entropy is the BIP32 seed; node key at
 // m/1017'/coinType'/6'/0/0. Returns the compressed pubkey hex, the path, and
 // the root xprv (what chantools showrootkey prints; importable into wallets).
@@ -132,7 +138,7 @@ function hodlLnRender() {
       <p class="psbt-kv" id="ln-node-pubkey">${escapeHtml(r.nodePubKey)}</p>
       ${hodlLnCopyButton("ln-node-pubkey", "Copy node pubkey")}
       <p class="muted">Identity key path <code>${escapeHtml(r.path)}</code>${aezeed ? ` · coin type ${r.coinType} (${r.coinType === 1 ? "testnet" : "mainnet"})` : " · the LDK node identity does not depend on the network"}</p>
-      ${aezeed ? `<p class="muted">Cipher seed version ${r.internalVersion} · wallet birthday day ${r.birthdayDays} (${escapeHtml(hodlLnBirthdayIso(r.birthdayTimestamp))} UTC, day 0 = Bitcoin genesis). Rescans from the birthday recover on-chain funds; channel funds need the node's channel backup.</p>` : `<p class="muted">Derived the ldk-node way: BIP39 seed → master key → its private key re-seeds a second BIP32 tree → node secret at <code>m/0'</code>.</p>`}
+      ${aezeed ? `<p class="muted">Internal (key-derivation) version ${r.internalVersion} · wallet birthday day ${r.birthdayDays} (${escapeHtml(hodlLnBirthdayIso(r.birthdayTimestamp))} UTC, day 0 = Bitcoin genesis). Rescans from the birthday recover on-chain funds; channel funds need the node's channel backup.</p>` : `<p class="muted">Derived the ldk-node way: BIP39 seed → master key → its private key re-seeds a second BIP32 tree → node secret at <code>m/0'</code>.</p>`}
       <label class="choice"><input type="checkbox" id="ln-reveal" ${secrets ? "checked" : ""}> <span>Reveal the root private key${aezeed ? " and decoded entropy" : ""}</span></label>
       ${secrets ? `
         ${aezeed ? `<p class="label">Decoded entropy (the BIP32 master seed)</p>
@@ -164,6 +170,13 @@ function hodlRunLn() {
       const decoded = aezeedDecode(words, passphrase);
       const coinType = hodlLnCoinType();
       try {
+        if (!isKnownInternalVersion(decoded.internalVersion)) {
+          throw Object.assign(new Error("Unsupported internal version"), {
+            key: "This cipher seed uses internal (key-derivation) version {v}, which no current Lightning implementation understands. Refusing to derive from it.",
+            vars: { v: decoded.internalVersion },
+            code: "internal-version",
+          });
+        }
         const derived = deriveLndNode(decoded.entropy, coinType);
         hodlLnLast = { format, coinType, ...decoded, ...derived };
       } catch (exception) {
@@ -222,7 +235,14 @@ export function hodlInitLn({ journalLog } = {}) {
     document.getElementById("ln-session").textContent = "Session ended and accessible fields were cleared (best effort).";
   };
   for (const id of ["ln-format", "ln-network"]) {
-    document.getElementById(id)?.addEventListener("change", hodlLnSyncFormat);
+    document.getElementById(id)?.addEventListener("change", () => {
+      // A stale result next to a flipped select is how a correct seed looks
+      // wrong (a mainnet pubkey beside "Testnet"): wipe and re-render on any
+      // format or network change.
+      hodlLnWipeMem();
+      hodlLnRender();
+      hodlLnSyncFormat();
+    });
   }
   document.getElementById("ln-out").addEventListener("click", (event) => {
     const button = event.target.closest?.("[data-ln-copy]");

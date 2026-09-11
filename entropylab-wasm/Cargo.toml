@@ -3,7 +3,7 @@ name = "entropylab-wasm"
 version = "0.1.0"
 edition = "2021"
 publish = false
-license = "Unlicense"
+license = "Unlicense AND MIT"
 description = "WebAssembly bindings to libsecp256k1, bitcoin_hashes, rust-bitcoin, rust-bip39, base58ck, bech32, scrypt, and a vendored AEZ v5 (for aezeed) for EntropyLab (built by CI, committed as src/js/entropylab-wasm-b64.js)"
 
 [lib]

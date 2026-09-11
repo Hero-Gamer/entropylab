@@ -58,3 +58,17 @@ impl AesRound for AesSoft {
         <Block as From<[u8; 16]>>::from(block.into())
     }
 }
+
+impl AesSoft {
+    /// Overwrites the three held key blocks with zeroes (volatile stores plus
+    /// a compiler fence). Not part of upstream zears; added so the AEZ key
+    /// schedule can be erased on drop (see mod.rs).
+    pub fn wipe(&mut self) {
+        for key in [&mut self.key_i, &mut self.key_j, &mut self.key_l] {
+            for byte in key.as_mut_slice().iter_mut() {
+                unsafe { std::ptr::write_volatile(byte, 0) };
+            }
+        }
+        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+    }
+}

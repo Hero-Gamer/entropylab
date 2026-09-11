@@ -153,10 +153,10 @@ Official website: [entropylab.online](https://entropylab.online)
   detected, unlike BIP39) and its entropy derives the node key at LND's
   `m/1017'/coinType'/6'/0/0` keychain path, while a BIP-39 phrase follows the
   ldk-node convention (BIP39 seed, master key, re-seeded second BIP32 tree,
-  node secret at `m/0'`). Decoded aezeed internals (cipher seed version,
-  wallet birthday, entropy) and the BIP32 root xprv (what
-  `chantools showrootkey` prints) are shown behind a reveal toggle. Decoding
-  only: the tab never creates seeds.
+  node secret at `m/0'`). The decoded cipher seed's internal version and
+  wallet birthday are shown alongside the node key; the decoded entropy and
+  salt and the BIP32 root xprv (what `chantools showrootkey` prints) sit
+  behind a reveal toggle. Decoding only: the tab never creates seeds.
 - A session **Journal** (last workspace tab) holds an **Entropy
   Journal** notebook, a notepad stamped with this computer's date and time,
   a Key Manager, a live summary of everything derived in this sitting, and a debug log

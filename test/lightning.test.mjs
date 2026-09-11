@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { HDKey as ScureHDKey } from "@scure/bip32";
 import { mnemonicToSeedSync as scureMnemonicToSeed } from "@scure/bip39";
-import { deriveLndNode, deriveLdkNode } from "../src/js/lightning.js";
+import { deriveLndNode, deriveLdkNode, isKnownInternalVersion } from "../src/js/lightning.js";
 import { aezeedDecode } from "../src/js/aezeed.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -52,6 +52,18 @@ test("aezeed to LND node key, end to end from the published vector", () => {
 test("LND derivation validates its inputs", () => {
   assert.throws(() => deriveLndNode(new Uint8Array(15), 0), /16 bytes/);
   assert.throws(() => deriveLndNode(hexToBytes("000102030405060708090a0b0c0d0e0f"), 2), /Coin type/);
+});
+
+test("only known aezeed internal versions derive a node key", () => {
+  // LND writes internal version 0 and rejects anything else; guggero's
+  // toolkit also emits 1. Deriving from an unknown version would print a
+  // node key no implementation would ever use.
+  assert.ok(isKnownInternalVersion(0), "LND's version");
+  assert.ok(isKnownInternalVersion(1), "the toolkit's version");
+  for (const unknown of [2, 3, 255]) assert.ok(!isKnownInternalVersion(unknown), `version ${unknown} is refused`);
+  const lnSource = read("src/js/lightning.js");
+  assert.match(lnSource, /if \(!isKnownInternalVersion\(decoded\.internalVersion\)\)/, "the tool gates on it before deriving");
+  assert.match(lnSource, /code: "internal-version"/, "the refusal is a named error");
 });
 
 // ── LDK (ldk-node): seed64 -> master -> its key re-seeds -> m/0' ───────────
@@ -110,4 +122,15 @@ test("the tab registry and workspace switcher carry the Lightning tool", () => {
   assert.match(appSource, /\["bip85", "sp", "msig", "calc", "vanity", "ln"\]\.forEach/);
   assert.match(appSource, /import \{ hodlInitLn, hodlLnWipeMem \} from "\.\/lightning\.js"/);
   assert.match(appSource, /hodlInitLn\(\{ journalLog: hodlJournalLog \}\)/);
+});
+
+test("a format or network change wipes the derived result", () => {
+  // A stale mainnet pubkey next to a flipped "Testnet" select is how a
+  // correct seed looks wrong: the change handler wipes and re-renders.
+  const lnSource = read("src/js/lightning.js");
+  const listener = lnSource.match(/for \(const id of \["ln-format", "ln-network"\]\) \{\s*document\.getElementById\(id\)\?\.addEventListener\("change", \(\) => \{([\s\S]*?)\}\);\s*\}/);
+  assert.ok(listener, "the change listener exists");
+  assert.match(listener[1], /hodlLnWipeMem\(\)/, "the change wipes the derived result");
+  assert.match(listener[1], /hodlLnRender\(\)/, "the change re-renders the empty state");
+  assert.match(listener[1], /hodlLnSyncFormat\(\)/, "the change still syncs the network field");
 });

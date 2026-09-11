@@ -24,7 +24,10 @@
 //   (encrypt/encrypt_vec/encrypt_inplace/encrypt_buffer), append_auth, and
 //   the module documentation are removed; the core encipher path moves under
 //   #[cfg(test)]; tests use a local hex helper instead of the `hex` dev
-//   dependency. The cipher math is otherwise verbatim.
+//   dependency; a Drop implementation erases the expanded key schedule
+//   (the scrypt-derived key material) when an Aez instance dies; and
+//   extract() wipes the Blake2b hasher (whose block buffer holds the raw
+//   key) before it drops. The cipher math is otherwise verbatim.
 // * accessor.rs, testvectors.rs: verbatim.
 //
 // Unlike the rest of EntropyLab (public domain, see LICENSE), THIS MODULE IS
@@ -84,6 +87,21 @@ pub struct Aez {
     key_l: Block,
     key_l_multiples: [Block; 8],
     aes: aesround::AesImpl,
+}
+
+impl Drop for Aez {
+    /// Erases the expanded key schedule (scrypt-derived key material) so it
+    /// does not outlive the decipher as a residual in linear memory. Not part
+    /// of upstream zears; see the provenance notes above.
+    fn drop(&mut self) {
+        self.key_i.wipe();
+        self.key_j.wipe();
+        self.key_l.wipe();
+        for block in &mut self.key_l_multiples {
+            block.wipe();
+        }
+        self.aes.wipe();
+    }
 }
 
 impl Aez {
@@ -152,7 +170,12 @@ fn extract(key: &[u8]) -> [u8; 48] {
         type Blake2b384 = blake2::Blake2b<blake2::digest::consts::U48>;
         let mut hasher = Blake2b384::new();
         hasher.update(key);
-        hasher.finalize().into()
+        // finalize_reset instead of finalize: the hasher's block buffer holds
+        // the raw key until it is overwritten, so erase it before dropping.
+        // (Not part of upstream zears; see the provenance notes above.)
+        let expanded = hasher.finalize_reset();
+        crate::wipe_val(&mut hasher);
+        expanded.into()
     }
 }
 

@@ -2022,6 +2022,18 @@
       await until(() => document.getElementById("ln-entropy"), "reveal to show the entropy");
       equal(document.getElementById("ln-entropy").textContent, "000102030405060708090a0b0c0d0e0f", "decoded entropy");
       assert(document.getElementById("ln-root-xprv").textContent.startsWith("xprv"), "the root xprv is shown");
+      // Changing the network select wipes even a revealed result; switching
+      // back and re-deriving reproduces the mainnet key.
+      const network = document.getElementById("ln-network");
+      network.value = "testnet";
+      network.dispatchEvent(new Event("change", { bubbles: true }));
+      assert(!document.getElementById("ln-node-pubkey"), "a network change wipes the revealed result");
+      assert(!document.getElementById("ln-entropy"), "the revealed entropy is gone with it");
+      network.value = "mainnet";
+      network.dispatchEvent(new Event("change", { bubbles: true }));
+      document.getElementById("ln-go").click();
+      await until(() => document.getElementById("ln-node-pubkey"), "re-derive after switching back");
+      equal(document.getElementById("ln-node-pubkey").textContent, LND_PUBKEY, "mainnet node pubkey again");
       // A wrong passphrase is a named failure, not a different wallet.
       document.getElementById("ln-pass").value = "wrong";
       document.getElementById("ln-go").click();

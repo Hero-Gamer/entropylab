@@ -26,16 +26,20 @@
 //! intermediate HMAC/PBKDF2 blocks) are overwritten in place before they go
 //! out of scope. `SecretKey`/`Scalar` use libsecp256k1's own
 //! `non_secure_erase`; plain arrays, `String`s, and newtype wrappers such as
-//! `ChainCode` go through the volatile `wipe` helpers. What cannot be wiped
-//! without new dependencies: state hidden inside dependency types that expose
-//! no erase (the `HmacEngine` key pads, `bip39::Mnemonic`'s stored phrase,
-//! the by-value moves inside `bitcoin::bip32`, the scrypt crate's internal
-//! working buffer (128·N·r bytes, 32 MiB at aezeed's production N=2^15,
-//! allocated and freed inside the crate), and the expanded AEZ key schedule
-//! inside `aez::Aez`). Those copies are short lived stack/heap cells, but
-//! they are the known residual. The scrypt working buffer also grows WASM
-//! linear memory permanently (linear memory never shrinks); that is a size
-//! cost, not a secrecy cost.
+//! `ChainCode` go through the volatile `wipe` helpers. The scrypt crate
+//! never zeroizes its internal working buffers (128·N·r bytes of V, plus B
+//! and T, at aezeed's production N=2^15), so both scrypt exports overwrite
+//! them immediately after every call by re-allocating and wiping the same
+//! sizes (see `scrub_scrypt`; V's first block otherwise retains one PBKDF2
+//! iteration of the passphrase, a passphrase-guessing accelerator), and the
+//! vendored AEZ module wipes its expanded key schedule on drop and its
+//! Blake2b key-expansion hasher after use. What cannot be wiped without new
+//! dependencies: state hidden inside dependency types that expose no erase
+//! (the `HmacEngine` key pads, `bip39::Mnemonic`'s stored phrase, and the
+//! by-value moves inside `bitcoin::bip32`). Those copies are short lived
+//! stack/heap cells, but they are the known residual. The scrypt working
+//! buffer also grows WASM linear memory permanently (linear memory never
+//! shrinks); that is a size cost, not a secrecy cost.
 //!
 //! Curve operations go through the safe `secp256k1` crate (rust-bitcoin's
 //! wrapper over the vendored bitcoin-core C library); hashes go through
@@ -424,11 +428,79 @@ pub unsafe extern "C" fn el_pbkdf2_hmac_sha512(
 // caller-fixed on both exports, matching el_pbkdf2_hmac_sha512: this library
 // never invents them, production callers pass LND's log_n=15, r=8, p=1, and
 // the test suite passes the weakened log_n=4 that LND's published vectors
-// were generated with.
+// were generated with. The parameters are BOUNDED, not just caller-fixed:
+// scrypt's working buffer is 128·r·2^log_n bytes and WASM linear memory never
+// shrinks, so an unbounded call would grow the heap permanently (or trap on
+// allocation failure, killing every export until reload). el_scrypt caps the
+// working buffer at 32 MiB and p at 16; el_aezeed_decipher accepts exactly
+// the two parameter sets a cipher seed can legitimately need.
+
+/// The scrypt working-buffer cap for `el_scrypt` (128·r·2^log_n bytes).
+const SCRYPT_MAX_MEMORY: u64 = 32 * 1024 * 1024;
+/// The scrypt parallelism cap for `el_scrypt`.
+const SCRYPT_MAX_P: u32 = 16;
+
+/// Bounded scrypt parameters: 1 ≤ log_n ≤ 20, 128·r·2^log_n ≤ 32 MiB, and
+/// 1 ≤ p ≤ 16, then the crate's own validation on top.
+fn scrypt_params(log_n: u32, r: u32, p: u32) -> Option<scrypt::Params> {
+    if log_n == 0 || log_n > 20 || p == 0 || p > SCRYPT_MAX_P {
+        return None;
+    }
+    let memory = 128u64 * u64::from(r) * (1u64 << log_n);
+    if memory > SCRYPT_MAX_MEMORY {
+        return None;
+    }
+    scrypt::Params::new(log_n as u8, r, p).ok()
+}
+
+/// Overwrites scrypt's internal working buffers after the call. The scrypt
+/// crate (0.12.0) allocates B (128·r·p bytes), V (128·r·2^log_n), and T
+/// (128·r) as plain `vec![]`s it never zeroizes, and WASM linear memory
+/// never shrinks: V's first block still holds the pre-ROMix B (one PBKDF2
+/// iteration of the passphrase), which would let a later reader of the heap
+/// test passphrase guesses without paying the scrypt cost. Re-allocating
+/// the same sizes immediately after the call reuses the just-freed blocks
+/// with the default allocator, so wiping the fresh buffers overwrites the
+/// residue in place. Best effort by construction — the Node suite asserts
+/// the PBKDF2 block is absent from the heap after a decode.
+fn scrub_scrypt(log_n: u32, r: u32, p: u32) {
+    let r128 = 128usize * r as usize;
+    let mut b = vec![0u8; r128 * p as usize];
+    let mut v = vec![0u8; r128 << log_n];
+    let mut t = vec![0u8; r128];
+    wipe_bytes(&mut b);
+    wipe_bytes(&mut v);
+    wipe_bytes(&mut t);
+}
+
+/// Overwrites the dead stack cells the KDF and cipher frames leave behind:
+/// WASM linear memory holds the call stack too, and the PBKDF2/HMAC rounds
+/// inside scrypt (and the Blake2b key expansion inside `Aez::new`) spill
+/// key material into frame slots that popping the stack does not erase.
+/// One wide, non-inlined frame, zeroed with volatile writes, rewrites the
+/// addresses the just-returned calls used. Best effort — the Node suite
+/// asserts the derived key is absent from linear memory after a decode.
+#[inline(never)]
+fn scrub_stack() {
+    // Nested non-inlined frames: each level wipes its own 4 KiB while the
+    // deeper levels run, so one call rewrites a contiguous ~40 KiB of stack
+    // down past the deepest frame scrypt/pbkdf2/hmac used.
+    #[inline(never)]
+    fn level(depth: u32) {
+        let mut frame = [0u8; 4096];
+        wipe_bytes(&mut frame);
+        std::hint::black_box(frame.as_ptr());
+        if depth > 0 {
+            level(depth - 1);
+        }
+    }
+    level(9);
+}
 
 /// scrypt (RFC 7914) with parameters `2^log_n`, `r`, `p`, derived key written
-/// into `out`/`out_len`. Returns `out_len`, or -1 on invalid parameters or an
-/// output length over 128 (the app only ever asks for 32).
+/// into `out`/`out_len`. Returns `out_len`, or -1 on invalid parameters, an
+/// output length over 128 (the app only ever asks for 32), a working buffer
+/// over 32 MiB, or p over 16.
 #[no_mangle]
 pub unsafe extern "C" fn el_scrypt(
     pass: *const u8,
@@ -441,20 +513,24 @@ pub unsafe extern "C" fn el_scrypt(
     out: *mut u8,
     out_len: usize,
 ) -> i32 {
-    if out_len == 0 || out_len > 128 || log_n == 0 || log_n > 20 {
+    if out_len == 0 || out_len > 128 {
         return -1;
     }
-    let params = match scrypt::Params::new(log_n as u8, r, p) {
-        Ok(params) => params,
-        Err(_) => return -1,
+    let params = match scrypt_params(log_n, r, p) {
+        Some(params) => params,
+        None => return -1,
     };
     let mut key = vec![0u8; out_len];
-    if scrypt::scrypt(read(pass, pass_len), read(salt, salt_len), &params, &mut key).is_err() {
+    let result = scrypt::scrypt(read(pass, pass_len), read(salt, salt_len), &params, &mut key);
+    scrub_scrypt(log_n, r, p);
+    if result.is_err() {
         wipe_bytes(&mut key);
+        scrub_stack();
         return -1;
     }
     std::ptr::copy_nonoverlapping(key.as_ptr(), out, out_len);
     wipe_bytes(&mut key);
+    scrub_stack();
     out_len as i32
 }
 
@@ -484,6 +560,9 @@ fn crc32c(data: &[u8]) -> u32 {
 ///   -2 unsupported external version (byte 0 is not 0),
 ///   -3 CRC-32C mismatch (mistyped or swapped words),
 ///   -4 AEZ authentication failure (wrong passphrase).
+/// Only the two legitimate parameter sets are accepted: LND's production
+/// (log_n=15, r=8, p=1) and the weakened (log_n=4, r=8, p=1) that LND's
+/// published test vectors were generated with.
 #[no_mangle]
 pub unsafe extern "C" fn el_aezeed_decipher(
     seed33: *const u8,
@@ -503,21 +582,24 @@ pub unsafe extern "C" fn el_aezeed_decipher(
         return -3;
     }
     let salt = &seed[24..29];
-    if log_n == 0 || log_n > 20 {
+    if !matches!((log_n, r, p), (15, 8, 1) | (4, 8, 1)) {
         return -1;
     }
-    let params = match scrypt::Params::new(log_n as u8, r, p) {
-        Ok(params) => params,
-        Err(_) => return -1,
+    let params = match scrypt_params(log_n, r, p) {
+        Some(params) => params,
+        None => return -1,
     };
     let mut key = [0u8; 32];
-    if scrypt::scrypt(read(pass, pass_len), salt, &params, &mut key).is_err() {
+    let result = scrypt::scrypt(read(pass, pass_len), salt, &params, &mut key);
+    scrub_scrypt(log_n, r, p);
+    if result.is_err() {
         wipe_bytes(&mut key);
+        scrub_stack();
         return -1;
     }
     let aez = aez::Aez::new(&key);
-    // The expanded key schedule now lives inside `aez` (no erase exposed, a
-    // documented residual); the caller-visible key copy is wiped at once.
+    // The expanded key schedule lives inside `aez`, which wipes it on drop;
+    // the caller-visible key copy is wiped at once.
     wipe_bytes(&mut key);
     let mut ad = [0u8; 6];
     ad[0] = seed[0];
@@ -525,16 +607,21 @@ pub unsafe extern "C" fn el_aezeed_decipher(
     let plaintext = aez.decrypt(&[], &[&ad], 4, &seed[1..24]);
     let mut plaintext = match plaintext {
         Some(plaintext) => plaintext,
-        None => return -4,
+        None => {
+            scrub_stack();
+            return -4;
+        }
     };
     if plaintext.len() != 19 {
         wipe_bytes(&mut plaintext);
+        scrub_stack();
         return -1;
     }
     std::ptr::copy_nonoverlapping(plaintext.as_ptr(), out, 19);
     // The plaintext carries the wallet's master entropy; wipe the temporary
     // once the boundary buffer (zeroed later by el_free) holds it.
     wipe_bytes(&mut plaintext);
+    scrub_stack();
     19
 }
 
@@ -1417,5 +1504,60 @@ mod tests {
             0xe9, 0xfe,
         ];
         assert_eq!(out[..16], expected, "first 16 bytes of the RFC vector");
+    }
+
+    // The exports bound the scrypt parameters: the working buffer
+    // (128·r·2^log_n bytes) never exceeds 32 MiB and p never exceeds 16, so
+    // no call can grow linear memory by more than the aezeed production cost
+    // (linear memory never shrinks). el_aezeed_decipher is stricter: only
+    // LND's production (15, 8, 1) and weakened (4, 8, 1) sets.
+    #[test]
+    fn scrypt_parameters_are_bounded() {
+        let mut out = [0u8; 32];
+        let mut call = |log_n: u32, r: u32, p: u32| unsafe {
+            el_scrypt(
+                "pass".as_ptr(), 4,
+                "salt".as_ptr(), 4,
+                log_n, r, p,
+                out.as_mut_ptr(), 32,
+            )
+        };
+        // Accepted: the production and test-vector shapes.
+        assert_eq!(call(15, 8, 1), 32, "production aezeed shape");
+        assert_eq!(call(4, 8, 1), 32, "weakened test-vector shape");
+        // Rejected: 64 MiB working buffer.
+        assert_eq!(call(16, 8, 1), -1, "log_n=16 exceeds the 32 MiB cap");
+        // Rejected: 36 MiB working buffer.
+        assert_eq!(call(15, 9, 1), -1, "r=9 exceeds the 32 MiB cap");
+        // Rejected: the 1 GiB case the raw crate would have accepted.
+        assert_eq!(call(20, 8, 1), -1, "log_n=20 exceeds the 32 MiB cap");
+        // Rejected: parallelism over 16.
+        assert_eq!(call(4, 8, 17), -1, "p=17 exceeds the cap");
+        // Rejected: zero parameters.
+        assert_eq!(call(0, 8, 1), -1);
+        assert_eq!(call(4, 0, 1), -1);
+        assert_eq!(call(4, 8, 0), -1);
+    }
+
+    #[test]
+    fn aezeed_decipher_accepts_only_lnd_parameter_sets() {
+        let seed = aezeed_words_to_bytes(
+            "ability liquid travel stem barely drastic pact cupboard apple thrive \
+             morning oak feature tissue couch old math inform success suggest drink \
+             motion know royal",
+        );
+        let mut out = [0u8; 19];
+        let mut call = |log_n: u32, r: u32, p: u32| unsafe {
+            el_aezeed_decipher(seed.as_ptr(), "aezeed".as_ptr(), 6, log_n, r, p, out.as_mut_ptr())
+        };
+        assert_eq!(call(4, 8, 1), 19, "the weakened test-vector set deciphers");
+        // Wrong parameters for this seed, but a legitimate set: AEZ auth
+        // failure, not a parameter rejection.
+        assert_eq!(call(15, 8, 1), -4, "the production set is accepted");
+        // Everything else is a parameter rejection before any KDF work.
+        assert_eq!(call(10, 8, 1), -1, "no third log_n");
+        assert_eq!(call(15, 8, 2), -1, "no third parameter set");
+        assert_eq!(call(4, 9, 1), -1);
+        assert_eq!(call(0, 8, 1), -1);
     }
 }

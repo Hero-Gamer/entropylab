@@ -146,11 +146,17 @@ for UI testing only and must never receive funds. The loader and its
   ([SECURITY.md](SECURITY.md)), not as public issues.
 - **License:** public domain ([LICENSE](LICENSE)). By opening a pull request
   you confirm your contribution can be public domain; if not, open an issue
-  instead. Exception: `src/js/lifehash.js` is an adaptation of the LifeHash
+  instead. Exceptions: `src/js/lifehash.js` is an adaptation of the LifeHash
   reference implementations and is *not* public domain — the MIT
   (AndreasGassmann/lifehash) and BSD-2-Clause-Patent
   (BlockchainCommons/bc-lifehash) notices in its header must be preserved in
-  copies and derivative works, including the built `entropylab.html`.
+  copies and derivative works, including the built `entropylab.html`; and
+  `entropylab-wasm/src/aez/` is vendored from the zears crate
+  (codeberg.org/dunj3/zears) under the MIT license (Copyright 2025 Daniel
+  Schadt) — the notice in its `mod.rs` must be preserved in copies and
+  derivative works, including the built `entropylab-wasm` artifact and
+  `entropylab.html` (`scripts/build-wasm.mjs` carries it into the generated
+  artifact header).
 
 ## 6. UI layout and spacing
 

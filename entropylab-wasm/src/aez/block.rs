@@ -67,6 +67,17 @@ impl Block {
         }
     }
 
+    /// Overwrites the block with zeroes. Volatile stores plus a compiler
+    /// fence, so the wipe cannot be elided or reordered (same discipline as
+    /// the crate-level `wipe`). Not part of upstream zears; added so the AEZ
+    /// key schedule can be erased on drop (see mod.rs).
+    pub fn wipe(&mut self) {
+        for byte in &mut self.0 {
+            unsafe { std::ptr::write_volatile(byte, 0) };
+        }
+        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+    }
+
     /// Computes self * 2^exponent
     ///
     /// Ensures that there's no overflow in computing 2^exponent.

@@ -709,18 +709,18 @@
     chooseSeedWords(12);
     await chooseMode("Number bases");
     const cases = [
-      ["bin", 128, "0"],
-      ["base4", 64, "0"],
-      ["base8", 43, "0"],
-      ["hex", 32, "0"],
-      ["base32", 28, "0"],
-      ["base64", 23, "A"],
+      ["bin", "0".repeat(128)],
+      ["base4", "0".repeat(64)],
+      ["base8", "0".repeat(43)],
+      ["hex", "0".repeat(32)],
+      ["base32", "q".repeat(26)],
+      ["base64", `${"A".repeat(21)}00`],
     ];
     equal(document.querySelectorAll('input[name="entropy-format"]').length, 6);
-    for (const [format, count, zero] of cases) {
+    for (const [format, value] of cases) {
       document.querySelector(`input[name="entropy-format"][value="${format}"]`).click();
       const field = await until(() => document.getElementById(format), `${format} entropy input`);
-      input(field, format === "base64" ? `${zero.repeat(21)}00` : zero.repeat(count));
+      input(field, value);
       await wait(0);
       assert(!document.getElementById("go").disabled, `${format} did not accept exact zero entropy`);
       equal(document.querySelector("#entropy-words [data-word]").textContent, "abandon");
@@ -746,22 +746,22 @@
     assert(!document.querySelector('[data-entropy-digit="2"]').disabled, "Valid final Base 8 digit was disabled");
     document.querySelector('input[name="entropy-format"][value="base32"]').click();
     const base32 = await until(() => document.getElementById("base32"), "Base32 entropy input");
-    input(base32, `o${"0".repeat(27)}`);
+    input(base32, "Q".repeat(26));
     await wait(0);
-    assert(base32.value.startsWith("0") && !document.getElementById("go").disabled, "Crockford O alias did not normalize to 0");
+    assert(base32.value === "q".repeat(26) && !document.getElementById("go").disabled, "Bech32 Base32 did not normalize uppercase input");
     chooseSeedWords(24);
     const base32For24 = await until(() => document.getElementById("base32"), "24-word Base32 input");
-    input(base32For24, "0".repeat(51));
-    assert(document.getElementById("entropy-meta").textContent.includes("coin flip 1 of 1 · Heads (0) or Tails (1)"), "Base32 progress did not switch to coin-flip guidance");
-    assert(document.querySelector(".entropy-keypad").classList.contains("coin-phase"), "Base32 keypad did not switch to its coin-flip layout");
-    equal(document.querySelector('[data-entropy-digit="0"]').textContent, "Heads (0)");
-    equal(document.querySelector('[data-entropy-digit="1"]').textContent, "Tails (1)");
-    assert(!document.querySelector('[data-entropy-digit="1"]').disabled, "Final binary 1 was disabled for 24-word Base32");
-    assert(document.querySelector('[data-entropy-digit="2"]').disabled, "A non-binary final Base32 character remained enabled");
-    input(base32For24, `${"0".repeat(51)}1`);
+    input(base32For24, "q".repeat(51));
+    assert(document.getElementById("entropy-meta").textContent.includes("51 of 52 Bech32 characters"), "Base32 progress did not retain Bech32 guidance for the final character");
+    const base32Keyboard = document.getElementById("base32-keyboard");
+    const bech32Key = (character) => [...base32Keyboard.querySelectorAll("[data-seed-character-key]")].find((key) => key.dataset.seedKey === character);
+    assert(!bech32Key("q").disabled, "Valid final Bech32 q was disabled");
+    assert(!bech32Key("p").disabled, "Valid final Bech32 p was disabled");
+    assert(bech32Key("z").disabled, "A Bech32 character outside the final one-bit range remained enabled");
+    input(base32For24, `${"q".repeat(51)}p`);
     await wait(0);
-    assert(!document.getElementById("go").disabled, "24-word Base32 did not accept a final single entropy bit");
-    input(base32For24, "0".repeat(51));
+    assert(!document.getElementById("go").disabled, "24-word Base32 did not accept a valid final one-bit Bech32 character");
+    input(base32For24, "q".repeat(51));
     assert(document.getElementById("global-entropy-sync").checked, "Global sync turned off for incomplete entropy");
     const incompleteStatus = document.getElementById("global-sync-status");
     assert(incompleteStatus.textContent.includes("Key synced") && !incompleteStatus.querySelector(".global-sync-shortfall"), "Entropy past the minimum did not report a healthy sync");
@@ -770,8 +770,40 @@
     assert(preservedHex.value.length === 63, "Global sync did not wait for a complete next hexadecimal character");
     document.querySelector('input[name="entropy-format"][value="base32"]').click();
     const preservedBase32 = await until(() => document.getElementById("base32"), "preserved incomplete Base32 input");
-    equal(preservedBase32.value, "0".repeat(51));
+    equal(preservedBase32.value, "q".repeat(51));
     input(preservedBase32, "");
+  });
+
+  await test("Base32 uses the shared lowercase and number keyboard without an uppercase mode", async () => {
+    chooseSeedWords(24);
+    await chooseMode("Number bases");
+    document.querySelector('input[name="entropy-format"][value="base32"]').click();
+    const base32 = await until(() => document.getElementById("base32"), "Base32 input");
+    input(base32, "");
+    const toggle = document.getElementById("base32-keyboard-toggle");
+    const keyboard = document.getElementById("base32-keyboard");
+    assert(toggle && keyboard, "Base32 keyboard control is missing");
+    if (keyboard.hidden) toggle.click();
+    const mode = keyboard.querySelector("[data-seed-keyboard-mode]");
+    if (keyboard.dataset.seedKeyboardLayout !== "lower") mode.click();
+    const characterKey = (character) => [...keyboard.querySelectorAll("[data-seed-character-key]")].find((key) => key.dataset.seedKey === character);
+    assert(characterKey("q") && !characterKey("q").hidden && !characterKey("q").disabled, "Bech32 q is unavailable on the lowercase keyboard");
+    assert(characterKey("b")?.hidden, "A letter outside the Bech32 alphabet remained visible");
+    characterKey("q").click();
+    mode.click();
+    equal(keyboard.dataset.seedKeyboardLayout, "number", "Base32 did not switch from lowercase to numbers");
+    assert(characterKey("2") && !characterKey("2").hidden && !characterKey("2").disabled, "Bech32 digit 2 is unavailable");
+    assert(characterKey("1") && !characterKey("1").hidden && characterKey("1").disabled, "Digit 1 did not remain visible and disabled");
+    for (const character of ["!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "-", "_", "+", "=", "/", "?", "\\"]) {
+      assert(characterKey(character) && !characterKey(character).hidden && characterKey(character).disabled, `Unsupported Base32 character ${character} did not remain visible and disabled`);
+    }
+    characterKey("2").click();
+    mode.click();
+    equal(keyboard.dataset.seedKeyboardLayout, "lower", "Base32 cycled through an uppercase keyboard");
+    equal(mode.textContent, "a1", "Base32 mode control still advertises an uppercase layout");
+    equal(base32.value, "q2");
+    if (!keyboard.hidden) toggle.click();
+    input(base32, "");
   });
 
   await test("dice methods retain separate transcripts while global sync is off", async () => {
@@ -1122,13 +1154,13 @@
         document.querySelector("#bip85-manager > .key-tab-strip"),
       );
       // End jumps to the last tool. Journal begins at its create/open gate while
-      // keeping the four destination tabs visible but unavailable.
+      // keeping the five destination tabs visible but unavailable.
       tabs[2].dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
       await until(() => !document.getElementById("journal-card").hidden, "End to reach the Journal tool");
       assert(document.activeElement === tabs[7], "End should move focus to the last tab");
       const journalTabs = [...document.querySelectorAll("#journal-tool-tabs [data-journal-tool]")];
-      equal(journalTabs.length, 4, "Journal should expose exactly four internal tabs");
-      equal(journalTabs.map((tab) => tab.textContent.trim()).join("|"), "Notepad|Key manager|Session state|Session log");
+      equal(journalTabs.length, 5, "Journal should expose exactly five internal tabs");
+      equal(journalTabs.map((tab) => tab.textContent.trim()).join("|"), "Entries|Notepad|Key manager|Session state|Session log");
       const journalManager = document.getElementById("journal-manager");
       assert(journalManager && !journalManager.hidden, "Journal station tabs should be visible inside the Journal tool");
       const journalIntro = document.getElementById("journal-tool-intro");
@@ -1155,7 +1187,7 @@
       assert(journalPasswordStatus.hidden && journalConfirmStatus.hidden && !journalCreateReady.hidden, "Blank Journal password fields should be ready without validation errors");
       equal(journalCreateReady.textContent.trim(), "← Ready to create without a password");
       document.getElementById("journal-create").click();
-      await until(() => !document.getElementById("journal-notes-card").hidden, "passwordless journal creation to open Notepad");
+      await until(() => !document.getElementById("journal-card").hidden && !document.getElementById("journal-work-panel").hidden, "passwordless journal creation to open Entries");
       assert(document.getElementById("journal-status-title").textContent.includes("No password protection"), "A passwordless Journal should disclose that its file has no access protection");
       journalGlobalClear.click();
       await until(() => !document.getElementById("journal-card").hidden, "Journal gate after clearing the passwordless Journal");
@@ -1183,15 +1215,15 @@
       input(journalConfirmInput, journalPassword);
       journalConfirmInput.focus();
       journalConfirmInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
-      await until(() => !document.getElementById("journal-notes-card").hidden, "valid journal creation to open Notepad");
-      assert(document.getElementById("journal-card").hidden, "The create/open gate should disappear after journal creation");
+      await until(() => !document.getElementById("journal-card").hidden && !document.getElementById("journal-work-panel").hidden, "valid journal creation to open Entries");
+      assert(document.getElementById("journal-locked-panel").hidden, "The create/open gate should disappear after journal creation");
       assert(!journalIntro.hidden, "Entropy Journal introduction should remain visible after journal creation");
       journalTabs.forEach((tab) => {
         assert(!tab.disabled, "Journal station tabs should enable after journal creation");
         equal(tab.getAttribute("aria-disabled"), "false", "An unlocked Journal tab should expose its enabled state");
       });
-      assert(journalTabs[0].classList.contains("active"), "A newly created journal should start on Notepad");
-      equal(journalTabs[0].getAttribute("aria-selected"), "true", "Notepad should be selected after journal creation");
+      assert(journalTabs[0].classList.contains("active"), "A newly created journal should start on Entries");
+      equal(journalTabs[0].getAttribute("aria-selected"), "true", "Entries should be selected after journal creation");
       assert(!journalGlobalDownload.disabled && !journalGlobalClear.disabled, "Journal-wide actions should enable after journal creation");
       state.lastBlob = null;
       journalGlobalDownload.click();
@@ -1207,18 +1239,20 @@
       input(document.getElementById("journal-open-password"), journalPassword);
       await wait(250);
       document.getElementById("journal-unlock").click();
-      await until(() => !document.getElementById("journal-notes-card").hidden || document.getElementById("journal-error").textContent, "successful Journal file open result");
-      assert(!document.getElementById("journal-notes-card").hidden, `Opening the encrypted Journal failed: ${document.getElementById("journal-error").textContent}`);
-      assert(document.getElementById("journal-card").hidden, "The create/open gate should disappear after opening a journal");
+      await until(() => !document.getElementById("journal-card").hidden && !document.getElementById("journal-work-panel").hidden || document.getElementById("journal-error").textContent, "successful Journal file open result");
+      assert(!document.getElementById("journal-work-panel").hidden, `Opening the encrypted Journal failed: ${document.getElementById("journal-error").textContent}`);
+      assert(document.getElementById("journal-locked-panel").hidden, "The create/open gate should disappear after opening a journal");
       assert(!journalIntro.hidden, "Entropy Journal introduction should remain visible after opening a journal");
-      journalTabs.forEach((tab) => assert(!tab.disabled, "Opening a journal should enable its four tabs"));
-      assert(journalTabs[0].classList.contains("active"), "An opened journal should start on Notepad");
+      journalTabs.forEach((tab) => assert(!tab.disabled, "Opening a journal should enable its five tabs"));
+      assert(journalTabs[0].classList.contains("active"), "An opened journal should start on Entries");
+      journalTabs[1].click();
+      await until(() => !document.getElementById("journal-notes-card").hidden, "Notepad after opening a journal");
       equal(getComputedStyle(document.getElementById("journal-notes-card")).borderTopLeftRadius, "0px", "The active Notepad card should join its folder tab");
-      journalTabs[0].focus();
-      journalTabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      journalTabs[1].focus();
+      journalTabs[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
       await until(() => !document.getElementById("journal-keymanager-card").hidden, "ArrowRight to open Key manager");
       equal(documentTop(journalManager), journalManagerTop, "Key manager moved the Journal tab strip");
-      assert(document.activeElement === journalTabs[1], "Focus should follow the Journal subtab arrow key");
+      assert(document.activeElement === journalTabs[2], "Focus should follow the Journal subtab arrow key");
       const keyManagerCard = document.getElementById("journal-keymanager-card");
       const keyManagerDownload = document.getElementById("journal-keymanager-download");
       const keyManagerUpload = document.getElementById("journal-keymanager-upload");
@@ -1227,14 +1261,14 @@
       for (const property of ["backgroundColor", "color", "borderTopColor"]) equal(getComputedStyle(keyManagerDownload)[property], keyManagerDownloadReference[property], `Key Manager download should use the header download button's ${property}`);
       equal(keyManagerUpload.querySelector(".download-mark path")?.getAttribute("d"), "M12 17V5M7 10l5-5 5 5M5 21h14", "Key Manager upload should use the shared upward-arrow icon");
       assert(keyManagerUpload.getBoundingClientRect().left > keyManagerDownload.getBoundingClientRect().right, "Key Manager upload should sit at the right edge of the action row");
-      journalTabs[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
-      await until(() => !document.getElementById("journal-state-card").hidden, "ArrowRight to open Session state");
       journalTabs[2].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      await until(() => !document.getElementById("journal-state-card").hidden, "ArrowRight to open Session state");
+      journalTabs[3].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
       await until(() => !document.getElementById("journal-log-card").hidden, "ArrowRight to open Session log");
-      journalTabs[3].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+      journalTabs[4].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
       equal(documentTop(journalManager), journalManagerTop, "Session log moved the Journal tab strip");
       await until(() => !document.getElementById("journal-state-card").hidden, "ArrowLeft to open Session state");
-      assert(document.activeElement === journalTabs[2], "Focus should return to Session state");
+      assert(document.activeElement === journalTabs[3], "Focus should return to Session state");
       // PSBT stays a workspace of its own, with station tabs inside it.
       document.querySelector('#workspace [data-workspace="psbt"]').click();
       await until(() => !document.getElementById("psbt-card").hidden, "PSBT tool");
@@ -1387,9 +1421,8 @@
       input(document.getElementById("journal-create-confirm"), journalPassword);
       document.getElementById("journal-create").click();
       await until(() => !document.getElementById("journal-global-download").disabled, "Journal unlocked after creation");
-      // The entry book has no tab of its own: "Save to Journal" is the way in.
-      document.getElementById("journal-open").click();
-      await until(() => !document.getElementById("journal-card").hidden && !document.getElementById("journal-editor").hidden, "entry editor to open");
+      document.getElementById("journal-add").click();
+      await until(() => !document.getElementById("journal-editor").hidden, "entry editor to open");
       document.getElementById("journal-method").value = "hex";
       input(document.getElementById("journal-input"), entryInput);
       input(document.getElementById("journal-phrase"), entryPhrase);
@@ -1425,9 +1458,6 @@
       await until(() => !document.getElementById("journal-global-download").disabled, "Journal unlocked from the stored file");
 
       // The stored entry survived: listed, viewable, and revealed on demand.
-      document.getElementById("journal-open").click();
-      await until(() => !document.getElementById("journal-editor").hidden, "editor over the loaded journal");
-      document.getElementById("journal-cancel").click();
       const restoredItem = await until(() => [...document.querySelectorAll("#journal-list .journal-item")].find((el) => el.querySelector(".journal-item-label")?.textContent === entryLabel), "stored entry listed after load");
       restoredItem.click();
       await until(() => !document.getElementById("journal-view").hidden, "stored entry view");
@@ -1500,6 +1530,15 @@
     await until(() => !document.getElementById("go").disabled, "Derive Key to enable");
     document.getElementById("go").click();
     await until(() => [...document.querySelectorAll("#key-tabs .key-tab")].some((tab) => tab.textContent.includes("ef94d090")), "the derived key tab ef94d090");
+    document.querySelector('#workspace [data-workspace="journal"]').click();
+    document.querySelector('#journal-tool-tabs [data-journal-tool="book"]').click();
+    const capturedEntry = await until(() => document.querySelector("#journal-list .journal-item"), "automatically captured Key Station entry");
+    equal(document.querySelectorAll("#journal-list .journal-item").length, 1, "a Key Station derivation should add one journal entry");
+    assert(document.getElementById("journal-status-note").textContent.includes("download the journal file to preserve them"), "automatic capture should explain that the journal still needs downloading");
+    capturedEntry.click();
+    await until(() => !document.getElementById("journal-view").hidden, "automatically captured entry view");
+    assert(document.getElementById("journal-view").textContent.includes("passphrase was in effect"), "automatic capture should retain the passphrase-in-use note");
+    assert(!document.getElementById("journal-view").textContent.includes("correct horse battery staple"), "automatic capture must not store the BIP39 passphrase");
     document.querySelector('#workspace [data-workspace="vanity"]').click();
     await until(() => document.querySelector("#vanity-session-keys .session-key-option"), "the Key Station chip to appear");
     const vanityKeyPickerStyle = getComputedStyle(document.getElementById("vanity-session-keys"));
@@ -1537,19 +1576,37 @@
     // The device sample taken on tab entry turns the odds into a time.
     await until(() => /expect a match roughly every/.test(document.getElementById("vanity-estimate").textContent), "the estimate to be timed from the device sample", 60000);
     assert(/on 1 worker,/.test(document.getElementById("vanity-estimate").textContent), "the estimate scales by the worker count");
-    // Stop on first find is a toggle: counter 0 matches inside the first
+    const vanityGo = document.getElementById("vanity-go"), vanityGoWidth = vanityGo.getBoundingClientRect().width;
+    vanityGo.click();
+    equal(vanityGo.textContent.trim(), "Stop", "Start grinding did not become the Stop button while running");
+    assert(!vanityGo.disabled && vanityGo.dataset.derivationState === "running", "The grinding Stop button was not available");
+    assert(Math.abs(vanityGo.getBoundingClientRect().width - vanityGoWidth) < 0.5, "The grinding Stop button changed width");
+    vanityGo.click();
+    await until(() => document.getElementById("vanity-status").textContent.startsWith("Stopped:"), "the shared grinding action to stop the run", 60000);
+    equal(vanityGo.textContent.trim(), "Start grinding", "The grinder action did not return to Start grinding");
+    assert(Math.abs(vanityGo.getBoundingClientRect().width - vanityGoWidth) < 0.5, "Start grinding changed width after stopping");
+    input(document.getElementById("vanity-start"), "0");
+    // Stop on first find is a checkbox: counter 0 matches inside the first
     // (small) chunk, so the run stops there instead of grinding all 62.
     const first = document.getElementById("vanity-first");
+    const firstText = first.nextElementSibling;
+    const firstBox = first.getBoundingClientRect(), firstTextBox = firstText.getBoundingClientRect();
+    assert(Math.abs((firstBox.top + firstBox.height / 2) - (firstTextBox.top + firstTextBox.height / 2)) < 1, "the Stop on first find checkbox and label are vertically aligned");
     first.click();
     await wait(0);
-    assert(first.getAttribute("aria-pressed") === "true" && first.textContent.includes("on"), "the toggle shows it is switched on");
-    document.getElementById("vanity-go").click();
+    assert(first.checked, "the Stop on first find checkbox is checked");
+    vanityGo.click();
+    equal(vanityGo.textContent.trim(), "Stop", "Start grinding did not become the Stop button while running");
+    assert(!vanityGo.disabled && vanityGo.dataset.derivationState === "running", "The grinding Stop button was not available");
+    assert(Math.abs(vanityGo.getBoundingClientRect().width - vanityGoWidth) < 0.5, "The grinding Stop button changed width");
     await until(() => document.getElementById("vanity-status").textContent.includes("Stopped at first match"), "the grind to stop at the first match", 60000);
+    equal(vanityGo.textContent.trim(), "Start grinding", "The grinder action did not return to Start grinding");
+    assert(Math.abs(vanityGo.getBoundingClientRect().width - vanityGoWidth) < 0.5, "Start grinding changed width after the run");
     assert(document.querySelectorAll("#vanity-out table tbody tr").length === 1, "exactly one match is listed");
     assert(/1 match\b/.test(document.getElementById("vanity-status").textContent), "the status counts the single match");
     first.click();
     await wait(0);
-    assert(first.getAttribute("aria-pressed") === "false", "the toggle switches off again");
+    assert(!first.checked, "the Stop on first find checkbox switches off again");
     document.getElementById("vanity-wipe").click();
     await until(() => !document.querySelector("#vanity-out table"), "Clear results to drop the table");
     input(document.getElementById("vanity-start"), "0");

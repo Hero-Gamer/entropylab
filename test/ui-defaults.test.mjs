@@ -366,7 +366,7 @@ test("entropy progress messages sit next to their inputs and above keypads", () 
   // Cards reads like dice: the progress line above the transcript, so the field
   // and the card keypad below it stay together.
   assert.match(appSource, /\$\{hodlSeedMetaRowMarkup\("cards-meta"\)\}\s*<div class="dice-input-shell cards-input-shell">/);
-  assert.match(app, /<textarea id="\$\{inputId\}"[\s\S]*?<\/textarea><\/div>\s*\$\{hodlSeedMetaRowMarkup\("entropy-meta",!0\)\}\s*\$\{base64Keyboard\}\s*\$\{entropyPad\}/);
+  assert.match(app, /<textarea id="\$\{inputId\}"[\s\S]*?<\/textarea><\/div>\s*\$\{hodlSeedMetaRowMarkup\("entropy-meta",!0\)\}\s*\$\{numberBaseKeyboard\}\s*\$\{entropyPad\}/);
   assert.match(app, /<textarea id="seed"[^>]*><\/textarea><\/div><p class="muted" id="seed-meta"[^>]*><\/p>\$\{hodlSeedKeyboardMarkup\(\)\}/);
   assert.match(app, /<textarea id="key"[^>]*><\/textarea><\/div><p class="muted" id="private-key-meta"[^>]*><\/p>/);
 });
@@ -508,16 +508,16 @@ test("hashed cards can match Ian Coleman's suit-symbol SHA-256 transcript", () =
   assert.match(appSource, /input\.value = hodlFilterCards\(input\.value, hodlCardColemanSymbols\)/);
 });
 
-test("Number bases offers exact Base 2, 4, 8, 16, Crockford Base32, and Base64-alphabet input", () => {
+test("Number bases offers exact Base 2, 4, 8, 16, Bech32 Base32, and Base64-alphabet input", () => {
   assert.match(appSource, /hodlTText\(hodlKeyModeLabels\[mode\]\)/);
   assert.doesNotMatch(shell, />Hex or binary<\/button>/);
   assert.ok(app.includes('formatChoices=["bin","base4","base8","hex","base32","base64"]'));
   assert.match(app, /name="entropy-format" value="\$\{id\}"/);
   const labelsModule = read("src/js/i18n-labels.js");
-  for (const label of ["Binary (Base 2)", "Base 4", "Octal (Base 8)", "Hexadecimal (Base 16)", "Crockford Base32", "Base64 (RFC 4648 alphabet)"]) {
+  for (const label of ["Binary (Base 2)", "Quaternary (Base 4)", "Octal (Base 8)", "Hexadecimal (Base 16)", "Base32 (Bech32)", "Base64 (RFC 4648 alphabet)"]) {
     assert.ok(labelsModule.includes(`label: "${label}"`), label);
   }
-  assert.match(app, /alphabet:"0123456789ABCDEFGHJKMNPQRSTVWXYZ"/);
+  assert.match(app, /alphabet:"qpzry9x8gf2tvdw0s3jn54khce6mua7l"/);
   assert.match(app, /alphabet:"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789\+\/"/);
   assert.match(app, /function hodlNumberBaseEntropy\(value,format,targetWords=hodlTargetWordCount\)/);
   assert.match(app, /function hodlNumberBasePreviewWords\(value,format,targetWords=hodlTargetWordCount\)/);
@@ -569,6 +569,9 @@ test("Number bases offers exact Base 2, 4, 8, 16, Crockford Base32, and Base64-a
   assert.match(app, /fields:\{[\s\S]*?base4:"",base8:"",base32:"",base64:""/);
   assert.match(app, /function hodlBase64KeyboardMarkup\(\)\{return hodlKeyboardMarkup\(!0,"Base64 entropy","base64-keyboard"\)\}/);
   assert.match(app, /function hodlBindBase64Keyboard\(input\)/);
+  assert.match(app, /function hodlBase32KeyboardMarkup\(\)\{return hodlKeyboardMarkup\(!0,"Bech32 entropy","base32-keyboard",!1,"a1"\)\}/);
+  assert.match(app, /function hodlBindBase32Keyboard\(input\)/);
+  assert.match(app, /usesKeyboard=format\.id==="base32"\|\|format\.id==="base64"/);
   assert.match(app, /hodlT\("Heads \(0\)"\)/);
   assert.match(app, /hodlT\("Tails \(1\)"\)/);
   assert.match(css, /\.dice-input-pad\.entropy-keypad \{ grid-template-columns: repeat\(8[^}]*grid-auto-flow: row;/);
@@ -643,7 +646,8 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   assert.match(app, /data-seed-delete aria-label="Delete previous character"/);
   assert.match(app, /data-seed-keyboard-mode="lower"/);
   assert.match(app, /passphraseOnly\?`Change \$\{inputName\} character mode`:"Character mode switching is available for the passphrase"/);
-  assert.match(app, />aA1<\/button><button[^>]*class="seed-keyboard-space"/);
+  assert.match(app, /modeLabel="aA1"/);
+  assert.match(app, />\$\{modeLabel\}<\/button><button[^>]*class="seed-keyboard-space"/);
   assert.match(app, /data-seed-key=" " aria-label="Enter space">space/);
   assert.ok(app.includes('number:["1234567890","!@#$%^&*()","-_+=/?\\\\"]'));
   assert.match(app, /Array\.from\(\{length:hodlSeedKeyboardLayouts\.number\[index\]\.length\}/);
@@ -2011,7 +2015,7 @@ test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
   assert.match(css, /#psbt-card:not\(\[hidden\]\), #psbted-card:not\(\[hidden\]\), #vanity-card:not\(\[hidden\]\), #ln-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
 });
 
-test("Journal gates its four tools behind the local notebook", () => {
+test("Journal gates its five tools behind the local notebook", () => {
   assert.match(appSource, /\["psbt", "PSBT", "PSBT"\], \["ln", "Lightning", "LN"\], \["journal", "Journal", "Journal"\]\];/);
   assert.match(appSource, /import \{[\s\S]*wipeJournal,[\s\S]*\} from "\.\/journal\.js"/);
   assert.match(appSource, /import \{[\s\S]*sealDocument as hodlJournalSealDocument,[\s\S]*\} from "\.\/journal\.js"/);
@@ -2037,7 +2041,7 @@ test("Journal gates its four tools behind the local notebook", () => {
     assert.match(markup, /class="btn clear-current-action" id="journal-global-clear"[^>]*disabled aria-disabled="true"[^>]*>Clear journal<\/button>/);
     assert.match(markup, /<section class="key-manager no-print" id="journal-manager" hidden>/);
     assert.match(markup, /<div class="key-tabs" id="journal-tool-tabs" role="tablist" aria-label="Journal stations">/);
-    assert.doesNotMatch(markup, /id="journal-book-tab"|data-journal-tool="book"/);
+    assert.match(markup, /id="journal-book-tab"[^>]*data-journal-tool="book"[^>]*disabled>Entries<\/button>/);
     assert.match(markup, /id="journal-notes-tab"[^>]*aria-disabled="true"[^>]*data-journal-tool="notes"[^>]*disabled/);
     assert.match(markup, /id="journal-keymanager-tab"[^>]*aria-disabled="true"[^>]*data-journal-tool="keymanager"[^>]*disabled/);
     assert.match(markup, /id="journal-state-tab"[^>]*aria-disabled="true"[^>]*data-journal-tool="state"[^>]*disabled/);
@@ -2205,8 +2209,12 @@ test("Journal gates its four tools behind the local notebook", () => {
   assert.match(appSource, /function hodlJournalCreatePasswordKeydown\(event\) \{[\s\S]*event\.key !== "Enter"[\s\S]*confirm\.focus\(\)[\s\S]*confirm\.value === password\.value\) hodlJournalCreate\(\)/);
   assert.match(appSource, /\["journal-create-password", "journal-create-confirm"\][\s\S]*addEventListener\("keydown", hodlJournalCreatePasswordKeydown\)/);
   assert.match(appSource, /function hodlSyncJournalTool\(\) \{[\s\S]*unlocked = hodlJournalUnlocked\(\)[\s\S]*button\.disabled = !unlocked;[\s\S]*button\.setAttribute\("aria-disabled", String\(!unlocked\)\)[\s\S]*journal-notes-card"\)\.hidden = !visible \|\| !unlocked/);
-  assert.match(appSource, /async function hodlJournalCreate\(\) \{[\s\S]*hodlJournalShowWork\(\);\s*hodlShowJournalTool\("notes"\)/);
-  assert.match(appSource, /async function hodlJournalUnlock\(\) \{[\s\S]*hodlJournalShowWork\(\);\s*hodlShowJournalTool\("notes"\)/);
+  assert.match(appSource, /async function hodlJournalCreate\(\) \{[\s\S]*hodlJournalBackfillDerivedKeys\(\);[\s\S]*hodlJournalShowWork\(\);\s*hodlShowJournalTool\("book"\)/);
+  assert.match(appSource, /async function hodlJournalUnlock\(\) \{[\s\S]*hodlJournalBackfillDerivedKeys\(\);[\s\S]*hodlJournalShowWork\(\);\s*hodlShowJournalTool\("book"\)/);
+  assert.match(appSource, /function hodlJournalSyncDerivedKeys\(states\) \{\s*if \(!hodlJournalUnlocked\(\)\) return \{ added: 0, updated: 0, matched: 0 \}/);
+  assert.match(appSource, /hodlJournalKeyEntries\.clear\(\)/);
+  assert.match(appSource, /hodlCommitDerivedKey\(\);\s*hodlJournalCaptureDerivedKey\(hodlKeys\[hodlActiveKey\]\)/);
+  assert.match(appSource, /Unsaved changes \\u2014 download the journal file to preserve them/);
   assert.match(appSource, /function hodlJournalLock\(\) \{[\s\S]*hodlJournalTool = "book";[\s\S]*hodlSyncJournalTool\(\)/);
   assert.match(appSource, /function hodlJournalWipeMem\(\) \{[\s\S]*hodlJournalTool = "book";[\s\S]*hodlSyncJournalTool\(\)/);
   // The notebook never seals or opens without an explicit click.
@@ -2226,15 +2234,16 @@ test("fixed inner tabs reserve the height of their longest introduction", () => 
   assert.match(appSource, /editorIntro\.classList\.toggle\("active", visible && hodlPsbtTool === "editor"\);\s*editorIntro\.setAttribute\("aria-hidden", String\(!visible \|\| hodlPsbtTool !== "editor"\)\);/);
 });
 
-test("BIP-85 stays available as a workspace without a duplicate Key Station action", () => {
+test("Key Station keeps derivation actions focused and BIP-85 remains its own workspace", () => {
   // BIP-85 has its own tab, so the shortcut that used to sit beside Derive Key
-  // is gone; the row is Derive, progress, Save to Journal, Clear.
+  // is gone; automatic Journal capture also removes the old manual shortcut.
   for (const markup of [shell]) {
-    assert.match(markup, /id="go"[^>]*>Derive Key<\/button>[\s\S]*?id="derive-progress"[\s\S]*?id="journal-open"[^>]*>Save to Journal<\/button>[\s\S]*?id="wipe"/);
+    assert.match(markup, /id="go"[^>]*>Derive Key<\/button>[\s\S]*?id="derive-progress"[\s\S]*?id="wipe"/);
+    assert.doesNotMatch(markup, /id="journal-open"|>Save to Journal<\/button>|id="journal-use-calc"|>Use active key<\/button>/);
     assert.doesNotMatch(markup, /id="bip85-open"|>Derive BIP-85 child<\/button>/);
   }
   assert.doesNotMatch(appSource, /getElementById\("bip85-open"\)/);
-  assert.match(appSource, /getElementById\("journal-open"\)/);
+  assert.doesNotMatch(appSource, /getElementById\("journal-open"\)|getElementById\("journal-use-calc"\)|hodlJournalUseActiveKey|hodlJournalApplySnapshot/);
   assert.match(appSource, /\["calc", "Keys", "Keys"\], \["vanity", "Vanity", "Vanity"\], \["bip85", "BIP-85", "BIP85"\]/);
   // The tab keeps its own way to adopt a key, so the removal must not have
   // taken the underlying session-key path with it.
@@ -2716,7 +2725,7 @@ test("the vanity grinder is a workspace tab that ships collapsed and never auto-
     assert.match(markup, /<p class="muted" id="vanity-estimate" aria-live="polite"><\/p>/);
     assert.match(markup, /<button class="btn primary" id="vanity-go" type="button">Start grinding<\/button>/);
     assert.match(markup, /id="vanity-progress" role="progressbar"[^>]*hidden>/);
-    assert.match(markup, /<button class="btn secondary" id="vanity-stop" type="button" disabled>Stop<\/button>/);
+    assert.doesNotMatch(markup, /id="vanity-stop"/);
     assert.match(markup, /<button class="btn clear-current-action" id="vanity-wipe" type="button" disabled aria-disabled="true">Clear results<\/button>/);
     assert.match(markup, /<p class="muted" id="vanity-status" aria-live="polite">/);
     assert.match(markup, /<p class="err" id="vanity-error" role="alert"><\/p>/);
@@ -2735,7 +2744,8 @@ test("the vanity grinder is a workspace tab that ships collapsed and never auto-
   assert.match(appSource, /function hodlInitWorkspace\(\) \{[\s\S]*?hodlInitVanity\(\);/);
   // The workers spawn only from the button handler; nothing starts on boot,
   // on tab switches, or on input.
-  assert.match(appSource, /go\.onclick = hodlRunVanity;/);
+  assert.match(appSource, /go\.onclick = \(\) => hodlVanityRunning \? hodlVanityStop\(\) : hodlRunVanity\(\);/);
+  assert.match(appSource, /go\.dataset\.derivationWidth[\s\S]*go\.style\.width = `\$\{width\}px`[\s\S]*go\.textContent = hodlTText\("Stop"\)[\s\S]*go\.dataset\.derivationState = "running"/);
   assert.match(appSource, /function hodlRunVanity\(\) \{[\s\S]*?new VanityGrinder\(/);
   assert.equal(appSource.indexOf("new VanityGrinder"), appSource.indexOf("new VanityGrinder", appSource.indexOf("function hodlRunVanity")));
   // Passphrases are private material: masked by default behind the same
@@ -2814,7 +2824,9 @@ test("the private recovery section lists the BIP39 passphrase beside the seed ph
 
 test("the vanity estimate is timed from a device sample, and Stop on first find halts the grind at the first match", () => {
   for (const markup of [shell]) {
-    assert.match(markup, /<button class="btn secondary" id="vanity-stop" type="button" disabled>Stop<\/button>\s*<button class="btn secondary" id="vanity-first" type="button" aria-pressed="false"[^>]*>Stop on first find<\/button>/);
+    assert.match(markup, /<label class="seed-autocomplete-toggle switch-toggle vanity-first-toggle"><input id="vanity-first" type="checkbox"><span>Stop on first find<\/span><\/label>[\s\S]*?<button class="btn primary" id="vanity-go"/);
+    assert.doesNotMatch(markup, /id="vanity-first"[^>]*>[\s\S]*?<span class="label">Stop on first find/);
+    assert.doesNotMatch(markup, /<button[^>]*id="vanity-first"/);
   }
   const vanityController = appSource.slice(appSource.indexOf("// ── Vanity grinder"), appSource.indexOf("function hodlInitWorkspace()"));
   // The sample runs on tab entry, once per session, never while a grind is
@@ -2829,11 +2841,12 @@ test("the vanity estimate is timed from a device sample, and Stop on first find 
   assert.match(vanityController, /function hodlVanityExpectedRate\(\) \{\s*if \(hodlVanityRunning && hodlVanityLiveRate > 0\) return hodlVanityLiveRate;/);
   assert.match(vanityController, /expect a match roughly every \$\{hodlVanityFormatDuration\(Number\(work\) \/ rate\)\}/);
   assert.match(vanityController, /"Measuring this device…"/);
-  // Stop on first find is a toggle that asks the pool to stop as the first
+  // Stop on first find is a checkbox that asks the pool to stop as the first
   // match lands, and the status says so.
   assert.match(vanityController, /if \(hodlVanityStopFirst && hodlVanityRunning\) hodlVanityStop\(\);/);
   assert.match(vanityController, /"Stopped at first match"/);
-  assert.match(vanityController, /document\.getElementById\("vanity-first"\)\.onclick = hodlVanityToggleStopFirst;/);
+  assert.match(vanityController, /hodlVanityStopFirst = Boolean\(document\.getElementById\("vanity-first"\)\?\.checked\);/);
+  assert.match(vanityController, /document\.getElementById\("vanity-first"\)\.onchange = hodlVanityStopFirstChanged;/);
   // Worker chunks adapt to the device so the bar moves smoothly from the start.
   const worker = read("src/js/vanity-worker.js");
   assert.match(worker, /var STEP_MS = 120;/);

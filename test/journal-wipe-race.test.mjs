@@ -89,7 +89,7 @@ const loadApp = ({ onOpen = (file, password) => openDocument(file, password), on
     "hodlKeyManagerReset", "hodlJournalClearFields", "hodlJournalHideEditor", "hodlJournalSetGate",
     "hodlJournalSyncEncryptDownloads", "hodlJournalShowWork", "hodlSyncJournalTool",
     "hodlRenderJournalPageTabs", "hodlJournalApplyPageStyle", "hodlJournalSetStatus",
-    "hodlShowJournalTool", "hodlJournalLog",
+    "hodlShowJournalTool", "hodlJournalLog", "hodlJournalBackfillDerivedKeys",
     `${source}; return {
       unlock: hodlJournalUnlock,
       create: hodlJournalCreate,
@@ -103,7 +103,7 @@ const loadApp = ({ onOpen = (file, password) => openDocument(file, password), on
     noop, noop, noop, noop,
     noop, noop, noop,
     noop, noop, noop,
-    noop, noop,
+    noop, noop, noop,
   );
 };
 

@@ -37,6 +37,7 @@ import {
   journalKeyReferenceToken,
   journalNotebookRuns,
   journalTextFromRuns,
+  keySnapshotMatchesEntry,
   mergeNotebookImport,
   normalizeEntry,
   openDocument,
@@ -51,6 +52,7 @@ import {
   serializeNotebook,
   snapshotFromKeyState,
   snapshotSession,
+  syncKeySnapshots,
   wipeBytes,
   wipeDocument,
   wipeEntry,
@@ -309,7 +311,7 @@ test("wipe helpers zero secrets in place and reset allocation", () => {
   wipeDocument(null); // must not throw
 });
 
-// --- Session-key snapshots (what "Save to Journal" captures) ----------------
+// --- Session-key snapshots (what automatic Key Station capture stores) -------
 
 test("the snapshot captures each input method's live transcript", () => {
   const base = { id: 1, isLab: false, name: "", fields: {}, result: null };
@@ -394,6 +396,56 @@ test("the snapshot captures private-key modes and the passphrase warning", () =>
   assert.equal(snapshotFromKeyState({ isLab: true, mode: "dice", fields: { dice: "1" } }), null);
   assert.equal(snapshotFromKeyState({ ...base, fields: {}, result: null }), null);
   assert.equal(snapshotFromKeyState(null), null);
+});
+
+test("derived Key Station snapshots backfill a new journal and auto-add later keys", () => {
+  const doc = emptyDocument(), associations = new Map();
+  const beforeCreate = sampleEntry({ walletId: 11, label: "Before journal", input: "1 2 3", created: undefined });
+  const afterCreate = sampleEntry({ walletId: 12, label: "After journal", input: "4 5 6", created: undefined });
+  assert.deepEqual(syncKeySnapshots(doc, [beforeCreate], associations, fixedNow), { added: 1, updated: 0, matched: 0 });
+  assert.equal(doc.entries.length, 1);
+  assert.deepEqual(syncKeySnapshots(doc, [afterCreate], associations, fixedNow), { added: 1, updated: 0, matched: 0 });
+  assert.deepEqual(doc.entries.map((entry) => entry.label), ["Before journal", "After journal"]);
+  assert.equal(associations.get(11), doc.entries[0].id);
+  assert.equal(associations.get(12), doc.entries[1].id);
+});
+
+test("re-deriving one Key Station state updates its associated entry", () => {
+  const doc = emptyDocument(), associations = new Map();
+  const first = sampleEntry({ walletId: 21, label: "Same tab", input: "first transcript", fingerprint: "11111111", created: undefined });
+  syncKeySnapshots(doc, [first], associations, fixedNow);
+  const entryId = doc.entries[0].id, created = doc.entries[0].created;
+  const next = { ...first, input: "replacement transcript", phrase: "replacement mnemonic", fingerprint: "22222222" };
+  assert.deepEqual(syncKeySnapshots(doc, [next], associations, new Date("2026-09-02T00:00:00Z")), { added: 0, updated: 1, matched: 0 });
+  assert.equal(doc.entries.length, 1);
+  assert.equal(doc.entries[0].id, entryId);
+  assert.equal(doc.entries[0].created, created);
+  assert.equal(doc.entries[0].input, "replacement transcript");
+  assert.equal(doc.entries[0].fingerprint, "22222222");
+});
+
+test("opening a journal matches meaningful snapshots and backfills only missing keys", () => {
+  const doc = emptyDocument();
+  const matching = sampleEntry({ walletId: 31, label: "Existing", input: "same transcript", created: undefined });
+  const existing = addEntry(doc, matching, fixedNow);
+  const reusedSessionId = { ...matching, walletId: 31, input: "different transcript", phrase: "different mnemonic" };
+  const missing = sampleEntry({ walletId: 32, label: "Missing", input: "new transcript", fingerprint: "cafebabe", created: undefined });
+  const reopenedAssociations = new Map();
+  assert(keySnapshotMatchesEntry(existing, { ...matching, walletId: 999 }), "session ids must not participate in meaningful matching");
+  assert(!keySnapshotMatchesEntry(existing, reusedSessionId), "a fingerprint and reused session id must not hide changed key content");
+  assert.deepEqual(syncKeySnapshots(doc, [{ ...matching, walletId: 999 }, reusedSessionId, missing], reopenedAssociations, fixedNow), { added: 2, updated: 0, matched: 1 });
+  assert.equal(doc.entries.length, 3);
+  assert.equal(reopenedAssociations.get(999), existing.id);
+  assert.notEqual(reopenedAssociations.get(31), existing.id);
+});
+
+test("automatically captured Key Station entries survive journal download and reopen", async () => {
+  const doc = emptyDocument(), associations = new Map();
+  const snapshot = sampleEntry({ walletId: 41, label: "Automatic backup", input: "saved transcript", created: undefined });
+  syncKeySnapshots(doc, [snapshot], associations, fixedNow);
+  const opened = await openDocument(pack(await sealDocument(doc, keys)), password);
+  assert.equal(opened.doc.entries.length, 1);
+  assert(keySnapshotMatchesEntry(opened.doc.entries[0], snapshot));
 });
 
 // --- Notepad backups ---------------------------------------------------------
@@ -699,9 +751,9 @@ test("an .elkeys backup is opaque until opened with the journal password", async
 
 test("the app routes every journal backup through the sealed primitives", () => {
   const app = read("src/js/app.js");
-  // A Key Station snapshot carries its method variant through the editor and
-  // both journal labels render that persisted variant.
-  assert.match(app, /hodlJournalEntryVariants = hodlJournalReadEntryVariants\(snapshot\)/);
+  // Automatic Key Station capture persists the snapshot's method variant;
+  // manual entries still keep their selected variant through the editor.
+  assert.match(app, /hodlJournalSyncKeySnapshots\(hodlJournalDoc, snapshots, hodlJournalKeyEntries\)/);
   assert.match(app, /method: document\.getElementById\("journal-method"\)\?\.value \|\| "dice",\s+\.\.\.hodlJournalEntryVariants,/);
   assert.equal((app.match(/hodlJournalEntryMethodLabel\(entry\)/g) || []).length, 2);
   // Downloads encrypt with the unlocked journal keys by default and mark the

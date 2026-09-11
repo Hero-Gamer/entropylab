@@ -320,6 +320,10 @@ test("the snapshot captures each input method's live transcript", () => {
   const bitbox = snapshotFromKeyState({ ...base, mode: "dice", diceMethod: "bitbox", fields: { bitboxDice: "bb", dice: "1 2 3" } });
   assert.equal(bitbox.input, "bb");
   assert.equal(bitbox.diceMethod, "bitbox");
+  const coleman = snapshotFromKeyState({ ...base, mode: "dice", diceMethod: "coleman", fields: { colemanDice: "654321", dice: "123456" } });
+  assert.equal(coleman.input, "654321");
+  const legacyColeman = snapshotFromKeyState({ ...base, mode: "dice", diceMethod: "coleman", fields: { dice: "123456" } });
+  assert.equal(legacyColeman.input, "123456");
   const direct = snapshotFromKeyState({ ...base, mode: "cards", cardMethod: "direct", fields: { directCards: "AS KD", cards: "hashed" } });
   assert.equal(direct.method, "cards");
   assert.equal(direct.input, "AS KD");

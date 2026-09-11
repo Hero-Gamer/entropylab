@@ -293,25 +293,36 @@ function hodlReadDerivationIndex(input, label, mark = true) {
   if (!valid) throw new Error(`${label} must be a whole number from 0 to 2,147,483,647.`);
   return parsed.value;
 }
+function hodlDerivationPathWindowComponent(window, hardened = false) {
+  let value = window.range > 1 ? `{${window.start}-${window.end}}` : String(window.start);
+  return `${value}${hardened ? "'" : ""}`;
+}
+function hodlParseDerivationPathWindow(value, label, maximumRange) {
+  let raw = String(value ?? "").trim(), unit = hodlParseDerivationIndexText(raw);
+  if (unit) return { start: unit.value, end: unit.value, range: 1, hardened: unit.hardened };
+  let match = /^\{(0|[1-9]\d*)-(0|[1-9]\d*)\}([hH']?)$/.exec(raw), start = Number(match?.[1]), end = Number(match?.[2]);
+  if (!match || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end > 2147483647 || end <= start || end - start + 1 > maximumRange) {
+    throw new Error(`${label} must be one BIP32 index or one BIP-88 range of at most ${maximumRange.toLocaleString()} indexes.`);
+  }
+  return { start, end, range: end - start + 1, hardened: Boolean(match[3]) };
+}
 function hodlDerivationPathDisplay(accountPath, branchWindow, addressWindow, hardening = hodlDefaultHardening()) {
-  if (branchWindow.range > 1) return accountPath;
-  let branchPath = `${accountPath}/${hodlPathComponent(branchWindow.start, hardening.branch)}`;
-  if (addressWindow.range > 1) return branchPath;
-  return `${branchPath}/${hodlPathComponent(addressWindow.start, hardening.address)}`;
+  let branch = hodlDerivationPathWindowComponent(branchWindow, hardening.branch), address = hodlDerivationPathWindowComponent(addressWindow, hardening.address);
+  return `${accountPath}/${branch}/${address}`;
 }
 function hodlDerivationPathRangeMessage(branchWindow, addressWindow) {
-  if (branchWindow.range > 1 && addressWindow.range > 1) return "Multiple address branches and indexes selected · path shown through the account level.";
-  if (branchWindow.range > 1) return "Multiple address branches selected · path shown through the account level.";
-  if (addressWindow.range > 1) return "Multiple address indexes selected · path shown through the address branch.";
+  if (branchWindow.range > 1 || addressWindow.range > 1) return "BIP-88 full path template · edit directly to use a custom path";
   return "Exact BIP32 address path · edit directly to use a custom path";
 }
 function hodlReadVisibleDerivationPath(mark = true) {
   let input = document.getElementById("derivation-path"), parsed;
   try {
-    parsed = hodlParseCustomDerivationPath(input?.value);
-    let branchWindow = hodlReadBranchWindow("", false), addressWindow = hodlReadAddressWindow("", false), suffixCount = branchWindow.range > 1 ? 0 : addressWindow.range > 1 ? 1 : 2;
-    if (parsed.components.length < 3 + suffixCount) throw new Error("Derivation path must include purpose, network, and account plus every address component shown.");
-    let accountComponents = suffixCount ? parsed.components.slice(0, -suffixCount) : parsed.components.slice(), branch = suffixCount >= 1 ? parsed.components.at(-suffixCount) : null, address = suffixCount === 2 ? parsed.components.at(-1) : null;
+    let raw = String(input?.value ?? "").trim();
+    if (!/^m(?:\/[^/]+)*$/.test(raw)) throw new Error("Derivation path must start with m and contain slash-separated BIP32 indexes.");
+    let sections = raw === "m" ? [] : raw.slice(2).split("/");
+    if (sections.length < 5) throw new Error("Derivation path must include purpose, network, and account plus address branch and index components.");
+    parsed = hodlParseCustomDerivationPath(`m/${sections.slice(0, -2).join("/")}`);
+    let accountComponents = parsed.components, branch = hodlParseDerivationPathWindow(sections.at(-2), "Address branch", 2), address = hodlParseDerivationPathWindow(sections.at(-1), "Address index", 10000), branchWindow = { start: branch.start, end: branch.end, range: branch.range, branches: Array.from({ length: branch.range }, (_, offset) => branch.start + offset) }, addressWindow = { start: address.start, end: address.end, range: address.range };
     if (accountComponents.length < 3) throw new Error("Derivation path must include purpose, network, and account indexes.");
     if (mark) {
       input?.classList.remove("bad");
@@ -530,6 +541,19 @@ var hodlRootEl = document.getElementById("btc-calc");
 if (!hodlRootEl) throw new Error("#app missing");
 hodlRootEl.innerHTML = hodlShellHtml;if (/^(www\.)?entropylab\.online$/i.test(location.hostname)) document.getElementById("online-warning")?.removeAttribute("hidden");
 var hodlKeyModes = ["dice", "cards", "hex", "seed", "key"], hodlBrainLabAck = { scalar: false, hd: false }, hodlCardRanks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K"], hodlDirectCardRanks = ["A", "2", "3", "4", "5", "6", "7", "8"], hodlCardSuits = [{ code: "S", symbol: "♠", label: "Spades", red: false }, { code: "H", symbol: "♥", label: "Hearts", red: true }, { code: "C", symbol: "♣", label: "Clubs", red: false }, { code: "D", symbol: "♦", label: "Diamonds", red: true }], hodlCardSuit = "", hodlCardRank = "", hodlCardMethod = "hashed", hodlSeedMethod = "words", hodlSeedZeroIndexed = false, hodlCardColemanSymbols = false, hodlKeyMode = "dice", hodlDiceMethod = "coldcard", hodlTargetWordCount = 24, hodlEntropyFormat = "hex", hodlDiceCoinPositions = [], hodlPickedLastWord = "", hodlWalletResult = null, hodlRevealPrivate = false, hodlWalletDatBirthday = "genesis", hodlModesEl = hodlElement("#modes"), hodlFormEl = hodlElement("#form"), hodlOutEl = hodlElement("#out");
+function hodlDiceFieldName(method = hodlDiceMethod) {
+  if (method === "coleman") return "colemanDice";
+  if (method === "bitbox") return "bitboxDice";
+  if (method === "dplus") return "dplusDice";
+  return "dice";
+}
+function hodlStoredDiceValue(fields, method = hodlDiceMethod) {
+  let name = hodlDiceFieldName(method);
+  // Key files created before Coleman had its own field stored both hashed
+  // methods in `dice`; retain that transcript only while loading old files.
+  if (method === "coleman" && !Object.prototype.hasOwnProperty.call(fields || {}, name)) return fields?.dice || "";
+  return fields?.[name] || "";
+}
 var hodlManualCalculationsOpen = false;
 function hodlCreateKeyMethodIcon(mode) {
   let ns = "http://www.w3.org/2000/svg", span = document.createElement("span"), svg = document.createElementNS(ns, "svg");
@@ -1712,10 +1736,15 @@ function hodlApplyVisibleDerivationPath() {
   hodlSetAdvancedDerivationIndex("purpose", visible.accountComponents[0]);
   hodlSetAdvancedDerivationIndex("network", visible.accountComponents[1]);
   hodlSetAdvancedDerivationIndex("account", visible.accountComponents[2]);
-  if (visible.branch) hodlSetAdvancedDerivationIndex("branch-start", visible.branch);
-  if (visible.address) hodlSetAdvancedDerivationIndex("address-start", visible.address);
+  hodlSetAdvancedDerivationIndex("branch-start", { index: visible.branch.start, hardened: visible.branch.hardened });
+  hodlSetAdvancedDerivationIndex("address-start", { index: visible.address.start, hardened: visible.address.hardened });
+  let branchRange = document.getElementById("branch-range"), addressRange = document.getElementById("address-range");
+  if (branchRange) branchRange.value = String(visible.branch.range);
+  if (addressRange) addressRange.value = String(visible.address.range);
+  hodlSyncBranchRangeLimit();
+  hodlSyncAddressRangeLimit();
   let state = hodlKeys[hodlActiveKey];
-  if (state) state.fields.derivationAccountPath = accountPath;
+  if (state) Object.assign(state.fields, { derivationAccountPath: accountPath, branchStart: String(visible.branch.start), branchRange: String(visible.branch.range), branchHarden: visible.branch.hardened, addressStart: String(visible.address.start), addressRange: String(visible.address.range), addressHarden: visible.address.hardened });
   hodlUpdateHardeningHelp();
   hodlUpdateAddressEstimate();
   return visible;
@@ -3012,6 +3041,8 @@ function hodlUpdateDiceButtons(input, analysis) {
       } else if (!analysis.coinTurn && face >= 5) {
         disabled = true;
         reason = "Reroll a 5 or 6 during the first five BitBox rolls.";
+      } else if (analysis.coinTurn) {
+        reason = face <= 3 ? "Sixth die: 1–3 is Heads." : "Sixth die: 4–6 is Tails.";
       }
     }
     if (hodlDiceMethod === "dplus") {
@@ -3037,28 +3068,6 @@ function hodlUpdateDiceButtons(input, analysis) {
         button.replaceChildren(document.createTextNode(String(button.dataset.d || "")));
       }
       button.classList.toggle("has-caption", leads);
-    }
-    if (hodlDiceMethod === "bitbox") {
-      // The sixth roll is the coin, so on that turn the six keys become two:
-      // Heads over 1-3 and Tails over 4-6, matching the BitBox lookup table
-      // column labels. Tapping enters the first face of its range; the range is
-      // what decides the bit, so any face in it builds the same word, and the
-      // actual roll can still be typed rather than tapped.
-      let flipping = analysis.coinTurn && face >= 1 && face <= 6,
-        leads = face === 1 || face === 4;
-      button.hidden = flipping && !leads;
-      button.classList.toggle("dice-key-wide", flipping && leads);
-      if (flipping && leads) {
-        let side = face === 1 ? "Heads" : "Tails",
-          range = face === 1 ? "1 – 3" : "4 – 6",
-          caption = document.createElement("span");
-        caption.className = "dice-key-caption";
-        caption.textContent = range;
-        button.replaceChildren(document.createTextNode(side), caption);
-      } else {
-        button.replaceChildren(document.createTextNode(String(button.dataset.d || "")));
-      }
-      button.classList.toggle("has-caption", flipping && leads);
     }
     button.disabled = disabled;
     button.title = reason;
@@ -4567,7 +4576,7 @@ function hodlGlobalSyncSourceId() {
 }
 function hodlGlobalSyncCurrentValue() {
   let state = hodlKeys[hodlActiveKey], fields = state?.fields || {};
-  if (hodlKeyMode === "dice") return document.getElementById("dice")?.value ?? (hodlDiceMethod === "dplus" ? fields.dplusDice : hodlDiceMethod === "bitbox" ? fields.bitboxDice : fields.dice) ?? "";
+  if (hodlKeyMode === "dice") return document.getElementById("dice")?.value ?? hodlStoredDiceValue(fields) ?? "";
   if (hodlKeyMode === "cards") return document.getElementById(hodlCardMethod === "direct" ? "direct-cards" : "cards")?.value ?? fields[hodlCardMethod === "direct" ? "directCards" : "cards"] ?? "";
   if (hodlKeyMode === "hex") return document.getElementById(hodlEntropyFormat)?.value ?? fields[hodlEntropyFormat] ?? "";
   if (hodlKeyMode === "seed") return document.getElementById(hodlSeedMethod === "numbers" ? "seed-numbers" : "seed")?.value ?? fields[hodlSeedMethod === "numbers" ? "seedNumbers" : "seed"] ?? "";
@@ -4808,6 +4817,7 @@ function hodlApplyGlobalSync(bits, sourceId = hodlGlobalSyncSourceId()) {
   fields.dplusDice = hodlGlobalSyncDPlusValue(source, config.words);
   fields.directCards = hodlGlobalSyncDirectCardsValue(source, config.words);
   fields.bitboxDice = hodlGlobalSyncBitBoxValue(source, config.words);
+  if (sourceId !== "dice:bitbox") state.diceCoinPositions = [];
   state.lastWord = mnemonic ? words.at(-1) : "";
   privateKeys["hex-key"] = source.slice(0, 256).match(/.{4}/g)?.map((chunk) => Number.parseInt(chunk, 2).toString(16)).join("") || "";
   privateKeys.wif = "";
@@ -5232,23 +5242,23 @@ function hodlRenderKeyForm() {
       radio.onchange = () => {
         let raw = input.value, lastWord = hodlPickedLastWord, previousMethod = hodlDiceMethod, state = hodlKeys[hodlActiveKey];
         if (state) {
+          state.fields[hodlDiceFieldName(previousMethod)] = raw;
           if (previousMethod === "dplus") {
-            state.fields.dplusDice = raw;
             state.dplusLastWord = lastWord;
-          } else {
-            state.fields[previousMethod === "bitbox" ? "bitboxDice" : "dice"] = raw;
+          } else if (previousMethod === "bitbox") {
             state.diceCoinPositions = hodlDiceCoinPositions.slice();
-            if (previousMethod === "bitbox") state.lastWord = lastWord;
+            state.lastWord = lastWord;
           }
         }
         hodlDiceMethod = radio.value;
+        hodlDiceCoinPositions = state && hodlDiceMethod === "bitbox" ? hodlNormalizeDiceCoinPositions(state.diceCoinPositions) : [];
         hodlManualCalculationsOpen = false;
         if (state) {
           state.diceMethod = hodlDiceMethod;
           hodlPickedLastWord = hodlDiceMethod === "dplus" ? state.dplusLastWord || "" : hodlDiceMethod === "bitbox" ? state.lastWord || "" : "";
         } else hodlPickedLastWord = previousMethod === hodlDiceMethod ? lastWord : "";
         hodlRenderKeyForm();
-        let replacement = document.getElementById("dice"), replacementValue = state ? hodlDiceMethod === "dplus" ? state.fields.dplusDice || "" : hodlDiceMethod === "bitbox" ? state.fields.bitboxDice || "" : state.fields.dice || "" : previousMethod === hodlDiceMethod ? raw : "";
+        let replacement = document.getElementById("dice"), replacementValue = state ? hodlStoredDiceValue(state.fields) : previousMethod === hodlDiceMethod ? raw : "";
         if (replacement) {
           replacement.value = replacementValue;
           replacement.dataset.previousValue = replacementValue;
@@ -10405,7 +10415,7 @@ function hodlPrivateKeyValues(fields) {
 }
 function hodlNewKeyState(name, keyId, keyNumber) {
   let id = keyId ?? hodlNextKeyId++, number = keyNumber ?? hodlNextKeyNumber++;
-  return { id, number, createdAt: new Date().toISOString(), color: hodlKeyColor(id), name: name || hodlDefaultKeyName(number), mode: "dice", diceMethod: "coldcard", cardMethod: "hashed", seedMethod: "words", seedZeroIndexed: false, cardColemanSymbols: false, entropyFormat: "bin", globalSync: false, globalSyncSource: "", globalSyncBitCount: 0, seedAutocomplete: true, passphraseBip39Words: false, brainWalletOutput: "scalar", passphraseAutocomplete: true, brainWalletTrim: false, showCards: false, showDiceFairness: false, targetWords: 24, diceCoinPositions: [], lastWord: "", dplusLastWord: "", result: null, reveal: false, accountId: "bip84", error: "", fields: { pass: "", script: "bip84", derivationPath: `m/84'/${hodlDefaultCoinType()}'/0'/0/0`, derivationAccountPath: `m/84'/${hodlDefaultCoinType()}'/0'`, purpose: "84'", purposeHarden: true, coinType: `${hodlDefaultCoinType()}'`, coinTypeHarden: true, network: hodlNetworkDefault, account: "0'", accountHarden: true, branchStart: "0", branchHarden: false, branchRange: "1", addressStart: "0", addressHarden: false, addressRange: "1", dice: "", bitboxDice: "", dplusDice: "", hex: "", bin: "", base4: "", base8: "", base32: "", base64: "", cards: "", directCards: "", seed: "", seedNumbers: "", brainLab: "", key: "", keyKind: "wif", privateKeys: { wif: "", "hex-key": "", minikey: "", brain: "" } } };
+  return { id, number, createdAt: new Date().toISOString(), color: hodlKeyColor(id), name: name || hodlDefaultKeyName(number), mode: "dice", diceMethod: "coldcard", cardMethod: "hashed", seedMethod: "words", seedZeroIndexed: false, cardColemanSymbols: false, entropyFormat: "bin", globalSync: false, globalSyncSource: "", globalSyncBitCount: 0, seedAutocomplete: true, passphraseBip39Words: false, brainWalletOutput: "scalar", passphraseAutocomplete: true, brainWalletTrim: false, showCards: false, showDiceFairness: false, targetWords: 24, diceCoinPositions: [], lastWord: "", dplusLastWord: "", result: null, reveal: false, accountId: "bip84", error: "", fields: { pass: "", script: "bip84", derivationPath: `m/84'/${hodlDefaultCoinType()}'/0'/{0-1}/{0-9}`, derivationAccountPath: `m/84'/${hodlDefaultCoinType()}'/0'`, purpose: "84'", purposeHarden: true, coinType: `${hodlDefaultCoinType()}'`, coinTypeHarden: true, network: hodlNetworkDefault, account: "0'", accountHarden: true, branchStart: "0", branchHarden: false, branchRange: "2", addressStart: "0", addressHarden: false, addressRange: "10", dice: "", colemanDice: "", bitboxDice: "", dplusDice: "", hex: "", bin: "", base4: "", base8: "", base32: "", base64: "", cards: "", directCards: "", seed: "", seedNumbers: "", brainLab: "", key: "", keyKind: "wif", privateKeys: { wif: "", "hex-key": "", minikey: "", brain: "" } } };
 }
 function hodlNewLabState() {
   let state = hodlNewKeyState("Key Station", 0, 0);
@@ -10602,7 +10612,7 @@ function hodlKeyManagerToggle(state) {
   hodlKeyManagerRender();
 }
 function hodlKeyManagerImportedState(entry) {
-  let state = hodlNewKeyState(String(entry.name || "Imported key"), hodlNextKeyId++, hodlNextKeyNumber++);
+  let state = hodlNewKeyState(String(entry.name || "Imported key"), hodlNextKeyId++, hodlNextKeyNumber++), legacyColemanDice = entry.diceMethod === "coleman" && entry.fields && !Object.prototype.hasOwnProperty.call(entry.fields, "colemanDice") ? entry.fields.dice || "" : null;
   Object.assign(state, entry, {
     isLab: false,
     id: state.id,
@@ -10614,6 +10624,7 @@ function hodlKeyManagerImportedState(entry) {
     error: "",
     errorSpec: null,
   });
+  if (legacyColemanDice !== null) state.fields.colemanDice = legacyColemanDice;
   return state;
 }
 function hodlKeyManagerUseInStation(state) {
@@ -10927,7 +10938,7 @@ function hodlRestoreFormFields(state) {
   ["dice", "hex", "bin", "base4", "base8", "base32", "base64", "seed", "seed-numbers", "key", "cards", "direct-cards"].forEach(id => {
     let el = document.getElementById(id);
     if (el) {
-      el.value = id === "dice" ? hodlDiceMethod === "dplus" ? state.fields.dplusDice || "" : hodlDiceMethod === "bitbox" ? state.fields.bitboxDice || "" : state.fields.dice || "" : id === "key" ? privateKeys[restoredKeyKind] || "" : id === "direct-cards" ? state.fields.directCards || "" : id === "seed-numbers" ? state.fields.seedNumbers || "" : state.fields[id] || "";
+      el.value = id === "dice" ? hodlStoredDiceValue(state.fields) : id === "key" ? privateKeys[restoredKeyKind] || "" : id === "direct-cards" ? state.fields.directCards || "" : id === "seed-numbers" ? state.fields.seedNumbers || "" : state.fields[id] || "";
       if (id === "key") el.dataset.privateKeyKind = restoredKeyKind;
       if (id === "dice") {
         el.dataset.previousValue = el.value;
@@ -10957,7 +10968,7 @@ function hodlSetMode(mode) {
 function hodlKeyStateNeedsClear(state) {
   if (!state) return false;
   let fields = state.fields || {}, privateKeys = hodlPrivateKeyValues(fields), hasText = (id) => String(fields[id] ?? "").length > 0;
-  return String(state.mode ?? "dice") !== "dice" || String(state.diceMethod ?? "coldcard") !== "coldcard" || String(state.cardMethod ?? "hashed") !== "hashed" || String(state.seedMethod ?? "words") !== "words" || Boolean(state.seedZeroIndexed) || Boolean(state.cardColemanSymbols) || String(state.entropyFormat ?? "bin") !== "bin" || Boolean(state.globalSync) || state.seedAutocomplete === false || Boolean(state.passphraseBip39Words) || state.passphraseAutocomplete === false || Boolean(state.brainWalletTrim) || Boolean(state.showCards) || Boolean(state.showDiceFairness) || Number(state.targetWords ?? 24) !== 24 || Array.isArray(state.diceCoinPositions) && state.diceCoinPositions.length > 0 || String(state.lastWord ?? "").length > 0 || String(state.dplusLastWord ?? "").length > 0 || Boolean(state.result) || Boolean(state.reveal) || String(state.error ?? "").length > 0 || String(state.accountId ?? "bip84") !== "bip84" || String(fields.script ?? "bip84") !== "bip84" || String(fields.derivationPath ?? "m/84'/0'/0'/0/0") !== "m/84'/0'/0'/0/0" || String(fields.purpose ?? "84'") !== "84'" || fields.purposeHarden === false || String(fields.coinType ?? (fields.network === "testnet" ? "1'" : "0'")) !== "0'" || fields.coinTypeHarden === false || String(fields.account ?? "0'") !== "0'" || fields.accountHarden === false || String(fields.branchStart ?? "0") !== "0" || Boolean(fields.branchHarden) || String(fields.branchRange ?? "1") !== "1" || String(fields.addressStart ?? "0") !== "0" || Boolean(fields.addressHarden) || String(fields.addressRange ?? fields.count ?? "1") !== "1" || hodlNormalizePrivateKeyKind(fields.keyKind, privateKeys[fields.keyKind] || "") !== "wif" || ["pass", "dice", "bitboxDice", "dplusDice", "hex", "bin", "base4", "base8", "base32", "base64", "cards", "directCards", "seed", "seedNumbers", "brainLab", "key"].some(hasText) || hodlPrivateKeyKinds.some((kind) => privateKeys[kind].length > 0);
+  return String(state.mode ?? "dice") !== "dice" || String(state.diceMethod ?? "coldcard") !== "coldcard" || String(state.cardMethod ?? "hashed") !== "hashed" || String(state.seedMethod ?? "words") !== "words" || Boolean(state.seedZeroIndexed) || Boolean(state.cardColemanSymbols) || String(state.entropyFormat ?? "bin") !== "bin" || Boolean(state.globalSync) || state.seedAutocomplete === false || Boolean(state.passphraseBip39Words) || state.passphraseAutocomplete === false || Boolean(state.brainWalletTrim) || Boolean(state.showCards) || Boolean(state.showDiceFairness) || Number(state.targetWords ?? 24) !== 24 || Array.isArray(state.diceCoinPositions) && state.diceCoinPositions.length > 0 || String(state.lastWord ?? "").length > 0 || String(state.dplusLastWord ?? "").length > 0 || Boolean(state.result) || Boolean(state.reveal) || String(state.error ?? "").length > 0 || String(state.accountId ?? "bip84") !== "bip84" || String(fields.script ?? "bip84") !== "bip84" || String(fields.derivationPath ?? "m/84'/0'/0'/{0-1}/{0-9}") !== "m/84'/0'/0'/{0-1}/{0-9}" || String(fields.purpose ?? "84'") !== "84'" || fields.purposeHarden === false || String(fields.coinType ?? (fields.network === "testnet" ? "1'" : "0'")) !== "0'" || fields.coinTypeHarden === false || String(fields.account ?? "0'") !== "0'" || fields.accountHarden === false || String(fields.branchStart ?? "0") !== "0" || Boolean(fields.branchHarden) || String(fields.branchRange ?? "2") !== "2" || String(fields.addressStart ?? "0") !== "0" || Boolean(fields.addressHarden) || String(fields.addressRange ?? fields.count ?? "10") !== "10" || hodlNormalizePrivateKeyKind(fields.keyKind, privateKeys[fields.keyKind] || "") !== "wif" || ["pass", "dice", "colemanDice", "bitboxDice", "dplusDice", "hex", "bin", "base4", "base8", "base32", "base64", "cards", "directCards", "seed", "seedNumbers", "brainLab", "key"].some(hasText) || hodlPrivateKeyKinds.some((kind) => privateKeys[kind].length > 0);
 }
 function hodlSyncKeyClearButton(capture = false) {
   if (capture) hodlCaptureKey();
@@ -11000,7 +11011,7 @@ function hodlCaptureKey() {
   let fairnessToggle = document.getElementById("dice-fairness-toggle");
   if (fairnessToggle) state.showDiceFairness = fairnessToggle.getAttribute("aria-expanded") === "true";
   state.targetWords = hodlTargetWordCount;
-  state.diceCoinPositions = hodlDiceCoinPositions.slice();
+  if (hodlDiceMethod === "bitbox") state.diceCoinPositions = hodlDiceCoinPositions.slice();
   if (hodlDiceMethod === "dplus") state.dplusLastWord = hodlPickedLastWord;
   else if (hodlDiceMethod === "bitbox") state.lastWord = hodlPickedLastWord;
   state.result = hodlWalletResult;
@@ -11031,7 +11042,7 @@ function hodlCaptureKey() {
   } catch {
   }
   let dice = document.getElementById("dice");
-  if (dice) state.fields[hodlDiceMethod === "dplus" ? "dplusDice" : hodlDiceMethod === "bitbox" ? "bitboxDice" : "dice"] = dice.value;
+  if (dice) state.fields[hodlDiceFieldName()] = dice.value;
   let key = document.getElementById("key"), privateKeys = hodlPrivateKeyValues(state.fields), checkedKeyKind = document.querySelector("input[name=kk]:checked")?.value || state.fields.keyKind, keyKind = hodlNormalizePrivateKeyKind(key?.dataset.privateKeyKind || checkedKeyKind, key?.value || "");
   if (key) privateKeys[keyKind] = key.value;
   state.fields.keyKind = keyKind;
@@ -11080,14 +11091,14 @@ function hodlRestoreKey() {
     if (account2) account2.value = "0";
     let derivationPath2 = document.getElementById("derivation-path");
     if (derivationPath2) {
-      derivationPath2.value = `m/84'/${hodlDefaultCoinType()}'/0'/0/0`;
+      derivationPath2.value = `m/84'/${hodlDefaultCoinType()}'/0'/{0-1}/{0-9}`;
       derivationPath2.dataset.accountPath = `m/84'/${hodlDefaultCoinType()}'/0'`;
     }
     let branchStart2 = document.getElementById("branch-start"), branchRange2 = document.getElementById("branch-range"), addressStart2 = document.getElementById("address-start"), addressRange2 = document.getElementById("address-range");
     if (branchStart2) branchStart2.value = "0";
-    if (branchRange2) branchRange2.value = "1";
+    if (branchRange2) branchRange2.value = "2";
     if (addressStart2) addressStart2.value = "0";
-    if (addressRange2) addressRange2.value = "1";
+    if (addressRange2) addressRange2.value = "10";
     hodlSetHardeningControls();
     hodlUpdateVisibleDerivationPathFromAdvanced();
     hodlUpdateHardeningHelp();
@@ -11110,7 +11121,7 @@ function hodlRestoreKey() {
   hodlCardColemanSymbols = Boolean(state.cardColemanSymbols);
   hodlEntropyFormat = hodlNormalizeEntropyFormat(state.entropyFormat);
   hodlTargetWordCount = hodlSeedLengths[Number(state.targetWords)] ? Number(state.targetWords) : 24;
-  hodlDiceCoinPositions = hodlNormalizeDiceCoinPositions(state.diceCoinPositions);
+  hodlDiceCoinPositions = hodlDiceMethod === "bitbox" ? hodlNormalizeDiceCoinPositions(state.diceCoinPositions) : [];
   hodlPickedLastWord = hodlDiceMethod === "dplus" ? state.dplusLastWord || "" : hodlDiceMethod === "bitbox" ? state.lastWord || "" : "";
   hodlSyncKeyModeSelect();
   hodlRenderKeyForm();
@@ -11131,14 +11142,14 @@ function hodlRestoreKey() {
   if (account) account.value = state.fields.account ?? "0'";
   let derivationPath = document.getElementById("derivation-path");
   if (derivationPath) {
-    derivationPath.value = state.fields.derivationPath ?? "m/84'/0'/0'/0/0";
+    derivationPath.value = state.fields.derivationPath ?? "m/84'/0'/0'/{0-1}/{0-9}";
     derivationPath.dataset.accountPath = state.fields.derivationAccountPath ?? "m/84'/0'/0'";
   }
   let branchStart = document.getElementById("branch-start"), branchRange = document.getElementById("branch-range"), addressStart = document.getElementById("address-start"), addressRange = document.getElementById("address-range");
   if (branchStart) branchStart.value = state.fields.branchStart ?? "0";
-  if (branchRange) branchRange.value = state.fields.branchRange ?? "1";
+  if (branchRange) branchRange.value = state.fields.branchRange ?? "2";
   if (addressStart) addressStart.value = state.fields.addressStart ?? "0";
-  if (addressRange) addressRange.value = state.fields.addressRange ?? state.fields.count ?? "1";
+  if (addressRange) addressRange.value = state.fields.addressRange ?? state.fields.count ?? "10";
   hodlSetHardeningControls("", hodlHardeningFromFields(state.fields));
   hodlUpdateVisibleDerivationPathFromAdvanced();
   hodlUpdateHardeningHelp();

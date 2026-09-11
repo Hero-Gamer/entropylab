@@ -279,11 +279,11 @@ test("advanced derivation fields use the shared responsive settings grid", () =>
 test("key and multisig derivation use an indexed address window with an estimate and progress", () => {
   for (const markup of [shell]) {
     assert.match(markup, /id="address-start"[^>]*value="0"/);
-    assert.match(markup, /id="address-range"[^>]*value="1"/);
+    assert.match(markup, /id="address-range"[^>]*value="10"/);
     assert.match(markup, /id="msig-address-start"[^>]*value="0"/);
     assert.match(markup, /id="msig-address-range"[^>]*value="5"/);
-    assert.match(markup, /id="address-start-help">First receive index to derive (?:·|\\xB7) Unhardened (?:·|\\xB7) 0 to 2,147,483,647/);
-    assert.match(markup, /id="address-range-help">Derives 1 receive address (?:·|\\xB7) Max 10,000/);
+    assert.match(markup, /id="address-start-help">First address index to derive (?:·|\\xB7) Unhardened (?:·|\\xB7) 0 to 2,147,483,647/);
+    assert.match(markup, /id="address-range-help">Derives 10 receive and 10 change addresses (?:·|\\xB7) Max 10,000/);
     assert.match(markup, /id="msig-address-start-help">First receive and change index to derive (?:·|\\xB7) Unhardened (?:·|\\xB7) 0 to 2,147,483,647/);
     assert.match(markup, /id="msig-address-range-help">Derives 5 receive and 5 change addresses (?:·|\\xB7) Max 10,000/);
     assert.match(markup, /id="derive-progress"[^>]*role="progressbar"/);
@@ -329,7 +329,7 @@ test("key and multisig derivation select one or two address branches", () => {
   for (const markup of [shell]) {
     assert.match(markup, /id="branch-start"[^>]*value="0"/);
     assert.match(markup, /id="branch-start-harden"[^>]*type="checkbox"/);
-    assert.match(markup, /id="branch-range"[^>]*max="2"[^>]*value="1"/);
+    assert.match(markup, /id="branch-range"[^>]*max="2"[^>]*value="2"/);
     assert.match(markup, /id="msig-branch-start"[^>]*value="0"/);
     assert.match(markup, /id="msig-branch-start-harden"[^>]*type="checkbox"/);
     assert.match(markup, /id="msig-branch-range"[^>]*max="2"[^>]*value="2"/);
@@ -837,12 +837,12 @@ test("key derivation separates script type from the hardened purpose index", () 
   assert.match(appSource, /hodlSetSelectedScriptType\(target\.value, true\)/);
   assert.match(appSource, /let derivedDefinition = \{ \.\.\.definition, purpose: purposeIndex, purposeHardened: hardening\.purpose \}/);
   assert.match(appSource, /originPath = derivationPlan\?\.originPath \?\?/);
-  assert.match(appSource, /fields: \{ pass: "", script: "bip84", derivationPath: `m\/84'\/\$\{hodlDefaultCoinType\(\)\}'\/0'\/0\/0`, derivationAccountPath: `m\/84'\/\$\{hodlDefaultCoinType\(\)\}'\/0'`, purpose: "84'", purposeHarden: true, coinType: `\$\{hodlDefaultCoinType\(\)\}'`, coinTypeHarden: true, network: hodlNetworkDefault/);
+  assert.match(appSource, /fields: \{ pass: "", script: "bip84", derivationPath: `m\/84'\/\$\{hodlDefaultCoinType\(\)\}'\/0'\/\{0-1\}\/\{0-9\}`, derivationAccountPath: `m\/84'\/\$\{hodlDefaultCoinType\(\)\}'\/0'`, purpose: "84'", purposeHarden: true, coinType: `\$\{hodlDefaultCoinType\(\)\}'`, coinTypeHarden: true, network: hodlNetworkDefault/);
 });
 
 test("one editable derivation path replaces schemes and accepts arbitrary depth", () => {
   for (const markup of [shell]) {
-    assert.match(markup, /id="script-type-field">Script type[\s\S]*?id="derivation-path-field">Derivation path[\s\S]*?id="derivation-path" type="text" value="m\/84'\/0'\/0'\/0\/0"/);
+    assert.match(markup, /id="script-type-field">Script type[\s\S]*?id="derivation-path-field">Derivation path[\s\S]*?id="derivation-path" type="text" value="m\/84'\/0'\/0'\/\{0-1\}\/\{0-9\}"/);
     assert.match(markup, /<details class="derivation-advanced" id="derivation-advanced">[\s\S]*?<summary>Advanced entry<\/summary>/);
     assert.doesNotMatch(markup, /id="derivation-scheme"|id="custom-derivation-path"|id="scheme-script-index"/);
   }

@@ -774,6 +774,52 @@
     input(preservedBase32, "");
   });
 
+  await test("dice methods retain separate transcripts while global sync is off", async () => {
+    const existingSync = document.getElementById("global-entropy-sync");
+    if (existingSync?.checked) existingSync.click();
+    document.getElementById("wipe").click();
+    await chooseMode("Dice rolls");
+    assert(!document.getElementById("global-entropy-sync").checked, "Global entropy syncing was enabled during the isolation check");
+
+    input(document.getElementById("dice"), "123");
+    document.querySelector('input[name="dm"][value="coleman"]').click();
+    equal(document.getElementById("dice").value, "", "Coleman inherited the COLDCARD transcript with sync off");
+    input(document.getElementById("dice"), "654");
+
+    document.querySelector('input[name="dm"][value="bitbox"]').click();
+    equal(document.getElementById("dice").value, "", "BitBox inherited another dice method's transcript with sync off");
+    input(document.getElementById("dice"), "112");
+
+    document.querySelector('input[name="dm"][value="dplus"]').click();
+    equal(document.getElementById("dice").value, "", "D++ inherited another dice method's transcript with sync off");
+    input(document.getElementById("dice"), "100");
+
+    for (const [method, transcript] of [["coldcard", "123"], ["coleman", "654"], ["bitbox", "112"], ["dplus", "100"]]) {
+      document.querySelector(`input[name="dm"][value="${method}"]`).click();
+      equal(document.getElementById("dice").value, transcript, `${method} did not restore its own transcript`);
+    }
+    document.getElementById("wipe").click();
+  });
+
+  await test("BitBox keeps all six die buttons available for its coin-flip roll", async () => {
+    await chooseMode("Dice rolls");
+    document.querySelector('input[name="dm"][value="bitbox"]').click();
+    const dice = document.getElementById("dice");
+    input(dice, "11111");
+    const buttons = [...document.querySelectorAll('.faces-1-6 button[data-d]')];
+    equal(buttons.length, 6);
+    buttons.forEach((button, index) => {
+      equal(button.textContent, String(index + 1), `BitBox face ${index + 1} changed into a coin-side button`);
+      assert(!button.hidden && !button.disabled, `BitBox face ${index + 1} was unavailable for the sixth roll`);
+    });
+    buttons[1].click();
+    equal(dice.value, "111112", "A Heads-mapped die face was not recorded verbatim");
+    input(dice, "11111");
+    buttons[4].click();
+    equal(dice.value, "111115", "A Tails-mapped die face was not recorded verbatim");
+    document.getElementById("wipe").click();
+  });
+
   await test("global entropy sync follows partial direct input and supports one-way hashed input", async () => {
     chooseSeedWords(12);
     await chooseMode("Number bases");
@@ -1575,7 +1621,7 @@
     equal(document.getElementById("vanity-account-start").value, "10", "Start account continues where the range ended");
     document.querySelector("#vanity-out [data-vanity-apply]").click();
     await until(() => document.getElementById("vanity-status").textContent.includes("account 3 is now on the key"), "Update key to set the account", 60000);
-    assert(document.getElementById("vanity-source-kind").textContent.includes("m/84'/0'/3'/0/0"), "the selected-key panel shows the new path");
+    assert(document.getElementById("vanity-source-kind").textContent.includes("m/84'/0'/3'/{0-1}/{0-9}"), "the selected-key panel shows the new BIP-88 path template");
     equal([...document.querySelectorAll("#key-tabs .key-tab")].map((tab) => tab.textContent.trim()).join(","), "Key Station,c55401c7", "an account change keeps the same fingerprint and tab");
     // Silent Payments: the prefix filter lowercases, "sp1qq" is fixed, and
     // account 1' of this key is sp1qqtjetnp0fgkeulzm….
@@ -3783,7 +3829,8 @@
     branchHarden.click();
 
     input(branchRange, "2");
-    assert(document.getElementById("derivation-path-help").textContent.includes("Multiple address branches selected"), "The truncated path did not explain its branch range");
+    assert(document.getElementById("derivation-path-help").textContent.includes("BIP-88 full path template"), "The ranged path was not identified as a BIP-88 template");
+    assert(document.getElementById("derivation-path").value.endsWith("/{2-3}/7"), "The full path omitted the selected BIP-88 branch range");
     derive.click();
     await until(() => document.querySelector('#acct [data-address-table="hd-branch-3"]'), "custom branch 3 result");
     assert(document.querySelector('#acct [data-address-table="hd-branch-2"]'), "The first selected custom branch table was missing");

@@ -121,7 +121,7 @@ words, pick one of the checksum words.</span></span>
       </label>
       </div>
       <p class="label" id="dice-label">Dice rolls (D6)</p>
-      <div class="seed-word-meta"><p class="muted" id="dice-meta" aria-live="polite"><span class="dice-meta-value is-short">0</span> of 99 recommended rolls<br><span class="dice-meta-value is-short">0.0</span> bits estimated</p></div>
+      <div class="seed-word-meta"><p class="muted" id="dice-meta" aria-live="polite"><span class="meta-value is-short">0</span> of 99 recommended rolls<br><span class="meta-value is-short">0.0</span> bits estimated</p></div>
       <div class="dice-input-shell"><pre class="dice-input-highlight" id="dice-highlight" aria-hidden="true"></pre><textarea id="dice" placeholder="415263415263…" inputmode="numeric" autocomplete="off" spellcheck="false" aria-describedby="dice-meta"></textarea></div>
       <div class="dice-input-pad faces-1-6"><button type="button" data-d="1">1</button><button type="button" data-d="2">2</button><button type="button" data-d="3">3</button><button type="button" data-d="4">4</button><button type="button" data-d="5">5</button><button type="button" data-d="6">6</button></div>
       <div class="seed-word-copy-row"><p class="label">Derived seed phrase</p><span class="seed-phrase-copied" aria-live="polite"></span><button type="button" class="seed-phrase-copy" data-copy-seed-phrase disabled aria-label="Copy seed phrase" title="Copy seed phrase"></button></div>
@@ -163,24 +163,24 @@ words, pick one of the checksum words.</span></span>
           <summary>Advanced entry</summary>
           <div class="derivation-advanced-fields">
             <div class="key-settings-row" id="purpose-network-settings">
-              <div class="field" id="purpose-field"><label for="purpose">Purpose</label>
-                <div class="derivation-index-control"><span class="derivation-index-value"><input id="purpose" type="text" inputmode="numeric" value="84'" aria-describedby="purpose-help"></span><label class="derivation-harden"><input id="purpose-harden" type="checkbox" checked><span>Harden</span></label></div>
+              <div class="field" id="purpose-field"><div class="field-head"><label for="purpose">Purpose</label><label class="derivation-harden"><input id="purpose-harden" type="checkbox" checked><span>Harden</span></label></div>
+                <div class="derivation-index-control"><span class="derivation-index-value"><input id="purpose" type="text" inputmode="numeric" value="84'" aria-describedby="purpose-help"></span></div>
                 <span class="field-note" id="purpose-help">Purpose index · Hardened · 0 to 2,147,483,647</span>
               </div>
-              <div class="field network-field"><label for="network">Network</label>
-                <div class="derivation-index-control"><span class="derivation-index-value"><input id="network" type="text" inputmode="numeric" value="0'" aria-describedby="network-help"></span><label class="derivation-harden"><input id="network-harden" type="checkbox" checked><span>Harden</span></label></div>
+              <div class="field network-field"><div class="field-head"><label for="network">Network</label><label class="derivation-harden"><input id="network-harden" type="checkbox" checked><span>Harden</span></label></div>
+                <div class="derivation-index-control"><span class="derivation-index-value"><input id="network" type="text" inputmode="numeric" value="0'" aria-describedby="network-help"></span></div>
                 <span class="field-note" id="network-help">Coin type index · Mainnet · Hardened · 0 to 2,147,483,647</span>
               </div>
             </div>
             <div class="key-settings-row" id="account-address-settings">
-              <div class="field" id="account-field"><label for="account">Account</label>
-                <div class="derivation-index-control"><span class="derivation-index-value"><input id="account" type="text" inputmode="numeric" value="0'" aria-describedby="account-help"></span><label class="derivation-harden"><input id="account-harden" type="checkbox" checked><span>Harden</span></label></div>
+              <div class="field" id="account-field"><div class="field-head"><label for="account">Account</label><label class="derivation-harden"><input id="account-harden" type="checkbox" checked><span>Harden</span></label></div>
+                <div class="derivation-index-control"><span class="derivation-index-value"><input id="account" type="text" inputmode="numeric" value="0'" aria-describedby="account-help"></span></div>
                 <span class="field-note" id="account-help">Account index · Hardened · 0 to 2,147,483,647</span>
               </div>
             </div>
             <div class="key-settings-row address-branch-settings" id="address-branch-settings">
-              <div class="field"><label for="branch-start" id="branch-start-label">Starting address branch</label>
-                <div class="derivation-index-control"><span class="derivation-index-value"><input id="branch-start" type="text" inputmode="numeric" value="0" aria-describedby="branch-start-help"></span><label class="derivation-harden"><input id="branch-start-harden" type="checkbox"><span>Harden</span></label></div>
+              <div class="field"><div class="field-head"><label for="branch-start" id="branch-start-label">Starting address branch</label><label class="derivation-harden"><input id="branch-start-harden" type="checkbox"><span>Harden</span></label></div>
+                <div class="derivation-index-control"><span class="derivation-index-value"><input id="branch-start" type="text" inputmode="numeric" value="0" aria-describedby="branch-start-help"></span></div>
                 <span class="field-note" id="branch-start-help">First address branch to derive · 0 is Receive · 1 is Change · Unhardened · 0 to 2,147,483,647</span>
               </div>
               <label class="field">Address branch range
@@ -189,8 +189,8 @@ words, pick one of the checksum words.</span></span>
               </label>
             </div>
             <div class="key-settings-row address-range-settings" id="address-range-settings">
-              <div class="field"><label for="address-start" id="address-start-label">Starting address index</label>
-                <div class="derivation-index-control"><span class="derivation-index-value"><input id="address-start" type="text" inputmode="numeric" value="0" aria-describedby="address-start-help"></span><label class="derivation-harden"><input id="address-start-harden" type="checkbox"><span>Harden</span></label></div>
+              <div class="field"><div class="field-head"><label for="address-start" id="address-start-label">Starting address index</label><label class="derivation-harden"><input id="address-start-harden" type="checkbox"><span>Harden</span></label></div>
+                <div class="derivation-index-control"><span class="derivation-index-value"><input id="address-start" type="text" inputmode="numeric" value="0" aria-describedby="address-start-help"></span></div>
                 <span class="field-note" id="address-start-help">First receive index to derive · Unhardened · 0 to 2,147,483,647</span>
               </div>
               <label class="field">Address range
@@ -447,8 +447,8 @@ words, pick one of the checksum words.</span></span>
           <span id="msig-purpose-help"></span><span id="msig-network-help"></span><span id="msig-account-help"></span>
         </div>
         <div class="key-settings-row address-branch-settings">
-          <div class="field"><label for="msig-branch-start">Starting address branch index</label>
-            <div class="derivation-index-control"><span class="derivation-index-value"><input id="msig-branch-start" type="number" min="0" max="2147483647" step="1" inputmode="numeric" value="0" aria-describedby="msig-branch-start-help"><span class="derivation-index-prime" aria-hidden="true">'</span></span><label class="derivation-harden"><input id="msig-branch-start-harden" type="checkbox"><span>Harden</span></label></div>
+          <div class="field"><div class="field-head"><label for="msig-branch-start">Starting address branch index</label><label class="derivation-harden"><input id="msig-branch-start-harden" type="checkbox"><span>Harden</span></label></div>
+            <div class="derivation-index-control"><span class="derivation-index-value"><input id="msig-branch-start" type="number" min="0" max="2147483647" step="1" inputmode="numeric" value="0" aria-describedby="msig-branch-start-help"><span class="derivation-index-prime" aria-hidden="true">'</span></span></div>
             <span class="field-note" id="msig-branch-start-help">First address branch to derive · 0 is Receive · 1 is Change · Unhardened · 0 to 2,147,483,647</span>
           </div>
           <label class="field">Address branch range
@@ -457,8 +457,8 @@ words, pick one of the checksum words.</span></span>
           </label>
         </div>
         <div class="key-settings-row address-range-settings">
-          <div class="field"><label for="msig-address-start">Starting address index</label>
-            <div class="derivation-index-control"><span class="derivation-index-value"><input id="msig-address-start" type="number" min="0" max="2147483647" step="1" inputmode="numeric" value="0" aria-describedby="msig-address-start-help"><span class="derivation-index-prime" aria-hidden="true">'</span></span><label class="derivation-harden"><input id="msig-address-start-harden" type="checkbox"><span>Harden</span></label></div>
+          <div class="field"><div class="field-head"><label for="msig-address-start">Starting address index</label><label class="derivation-harden"><input id="msig-address-start-harden" type="checkbox"><span>Harden</span></label></div>
+            <div class="derivation-index-control"><span class="derivation-index-value"><input id="msig-address-start" type="number" min="0" max="2147483647" step="1" inputmode="numeric" value="0" aria-describedby="msig-address-start-help"><span class="derivation-index-prime" aria-hidden="true">'</span></span></div>
             <span class="field-note" id="msig-address-start-help">First receive and change index to derive · Unhardened · 0 to 2,147,483,647</span>
           </div>
           <label class="field">Address range

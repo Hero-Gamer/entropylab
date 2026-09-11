@@ -618,12 +618,24 @@
     assert(show && !show.checked && dealt.hidden, "Dealt cards were not hidden by default");
     equal(undo.getAttribute("aria-label"), "Undo last card");
     assert(undo.querySelector("svg"), "Card undo does not use the keyboard delete icon");
-    assert(Math.abs(undo.getBoundingClientRect().width - document.querySelector(".card-rank-pad button").getBoundingClientRect().width) < 0.5, "Card undo does not match the rank-button width");
-    assert(Boolean(cards.compareDocumentPosition(document.getElementById("cards-meta")) & Node.DOCUMENT_POSITION_FOLLOWING), "Card status is not below the transcript input");
+    assert(undo.textContent.trim() === "Undo", "Card undo lost its visible label");
+    // Two keys wide so the word fits, and aligned to the keypad's grid: it runs
+    // from the left of the second-last rank column to the right of the last.
+    const rankBoxes = [...document.querySelectorAll(".card-rank-pad button")].map((key) => key.getBoundingClientRect());
+    const lastRight = Math.max(...rankBoxes.map((box) => box.right));
+    const secondLastLeft = Math.max(...rankBoxes.filter((box) => box.right < lastRight - 1).map((box) => box.left));
+    const undoSpan = undo.getBoundingClientRect();
+    assert(Math.abs(undoSpan.left - secondLastLeft) < 1 && Math.abs(undoSpan.right - lastRight) < 1, "Card undo does not span the last two rank columns");
+    // Above the transcript, as the dice line is, so the field and the card
+    // keypad below it stay together.
+    assert(Boolean(cards.compareDocumentPosition(document.getElementById("cards-meta")) & Node.DOCUMENT_POSITION_PRECEDING), "Card status is not above the transcript input");
     assert(Boolean(document.getElementById("cards-meta").compareDocumentPosition(document.querySelector(".card-suit-pad")) & Node.DOCUMENT_POSITION_FOLLOWING), "Card status is not above the card buttons");
     assert(Boolean(cards.compareDocumentPosition(document.querySelector(".card-suit-pad")) & Node.DOCUMENT_POSITION_FOLLOWING), "Card buttons are not below the transcript input");
     assert(Boolean(document.querySelector(".card-rank-pad").compareDocumentPosition(undo) & Node.DOCUMENT_POSITION_FOLLOWING), "Undo is not below the card ranks");
-    assert(Boolean(undo.compareDocumentPosition(show) & Node.DOCUMENT_POSITION_FOLLOWING), "Undo is not left of Show cards");
+    assert(Boolean(show.compareDocumentPosition(undo) & Node.DOCUMENT_POSITION_FOLLOWING), "Show cards does not lead the card controls");
+    // Undo closes the row at its right edge, clear of Show cards.
+    const controlsRow = undo.closest(".card-controls-row").getBoundingClientRect(), undoBox = undo.getBoundingClientRect();
+    assert(Math.abs(controlsRow.right - undoBox.right) < 1 && undoBox.left > show.getBoundingClientRect().right, "Undo is not at the right end of the card controls");
     assert(Boolean(show.compareDocumentPosition(dealt) & Node.DOCUMENT_POSITION_FOLLOWING), "Card controls are not above the dealt cards");
     assert(Boolean(dealt.compareDocumentPosition(document.getElementById("dice-words")) & Node.DOCUMENT_POSITION_FOLLOWING), "Dealt cards are not above the seed words");
     show.click();
@@ -633,7 +645,11 @@
     await wait(0);
     equal(cards.value, "As ");
     assert(!document.getElementById("go").disabled, "One valid card did not enable derivation");
-    assert(document.getElementById("cards-meta").textContent.includes("seed available for testing"), "One-card warning is missing");
+    // One card is far short of the recommendation, and the line says so by
+    // colouring the count rather than spelling out a caveat — the same way the
+    // dice line does.
+    assert(document.getElementById("cards-meta").querySelector(".meta-value.is-short"), "One-card deal did not mark the count as short");
+    assert(document.getElementById("cards-meta").textContent.includes("recommended cards"), "Card status lost its count line");
     equal([...document.querySelectorAll("#dice-words [data-word]")].filter((word) => word.textContent !== "—").length, 24);
     const cardCopy = document.querySelector('[data-copy-seed-phrase]');
     assert(cardCopy && !cardCopy.disabled && cardCopy.dataset.phrase.split(" ").length === 24, "Testing seed preview was not copyable");
@@ -642,13 +658,20 @@
     input(cards, "AS ZZ");
     await wait(0);
     assert(document.querySelector("#cards-highlight .dice-roll-invalid")?.textContent === "ZZ", "Invalid card was not highlighted red");
-    assert(document.getElementById("go").disabled && document.getElementById("cards-meta").classList.contains("err"), "Invalid card did not disable derivation");
+    assert(document.getElementById("go").disabled, "Invalid card did not disable derivation");
+    // Line three is the error or the next step, never both: the error shows
+    // until it is fixed, and the deck instruction waits behind it.
+    const cardsMeta = document.getElementById("cards-meta");
+    assert(cardsMeta.querySelector(".meta-cue.is-error") && !cardsMeta.querySelector(".meta-cue.is-next"), "Invalid card did not replace the next step with an error");
+    assert(document.getElementById("cards-reshuffle").hidden, "The deck instruction still shows in its old box");
     input(cards, "AS AS");
     assert(document.querySelector("#cards-highlight .dice-roll-invalid")?.textContent === "As", "Repeated card was not highlighted red");
+    assert(cardsMeta.querySelector(".meta-cue.is-error")?.textContent.includes("Repeated") && !cardsMeta.querySelector(".meta-cue.is-next"), "Repeated card did not replace the next step with an error");
     input(cards, "as, 10♥; td");
     await wait(0);
     equal(cards.value, "As Th Td ");
     assert(!document.getElementById("go").disabled, "Normalized valid cards did not enable derivation");
+    assert(!cardsMeta.querySelector(".meta-cue.is-error") && cardsMeta.querySelector(".meta-cue.is-next"), "Fixing the transcript did not bring the next step back");
     cards.focus();
     const disallowed = new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertText", data: "B" });
     assert(cards.dispatchEvent(disallowed) === false, "A character unused by card transcripts was accepted from typing");

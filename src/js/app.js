@@ -3302,23 +3302,24 @@ function hodlDirectCardsEntropy(value, targetWords = hodlTargetWordCount) {
 function hodlDirectCardSetLabel(max) {
   return `A\u2013${max}`;
 }
-function hodlDirectCardStepStatus(parsed) {
-  if (parsed.complete) return hodlTText("All {n} rank draws entered · checksum-valid {words}-word seed ready to derive", { n: parsed.steps.length, words: parsed.config.words });
-  let position = Math.min(parsed.entries.length, parsed.steps.length - 1), max = parsed.steps[position], partialDraws = parsed.config.partialWords * 4;
-  if (position < partialDraws) return hodlTText(position ? "Word {word} of {words} · draw {draw} of 4 from {set} after shuffling" : "Word {word} of {words} · draw {draw} of 4 from {set}", { word: Math.floor(position / 4) + 1, words: parsed.config.words, draw: position % 4 + 1, set: hodlDirectCardSetLabel(max) });
-  return hodlTText("Final word · draw {draw} of {need} from {set} after shuffling", { draw: position - partialDraws + 1, need: hodlDirectCardFinalRadices(parsed.config.words).length, set: hodlDirectCardSetLabel(max) });
+// Which word the deal is on. The final word is word {words} of {words} rather
+// than a name of its own, so the count never stops counting. What to draw for
+// it is the job of the orange instruction, so there is no separate draw line.
+function hodlDirectCardWord(parsed) {
+  let position = Math.min(parsed.entries.length, parsed.steps.length - 1), partialDraws = parsed.config.partialWords * 4;
+  return { word: position < partialDraws ? Math.floor(position / 4) + 1 : parsed.config.words, words: parsed.config.words };
 }
 function hodlDirectCardInstruction(parsed) {
   if (parsed.complete) return "";
-  return hodlT(parsed.entries.length ? "Shuffle {set} (any suit) before the next draw." : "Shuffle {set} (any suit) before the first draw.", { set: hodlDirectCardSetLabel(parsed.expectedMax) });
+  return hodlTText(parsed.entries.length ? "Shuffle {set} (any suit), then draw" : "Shuffle {set} (any suit) before the first draw.", { set: hodlDirectCardSetLabel(parsed.expectedMax) });
 }
 function hodlHashedCardInstruction(parsed) {
   let required = parsed.needed.first + parsed.needed.extra;
   if (parsed.cards.length >= required) return "";
-  if (!parsed.cards.length) return hodlT("Shuffle a standard 52-card deck before the first draw.");
-  if (parsed.needed.extra && parsed.cards.length === parsed.needed.first) return hodlT("Shuffle the full 52-card deck again before the next draw.");
-  if (parsed.needed.extra && parsed.cards.length > parsed.needed.first) return hodlT("Deal the next card without replacement from the second shuffle.");
-  return hodlT("Deal the next card without replacement from the shuffled deck.");
+  if (!parsed.cards.length) return hodlTText("Shuffle a standard 52-card deck before the first draw.");
+  if (parsed.needed.extra && parsed.cards.length === parsed.needed.first) return hodlTText("Shuffle the full 52-card deck again before the next draw.");
+  if (parsed.needed.extra && parsed.cards.length > parsed.needed.first) return hodlTText("Deal the next card without replacement from the second shuffle.");
+  return hodlTText("Deal the next card without replacement from the shuffled deck.");
 }
 function hodlDealtDirectCardMarkup(rank) {
   return `<span class="dealt-card dealt-card-rank-only" title="${hodlT("Rank {rank}", { rank: hodlEscapeHtml(rank) })}"><span class="dealt-rank">${hodlEscapeHtml(rank)}</span></span>`;
@@ -3335,20 +3336,35 @@ function hodlUpdateDirectCards() {
     dealt.hidden = !showCards;
     dealt.innerHTML = parsed.ranks.length ? `<p class="dealt-shuffle-label">${hodlT("Rank-only draws · {have} of {need}", { have: parsed.ranks.length, need: parsed.steps.length })}</p>${parsed.ranks.map(hodlDealtDirectCardMarkup).join("")}` : `<p class="dealt-shuffle-label">${hodlT("Rank-only draws · No cards yet")}</p><span class="dealt-card dealt-card-placeholder" aria-hidden="true"></span>`;
   }
+  // The shuffle instruction moved into the progress line above the transcript.
   let reshuffle = document.getElementById("cards-reshuffle");
   if (reshuffle) {
-    let instruction = hodlDirectCardInstruction(parsed);
-    reshuffle.hidden = !instruction;
-    reshuffle.innerHTML = instruction ? `<strong>${instruction}</strong>` : "";
+    reshuffle.hidden = true;
+    reshuffle.innerHTML = "";
   }
   hodlRenderDiceWordGrid(document.getElementById("dice-words"), parsed.words, parsed.config.words, !parsed.complete);
   hodlRenderManualCalculations("cards-manual-calculations", "cards", input.value, parsed.config.words);
-  let status = parsed.complete ? `${parsed.entries.length} of ${parsed.steps.length} rank draws entered \xB7 checksum-valid ${parsed.config.words}-word seed ready to derive` : `${parsed.entries.length} of ${parsed.steps.length} rank draws entered \xB7 ${hodlDirectCardStepStatus(parsed)}`;
-  if (parsed.invalidEntries.length) status += ` \xB7 ${parsed.invalidEntries.length} invalid rank${parsed.invalidEntries.length === 1 ? "" : "s"} highlighted`;
-  if (parsed.extraEntries.length) status += ` \xB7 ${parsed.extraEntries.length} extra card${parsed.extraEntries.length === 1 ? "" : "s"} highlighted`;
+  // The same shape the hashed transcript uses: the figures, then what is wrong
+  // or what to do next, never both. The shuffle instruction used to sit in a
+  // bordered box under the keypad; it lives here now and waits behind an error.
+  let drawsDone = parsed.entries.length >= parsed.steps.length,
+    step = parsed.complete ? null : hodlDirectCardWord(parsed),
+    next = hodlDirectCardInstruction(parsed),
+    errors = [];
+  if (parsed.invalidEntries.length) errors.push(hodlTText(parsed.invalidEntries.length === 1 ? "{n} invalid rank highlighted" : "{n} invalid ranks highlighted", { n: parsed.invalidEntries.length }));
+  if (parsed.extraEntries.length) errors.push(hodlTText(parsed.extraEntries.length === 1 ? "{n} extra card highlighted" : "{n} extra cards highlighted", { n: parsed.extraEntries.length }));
   let meta = hodlElement("#cards-meta");
-  meta.textContent = status;
-  meta.className = "muted" + (invalid ? " err" : parsed.complete ? " ok" : "");
+  hodlRenderMeta("cards-meta", [
+    [hodlTText("{have} of {need} rank draws entered", { have: hodlMetaToken, need: parsed.steps.length }), hodlMetaValue(String(parsed.entries.length), drawsDone)],
+    ...(step
+      ? [[hodlTText("Word {word} of {words}", { word: hodlMetaToken, words: step.words }), hodlMetaValue(String(step.word), step.word >= step.words)]]
+      : [[hodlMetaToken, hodlMetaCue(hodlTText("checksum-valid {words}-word seed ready to derive", { words: parsed.config.words }))]]),
+    ...(errors.length ? errors.map((error) => [hodlMetaToken, hodlMetaCue(error, "error")])
+      : next ? [[hodlMetaToken, hodlMetaCue(next, "next")]] : []),
+  ]);
+  // The error lines carry the red and the counts carry the green, so the block
+  // keeps its own colour.
+  meta.className = "muted";
   document.querySelectorAll("[data-direct-card-rank]").forEach((button) => {
     button.disabled = hodlDirectCardRankValue(button.dataset.directCardRank) >= parsed.expectedMax || parsed.complete;
   });
@@ -3379,11 +3395,11 @@ function hodlUpdateCards() {
     if (!parsed.cards.length) dealt.innerHTML = `<p class="dealt-shuffle-label">${hodlT("First shuffle · No cards yet")}</p><span class="dealt-card dealt-card-placeholder" aria-hidden="true"></span>`;
     else dealt.innerHTML = `<p class="dealt-shuffle-label">${hodlT("First shuffle · {have} of {need}", { have: first.length, need: firstTarget })}</p>${first.map(hodlDealtCardMarkup).join("")}` + (config.words === 24 && first.length >= firstTarget ? `<p class="dealt-shuffle-label">${hodlT("Second shuffle · {have} of {need}", { have: extra2.length, need: parsed.needed.extra })}</p>${extra2.map(hodlDealtCardMarkup).join("")}` : "");
   }
+  // The instruction moved into the progress line above the transcript.
   let reshuffle = document.getElementById("cards-reshuffle");
   if (reshuffle) {
-    let instruction = hodlHashedCardInstruction(parsed);
-    reshuffle.hidden = !instruction;
-    reshuffle.innerHTML = instruction ? `<strong>${instruction}</strong>` : "";
+    reshuffle.hidden = true;
+    reshuffle.innerHTML = "";
   }
   let wordsBox = document.getElementById("dice-words"), preview = [];
   try {
@@ -3391,17 +3407,34 @@ function hodlUpdateCards() {
   } catch {
   }
   hodlRenderDiceWordGrid(wordsBox, preview, config.words, parsed.cards.length < required);
-  let meta = hodlElement("#cards-meta"), missing = Math.max(0, required - parsed.cards.length), extra = Math.max(0, parsed.cards.length - required), status = !parsed.cards.length ? hodlT("0 of {need} recommended cards · 0.0 bits estimated · Hashed card transcript", { need: required }) : missing ? hodlT("{have} of {need} recommended cards · {bits} bits estimated · seed available for testing · {missing} more recommended", { have: parsed.cards.length, need: required, bits: parsed.bits.toFixed(1), missing }) : hodlT(parsed.cards.length === 1 ? "{n} card · {bits} bits estimated · ready to derive" : "{n} cards · {bits} bits estimated · ready to derive", { n: parsed.cards.length, bits: parsed.bits.toFixed(1) }) + (extra ? " \xB7 " + hodlT(extra === 1 ? "all {n} extra card is included" : "all {n} extra cards are included", { n: extra }) : "");
-  if (config.words === 24 && parsed.cards.length >= 52 && missing) status += " \xB7 " + (parsed.cards.length === 52 ? hodlT("shuffle again, then deal 6 more") : hodlT("second shuffle {have} of 6", { have: parsed.cards.length - 52 }));
-  if (parsed.pending) status += " \xB7 " + hodlT("finish {token} with a suit", { token: parsed.pending.token });
+  // Cards read as the dice line does: the count against what is recommended,
+  // then the entropy against what the selected seed length needs, each on its
+  // own line with its number coloured. Line three is either what is wrong with
+  // the transcript or what to do next, never both: an error in red until it is
+  // fixed, and only then the next step in orange. The deck instruction used to
+  // sit in a bordered box under the keypad while this line carried a second
+  // copy of it; there is one of it now, and it lives here.
+  let meta = hodlElement("#cards-meta"), missing = Math.max(0, required - parsed.cards.length), extra = Math.max(0, parsed.cards.length - required), errors = [];
   if (parsed.invalidEntries.length - (parsed.pending ? 1 : 0) > 0) {
     let count = parsed.invalidEntries.length - (parsed.pending ? 1 : 0);
-    status += " \xB7 " + hodlT(count === 1 ? "{n} invalid card highlighted · use AS, 10H, or TD" : "{n} invalid cards highlighted · use AS, 10H, or TD", { n: count });
+    errors.push(hodlTText(count === 1 ? "{n} invalid card highlighted · use AS, 10H, or TD" : "{n} invalid cards highlighted · use AS, 10H, or TD", { n: count }));
   }
-  if (parsed.duplicateEntries.length) status += " \xB7 " + hodlT("repeated {card} highlighted · deal a different card", { card: parsed.duplicateEntries[0].card });
-  let invalid = parsed.invalidRanges.length > 0;
-  meta.textContent = status;
-  meta.className = "muted" + (invalid ? " err" : !missing && entropy.ok ? " ok" : "");
+  if (parsed.duplicateEntries.length) errors.push(hodlTText("Repeated {card} highlighted · deal a different card", { card: parsed.duplicateEntries[0].card }));
+  // A rank typed without its suit is a card in progress rather than a mistake,
+  // so finishing it is the next step. Past the recommendation there is no next
+  // step, and the line says instead that the extra cards still count.
+  let next = parsed.pending ? hodlTText("Finish {token} with a suit", { token: parsed.pending.token }) : hodlHashedCardInstruction(parsed),
+    note = !next && extra ? hodlTText(extra === 1 ? "All {n} extra card is included" : "All {n} extra cards are included", { n: extra }) : "";
+  hodlRenderMeta("cards-meta", [
+    [hodlTText("{have} of {need} recommended cards", { have: hodlMetaToken, need: required }), hodlMetaValue(String(parsed.cards.length), !missing)],
+    [hodlTText("{bits} bits estimated", { bits: hodlMetaToken }), hodlMetaValue(parsed.bits.toFixed(1), parsed.bits >= config.bits)],
+    ...(errors.length ? errors.map((error) => [hodlMetaToken, hodlMetaCue(error, "error")])
+      : next ? [[hodlMetaToken, hodlMetaCue(next, "next")]]
+      : note ? [[note, null]] : []),
+  ]);
+  // The error line carries the red now, so the block keeps its own colour and
+  // the coloured count above it still reads.
+  meta.className = "muted";
   document.querySelectorAll("[data-card-suit]").forEach((button) => {
     let suit = button.getAttribute("data-card-suit"), active = suit === hodlCardSuit, exhausted = !selection.availableSuits.includes(suit), incompatible = Boolean(hodlCardRank) && !selection.compatibleSuits.includes(suit), locked = Boolean(hodlCardSuit) && !active;
     button.classList.toggle("active", active);
@@ -3659,13 +3692,13 @@ function hodlPassphraseKeyboardToggleMarkup() {
 }
 function hodlPassphraseBip39ToggleMarkup(checked = hodlPassphraseBip39Enabled()) {
   let autocomplete = hodlPassphraseAutocompleteEnabled();
-  return `<div class="passphrase-bip39-options"><div class="passphrase-bip39-row"><label class="seed-autocomplete-toggle passphrase-bip39-toggle"><input type="checkbox" id="passphrase-bip39-words" aria-describedby="passphrase-bip39-note" ${checked ? "checked" : ""} /><span class="label">Build passphrase from BIP39 words</span></label><p class="seed-autocomplete-note passphrase-bip39-note" id="passphrase-bip39-note">lowercase words separated by single spaces</p></div><label class="seed-autocomplete-toggle passphrase-autocomplete-toggle" id="passphrase-autocomplete-control"${checked ? "" : " hidden"}><input type="checkbox" id="passphrase-autocomplete" ${autocomplete ? "checked" : ""} /><span class="label">Autocomplete BIP39 words</span></label></div>`;
+  return `<div class="passphrase-bip39-options"><div class="switch-row"><label class="seed-autocomplete-toggle switch-toggle passphrase-bip39-toggle"><input type="checkbox" id="passphrase-bip39-words" aria-describedby="passphrase-bip39-note" ${checked ? "checked" : ""} /><span class="label">Build passphrase from BIP39 words</span></label><p class="seed-autocomplete-note switch-note" id="passphrase-bip39-note">lowercase words separated by single spaces</p></div><label class="seed-autocomplete-toggle switch-toggle passphrase-autocomplete-toggle" id="passphrase-autocomplete-control"${checked ? "" : " hidden"}><input type="checkbox" id="passphrase-autocomplete" ${autocomplete ? "checked" : ""} /><span class="label">Autocomplete BIP39 words</span></label></div>`;
 }
 function hodlBrainWalletTrimEnabled() {
   return Boolean(document.getElementById("brain-wallet-trim")?.checked);
 }
 function hodlBrainWalletTrimToggleMarkup(checked = Boolean(hodlKeys[hodlActiveKey]?.brainWalletTrim)) {
-  return `<label class="seed-autocomplete-toggle brain-wallet-trim-toggle" data-brain-wallet-trim-control hidden><input type="checkbox" id="brain-wallet-trim" ${checked ? "checked" : ""} /><span class="label">Trim leading and trailing whitespace</span></label>`;
+  return `<label class="seed-autocomplete-toggle switch-toggle brain-wallet-trim-toggle" data-brain-wallet-trim-control hidden><input type="checkbox" id="brain-wallet-trim" ${checked ? "checked" : ""} /><span class="label">Trim leading and trailing whitespace</span></label>`;
 }
 function hodlPrivateKeyKeyboardToggleMarkup() {
   return `<div class="passphrase-keyboard-tools">${hodlBrainWalletTrimToggleMarkup()}${hodlKeyboardToggleMarkup("private-keyboard-toggle", "on-screen private key keyboard", "private-keyboard")}</div>`;
@@ -4831,7 +4864,7 @@ function hodlGlobalSyncControlMarkup(state) {
     syncUnknown = Boolean(syncBits) && reported === hodlGlobalSyncUnknownBits,
     syncShort = Boolean(syncBits) && !syncUnknown && effectiveBits < hodlGlobalSyncMinimumBits(),
     caution = syncUnknown ? hodlT("entropy unknown · only as strong as the text") : hodlT("{n} bits of entropy · under {min}", { n: effectiveBits, min: hodlGlobalSyncMinimumBits() });
-  return `<div class="global-sync-row"><div class="global-sync-head"><label class="seed-autocomplete-toggle global-sync-toggle"><input type="checkbox" id="global-entropy-sync" aria-describedby="global-sync-note" ${state?.globalSync ? "checked" : ""} /><span class="label">${hodlT("Sync entropy across methods")}</span></label><span class="global-sync-status" id="global-sync-status" aria-live="polite" ${state?.globalSync && syncBits ? "" : "hidden"}>${hodlCopiedIconMarkup()}<span>${hodlT("Key synced")}</span>${syncShort || syncUnknown ? `<span class="global-sync-shortfall">${hodlSyncWarningIconMarkup()}<span>${caution}</span></span>` : ""}</span></div><p class="seed-autocomplete-note global-sync-note" id="global-sync-note">${hodlT("Keeps non-hashed methods synchronized. Hashed inputs update them one way and are never overwritten.")}</p></div>`;
+  return `<div class="switch-row"><div class="global-sync-head"><label class="seed-autocomplete-toggle switch-toggle global-sync-toggle"><input type="checkbox" id="global-entropy-sync" aria-describedby="global-sync-note" ${state?.globalSync ? "checked" : ""} /><span class="label">${hodlT("Sync entropy across methods")}</span></label><span class="global-sync-status" id="global-sync-status" aria-live="polite" ${state?.globalSync && syncBits ? "" : "hidden"}>${hodlCopiedIconMarkup()}<span>${hodlT("Key synced")}</span>${syncShort || syncUnknown ? `<span class="global-sync-shortfall">${hodlSyncWarningIconMarkup()}<span>${caution}</span></span>` : ""}</span></div><p class="seed-autocomplete-note switch-note" id="global-sync-note">${hodlT("Keeps non-hashed methods synchronized. Hashed inputs update them one way and are never overwritten.")}</p></div>`;
 }
 function hodlRenderGlobalSyncControl() {
   let host = document.getElementById("global-sync-host"), state = hodlKeys[hodlActiveKey];
@@ -4877,10 +4910,10 @@ function hodlSeedMetaRowMarkup(metaId, live = false) {
 // met, and is spliced in as a node around a sentinel rather than built as
 // markup: a translation may put it anywhere in its own sentence, and the line
 // never becomes an HTML sink — the tail quotes what was typed.
-var hodlDiceMetaToken = "\u0000";
-function hodlDiceMetaValue(text, met) {
+var hodlMetaToken = "\u0000";
+function hodlMetaValue(text, met) {
   let span = document.createElement("span");
-  span.className = "dice-meta-value " + (met ? "is-met" : "is-short");
+  span.className = "meta-value " + (met ? "is-met" : "is-short");
   span.textContent = text;
   return span;
 }
@@ -4896,23 +4929,30 @@ function hodlDPlusRollNode(rollPhrase, rollRange) {
 }
 // A whole-line cue rather than a figure: it takes the met colour without the
 // weight, which stays reserved for the numbers.
-function hodlDiceMetaCue(text) {
+function hodlMetaCue(text, tone = "") {
   let span = document.createElement("span");
-  span.className = "dice-meta-cue";
+  span.className = "meta-cue" + (tone ? " is-" + tone : "");
   span.textContent = text;
   return span;
 }
-function hodlRenderDiceMeta(lines, tail) {
+// Shared by every progress line: a stack of short sentences, each carrying at
+// most one live value, spliced in as a node around a sentinel.
+function hodlRenderMeta(id, lines, tail) {
   let nodes = [];
   for (let [text, value] of lines) {
     if (nodes.length) nodes.push(document.createElement("br"));
     for (let piece of text.split(/(\u0000)/)) {
       if (piece === "") continue;
-      nodes.push(piece === hodlDiceMetaToken && value ? value : document.createTextNode(piece));
+      nodes.push(piece === hodlMetaToken && value ? value : document.createTextNode(piece));
     }
   }
   if (tail) nodes.push(document.createTextNode(tail));
-  hodlElement("#dice-meta").replaceChildren(...nodes);
+  hodlElement("#" + id).replaceChildren(...nodes);
+}
+// The title the derived words sit under, sharing its row with the copy button.
+// One builder, so every entry method that derives a phrase titles it the same.
+function hodlDerivedSeedRowMarkup() {
+  return hodlSeedCopyRowMarkup(`<p class="label">${hodlT("Derived seed phrase")}</p>`);
 }
 function hodlSeedCopyRowMarkup(leading = "") {
   return `<div class="seed-word-copy-row">${leading}<span class="seed-phrase-copied" aria-live="polite"></span><button type="button" class="seed-phrase-copy" data-copy-seed-phrase disabled aria-label="${hodlT("Copy seed phrase")}" title="${hodlT("Copy seed phrase")}">${hodlClipboardIconMarkup()}</button></div>`;
@@ -5161,10 +5201,10 @@ function hodlRenderKeyForm() {
       ${hodlSeedMetaRowMarkup("dice-meta", true)}
       <div class="dice-input-shell"><pre class="dice-input-highlight" id="dice-highlight" aria-hidden="true"></pre><textarea id="dice" placeholder="${dicePlaceholder}" aria-describedby="dice-meta"></textarea></div>
       ${dicePad}
-      ${hodlDiceMethod === "bitbox" || hodlDiceMethod === "dplus" ? `<div class="manual-calculations-row" hidden><label class="seed-autocomplete-toggle manual-calculations-toggle"><input type="checkbox" id="show-manual-calculations" aria-describedby="manual-calculations-note" ${hodlManualCalculationsOpen ? "checked" : ""} /><span class="label">${hodlT("Show calculations")}</span></label><p class="seed-autocomplete-note manual-calculations-note" id="manual-calculations-note">${hodlT("show how direct word selection produces each BIP39 index")}</p></div><div id="dice-manual-calculations" class="manual-calculations-container" hidden></div>` : ""}
+      ${hodlDiceMethod === "bitbox" || hodlDiceMethod === "dplus" ? `<div class="switch-row manual-calculations-row" hidden><label class="seed-autocomplete-toggle switch-toggle manual-calculations-toggle"><input type="checkbox" id="show-manual-calculations" aria-describedby="manual-calculations-note" ${hodlManualCalculationsOpen ? "checked" : ""} /><span class="label">${hodlT("Show calculations")}</span></label><p class="seed-autocomplete-note switch-note" id="manual-calculations-note">${hodlT("show how direct word selection produces each BIP39 index")}</p></div><div id="dice-manual-calculations" class="manual-calculations-container" hidden></div>` : ""}
       <div class="dice-fairness-row" hidden>${hodlDiceFairnessToggleMarkup(hodlKeys[hodlActiveKey]?.showDiceFairness)}</div>
       <aside id="dice-fairness" class="dice-fairness" hidden role="status" aria-live="polite"></aside>
-      ${hodlSeedCopyRowMarkup(`<p class="label">${hodlT("Derived seed phrase")}</p>`)}
+      ${hodlDerivedSeedRowMarkup()}
       <div id="dice-words" class="dice-word-grid" aria-label="${hodlT("{n} seed-word slots", { n: config.words })}"></div><div id="last-words" class="row last-word-options"></div>`;
     let input = document.getElementById("dice");
     input.dataset.previousValue = input.value;
@@ -5235,17 +5275,17 @@ function hodlRenderKeyForm() {
         <label class="choice"><input type="radio" name="card-method" value="direct" ${direct ? "checked" : ""} /><span><strong>${hodlT("Direct word selection")}</strong><span class="desc">${hodlT("Ignore suits. Reshuffle and draw A–8, A–8, A–8, then A–4 for each full word. Finish with the shorter rank sequence shown for the checksum-valid final word.")}</span></span></label>
       </div>
       <p class="muted" id="cards-help">${inputHelp}</p>
-      ${direct ? "" : `<label class="seed-autocomplete-toggle seed-zero-index-toggle"><input type="checkbox" id="cards-ian-coleman" ${hodlCardColemanSymbols ? "checked" : ""} /><span><strong>Match Ian Coleman method</strong> <span class="seed-autocomplete-note">(show and hash A\u2660 2\u2663 instead of As 2c)</span></span></label>`}
-      <label class="field" id="cards-input-label" for="${inputId}">${inputLabel}</label>
-      <div class="dice-input-shell cards-input-shell"><pre class="dice-input-highlight" id="cards-highlight" aria-hidden="true"></pre><textarea id="${inputId}" placeholder="${placeholder}" autocomplete="off" spellcheck="false" autocapitalize="off" aria-labelledby="cards-input-label" aria-describedby="cards-help cards-meta"></textarea></div>
+      ${direct ? "" : `<div class="switch-row"><label class="seed-autocomplete-toggle switch-toggle"><input type="checkbox" id="cards-ian-coleman" aria-describedby="cards-ian-coleman-note" ${hodlCardColemanSymbols ? "checked" : ""} /><span class="label">Match Ian Coleman method</span></label><p class="seed-autocomplete-note switch-note" id="cards-ian-coleman-note">show and hash A\u2660 2\u2663 instead of As 2c</p></div>`}
+      <p class="label" id="cards-input-label">${inputLabel}</p>
       ${hodlSeedMetaRowMarkup("cards-meta")}
+      <div class="dice-input-shell cards-input-shell"><pre class="dice-input-highlight" id="cards-highlight" aria-hidden="true"></pre><textarea id="${inputId}" placeholder="${placeholder}" autocomplete="off" spellcheck="false" autocapitalize="off" aria-labelledby="cards-input-label" aria-describedby="cards-help cards-meta"></textarea></div>
       ${direct ? "" : `<div class="card-suit-pad" role="group" aria-label="${hodlT("Suit")}">${suitPad}</div>`}
       <div class="card-rank-pad dice-input-pad${direct ? " direct-card-rank-pad" : ""}" role="group" aria-label="${hodlT(direct ? "Rank-only draw" : "Rank")}">${rankPad}</div>
-      <div class="card-controls-row"><button class="card-undo-button seed-keyboard-delete" id="card-undo" type="button" aria-label="${hodlT("Undo last card")}" title="${hodlT("Undo last card")}" disabled><svg viewBox="0 0 24 18" aria-hidden="true" focusable="false"><path d="M9 2h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9L2 9l7-7Z"/><path d="m12 6 6 6m0-6-6 6"/></svg></button><label class="seed-autocomplete-toggle card-visibility-toggle"><input type="checkbox" id="show-cards" aria-controls="dealt-cards" ${showCards ? "checked" : ""} /><span>${hodlT("Show cards")}</span></label></div>
+      <div class="card-controls-row"><label class="seed-autocomplete-toggle switch-toggle card-visibility-toggle"><input type="checkbox" id="show-cards" aria-controls="dealt-cards" ${showCards ? "checked" : ""} /><span class="label">${hodlT("Show cards")}</span></label><button class="card-undo-button seed-keyboard-delete" id="card-undo" type="button" aria-label="${hodlT("Undo last card")}" title="${hodlT("Undo last card")}" disabled><svg viewBox="0 0 24 18" aria-hidden="true" focusable="false"><path d="M9 2h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9L2 9l7-7Z"/><path d="m12 6 6 6m0-6-6 6"/></svg><span>${hodlT("Undo")}</span></button></div>
       <aside class="cards-reshuffle" id="cards-reshuffle" hidden></aside>
       <div class="dealt-cards" id="dealt-cards" aria-live="polite"${showCards ? "" : " hidden"}></div>
-      ${direct ? `<div class="manual-calculations-row" hidden><label class="seed-autocomplete-toggle manual-calculations-toggle"><input type="checkbox" id="show-manual-calculations" aria-describedby="manual-calculations-note" ${hodlManualCalculationsOpen ? "checked" : ""} /><span class="label">${hodlT("Show calculations")}</span></label><p class="seed-autocomplete-note manual-calculations-note" id="manual-calculations-note">${hodlT("show how direct card selection produces each BIP39 index")}</p></div><div id="cards-manual-calculations" class="manual-calculations-container" hidden></div>` : ""}
-      ${hodlSeedCopyRowMarkup()}
+      ${direct ? `<div class="switch-row manual-calculations-row" hidden><label class="seed-autocomplete-toggle switch-toggle manual-calculations-toggle"><input type="checkbox" id="show-manual-calculations" aria-describedby="manual-calculations-note" ${hodlManualCalculationsOpen ? "checked" : ""} /><span class="label">${hodlT("Show calculations")}</span></label><p class="seed-autocomplete-note switch-note" id="manual-calculations-note">${hodlT("show how direct card selection produces each BIP39 index")}</p></div><div id="cards-manual-calculations" class="manual-calculations-container" hidden></div>` : ""}
+      ${hodlDerivedSeedRowMarkup()}
       <div id="dice-words" class="dice-word-grid" aria-label="${hodlT("{n} seed-word slots", { n: config.words })}"></div>
     `;
     let input = document.getElementById(inputId);
@@ -5619,9 +5659,9 @@ function hodlUpdateDice() {
     // "checksum valid" line appears, so the two never contradict each other.
     let partialDone = result.completedGroups >= config.partialWords,
       activeWord = partialDone ? config.words : result.activeGroupIndex + 1;
-    hodlRenderDiceMeta([
-      [hodlTText("Word {word} of {partial}", { word: hodlDiceMetaToken, partial: config.words }), hodlDiceMetaValue(String(activeWord), complete)],
-      rollPhrase ? [hodlDiceMetaToken, hodlDPlusRollNode(rollPhrase, rollRange)] : nextCue ? [hodlDiceMetaToken, hodlDiceMetaCue(nextCue)] : [nextText, null],
+    hodlRenderMeta("dice-meta", [
+      [hodlTText("Word {word} of {partial}", { word: hodlMetaToken, partial: config.words }), hodlMetaValue(String(activeWord), complete)],
+      rollPhrase ? [hodlMetaToken, hodlDPlusRollNode(rollPhrase, rollRange)] : nextCue ? [hodlMetaToken, hodlMetaCue(nextCue)] : [nextText, null],
     ], statusTail + invalidStatus);
     let meta = hodlElement("#dice-meta");
     // No blanket colour on the completed line: the bright green on the count
@@ -5639,14 +5679,14 @@ function hodlUpdateDice() {
     // once the phrase is down to its final checksum pick.
     let result = hodlBitBoxRolls(input.value, config.words), bitboxDone = result.waiting === "last-word",
       bitboxLines = bitboxDone
-        ? [[hodlTText("{n} words", { n: hodlDiceMetaToken }), hodlDiceMetaValue(String(result.words.length), true)], [hodlDiceMetaToken, hodlDiceMetaCue(hodlTText("choose final checksum word below"))]]
-        : [[hodlTText("Word {word} of {partial}", { word: hodlDiceMetaToken, partial: result.neededPartial }), hodlDiceMetaValue(String(result.words.length + 1), false)], [result.waiting === "coin" ? hodlTText("6th die (interpreted as a coin flip)") : hodlTText("die {die} of 5 (only faces 1–4 used)", { die: result.diceInWord + 1 }), null]];
+        ? [[hodlTText("{n} words", { n: hodlMetaToken }), hodlMetaValue(String(result.words.length), true)], [hodlMetaToken, hodlMetaCue(hodlTText("choose final checksum word below"))]]
+        : [[hodlTText("Word {word} of {partial}", { word: hodlMetaToken, partial: result.neededPartial }), hodlMetaValue(String(result.words.length + 1), false)], [result.waiting === "coin" ? hodlTText("6th die (interpreted as a coin flip)") : hodlTText("die {die} of 5 (only faces 1–4 used)", { die: result.diceInWord + 1 }), null]];
     let last = result.waiting === "last-word" ? hodlTargetLastWords(result.words.join(" "), config.words) : null;
     if (last && !last.error && !last.candidates.includes(hodlPickedLastWord)) hodlPickedLastWord = "";
     if (!last || last.error) hodlPickedLastWord = "";
     let displayWords = result.words.slice();
     if (result.waiting === "last-word" && last && !last.error && hodlPickedLastWord) displayWords.push(hodlPickedLastWord);
-    hodlRenderDiceMeta(bitboxLines);
+    hodlRenderMeta("dice-meta", bitboxLines);
     hodlRenderDiceWordGrid(wordsBox, displayWords, config.words, false);
     hodlRenderManualCalculations("dice-manual-calculations", "bitbox", input.value, config.words);
     hodlRenderLastWordPicker(picker, last && !last.error ? last.candidates : [], hodlPickedLastWord, (word) => {
@@ -5668,9 +5708,9 @@ function hodlUpdateDice() {
   // than a fixed 256, so a 12-word seed goes green at its own 128 instead of
   // never. Zero rolls is just the short case with a count of 0.
   let metaBitsValue = hodlDiceEntropyBits(rolls.length);
-  hodlRenderDiceMeta([
-    [missing ? hodlTText("{have} of {n} recommended rolls", { have: hodlDiceMetaToken, n: config.hashRolls }) : hodlTText("{have} rolls", { have: hodlDiceMetaToken }), hodlDiceMetaValue(String(rolls.length), !missing)],
-    [hodlTText("{bits} bits estimated", { bits: hodlDiceMetaToken }), hodlDiceMetaValue(metaBitsValue.toFixed(1), metaBitsValue >= config.bits)],
+  hodlRenderMeta("dice-meta", [
+    [missing ? hodlTText("{have} of {n} recommended rolls", { have: hodlMetaToken, n: config.hashRolls }) : hodlTText("{have} rolls", { have: hodlMetaToken }), hodlMetaValue(String(rolls.length), !missing)],
+    [hodlTText("{bits} bits estimated", { bits: hodlMetaToken }), hodlMetaValue(metaBitsValue.toFixed(1), metaBitsValue >= config.bits)],
   ], invalidStatus);
   hodlRenderDiceFairness(input.value, hodlDiceMethod, config.words);
   hodlQueueMasterFingerprintPreview();

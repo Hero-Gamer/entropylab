@@ -21,6 +21,7 @@
   --ok: #8aaa74;
   --ok-bright: #22c55e; /* a true green: --ok sits closer to olive than the status tag wants */
   --blue: #6f9fca;
+  --blue-bright: #3b9eff; /* 7.5:1 on the dark ground; --blue alone is too soft to carry an edge and a label */
   --warn: #c9a44a;
   /* The Bitcoin Core icon's orange. Both themes share it: it is a brand
    * signal (mainnet = real coins), not a surface colour. */
@@ -73,6 +74,7 @@
   --ok: #4f7a3a;
   --ok-bright: #15803d;
   --blue: #245d8f;
+  --blue-bright: #1769d6; /* 5.2:1 on white */
   --warn: #765a11;
   --playing-card-bg: #ffffff;
   --playing-card-fg: #111111;
@@ -158,10 +160,17 @@ button:not(:disabled):active * { color: inherit !important; }
 .page-footer-links .github-repo-link {
   border-color: color-mix(in oklab, var(--blue) 65%, var(--border));
   background: color-mix(in oklab, var(--blue) 14%, var(--surface)); color: var(--blue);
+  transition: background-color .14s ease, border-color .14s ease, color .14s ease;
 }
+/* The repository link takes the same hover as the card actions and the save
+   buttons, in the blue that marks it as somewhere else to go: fill back to
+   the page ground, colour out to the border and the label. */
 .page-footer-links .github-repo-link:hover {
-  background: color-mix(in oklab, var(--blue) 23%, var(--surface)); color: var(--fg);
+  border-color: var(--blue-bright);
+  background: var(--bg);
+  color: var(--blue-bright);
 }
+@media (prefers-reduced-motion: reduce) { .page-footer-links .github-repo-link { transition: none; } }
 .page-footer-links .github-repo-link:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; }
 .tab, .btn {
@@ -217,6 +226,18 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 }
 .seed-autocomplete-toggle input { margin: 0; }
 .seed-autocomplete-note { color: var(--muted); font-weight: 400; }
+/* The card's switch, written once: a checkbox and its title on one row, an
+   explanation under both. Borderless, because these read as part of the card
+   rather than as chips on it. A component adds only how it sits in its own
+   container — a margin, a hidden state, a status beside the title. */
+.switch-row { display: block; margin-top: var(--space-component); }
+/* Containers that space their own children take that margin back: the sync
+   host sets its switch off itself, and the passphrase options are a grid whose
+   gap already does it. A label above one zeroes it through the card's own
+   convention, so only these two need saying. */
+.global-sync-host .switch-row, .passphrase-bip39-options .switch-row { margin-top: 0; }
+.switch-toggle { width: 100%; min-height: 24px; margin-top: 0; padding: 0; border: 0; background: none; }
+.switch-note { display: block; margin: 0; font-size: 13px; line-height: 1.45; }
 .seed-entry-tools { display: flex; align-items: stretch; gap: var(--space-control); margin-top: var(--space-component); }
 .seed-entry-tools .seed-autocomplete-toggle { flex: 1 1 auto; margin-top: 0; }
 /* Tighter to the dropdown above than to the section below: the control reads
@@ -228,12 +249,10 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 /* Two rows: the switch and its title, then the explanation under both. The
    shared toggle chrome is a bordered chip elsewhere; here the control reads as
    part of the card, so it gives up the box and keeps the 44px target. */
-.global-sync-row { display: block; }
 .global-sync-head { display: flex; align-items: center; gap: var(--space-control); }
-.global-sync-toggle { flex: 1 1 auto; min-height: 24px; margin-top: 0; padding: 0; border: 0; background: none; }
+.global-sync-toggle { flex: 1 1 auto; }
 /* The title carries the same weight and colour as the Method label above it. */
 .global-sync-toggle .label { margin: 0; }
-.global-sync-note { display: block; margin: 0; font-size: 13px; line-height: 1.45; }
 .global-sync-status {
   display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto;
   color: var(--ok); font-size: 13px; font-weight: 600; white-space: nowrap;
@@ -282,10 +301,8 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 /* Two rows like the sync switch: the box and its title, then the explanation
    under both. The shared toggle chrome is a bordered chip elsewhere; here the
    control reads as part of the card, so it gives up the box. */
-.manual-calculations-row { margin-top: var(--space-component); }
-.manual-calculations-toggle { display: flex; width: 100%; min-height: 32px; margin-top: 0; padding: 0; border: 0; background: none; }
+.manual-calculations-toggle { display: flex; min-height: 32px; }
 .manual-calculations-toggle .label { margin: 0; }
-.manual-calculations-note { display: block; margin: 0; font-size: 13px; line-height: 1.45; }
 .manual-calculations-container { margin-top: var(--space-section); }
 .manual-calculations-row[hidden] { display: none; }
 .manual-calculations-container[hidden] { display: none; }
@@ -341,13 +358,8 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 /* The same borderless switch the sync and calculations toggles use: these read
    as part of the card rather than as chips floating on it, so they give up the
    bordered box and keep only the row the checkbox sits in. */
-.passphrase-bip39-toggle, .passphrase-autocomplete-toggle, .brain-wallet-trim-toggle {
-  width: 100%; min-height: 24px; margin-top: 0; padding: 0; border: 0; background: none;
-}
 /* Two rows where there is an explanation: the switch and its title, then the
    note under both, the way the sync switch reads. */
-.passphrase-bip39-row { display: block; }
-.passphrase-bip39-note { display: block; margin: 0; font-size: 13px; line-height: 1.45; }
 .passphrase-autocomplete-toggle[hidden] { display: none; }
 .brain-wallet-trim-toggle { flex: 1 1 auto; }
 .brain-wallet-trim-toggle[hidden] { display: none; }
@@ -420,6 +432,21 @@ input[type="radio"], input[type="checkbox"] {
   flex-shrink: 0;
   cursor: pointer;
 }
+/* A checkbox stands on its own, so it has to answer the pointer itself. It
+   keeps appearance: auto, so the box is the browser's and its own border is
+   not ours to set; an outline pulled in by its own width sits on that edge
+   instead of haloing outside it, which recolours what you see to the orange
+   every other border takes. The radius shapes that ring to the corner it
+   covers. No transition: the browser recolours its own border the instant you
+   arrive, so an eased ring only lets that grey show first.
+   Radios take none of this — every one of them sits inside a .choice card
+   whose whole edge lights instead, and a second ring inside that reads as two
+   things reacting to one hover. */
+input[type="checkbox"] { border-radius: 3px; }
+input[type="checkbox"]:not(:disabled):hover {
+  outline: 1px solid var(--selection-accent);
+  outline-offset: -1px;
+}
 label.field { display: block; margin-top: var(--space-component); font-size: 14px; font-weight: 600; }
 .label { font-size: 14px; font-weight: 600; margin: var(--space-section) 0 var(--space-control); color: var(--fg); }
 .choice {
@@ -435,11 +462,18 @@ label.field { display: block; margin-top: var(--space-component); font-size: 14p
   font-weight: 400;
   font-size: 14px;
   color: var(--fg);
+  transition: border-color .14s ease;
 }
 .choice strong { display: block; color: var(--fg); font-weight: 600; }
 .choice .desc { display: block; margin-top: 4px; color: var(--muted); font-size: 13px; line-height: 1.45; font-weight: 400; }
 .choice:has(input:checked) { border-color: color-mix(in oklab, var(--accent) 55%, var(--border)); }
 .choice:has(input:disabled) { cursor: not-allowed; opacity: 0.52; }
+/* The whole card is the target, so the edge is what answers the pointer. It
+   takes the bright accent, one step past the softer edge a checked option
+   already wears, so hovering the selected one still reads as a change. An
+   unavailable option says nothing: it carries a not-allowed cursor. */
+.choice:not(:has(input:disabled)):hover { border-color: var(--selection-accent); }
+@media (prefers-reduced-motion: reduce) { .choice { transition: none; } }
 .choice-grid { display: grid; gap: var(--space-control); margin-top: var(--space-control); }
 .choice-grid .choice { margin-top: 0; }
 details.lab-entropy { margin-top: var(--space-section); }
@@ -471,6 +505,29 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
 .dice-input-pad button {
   min-height: 48px; font-family: var(--mono); font-size: 18px;
   border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--fg);
+  transition: background-color .14s ease, border-color .14s ease, color .14s ease;
+}
+/* The keys answer the pointer the way every other control does: the fill drops
+   back to the page ground and the accent moves out to the border and the face.
+   A key you cannot press keeps its dimmed face, which is what says so, and a
+   selected key keeps its fill — inverting it on hover made the selection look
+   undone for as long as the pointer sat on it. */
+.dice-input-pad button:not(:disabled):not(.active):hover,
+.card-suit-pad button:not(:disabled):not(.active):hover,
+.card-undo-button:not(:disabled):hover {
+  border-color: var(--selection-accent);
+  background: var(--bg);
+}
+/* A key whose face is a label takes the accent too. A suit keeps its own
+   colour, since that is what names it — the reason the network coin keeps
+   its fill through the header controls' hover. */
+.dice-input-pad button:not(:disabled):not(.active):hover,
+.card-undo-button:not(:disabled):hover { color: var(--selection-accent-ink); }
+.card-suit-pad button, .card-undo-button {
+  transition: background-color .14s ease, border-color .14s ease, color .14s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dice-input-pad button, .card-suit-pad button, .card-undo-button { transition: none; }
 }
 .dice-input-pad.dplus button { padding-inline: 6px; white-space: nowrap; }
 .dice-input-pad .coin-button { font-size: 15px; }
@@ -596,15 +653,20 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
 .card-rank-pad button.active {
   background: var(--selection-accent); color: var(--selection-fg); border-color: var(--selection-accent);
 }
-.dealt-cards { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; min-height: 60px; }
+.dealt-cards { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: var(--space-control); min-height: 60px; }
 .dealt-cards[hidden] { display: none; }
 .card-controls-row {
   display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
   align-items: stretch; gap: 8px; margin-top: var(--space-control);
 }
-.card-controls-row .card-visibility-toggle { grid-column: span 4; justify-content: center; margin: 0; }
+.card-controls-row .card-visibility-toggle { grid-column: span 4; margin: 0; }
+/* Undo closes the row, pinned to the final grid lines rather than floated, so
+   it lines up under the keypad's last keys at whatever width the keypad runs.
+   Two keys wide now it carries a word: a narrow screen gives one key 35px. */
+.card-controls-row .card-undo-button { grid-column: -3 / -1; }
 .card-undo-button {
-  display: grid; place-items: center; min-width: 0; min-height: 48px; padding: 0;
+  display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 48px; padding: 0;
+  font-size: 14px; font-weight: 600;
   border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--muted);
 }
 .card-undo-button:disabled { cursor: not-allowed; opacity: 0.38; }
@@ -613,7 +675,7 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
   .card-controls-row .card-visibility-toggle { grid-column: span 2; }
 }
 .dealt-shuffle-label {
-  flex: 1 0 100%; margin: 4px 0 0; color: var(--muted);
+  flex: 1 0 100%; margin: 0; color: var(--muted);
   font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
 }
 .cards-reshuffle {
@@ -660,12 +722,17 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
    coloured, so the two numbers still read as the figures to act on where
    colour does not arrive: print, forced monochrome, or a colour blindness
    that flattens the red against the green. */
-.dice-meta-value { font-weight: 700; }
-.dice-meta-value.is-short { color: var(--danger-bright); }
-.dice-meta-value.is-met { color: var(--ok-bright); }
-/* The next action, not a figure: it takes the met colour so the line reads as
-   cleared, but leaves the weight to the numbers it sits under. */
-.dice-meta-cue { color: var(--ok-bright); }
+.meta-value { font-weight: 700; }
+.meta-value.is-short { color: var(--danger-bright); }
+.meta-value.is-met { color: var(--ok-bright); }
+/* A whole-line cue rather than a figure, so it leaves the weight to the
+   numbers above it. One rule, three tones: green by default for a line that
+   reads as cleared, orange for the next step to take, red for an error that
+   has to be fixed first. The orange is the lettering token, which clears AA
+   on the light ground where the fill orange does not. */
+.meta-cue { color: var(--meta-cue-ink, var(--ok-bright)); }
+.meta-cue.is-next { --meta-cue-ink: var(--selection-accent-ink); }
+.meta-cue.is-error { --meta-cue-ink: var(--danger-bright); }
 .seed-word-copy-row {
   display: flex; align-items: center; justify-content: flex-end; gap: 8px;
   margin-top: var(--space-component);
@@ -900,13 +967,22 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
 }
 .theme-toggle svg { display: none; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .theme-toggle[data-theme-mode="dark"] .theme-icon-dark, .theme-toggle[data-theme-mode="light"] .theme-icon-light { display: block; }
+/* Saving to disk keeps its own colour, but takes the card's hover grammar:
+   the fill drops back to the page ground and the colour moves out to the
+   border and the label. --ok-bright rather than --ok, which is close enough
+   to olive that an edge and a label in it read as grey. Both its values are
+   theme-tuned, so the green clears AA on either ground. */
 .btn:is(.download-html, .save-recovery-sheet, .save-wallet-dat, .journal-download-action) {
   border-color: color-mix(in oklab, var(--ok) 65%, var(--border));
   background: color-mix(in oklab, var(--ok) 14%, var(--surface)); color: var(--ok);
+  transition: background-color .14s ease, border-color .14s ease, color .14s ease;
 }
-.btn:is(.download-html, .save-recovery-sheet, .save-wallet-dat, .journal-download-action):hover {
-  background: color-mix(in oklab, var(--ok) 23%, var(--surface)); color: var(--fg);
+.btn:is(.download-html, .save-recovery-sheet, .save-wallet-dat, .journal-download-action):not(:disabled):hover {
+  border-color: var(--ok-bright);
+  background: var(--bg);
+  color: var(--ok-bright);
 }
+@media (prefers-reduced-motion: reduce) { .btn:is(.download-html, .save-recovery-sheet, .save-wallet-dat, .journal-download-action) { transition: none; } }
 .btn:is(.download-html, .save-recovery-sheet, .save-wallet-dat, .journal-download-action):focus-visible { outline: 2px solid var(--ok); outline-offset: 2px; }
 .github-mark { flex: 0 0 auto; }
 .custom-select-native {
@@ -920,6 +996,29 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
   background: var(--bg); color: var(--fg); text-align: left; cursor: pointer;
 }
 .custom-select-button:hover, .custom-select.open .custom-select-button { border-color: var(--accent); }
+/* The utility controls answer the pointer the way the action buttons do, and
+   the same way as each other: the fill drops back to the page ground and the
+   accent moves out to the border and the label. The network coin keeps its own
+   colour through this — it is painted with fill, not currentColor, so the
+   network it names still reads. Placed after each control's own hover rule,
+   which it ties with on specificity, so order is what decides. */
+.theme-toggle,
+.seed-keyboard-toggle,
+.network-picker-button,
+.locale-control .custom-select-button {
+  transition: background-color .14s ease, border-color .14s ease, color .14s ease;
+}
+.theme-toggle:hover,
+.seed-keyboard-toggle:hover,
+.network-picker-button:hover,
+.locale-control .custom-select-button:hover {
+  border-color: var(--selection-accent);
+  background: var(--bg);
+  color: var(--selection-accent-ink);
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button { transition: none; }
+}
 .custom-select-chevron {
   display: block; flex: 0 0 auto; width: 12px; height: 12px;
   fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round;
@@ -1730,7 +1829,29 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    inside the control, on one line with the box, so it owns no gap either side.
    The components above already say margin: 0; this repeats it only to outrank
    the convention, which an id lets win over their plain class selectors. */
-#calc-card .seed-autocomplete-toggle .label { margin: 0; }
+#calc-card .seed-autocomplete-toggle .label { margin: 0; color: var(--muted); }
+/* Grey at rest across the card, like the Harden qualifiers and the accordion
+   toggles: a checkbox offers an option rather than naming a field, so it sits
+   a step back until the pointer arrives. Set on the control as well as on the
+   label class, because some of these title themselves with a bare <strong>
+   that inherits and others with a .label that sets its own colour. */
+#calc-card .seed-autocomplete-toggle { color: var(--muted); }
+#calc-card .seed-autocomplete-toggle:hover,
+#calc-card .seed-autocomplete-toggle:hover .label { color: var(--fg); }
+/* The fields rest on the page ground already, so the fill half of the shared
+   hover has nowhere to go: the edge is what answers the pointer, as it does on
+   the method cards. A field flagged invalid keeps its red — that rule carries
+   !important — and a disabled one says nothing. */
+#calc-card textarea:not(:disabled):hover,
+#calc-card input:not([type="radio"]):not([type="checkbox"]):not(:disabled):hover {
+  border-color: var(--selection-accent);
+}
+#calc-card textarea, #calc-card input:not([type="radio"]):not([type="checkbox"]) {
+  transition: border-color .14s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  #calc-card textarea, #calc-card input:not([type="radio"]):not([type="checkbox"]) { transition: none; }
+}
 /* The other exception: this heading sits in a flex row whose 12px gap already
    spaces the cards under it, so it pulls back rather than adding a gap of its
    own — 12px less the 4px pull is the same 8px every other label sets. Written
@@ -1794,12 +1915,12 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .key-settings .field { min-width: 0; margin: 0; }
 .derivation-path-field input { font-family: var(--mono); }
-/* The rules bracket the whole section, so the lower one sits under the toggle
-   when shut and under the revealed fields when open — the section grows
-   between them rather than the line splitting the label from its content. */
+/* One rule, and it closes the section: under the toggle when shut, under the
+   revealed fields when open, so the section grows above it rather than the
+   line splitting the label from its own content. */
 .derivation-advanced {
-  margin: 0; padding: var(--space-control) 0;
-  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  margin: 0; padding: 0 0 var(--space-control);
+  border-bottom: 1px solid var(--border);
 }
 /* The card's other accordion, styled as the fairness toggle so the two read as
    one control type: heading-sized text, grey until hovered or open, and the
@@ -1812,6 +1933,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    glyph and label still sit left; only the hit area grows with it. */
 .derivation-advanced summary {
   display: inline-flex; align-items: center; gap: 4px; width: fit-content; min-height: 32px;
+  margin-bottom: var(--space-control);
   color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; list-style: none;
 }
 .derivation-advanced summary::-webkit-details-marker { display: none; }
@@ -1821,15 +1943,25 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .derivation-advanced[open] summary::before { content: "\25BE"; }
 .derivation-advanced summary:hover { color: var(--fg); }
 .derivation-advanced summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 3px; }
-.derivation-advanced[open] summary { margin-bottom: var(--space-component); color: var(--fg); }
-.derivation-advanced-fields { display: grid; gap: var(--space-component); }
+/* Open, the toggle titles the block rather than standing off from it, and the
+   block carries the space beneath itself instead. The gap under the toggle is
+   the same either way — set on the summary itself — so opening the section
+   moves the fields in without shifting the toggle. */
+.derivation-advanced[open] summary { color: var(--fg); }
+.derivation-advanced-fields { display: grid; gap: var(--space-component); margin-bottom: var(--space-control); }
 /* These title their inputs the way the rest of the card does. The control
    below each already carries the 8px, so the title takes only the size, weight
    and colour — not .label's margins, which would double the grid gap. */
-.derivation-advanced-fields .field > label { display: block; font-size: 14px; font-weight: 600; color: var(--fg); }
+/* The Harden control is a label too, and a direct child of the title row, so it
+   has to be excluded by name: this rule would otherwise make it display:block
+   and collapse its own flex layout, dropping the gap between box and word and
+   leaving the two on a shared baseline instead of centred. */
+.derivation-advanced-fields :is(.field, .field-head) > label:not(.derivation-harden) {
+  display: block; font-size: 14px; font-weight: 600; color: var(--fg);
+}
 .derivation-advanced .derivation-index-value input:not([type="checkbox"]) { padding-right: 12px; }
 .derivation-index-control {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; gap: var(--space-control);
+  display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch;
   min-width: 0; margin-top: var(--space-control);
 }
 .derivation-index-value { position: relative; display: block; min-width: 0; }
@@ -1841,15 +1973,41 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   color: var(--fg); font-family: var(--mono); font-size: 14px; white-space: pre; pointer-events: none;
 }
 .derivation-index-prime::before { content: attr(data-index-value); color: transparent; }
-.derivation-index-control:has(.derivation-harden input:not(:checked)) .derivation-index-prime { display: none; }
+/* Scoped to the field rather than the control: the toggle that governs the
+   prime now sits in the title row above, so the two share a .field but no
+   longer a .derivation-index-control. */
+.field:has(.derivation-harden input:not(:checked)) .derivation-index-prime { display: none; }
 #msig-account:placeholder-shown + .derivation-index-prime,
 #msig-account[data-state="mixed"] + .derivation-index-prime,
 #msig-account[data-state="not-applicable"] + .derivation-index-prime { display: none; }
-.derivation-harden {
-  display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px;
-  padding: 0 12px; border: 1px solid var(--border); border-radius: 12px;
-  background: var(--surface-2); color: var(--fg); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer;
+/* Borderless like every other checkbox in the card: it qualifies the field
+   beside it rather than standing as a control of its own, so it gives up the
+   chip. The side padding went with the box that needed it — the grid gap
+   already sets it off the input. It keeps the 44px so it still lines up with
+   the field it sits against. */
+/* Name left, qualifier right — the same shape the seed phrase title row uses.
+   Off the input's row, every field in a settings grid is now the same width,
+   whether or not it has a Harden to offer. The qualifier sets no height of
+   its own: a taller one would centre the title in a row deeper than its own
+   line and push the field away from the name it belongs to. Its 16px box and
+   the title's line box come out level, so the row reads as one line.
+   The right inset answers the input below: a 12px corner radius pulls that
+   field's visible edge inward, so a qualifier flush to the true edge reads as
+   overhanging it — and as crowding the next column, the settings grid being
+   only a component gap wide. */
+.field-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-control); padding-right: var(--space-control);
 }
+.derivation-harden {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 0; border: 0; background: none;
+  color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer;
+}
+/* Grey at rest, like the accordion toggles: it qualifies the field rather than
+   naming one, and at the title's own weight and colour the two competed for
+   the same row. White on hover says it is still a control. */
+.derivation-harden:hover { color: var(--fg); }
 .derivation-harden input { margin: 0; accent-color: var(--selection-accent); }
 #passphrase-field[hidden], #master-fingerprint-preview[hidden], #script-type-field[hidden], #derivation-path-field[hidden],
 #derivation-advanced[hidden], #purpose-network-settings[hidden], #account-field[hidden], #address-range-settings[hidden] { display: none !important; }

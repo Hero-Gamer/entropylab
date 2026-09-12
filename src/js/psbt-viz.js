@@ -22,7 +22,7 @@ import { addressFromScript } from "./addresses.js";
 import { psbtCostFactsFromDoc } from "./psbt-cost.js";
 
 const escapeHtml = (text) =>
-  String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;").replace(/'/g, "&#39;");
+  String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 const hexToBytes = (hex) => {
   const out = new Uint8Array(String(hex).length / 2);
@@ -120,7 +120,7 @@ const costHtml = (doc) => {
   if (!facts.finalized) {
     return `<span class="muted" title="exact transaction size requires final scriptSig/scriptWitness for every input">size unknown — final transaction not reconstructable</span>`;
   }
-  const rate = facts.feeRateSatPerVbyte === null ? "" : ` · ${facts.feeRateSatPerVbyte} sat/vB`;
+  const rate = facts.feeRateSatPerVbyte === null ? "" : ` · ${facts.feeRateSatPerVbyte} sat/vB (PSBT claim)`;
   return `<span title="exact serialized transaction size">${facts.vsize} vB · ${facts.weight} WU</span>${rate}`;
 };
 

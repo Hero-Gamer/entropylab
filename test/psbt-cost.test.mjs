@@ -185,8 +185,26 @@ test("raw PSBT path uses the real rust-bitcoin inspection document", () => {
 test("PSBT visualizer exposes exact size when the transaction is finalized", () => {
   const html = psbtVizHtml(doc(), "mainnet");
   assert.ok(html.includes("208 vB · 832 WU"), "exact serialized size missing from transaction summary");
-  assert.ok(html.includes("48317.307692307695 sat/vB"), "fee rate missing from transaction summary");
+  assert.ok(html.includes("48317.307692307695 sat/vB (PSBT claim)"), "claimed fee rate missing from transaction summary");
 });
+
+test("large witness stacks do not exceed the JavaScript argument limit", () => {
+  const fixture = doc();
+  fixture.tx.inputs = fixture.tx.inputs.slice(0, 1);
+  fixture.inputs = [[witnessUtxo(100000000), {
+    name: "PSBT_IN_FINAL_SCRIPTWITNESS",
+    value: "",
+    decoded: { items: Array.from({ length: 150_000 }, () => "") },
+  }]];
+  fixture.tx.outputs = [{ value: "90000000", scriptPubKey: "51" }];
+  fixture.outputs = [[]];
+  fixture.fee = { known: true, sats: "10000000" };
+  const facts = psbtCostFactsFromDoc(fixture);
+  assert.equal(facts.finalized, true);
+  assert.equal(facts.weight, 150251);
+  assert.equal(facts.vsize, 37563);
+});
+
 test("fee invalid from inspector -> null fee/rate but size remains (MAX_MONEY)", () => {
   const doc = {
     tx: { version: 2, locktime: 0, inputs: [{ txid: "00".repeat(32), vout: 0, sequence: 4294967295 }], outputs: [{ value: "900", scriptPubKey: "0014"+"00".repeat(20) }] },

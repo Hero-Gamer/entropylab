@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { t as hodlT } from "../src/js/i18n.js";
+import { t as hodlT, tHtml } from "../src/js/i18n.js";
 import { hodlHexFormatLabels } from "../src/js/i18n-labels.js";
 // The sliced app.js functions resolve the label tables through the global, like hodlT.
 globalThis.hodlHexFormatLabels = hodlHexFormatLabels;
@@ -31,12 +31,15 @@ function loadVariable(name, nextName) {
 
 const api = new Function(
   "hodlHex",
+  "hodlT",
+  "hodlTText",
   `var hodlTargetWordCount=24; var hodlBip39Wordlist=Array.from({length:2048},(_,index)=>String(index));
 ${loadVariable("hodlSeedLengths", "hodlEntropyFormats")}
 ${loadVariable("hodlEntropyFormats", "hodlBip39WordSet")}
 ${loadSlice("hodlSeedConfig")}
 ${loadSlice("hodlNormalizeEntropyFormat")}
 ${loadSlice("hodlEntropyFormatConfig")}
+${loadSlice("hodlEntropyFormatDesc")}
 ${loadSlice("hodlNormalizeEntropyCharacter")}
 ${loadSlice("hodlFilterNumberBase")}
 ${loadSlice("hodlEntropyDigitEntries")}
@@ -53,8 +56,8 @@ ${loadSlice("hodlGroupedBinary")}
 ${loadSlice("hodlAnalyzeEntropyInput")}
 ${loadSlice("hodlNote")}
 ${loadSlice("hodlNumberBaseEntropy")}
-return {hodlEntropyFormats,hodlEntropyFormatConfig,hodlFilterNumberBase,hodlAnalyzeEntropyInput,hodlNumberBaseEntropy,hodlNumberBaseValueFromBytes,hodlNumberBaseCalculationRows,hodlBinaryCalculationRows,hodlNumberBaseBinaryConversionMarkup};`,
-)({ encode: (bytes) => Buffer.from(bytes).toString("hex") });
+return {hodlEntropyFormats,hodlEntropyFormatConfig,hodlEntropyFormatDesc,hodlFilterNumberBase,hodlAnalyzeEntropyInput,hodlNumberBaseEntropy,hodlNumberBaseValueFromBytes,hodlNumberBaseCalculationRows,hodlBinaryCalculationRows,hodlNumberBaseBinaryConversionMarkup};`,
+)({ encode: (bytes) => Buffer.from(bytes).toString("hex") }, tHtml, hodlT);
 
 const hexToBits = (hex) => [...hex].map((digit) => Number.parseInt(digit, 16).toString(2).padStart(4, "0")).join("");
 function encodeInFormat(hex, format, words) {
@@ -111,6 +114,18 @@ test("all six formats decode to the same entropy bytes", () => {
       assert.equal(result.hex, hex, `${words} words, ${format}`);
     }
   }
+});
+
+test("each base's choice box says what its characters are worth at the chosen seed length", () => {
+  // A description that leaves the bit value unsaid gets it added; one that
+  // already says it stands alone.
+  assert.match(api.hodlEntropyFormatDesc("bin", 24), /coin flip\. Each digit contributes one bit; spaces are added every 11 bits\.$/);
+  assert.equal(api.hodlEntropyFormatDesc("hex", 24), "Each hexadecimal character contributes four bits.");
+  // The leftover bits follow the seed length, and vanish when it divides evenly.
+  assert.match(api.hodlEntropyFormatDesc("base8", 24), /remaining 1 entropy bit and must be one of 0, 1\.$/);
+  assert.match(api.hodlEntropyFormatDesc("base8", 12), /remaining 2 entropy bits and must be one of 0, 1, 2, 3\.$/);
+  assert.match(api.hodlEntropyFormatDesc("base32", 24), /five bits\. The final character is mixed-radix: it contributes the remaining 1 entropy bit and must be one of q, p\.$/);
+  assert.doesNotMatch(api.hodlEntropyFormatDesc("base32", 15), /mixed-radix/);
 });
 
 test("Base 8 and Base32 use restricted mixed-radix final characters", () => {

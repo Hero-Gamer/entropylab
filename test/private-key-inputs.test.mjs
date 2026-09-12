@@ -51,6 +51,8 @@ const source = [
   importLine("i18n"),
   importLine("i18n-labels"),
   app.slice(srStart, srEnd + 1),
+  // The progress line marks where its coloured number goes with this token.
+  app.match(/^var hodlMetaToken = .*;$/m)[0],
   ...[
     "hodlNote",
     "hodlError",
@@ -93,6 +95,11 @@ const {
   hodlPrivateKeyCharacterEntries,
   hodlPrivateKeyInputAnalysis,
 } = api;
+
+// The progress line as a reader sees it: the count with its number filled in,
+// then each cue on its own line.
+const lines = (analysis) => [analysis.progress.text.replace("\u0000", analysis.progress.value ?? ""), ...analysis.cues.map((cue) => cue.text)].join("\n");
+const tones = (analysis) => analysis.cues.map((cue) => cue.tone);
 
 // Fixed public vectors. The WIFs and minikeys all wrap the private key 1
 // (except the wiki minikeys, whose digests are published); nothing is secret.
@@ -273,20 +280,20 @@ test("character entries skip whitespace and keep astral characters whole", () =>
 test("brain analysis reports the exact-text and trim conventions", () => {
   let analysis = hodlPrivateKeyInputAnalysis("", "brain", "mainnet", false);
   assert.equal(analysis.ready, false);
-  assert.match(analysis.status, /No text entered/);
+  assert.match(lines(analysis), /No text entered/);
   analysis = hodlPrivateKeyInputAnalysis("correct horse battery staple", "brain", "mainnet", false);
   assert.equal(analysis.ready, true);
-  assert.match(analysis.status, /exact text will be used/);
-  assert.doesNotMatch(analysis.status, /including boundary whitespace/);
+  assert.match(lines(analysis), /Exact text will be used/);
+  assert.doesNotMatch(lines(analysis), /including boundary whitespace/);
   analysis = hodlPrivateKeyInputAnalysis("  padded  ", "brain", "mainnet", false);
   assert.equal(analysis.ready, true);
-  assert.match(analysis.status, /exact text will be used, including boundary whitespace/);
+  assert.match(lines(analysis), /Exact text will be used, including boundary whitespace/);
   analysis = hodlPrivateKeyInputAnalysis("  padded  ", "brain", "mainnet", true);
   assert.equal(analysis.ready, true);
-  assert.match(analysis.status, /boundary whitespace will be trimmed/);
+  assert.match(lines(analysis), /Boundary whitespace will be trimmed/);
   analysis = hodlPrivateKeyInputAnalysis("   ", "brain", "mainnet", true);
   assert.equal(analysis.ready, false);
-  assert.match(analysis.status, /leaves an empty passphrase/);
+  assert.match(lines(analysis), /leaves an empty passphrase/);
   // Whitespace-only is still a usable exact-text passphrase when trim is off.
   analysis = hodlPrivateKeyInputAnalysis("   ", "brain", "mainnet", false);
   assert.equal(analysis.ready, true);
@@ -300,29 +307,32 @@ test("hex analysis counts, flags invalid and excess characters, and gates readin
   assert.deepEqual(analysis.invalidRanges, []);
   analysis = hodlPrivateKeyInputAnalysis(KEY1_HEX, "hex-key", "mainnet", false);
   assert.equal(analysis.ready, true);
-  assert.match(analysis.status, /64 of 64 hexadecimal characters entered/);
-  assert.match(analysis.status, /valid secp256k1 private key/);
+  assert.match(lines(analysis), /64 of 64 hexadecimal characters entered/);
+  assert.match(lines(analysis), /Valid secp256k1 private key/);
+  // A ready key is the one green cue; nothing else shares the line.
+  assert.deepEqual(tones(analysis), [""]);
   analysis = hodlPrivateKeyInputAnalysis(`0x${KEY1_HEX}`, "hex-key", "mainnet", false);
   assert.equal(analysis.ready, true, "the 0x prefix is accepted");
   analysis = hodlPrivateKeyInputAnalysis(`${"0".repeat(63)}g`, "hex-key", "mainnet", false);
   assert.deepEqual(analysis.invalidRanges, [[63, 64]]);
-  assert.match(analysis.status, /1 invalid character highlighted/);
+  assert.match(lines(analysis), /1 invalid character highlighted/);
+  assert.deepEqual(tones(analysis), ["error"]);
   analysis = hodlPrivateKeyInputAnalysis("1".repeat(65), "hex-key", "mainnet", false);
   assert.deepEqual(analysis.invalidRanges, [[64, 65]]);
-  assert.match(analysis.status, /65 hexadecimal characters entered · 64 required/);
+  assert.match(lines(analysis), /65 hexadecimal characters entered · 64 required/);
   analysis = hodlPrivateKeyInputAnalysis("0".repeat(64), "hex-key", "mainnet", false);
   assert.equal(analysis.ready, false);
   assert.deepEqual(analysis.invalidRanges, [[0, 64]], "a complete but out-of-range key is highlighted whole");
-  assert.match(analysis.status, /out of the secp256k1 range/);
+  assert.match(lines(analysis), /out of the secp256k1 range/);
 });
 
 test("WIF analysis derives the expected length from the prefix and checks the network", () => {
   let analysis = hodlPrivateKeyInputAnalysis(WIF.mainnetUncompressed, "wif", "mainnet", false);
   assert.equal(analysis.ready, true);
-  assert.match(analysis.status, /51 of 51 WIF characters entered/);
+  assert.match(lines(analysis), /51 of 51 WIF characters entered/);
   analysis = hodlPrivateKeyInputAnalysis(WIF.mainnetCompressed, "wif", "mainnet", false);
   assert.equal(analysis.ready, true);
-  assert.match(analysis.status, /52 of 52 WIF characters entered/);
+  assert.match(lines(analysis), /52 of 52 WIF characters entered/);
   analysis = hodlPrivateKeyInputAnalysis(WIF.testnetCompressed, "wif", "testnet", false);
   assert.equal(analysis.ready, true, "testnet WIF ready on testnet");
   // A wrong-network WIF is caught at the first character: the mainnet and
@@ -332,11 +342,15 @@ test("WIF analysis derives the expected length from the prefix and checks the ne
   analysis = hodlPrivateKeyInputAnalysis(WIF.testnetCompressed, "wif", "mainnet", false);
   assert.equal(analysis.ready, false);
   assert.deepEqual(analysis.invalidRanges, [[0, 1]], "the testnet c… prefix is invalid on mainnet");
-  assert.match(analysis.status, /1 invalid character highlighted · use mainnet Base58 WIF characters/);
+  assert.match(lines(analysis), /1 invalid character highlighted · use mainnet Base58 WIF characters/);
   analysis = hodlPrivateKeyInputAnalysis(`1${"A".repeat(50)}`, "wif", "mainnet", false);
   assert.equal(analysis.required, null, "an unknown first character leaves the length undecided");
   assert.deepEqual(analysis.invalidRanges, [[0, 1]]);
-  assert.match(analysis.status, /starts with 5, K, or L/);
+  // A wrong prefix is an error, and the prefix to use rides along with it.
+  assert.match(lines(analysis), /Start with 5, K, or L/);
+  assert.deepEqual(tones(analysis), ["error", "error"]);
+  // Before anything is typed, the prefix is the next step instead.
+  assert.deepEqual(tones(hodlPrivateKeyInputAnalysis("", "wif", "mainnet", false)), ["next"]);
   analysis = hodlPrivateKeyInputAnalysis(`5${"H".repeat(51)}`, "wif", "mainnet", false);
   assert.deepEqual(analysis.invalidRanges, [[51, 52]], "the 52nd character of a 5… WIF is excess");
   analysis = hodlPrivateKeyInputAnalysis("K".concat("H".repeat(50)), "wif", "mainnet", false);
@@ -349,13 +363,13 @@ test("WIF analysis derives the expected length from the prefix and checks the ne
 test("minikey analysis tracks the 22-or-30 length rule and the checksum", () => {
   let analysis = hodlPrivateKeyInputAnalysis("", "minikey", "mainnet", false);
   assert.equal(analysis.ready, false);
-  assert.match(analysis.status, /must start with S/);
+  assert.match(lines(analysis), /Start with S/);
   analysis = hodlPrivateKeyInputAnalysis(MINIKEY_22, "minikey", "mainnet", false);
   assert.equal(analysis.ready, true);
-  assert.match(analysis.status, /22 of 22 Mini-key characters entered/);
+  assert.match(lines(analysis), /22 of 22 Mini-key characters entered/);
   analysis = hodlPrivateKeyInputAnalysis(MINIKEY_30, "minikey", "mainnet", false);
   assert.equal(analysis.ready, true);
-  assert.match(analysis.status, /30 of 30 Mini-key characters entered/);
+  assert.match(lines(analysis), /30 of 30 Mini-key characters entered/);
   analysis = hodlPrivateKeyInputAnalysis(`S${"1".repeat(22)}`, "minikey", "mainnet", false);
   assert.equal(analysis.required, 30, "past 22 characters only the 30 form remains");
   assert.equal(analysis.remaining, 7);

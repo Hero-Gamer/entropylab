@@ -30,6 +30,7 @@ export const hodlHexFormatLabels = Object.freeze({
     shortLabel: "Binary",
     unit: "binary digits",
     desc: "Use one 0 or 1 for each coin flip.",
+    detail: "Each digit contributes one bit; spaces are added every 11 bits.",
   }),
   base4: Object.freeze({
     label: "Quaternary (Base 4)",
@@ -54,12 +55,14 @@ export const hodlHexFormatLabels = Object.freeze({
     shortLabel: "Bech32",
     unit: "Bech32 characters",
     desc: "Uses the lowercase Bech32 data-character alphabet without an HRP or checksum; a restricted final character carries any remaining bits.",
+    detail: "Each character contributes five bits.",
   }),
   base64: Object.freeze({
     label: "Base64 (RFC 4648 alphabet)",
     shortLabel: "Base64",
     unit: "characters",
     desc: "Uses the case-sensitive RFC 4648 alphabet with + and /, then switches to coin flips for any remaining bits.",
+    detail: "Each character contributes six bits.",
   }),
 });
 

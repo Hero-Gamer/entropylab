@@ -19,7 +19,7 @@
   --danger: #d4574a;
   --danger-bright: #ff4438; /* alert red: --danger is too muted to carry a live status */
   --ok: #8aaa74;
-  --ok-bright: #22c55e; /* a true green: --ok sits closer to olive than the status tag wants */
+  --ok-bright: #26b54c; /* a true green: --ok sits closer to olive than the status tag wants. Held a touch under full brightness and a few degrees toward yellow, so it reads as green rather than as a signal lamp */
   --blue: #6f9fca;
   --blue-bright: #3b9eff; /* 7.5:1 on the dark ground; --blue alone is too soft to carry an edge and a label */
   --warn: #c9a44a;
@@ -72,7 +72,7 @@
   --danger: #b42318;
   --danger-bright: #d92d20;
   --ok: #4f7a3a;
-  --ok-bright: #15803d;
+  --ok-bright: #167e32;
   --blue: #245d8f;
   --blue-bright: #1769d6; /* 5.2:1 on white */
   --warn: #765a11;
@@ -102,7 +102,11 @@ body { min-height: 100vh; }
 h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -0.02em; }
 h1 { font-size: 1.5rem; margin: 8px 0; }
 h2 { font-size: 1.5rem; margin: 8px 0; }
-a { color: var(--accent); }
+/* A link brightens under the pointer, in the same lettering orange the
+   controls take: --accent alone gives no sign that it answers at all. */
+a { color: var(--accent); transition: color .14s ease; }
+a:hover { color: var(--selection-accent-ink); }
+@media (prefers-reduced-motion: reduce) { a { transition: none; } }
 button, select, textarea, input { font: inherit; }
 button { cursor: pointer; }
 /* Every enabled button uses the same momentary press feedback. The disabled
@@ -119,6 +123,10 @@ button:not(:disabled):active * { color: inherit !important; }
 .wrap { max-width: 1000px; margin: 0 auto; padding: calc(var(--site-header-height) + 20px) 16px 0; }
 .kicker { font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 20px; margin: 16px 0; }
+/* A card that only reads, never takes input: no edge and no rounded corner,
+   the way the readouts inside the tools now sit. The border stays in place
+   unpainted, so nothing shifts. */
+.card.static-card { border-color: transparent; border-radius: 0; }
 /* Shared tool shell. Cards own their edge padding; children own only the space
    between components, so adding a new first or last block cannot double it. */
 .tool-card > :first-child { margin-top: 0; }
@@ -157,21 +165,6 @@ button:not(:disabled):active * { color: inherit !important; }
    label at every width. */
 .page-footer-links { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; margin-top: 14px; }
 .page-footer-links > a { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
-.page-footer-links .github-repo-link {
-  border-color: color-mix(in oklab, var(--blue) 65%, var(--border));
-  background: color-mix(in oklab, var(--blue) 14%, var(--surface)); color: var(--blue);
-  transition: background-color .14s ease, border-color .14s ease, color .14s ease;
-}
-/* The repository link takes the same hover as the card actions and the save
-   buttons, in the blue that marks it as somewhere else to go: fill back to
-   the page ground, colour out to the border and the label. */
-.page-footer-links .github-repo-link:hover {
-  border-color: var(--blue-bright);
-  background: var(--bg);
-  color: var(--blue-bright);
-}
-@media (prefers-reduced-motion: reduce) { .page-footer-links .github-repo-link { transition: none; } }
-.page-footer-links .github-repo-link:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; }
 .tab, .btn {
   min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--border);
@@ -193,6 +186,59 @@ button:not(:disabled):active * { color: inherit !important; }
 }
 .btn.secondary { background: var(--surface-2); color: var(--fg); }
 .btn.secondary:disabled { cursor: not-allowed; opacity: .52; color: var(--muted); }
+/* One hover grammar for every control that answers the pointer: at rest it
+   wears its own colour, and under the pointer the fill drops back to the page
+   ground while that colour moves out to the border and the label. A control
+   says only which colour it uses, through --hover-edge and --hover-ink; the
+   variants below are the whole vocabulary. Focus is left to the browser, whose
+   own ring is the one mark that can never be mistaken for a meaning colour. */
+.btn, .dice-input-pad button, .card-suit-pad button, .card-undo-button,
+.seed-keyboard-key, .seed-keyboard-space, .seed-keyboard-mode,
+.theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button {
+  --hover-edge: var(--selection-accent); --hover-ink: var(--selection-accent-ink);
+  cursor: pointer; transition: background-color .14s ease, border-color .14s ease, color .14s ease;
+}
+/* A key you cannot press keeps its dimmed face, which is what says so, and a
+   selected key keeps its fill — inverting it made the selection look undone
+   for as long as the pointer sat on it. */
+.btn:not(:disabled):hover,
+:is(.dice-input-pad button, .card-suit-pad button, .card-undo-button, .seed-keyboard-key, .seed-keyboard-space, .seed-keyboard-mode):not(:disabled):not(.active):hover,
+:is(.theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button):hover {
+  border-color: var(--hover-edge); background: var(--bg); color: var(--hover-ink);
+}
+/* A suit keeps its own colour through the inversion, since that is what names
+   it — the reason the network coin keeps its fill in the header. Each names
+   the colour it already wears; currentColor would resolve against the pad. */
+.card-suit-pad button { --hover-ink: var(--fg); }
+.card-suit-pad button.is-red { --hover-ink: var(--danger); }
+@media (prefers-reduced-motion: reduce) {
+  .btn, .dice-input-pad button, .card-suit-pad button, .card-undo-button,
+  .seed-keyboard-key, .seed-keyboard-space, .seed-keyboard-mode,
+  .theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button { transition: none; }
+}
+/* The colour variants carry their rest colours and their three tokens, and
+   nothing else: green saves to disk, red destroys, blue leaves the page. Each
+   uses the -bright pair for the edge and the lettering, which are theme-tuned
+   to clear AA on either ground; the muted base would read as grey. */
+.btn.green {
+  --hover-edge: var(--ok-bright); --hover-ink: var(--ok-bright);
+  border-color: color-mix(in oklab, var(--ok) 65%, var(--border));
+  background: color-mix(in oklab, var(--ok) 14%, var(--surface)); color: var(--ok);
+}
+.btn.red {
+  --hover-edge: var(--danger-bright); --hover-ink: var(--danger-bright);
+  border-color: color-mix(in oklab, var(--danger) 65%, var(--border));
+  background: color-mix(in oklab, var(--danger) 14%, var(--surface-2)); color: var(--danger);
+}
+.btn.red:disabled {
+  cursor: not-allowed; opacity: .45; border-color: color-mix(in oklab, var(--danger) 30%, var(--border));
+  background: color-mix(in oklab, var(--danger) 6%, var(--surface-2)); color: color-mix(in oklab, var(--danger) 55%, var(--muted));
+}
+.btn.blue {
+  --hover-edge: var(--blue-bright); --hover-ink: var(--blue-bright);
+  border-color: color-mix(in oklab, var(--blue) 65%, var(--border));
+  background: color-mix(in oklab, var(--blue) 14%, var(--surface)); color: var(--blue);
+}
 textarea, select,
 input:not([type="radio"]):not([type="checkbox"]) {
   width: 100%; min-height: 44px; margin-top: var(--space-control); padding: 10px 12px;
@@ -235,14 +281,13 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
    container — a margin, a hidden state, a status beside the title. */
 .switch-row { display: block; margin-top: var(--space-component); }
 /* Containers that space their own children take that margin back: the sync
-   host sets its switch off itself, and the passphrase options are a grid whose
-   gap already does it. A label above one zeroes it through the card's own
-   convention, so only these two need saying. */
-.global-sync-host .switch-row, .passphrase-bip39-options .switch-row { margin-top: 0; }
+   host sets its switch off itself, the passphrase options are a grid whose
+   gap already does it, and a field's tools row carries its own margin. A label
+   above one zeroes it through the card's own convention, so only these need
+   saying. */
+.global-sync-host .switch-row, .passphrase-bip39-options .switch-row, .passphrase-keyboard-tools > .switch-row { margin-top: 0; }
 .switch-toggle { width: 100%; min-height: 24px; margin-top: 0; padding: 0; border: 0; background: none; }
 .switch-note { display: block; margin: 0; font-size: 13px; line-height: 1.45; }
-.seed-entry-tools { display: flex; align-items: stretch; gap: var(--space-control); margin-top: var(--space-component); }
-.seed-entry-tools .seed-autocomplete-toggle { flex: 1 1 auto; margin-top: 0; }
 /* Tighter to the dropdown above than to the section below: the control reads
    as part of the method it qualifies. The rule belongs to this section, not to
    the length band under it: Method closes with the line rather than Seed
@@ -274,18 +319,17 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 .global-sync-shortfall svg { display: block; width: 16px; height: 16px; }
 .global-sync-status[hidden] { display: none; }
 .global-sync-status svg { display: block; width: 16px; height: 16px; }
-.number-base-calculations-toggle { width: 100%; margin-top: var(--space-control); }
-.number-base-calculations-panel { margin-top: var(--space-section); }
-.number-base-calculations-panel[hidden] { display: none; }
 .number-base-binary-conversion { margin-bottom: var(--space-section); }
 .number-base-conversion-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; }
-.number-base-conversion-cell { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); font-family: var(--mono); font-size: 12px; }
+.number-base-conversion-cell { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 6px 8px; border: 1px solid transparent; background: var(--surface-2); font-family: var(--mono); font-size: 12px; }
 .number-base-conversion-cell strong { color: var(--accent); font-weight: 700; }
 .number-base-conversion-cell b { color: var(--faint); font-family: var(--sans); font-weight: 400; }
 .number-base-conversion-cell > span { color: var(--fg); }
 .number-base-calculation-list { display: grid; gap: var(--space-control); }
+/* Worked arithmetic, which is read and never pressed: square and edgeless
+   like the other readouts, down to the cells inside it. */
 .number-base-calculation {
-  overflow-x: auto; padding: 14px 12px 12px; border: 1px solid var(--border); border-radius: 10px;
+  overflow-x: auto; padding: 14px 12px 12px; border: 1px solid transparent;
   background: var(--surface-2); font-family: var(--mono); font-size: 12px;
 }
 .number-base-calculation-title { display: flex; justify-content: space-between; gap: 12px; margin: 0 0 12px; color: var(--muted); }
@@ -295,17 +339,12 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 .number-base-calculation-label { color: var(--muted); font-family: var(--sans); font-size: 11px; font-weight: 600; }
 .number-base-calculation-powers, .number-base-calculation-bits, .number-base-calculation-products { display: grid; grid-template-columns: repeat(11, minmax(32px, 1fr)); gap: 4px; min-width: 396px; text-align: center; }
 .number-base-calculation-powers { color: var(--accent); font-weight: 700; }
-.number-base-calculation-bits span { padding: 8px 4px; border: 1px solid var(--border); border-radius: 6px; color: var(--fg); background: var(--bg); font-size: 14px; font-weight: 700; }
+.number-base-calculation-bits span { padding: 8px 4px; border: 1px solid transparent; color: var(--fg); background: var(--bg); font-size: 14px; font-weight: 700; }
 .number-base-calculation-products { color: var(--fg); font-weight: 600; }
 .number-base-calculation-sum { display: flex; align-items: baseline; justify-content: flex-end; flex-wrap: wrap; gap: 6px 16px; min-width: 484px; margin-top: 12px; padding-top: 9px; border-top: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
 .number-base-calculation-sum > span { display: inline-flex; align-items: baseline; gap: 5px; }
 .number-base-calculation-sum strong { color: var(--accent); font-size: 13px; font-weight: 700; }
 .number-base-calculation-sum b { color: var(--faint); }
-/* Two rows like the sync switch: the box and its title, then the explanation
-   under both. The shared toggle chrome is a bordered chip elsewhere; here the
-   control reads as part of the card, so it gives up the box. */
-.manual-calculations-toggle { display: flex; min-height: 32px; }
-.manual-calculations-toggle .label { margin: 0; }
 .manual-calculations-container { margin-top: var(--space-section); }
 .manual-calculations-row[hidden] { display: none; }
 .manual-calculations-container[hidden] { display: none; }
@@ -313,7 +352,7 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 .manual-calculation-list { display: grid; gap: var(--space-control); }
 .manual-calculation-row {
   display: grid; grid-template-columns: auto auto minmax(220px, 1fr) auto; align-items: baseline; gap: 8px 14px;
-  overflow-x: auto; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2);
+  overflow-x: auto; padding: 12px; border: 1px solid transparent; background: var(--surface-2);
   color: var(--muted); font-family: var(--mono); font-size: 12px;
 }
 .manual-calculation-row strong { color: var(--fg); font-size: 13px; font-weight: 400; }
@@ -323,7 +362,7 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 .manual-calculation-heading strong { color: var(--fg); }
 .dplus-calculation-row { display: block; }
 .dplus-calculation-stages { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
-.dplus-calculation-stage { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4px 7px; min-width: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); }
+.dplus-calculation-stage { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4px 7px; min-width: 0; padding: 6px 8px; border: 1px solid transparent; background: var(--bg); }
 .dplus-calculation-stage span { grid-column: 1 / -1; color: var(--muted); font-family: var(--sans); font-size: 10px; font-weight: 600; }
 .dplus-calculation-stage strong { color: var(--fg); font-size: 13px; }
 .dplus-calculation-stage small { color: var(--muted); white-space: nowrap; }
@@ -354,9 +393,9 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
   .dplus-calculation-sum { justify-content: flex-start; flex-wrap: wrap; margin-top: 7px; padding-top: 6px; gap: 4px; font-size: 10px; white-space: normal; overflow: visible; }
 }
 .passphrase-field { margin-top: var(--space-component); font-size: 14px; font-weight: 600; }
-.passphrase-keyboard-tools { display: flex; align-items: flex-start; gap: var(--space-control); margin-top: var(--space-control); }
+.passphrase-keyboard-tools { display: flex; align-items: center; gap: var(--space-control); margin-top: var(--space-control); }
 .passphrase-keyboard-tools[hidden] { display: none; }
-.passphrase-keyboard-tools .seed-keyboard-toggle { align-self: flex-start; }
+.passphrase-keyboard-tools > .switch-row { flex: 1 1 auto; }
 .passphrase-bip39-options { display: grid; flex: 1 1 auto; gap: var(--space-control); }
 /* The same borderless switch the sync and calculations toggles use: these read
    as part of the card rather than as chips floating on it, so they give up the
@@ -364,8 +403,6 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 /* Two rows where there is an explanation: the switch and its title, then the
    note under both, the way the sync switch reads. */
 .passphrase-autocomplete-toggle[hidden] { display: none; }
-.brain-wallet-trim-toggle { flex: 1 1 auto; }
-.brain-wallet-trim-toggle[hidden] { display: none; }
 .dice-input-shell.passphrase-input-shell input {
   position: relative; z-index: 1; margin-top: 0; background: transparent;
   color: transparent; -webkit-text-fill-color: transparent; caret-color: var(--fg); line-height: 1.45;
@@ -379,9 +416,7 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
   display: grid; place-items: center; flex: 0 0 44px; width: 44px; min-height: 44px; height: auto; padding: 5px;
   border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--muted);
 }
-.seed-keyboard-toggle:hover, .theme-toggle:hover { color: var(--fg); border-color: var(--faint); }
 .seed-keyboard-toggle[aria-expanded="true"] { color: var(--selection-accent); border-color: var(--selection-accent); }
-.seed-keyboard-toggle:focus-visible, .theme-toggle:focus-visible { outline: 2px solid var(--selection-accent); outline-offset: 2px; }
 .seed-keyboard-toggle svg { display: block; width: 30px; height: 22px; }
 .seed-keyboard-icon-case { fill: none; stroke: currentColor; stroke-width: 2.5; }
 .seed-keyboard-icon-keys { fill: currentColor; }
@@ -409,12 +444,6 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 }
 .seed-keyboard-key { flex: 0 0 var(--seed-key-size); width: var(--seed-key-size); }
 .seed-keyboard-key[hidden] { display: none; }
-.seed-keyboard-key:not(:disabled):hover,
-.seed-keyboard-space:not(:disabled):hover,
-.seed-keyboard-mode:not(:disabled):hover { border-color: var(--selection-accent); background: color-mix(in oklab, var(--selection-accent) 12%, var(--surface-2)); }
-.seed-keyboard-key:focus-visible,
-.seed-keyboard-space:focus-visible,
-.seed-keyboard-mode:focus-visible { outline: 2px solid var(--selection-accent); outline-offset: 1px; }
 .seed-keyboard-delete { display: grid; place-items: center; color: var(--muted); }
 .seed-keyboard-delete svg { width: 20px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .seed-keyboard-space-row { display: flex; justify-content: center; gap: 4px; }
@@ -508,29 +537,6 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
 .dice-input-pad button {
   min-height: 48px; font-family: var(--mono); font-size: 18px;
   border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--fg);
-  transition: background-color .14s ease, border-color .14s ease, color .14s ease;
-}
-/* The keys answer the pointer the way every other control does: the fill drops
-   back to the page ground and the accent moves out to the border and the face.
-   A key you cannot press keeps its dimmed face, which is what says so, and a
-   selected key keeps its fill — inverting it on hover made the selection look
-   undone for as long as the pointer sat on it. */
-.dice-input-pad button:not(:disabled):not(.active):hover,
-.card-suit-pad button:not(:disabled):not(.active):hover,
-.card-undo-button:not(:disabled):hover {
-  border-color: var(--selection-accent);
-  background: var(--bg);
-}
-/* A key whose face is a label takes the accent too. A suit keeps its own
-   colour, since that is what names it — the reason the network coin keeps
-   its fill through the header controls' hover. */
-.dice-input-pad button:not(:disabled):not(.active):hover,
-.card-undo-button:not(:disabled):hover { color: var(--selection-accent-ink); }
-.card-suit-pad button, .card-undo-button {
-  transition: background-color .14s ease, border-color .14s ease, color .14s ease;
-}
-@media (prefers-reduced-motion: reduce) {
-  .dice-input-pad button, .card-suit-pad button, .card-undo-button { transition: none; }
 }
 .dice-input-pad.dplus button { padding-inline: 6px; white-space: nowrap; }
 .dice-input-pad .coin-button { font-size: 15px; }
@@ -561,7 +567,7 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
    used to share this row belongs with the seed phrase title instead. */
 .dice-fairness-row { display: flex; align-items: center; margin-top: var(--space-control); }
 .dice-fairness-row[hidden] { display: none; }
-.dice-fairness-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 3px; }
+.dice-fairness-toggle:focus-visible { outline-offset: 4px; border-radius: 3px; }
 /* Opt out of the global press flash. That rule paints a control orange for
    the length of a click, which reads as feedback on a chip but as a fault on
    something styled as a heading. The panel opening is the feedback here.
@@ -583,22 +589,15 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
    carries its own space below the text, since the button holds a 44px touch
    target around a 14px line. */
 .dice-fairness {
-  margin-top: 0; padding: 12px 14px; border-radius: 12px;
-  border: 1px solid var(--border); background: var(--surface-2); color: var(--fg);
+  margin-top: 0; padding: 12px 14px;
+  border: 1px solid transparent; background: var(--surface-2); color: var(--fg);
 }
 .dice-fairness[hidden] { display: none; }
-.dice-fairness[data-tone="ok"] {
-  border-color: color-mix(in oklab, var(--ok) 50%, var(--border));
-  background: color-mix(in oklab, var(--ok) 10%, var(--bg));
-}
-.dice-fairness[data-tone="warn"] {
-  border-color: color-mix(in oklab, var(--warn) 55%, var(--border));
-  background: color-mix(in oklab, var(--warn) 12%, var(--bg));
-}
-.dice-fairness[data-tone="danger"] {
-  border-color: color-mix(in oklab, var(--danger) 50%, var(--border));
-  background: color-mix(in oklab, var(--danger) 10%, var(--bg));
-}
+/* A report, not a control: square and edgeless like the other readouts, so
+   the tint and the coloured verdict alone carry the tone. */
+.dice-fairness[data-tone="ok"] { background: color-mix(in oklab, var(--ok) 10%, var(--bg)); }
+.dice-fairness[data-tone="warn"] { background: color-mix(in oklab, var(--warn) 12%, var(--bg)); }
+.dice-fairness[data-tone="danger"] { background: color-mix(in oklab, var(--danger) 10%, var(--bg)); }
 .dice-fairness-test + .dice-fairness-test { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
 .dice-fairness-head {
   display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px;
@@ -710,7 +709,7 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
   display: flex; align-items: flex-start; gap: 8px;
   margin: var(--space-control) 0 0;
 }
-.seed-word-meta:has(.muted:empty) { display: none; }
+.seed-word-meta:has(.muted:empty):not(:has(button)) { display: none; }
 .seed-word-meta > .muted { flex: 1 1 auto; min-width: 0; margin: 0; }
 /* Status lines quote what was typed, so a long unbroken token must break
    rather than run off the side. */
@@ -758,16 +757,18 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
 .seed-phrase-copy:not(:disabled):hover { color: var(--accent); }
 .seed-phrase-copy.is-copied, .seed-phrase-copy.is-copied:not(:disabled),
 .seed-phrase-copy.is-copied:not(:disabled):hover { color: var(--ok); }
-.seed-phrase-copy:focus-visible { outline: 2px solid var(--selection-accent); outline-offset: 2px; }
 .dice-word-grid {
   --dice-word-rows: var(--dice-word-rows-wide);
   display: grid; grid-auto-flow: column; grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-template-rows: repeat(var(--dice-word-rows), minmax(34px, auto)); gap: 6px 10px;
   margin-top: var(--space-component); font-family: var(--mono); font-size: 13px;
 }
+/* The derived words are what the card produced, not something to press: no
+   edge and no rounded corner, which the controls above use to say they can be
+   pressed. The surface alone separates one word from the next. */
 .dice-word-slot {
-  min-width: 0; display: flex; align-items: center; gap: 6px; padding: 7px 9px;
-  border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2);
+  min-width: 0; display: flex; align-items: center; gap: 6px; padding: 8px 10px;
+  background: var(--surface-2);
 }
 .dice-word-number { flex: 0 0 auto; color: var(--muted); }
 .dice-word-value { min-width: 0; overflow-wrap: normal; word-break: normal; white-space: nowrap; color: var(--fg); }
@@ -892,7 +893,6 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
   background: var(--surface-2); color: var(--fg); font-size: 14px; font-weight: 600; cursor: pointer;
 }
 .network-picker-button:hover { border-color: var(--accent); }
-.network-picker-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* Sized with the download and GitHub marks either side of it, which are
    both 18px; the SVG's own 16px attribute leaves the coin reading small
    against them, label or no label. */
@@ -956,7 +956,6 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
   min-height: 40px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--bg); color: var(--fg); font-size: 13px; font-weight: 600; letter-spacing: 0.04em;
 }
-.locale-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* enhanced-inputs.js swaps the select for a custom listbox whose form chrome
    (44px minimum, control margin, mono face) would bulge out of the 52px bar.
    In the header the generated control wears the header-button sizing instead. */
@@ -970,23 +969,6 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
 }
 .theme-toggle svg { display: none; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .theme-toggle[data-theme-mode="dark"] .theme-icon-dark, .theme-toggle[data-theme-mode="light"] .theme-icon-light { display: block; }
-/* Saving to disk keeps its own colour, but takes the card's hover grammar:
-   the fill drops back to the page ground and the colour moves out to the
-   border and the label. --ok-bright rather than --ok, which is close enough
-   to olive that an edge and a label in it read as grey. Both its values are
-   theme-tuned, so the green clears AA on either ground. */
-.btn:is(.download-html, .save-recovery-sheet, .save-wallet-dat, .journal-download-action) {
-  border-color: color-mix(in oklab, var(--ok) 65%, var(--border));
-  background: color-mix(in oklab, var(--ok) 14%, var(--surface)); color: var(--ok);
-  transition: background-color .14s ease, border-color .14s ease, color .14s ease;
-}
-.btn:is(.download-html, .save-recovery-sheet, .save-wallet-dat, .journal-download-action):not(:disabled):hover {
-  border-color: var(--ok-bright);
-  background: var(--bg);
-  color: var(--ok-bright);
-}
-@media (prefers-reduced-motion: reduce) { .btn:is(.download-html, .save-recovery-sheet, .save-wallet-dat, .journal-download-action) { transition: none; } }
-.btn:is(.download-html, .save-recovery-sheet, .save-wallet-dat, .journal-download-action):focus-visible { outline: 2px solid var(--ok); outline-offset: 2px; }
 .github-mark { flex: 0 0 auto; }
 .custom-select-native {
   position: absolute !important; width: 1px !important; height: 1px !important; min-height: 0 !important;
@@ -999,29 +981,6 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
   background: var(--bg); color: var(--fg); text-align: left; cursor: pointer;
 }
 .custom-select-button:hover, .custom-select.open .custom-select-button { border-color: var(--accent); }
-/* The utility controls answer the pointer the way the action buttons do, and
-   the same way as each other: the fill drops back to the page ground and the
-   accent moves out to the border and the label. The network coin keeps its own
-   colour through this — it is painted with fill, not currentColor, so the
-   network it names still reads. Placed after each control's own hover rule,
-   which it ties with on specificity, so order is what decides. */
-.theme-toggle,
-.seed-keyboard-toggle,
-.network-picker-button,
-.locale-control .custom-select-button {
-  transition: background-color .14s ease, border-color .14s ease, color .14s ease;
-}
-.theme-toggle:hover,
-.seed-keyboard-toggle:hover,
-.network-picker-button:hover,
-.locale-control .custom-select-button:hover {
-  border-color: var(--selection-accent);
-  background: var(--bg);
-  color: var(--selection-accent-ink);
-}
-@media (prefers-reduced-motion: reduce) {
-  .theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button { transition: none; }
-}
 .custom-select-chevron {
   display: block; flex: 0 0 auto; width: 12px; height: 12px;
   fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round;
@@ -1079,7 +1038,6 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
    Both explicit light and system-light land on this attribute. */
 :root[data-theme="light"] .beta-warning-dismiss { color: var(--fg); }
 .beta-warning-dismiss:hover { background: color-mix(in oklab, var(--danger) 20%, transparent); }
-.beta-warning-dismiss:focus-visible { outline: 2px solid var(--danger); outline-offset: 2px; }
 .disclaimer-overlay {
   position: fixed; inset: 0; z-index: 200; display: grid; place-items: center;
   padding: 24px; box-sizing: border-box; background: rgb(0 0 0 / 55%);
@@ -1184,7 +1142,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .workspace-more[hidden] { display: none; }
 .workspace-more:hover { color: var(--fg); }
-.workspace-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.workspace-more:focus-visible { border-radius: 4px; }
 .workspace-tabs {
   display: flex; align-items: flex-end; gap: 0; min-width: 0; height: 50px;
   position: relative; z-index: 2; margin-bottom: -1px;
@@ -1212,7 +1170,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .workspace-tab.active {
   background: var(--bg); color: var(--fg); border-color: var(--border); border-bottom-color: var(--bg);
 }
-.workspace-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.workspace-tab:focus-visible { outline-offset: -3px; }
 /* Full names by default; the short forms wait for the narrow breakpoint, the
    same width at which the header drops its control labels. */
 .workspace-tab-short { display: none; }
@@ -1249,10 +1207,13 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 #calc-card:not(.is-result-view) #out,
 #msig-card:not(.is-result-view) #msig-out { display: none; }
 #msig-card.is-result-view .msig-lab { display: none; }
+/* A readout of the key that was derived: square and edgeless like the other
+   static surfaces, so the Edit control inside it is the only thing that reads
+   as pressable. */
 .key-summary {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  padding: 12px 14px; border: 1px solid var(--border); border-radius: 14px;
-  background: color-mix(in oklab, var(--surface-2) 70%, var(--bg));
+  padding: 12px 14px; border: 1px solid transparent;
+  background: color-mix(in oklab, var(--surface-2) 28%, var(--bg));
 }
 .key-summary-lifehash { flex: 0 0 auto; width: 72px; height: 72px; border-radius: 8px; image-rendering: pixelated; background: #fff; }
 .key-summary-lifehash[hidden] { display: none; }
@@ -1283,7 +1244,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   background: var(--surface-2); color: var(--fg); font-family: var(--mono); font-size: 13px; cursor: pointer;
 }
 .session-key-option:not(.active):hover { border-color: var(--accent); }
-.session-key-option:focus-visible { outline: 2px solid var(--selection-accent); outline-offset: 2px; }
 /* Selection is unmistakable: accent border and tint plus a check mark, so
    it does not rest on the border colour alone. */
 .session-key-option.active {
@@ -1338,9 +1298,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .segmented-control > .tab:is(.active, [aria-pressed="true"]) {
   z-index: 1; background: var(--selection-accent); border-color: var(--selection-accent); color: var(--selection-fg);
 }
-.segmented-control > .tab:focus-visible {
-  z-index: 2; outline: 2px solid color-mix(in oklab, var(--selection-accent) 72%, var(--fg)); outline-offset: 2px;
-}
+.segmented-control > .tab:focus-visible { z-index: 2; }
 /* The Cards mark's front face masks the rear one, so it has to carry whatever
    surface it is drawn on: the closed control's ground, the list's, and the
    tints the selected and hovered rows take. */
@@ -1492,12 +1450,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .journal-encrypt-option { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 700; cursor: pointer; }
 .journal-encrypt-option input { margin: 0; accent-color: var(--ok); }
 .journal-file-actions .journal-upload-action { margin-inline-start: auto; }
-.journal-file-actions .journal-upload-action {
-  border-color: color-mix(in oklab, var(--blue) 65%, var(--border));
-  background: color-mix(in oklab, var(--blue) 14%, var(--surface)); color: var(--blue);
-}
-.journal-file-actions .journal-upload-action:hover { background: color-mix(in oklab, var(--blue) 23%, var(--surface)); color: var(--fg); }
-.journal-file-actions .journal-upload-action:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .journal-notes-status { margin: 8px 0 0; }
 .journal-notes-status:empty { display: none; }
 .journal-keymanager-tab-strip { margin-top: 0; margin-bottom: -1px; }
@@ -1689,7 +1641,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .psbted-viz-tx:hover { border-color: var(--muted); }
 .psbted-viz-tx.is-open, .psbted-viz-tx.is-open:hover { border-color: var(--accent); }
-.psbted-viz-tx:focus-visible { outline: 2px solid var(--selection-accent); outline-offset: 2px; }
 .psbted-viz-txline { display: block; margin: 2px 0; overflow-wrap: anywhere; }
 .psbted-viz-feenum { font-family: var(--mono); }
 .psbted-viz-box { border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); padding: 8px 10px; font-size: 12px; }
@@ -1699,7 +1650,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   display: flex; gap: 8px; align-items: baseline; width: 100%; min-height: 0; margin: 0; padding: 0;
   border: none; border-radius: 4px; background: none; color: inherit; font-size: 12px; text-align: left;
 }
-.psbted-viz-open:focus-visible { outline: 2px solid var(--selection-accent); outline-offset: 2px; }
 .psbted-viz-idx { flex: none; color: var(--muted); font-family: var(--mono); font-size: 11px; }
 .psbted-viz-id { font-family: var(--mono); overflow-wrap: anywhere; }
 .psbted-viz-in { color: var(--blue); }
@@ -1729,7 +1679,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   text-align: left; overflow-wrap: anywhere; cursor: pointer;
 }
 .exp-cell:hover { background: var(--surface-2); border-color: var(--muted); }
-.exp-cell:focus-visible { outline: 2px solid var(--selection-accent); outline-offset: 1px; }
 .exp-len { color: var(--muted); font-size: 11px; white-space: nowrap; }
 /* The overlay mirrors the disclaimer gate: dimmed page, one centered card. */
 .exp-overlay {
@@ -1778,7 +1727,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   letter-spacing: 0.05em; cursor: pointer; vertical-align: middle;
 }
 .addr-qr:hover { color: var(--fg); }
-.addr-qr:focus-visible { outline: 2px solid var(--selection-accent); outline-offset: 1px; }
 .addr-qr-overlay {
   position: fixed; inset: 0; z-index: 200; display: grid; place-items: center;
   padding: 24px; box-sizing: border-box; background: rgb(0 0 0 / 55%);
@@ -1867,12 +1815,14 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   display: flex; flex-wrap: wrap; align-items: center; gap: 12px; max-width: 680px; margin-top: var(--space-component);
 }
 .master-fingerprint-heading { flex: 0 0 100%; margin: 0 0 -4px; }
+/* A readout, not a control: no edge and no rounded corner, like the seed-word
+   slots. The surface alone sets it off, and dimming it is what says the
+   fingerprint is unavailable. */
 .master-fingerprint-card {
   flex: 0 1 180px; min-width: 0; display: grid;
   grid-template-columns: minmax(0, 1fr) 40px; column-gap: 8px; row-gap: 2px;
-  align-items: center; padding: 10px 12px; border: 1px solid var(--border);
-  border-radius: 10px; background: var(--surface-2);
-  transition: background-color .16s ease, border-color .16s ease;
+  align-items: center; padding: 11px 13px; background: var(--surface-2);
+  transition: background-color .16s ease;
 }
 /* The fixed-size frame stays present while the fingerprint is unavailable, so
    resolving a LifeHash never changes the card height or shifts nearby fields. */
@@ -1893,10 +1843,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   font-size: 16px; font-weight: 700; line-height: 1.25; letter-spacing: .08em; white-space: nowrap;
   transition: color .16s ease, opacity .16s ease;
 }
-.master-fingerprint-card.is-disabled {
-  border-color: color-mix(in oklab, var(--border) 72%, var(--bg));
-  background: color-mix(in oklab, var(--surface-2) 62%, var(--bg));
-}
+.master-fingerprint-card.is-disabled { background: color-mix(in oklab, var(--surface-2) 62%, var(--bg)); }
 .master-fingerprint-card.is-disabled .master-fingerprint-label,
 .master-fingerprint-card.is-disabled .master-fingerprint-value {
   color: var(--faint); opacity: .58;
@@ -1939,7 +1886,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .derivation-advanced[open] summary::before { content: "\25BE"; }
 .derivation-advanced summary:hover { color: var(--fg); }
-.derivation-advanced summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 3px; }
+.derivation-advanced summary:focus-visible { outline-offset: 4px; border-radius: 3px; }
 /* Open, the toggle titles the block rather than standing off from it, and the
    block carries the space beneath itself instead. The gap under the toggle is
    the same either way — set on the summary itself — so opening the section
@@ -2032,7 +1979,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 @media (max-width: 520px) {
   .master-fingerprint-preview { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
   #calc-card .label.master-fingerprint-heading { margin: 0; }
-  .master-fingerprint-card { padding: 10px 12px; }
   .master-fingerprint-arrow { justify-self: center; transform: rotate(90deg); font-size: 22px; }
 }
 .last-word-field { flex: 1 1 260px; max-width: 420px; margin-top: 0 !important; }
@@ -2045,39 +1991,12 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   background: var(--scrollbar-thumb); border: 2px solid var(--surface); border-radius: 10px;
 }
 .last-word-field .custom-select-list::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
-.btn:is(.delete-key, .clear-current-action) {
-  flex: 0 0 auto; border-color: color-mix(in oklab, var(--danger) 65%, var(--border));
-  background: color-mix(in oklab, var(--danger) 14%, var(--surface-2)); color: var(--danger);
-}
-/* Inverted like the primary, in the colour that says what it does: the fill
-   drops to the page ground and the alert red takes the border and label.
-   --danger-bright rather than --danger, which is too muted to carry an
-   edge and a label on their own. */
-.btn:is(.delete-key, .clear-current-action):not(:disabled):hover { border-color: var(--danger-bright); background: var(--bg); color: var(--danger-bright); }
-.btn:is(.delete-key, .clear-current-action):focus-visible { outline: 2px solid var(--danger); outline-offset: 2px; }
-.btn:is(.delete-key, .clear-current-action):disabled {
-  cursor: not-allowed; opacity: .45; border-color: color-mix(in oklab, var(--danger) 30%, var(--border));
-  background: color-mix(in oklab, var(--danger) 6%, var(--surface-2)); color: color-mix(in oklab, var(--danger) 55%, var(--muted));
-}
+.clear-current-action { flex: 0 0 auto; }
 .tool-actions { margin-top: var(--space-component); }
 /* A card's closing actions are the things to press, so their labels carry the
    weight. On the row rather than on .btn, which the tabs share: a tab reads as
    a place you are, not an action you take. */
-.tool-actions .btn { font-weight: 700; transition: background-color .14s ease, border-color .14s ease, color .14s ease; }
-/* The closing actions answer to the pointer the same way — border and surface
-   both move — so a row of mixed button weights reads as one set of controls.
-   Buttons that already carry a meaning colour are left out: the destructive
-   red and the save-to-disk green say more than a shared accent would. */
-/* Every closing action inverts the same way: the fill drops back to the page
-   ground and the accent moves out to the border and the label, so the button
-   reads as itself outlined. One rule now serves the filled primary and the
-   quieter secondary — they differ at rest, not under the pointer. */
-.tool-actions .btn:not(:disabled):not(:is(.clear-current-action, .delete-key, .download-html, .save-recovery-sheet, .save-wallet-dat, .journal-download-action)):hover {
-  border-color: var(--selection-accent);
-  background: var(--bg);
-  color: var(--selection-accent-ink);
-}
-@media (prefers-reduced-motion: reduce) { .tool-actions .btn { transition: none; } }
+.tool-actions .btn, .disclaimer-card .btn { font-weight: 700; }
 .current-item-actions { align-items: center; width: 100%; }
 .current-item-actions .clear-current-action { margin-inline-start: auto; }
 .btn.primary[data-derivation-state="running"],
@@ -2107,7 +2026,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .msig-import { margin: 0 0 var(--space-section); padding: 0 0 var(--space-component); border-bottom: 1px solid var(--border); }
 .msig-import summary { width: fit-content; color: var(--muted); font-weight: 700; cursor: pointer; }
 .msig-import summary:hover { color: var(--fg); }
-.msig-import summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 3px; }
+.msig-import summary:focus-visible { outline-offset: 4px; border-radius: 3px; }
 .msig-import[open] summary { margin-bottom: var(--space-component); color: var(--fg); }
 .msig-import textarea { min-height: 72px; }
 .msig-import .btn { margin-top: var(--space-control); }
@@ -2133,9 +2052,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .msig-threshold-number::-webkit-inner-spin-button,
 .msig-threshold-number::-webkit-outer-spin-button { appearance: none; margin: 0; }
-.msig-threshold-number:focus-visible {
-  border-color: var(--fg); outline: 2px solid var(--selection-accent); outline-offset: 2px;
-}
+.msig-threshold-number:focus-visible { border-color: var(--fg); }
 .msig-threshold-slider {
   position: relative; height: 30px; margin: 0 var(--msig-slider-inset); touch-action: none; cursor: ew-resize;
 }
@@ -2162,7 +2079,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .msig-threshold-slider[data-active-handle="n"] .msig-threshold-thumb-n { z-index: 4; }
 .msig-threshold-slider:has(#msig-m:focus-visible) .msig-threshold-thumb-m,
 .msig-threshold-slider:has(#msig-n:focus-visible) .msig-threshold-thumb-n {
-  z-index: 5; border-color: var(--fg); outline: 2px solid var(--selection-accent); outline-offset: 2px;
+  z-index: 5; border-color: var(--fg);
   box-shadow: 0 2px 9px rgb(0 0 0 / .82); transform: translate(-50%, -50%) scale(1.06);
 }
 .msig-threshold-range {
@@ -2272,7 +2189,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   background: transparent; box-shadow: none; color: var(--muted); font-size: 28px; line-height: 1; cursor: pointer;
 }
 .add-key:not(:disabled):hover { background: transparent; color: var(--accent); }
-.add-key:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
+.add-key:focus-visible { outline-offset: -4px; }
 .add-key:not(:disabled):active { background: transparent; color: var(--accent); }
 /* The minus is disabled while a Station tab is selected. It
    drops to the border tone, which sits close to its ground in either theme,
@@ -2339,7 +2256,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   background: color-mix(in oklab, var(--surface-2) 60%, var(--bg));
 }
 .key-tab.is-lab { font-weight: 700; }
-.key-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.key-tab:focus-visible { outline-offset: -3px; }
 .account-tabs {
   display: flex; align-items: flex-end; gap: 0; height: 50px; margin: 14px 0 -1px;
   position: relative; z-index: 2; overflow-x: auto; overflow-y: hidden;
@@ -2360,7 +2277,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .account-tab.active {
   background: var(--surface); color: var(--fg); border-color: var(--border); border-bottom-color: var(--surface);
 }
-.account-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.account-tab:focus-visible { outline-offset: -3px; }
 #acct .account-result-card {
   margin-top: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
 }
@@ -2395,10 +2312,13 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .wallet-dat-birthday-help code { font-family: var(--mono); }
 .recovery-download-disclosure strong { color: var(--fg); }
 .wallet-result-messages {
-  margin-top: 18px; padding: 14px 16px; border: 1px solid color-mix(in oklab, var(--warn) 42%, var(--border));
-  border-radius: 12px; background: color-mix(in oklab, var(--warn) 6%, var(--bg));
+  margin-top: 18px; padding: 14px 16px; border: 1px solid var(--notice-edge, color-mix(in oklab, var(--warn) 42%, var(--border)));
+  border-radius: var(--notice-radius, 12px); background: color-mix(in oklab, var(--warn) 6%, var(--bg));
 }
-.wallet-result-messages h3 { margin: 0 0 8px; }
+.wallet-result-messages h3 { margin: 0 0 8px; color: var(--notice-title, inherit); }
+/* A warning that guards funds rather than informs: square, edged and titled
+   in the alert red. The notice supplies only these three values. */
+.wallet-result-messages.is-danger { --notice-edge: var(--danger-bright); --notice-radius: 0; --notice-title: var(--danger-bright); }
 .wallet-result-messages ul { display: grid; gap: 7px; margin: 0; padding-left: 20px; }
 .wallet-result-messages li { color: var(--muted); font-size: 13px; line-height: 1.5; }
 .address-match-field { margin: 22px 0 0; }
@@ -2432,7 +2352,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .wallet-table::-webkit-scrollbar-track { background: var(--surface); border-radius: 10px; }
 .wallet-table::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border: 2px solid var(--surface); border-radius: 10px; }
 .wallet-table thead { position: sticky; z-index: 1; top: 0; background: var(--surface); }
-.wallet-table:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+.wallet-table:focus-visible { outline-offset: 3px; border-radius: 4px; }
 .wallet-table table { min-width: max-content; }
 .wallet-table-public table { min-width: 700px; }
 .wallet-table-private table { min-width: 660px; }
@@ -2450,7 +2370,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   width: fit-content; color: var(--muted); font-weight: 700; cursor: pointer;
 }
 .wallet-advanced summary:hover { color: var(--fg); }
-.wallet-advanced summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 3px; }
+.wallet-advanced summary:focus-visible { outline-offset: 4px; border-radius: 3px; }
 .wallet-advanced[open] summary { margin-bottom: 12px; color: var(--fg); }
 .watch-only-note { color: var(--muted); }
 .watch-only-note strong { color: var(--fg); }
@@ -2509,8 +2429,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   .key-panel-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
   .key-panel-head > div:first-child { grid-column: 1 / -1; grid-row: 2; width: 100%; }
   .key-panel-head > .delete-key { grid-column: 2; grid-row: 1; justify-self: end; }
-  .seed-entry-tools { align-items: flex-start; }
-  .seed-autocomplete-note { display: block; margin-top: 2px; }
   .wallet-data-card { padding: 18px; }
   .wallet-private-section { padding: 13px; }
   .account-private-section { padding: 14px; }

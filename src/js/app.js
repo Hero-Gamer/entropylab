@@ -5487,7 +5487,7 @@ function hodlRenderKeyForm() {
       <div class="choice-grid entropy-format-grid">${formatChoices}</div>
       <p class="label" id="entropy-input-label">${format.label} entropy for a ${config.words}-word seed</p>
       ${hodlSeedMetaRowMarkup("entropy-meta", true, keyboardToggle)}
-      <div class="dice-input-shell entropy-input-shell"><pre class="dice-input-highlight" id="entropy-input-highlight" aria-hidden="true"></pre><textarea id="${inputId}" placeholder="${hodlT("Exactly {digits} {unit}", { digits: format.digits, unit: formatUnit })}" aria-labelledby="entropy-input-label" aria-describedby="entropy-meta" autocomplete="off" spellcheck="false" autocapitalize="${format.id === "base64" ? "off" : format.base > 10 ? "characters" : "off"}"></textarea></div>
+      <div class="dice-input-shell entropy-input-shell"><pre class="dice-input-highlight" id="entropy-input-highlight" aria-hidden="true"></pre><textarea id="${inputId}" placeholder="${hodlT("Exactly {digits} {unit}", { digits: format.digits, unit: formatUnit })}" aria-labelledby="entropy-input-label" aria-describedby="entropy-meta" autocomplete="off" spellcheck="false" autocapitalize="${usesKeyboard ? "off" : format.base > 10 ? "characters" : "off"}"></textarea></div>
       ${numberBaseKeyboard}
       ${entropyPad}
       ${["bin", "base4", "base8", "hex"].includes(format.id) ? hodlCalculationsSwitchMarkup("number-base", "number-base-calculations", hodlT("show how each BIP39 word number is calculated"), state?.showNumberBaseCalculations) : ""}

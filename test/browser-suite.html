@@ -779,6 +779,7 @@
     await chooseMode("Number bases");
     document.querySelector('input[name="entropy-format"][value="base32"]').click();
     const base32 = await until(() => document.getElementById("base32"), "Base32 input");
+    equal(base32.getAttribute("autocapitalize"), "off", "Base32 requested capitalization from the system keyboard");
     input(base32, "");
     const toggle = document.getElementById("base32-keyboard-toggle");
     const keyboard = document.getElementById("base32-keyboard");

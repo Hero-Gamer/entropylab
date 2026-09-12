@@ -985,7 +985,12 @@
     characterKey("/").click();
     equal(base64.value, "aA+/");
     input(base64, "A".repeat(42));
-    assert(document.getElementById("entropy-meta").textContent.includes("coin flip 1 of 4 · Heads (0) or Tails (1)"), "Base64 progress did not switch to coin-flip guidance");
+    const entropyMeta = document.getElementById("entropy-meta");
+    assert(entropyMeta.querySelector(".meta-cue.is-next")?.textContent === "Coin flip 1 of 4 · Heads (0) or Tails (1)", "Base64 progress did not switch to coin-flip guidance");
+    // An error takes line three from the next step until it is fixed.
+    input(base64, `${"A".repeat(42)}2`);
+    assert(entropyMeta.querySelector(".meta-cue.is-error") && !entropyMeta.querySelector(".meta-cue.is-next"), "A Base64 error did not replace the coin-flip guidance");
+    input(base64, "A".repeat(42));
     assert(!characterKey("0").disabled && !characterKey("1").disabled, "Base64 coin-flip keys were disabled");
     assert(characterKey("+").disabled, "Base64 symbol key remained enabled during the coin-flip phase");
     if (!keyboard.hidden) toggle.click();
@@ -2224,7 +2229,7 @@
     assert(!modes.querySelector(".tab"), "The segmented method row should be gone at every width");
     equal([...select.options].map((option) => option.value).join(","), "dice,cards,hex,seed,key");
     equal(select.getAttribute("aria-labelledby"), "key-method-label");
-    equal(document.getElementById("key-method-label").textContent, "Derivation Method");
+    equal(document.getElementById("key-method-label").textContent, "Derivation method");
     const root = modes.querySelector(".custom-select");
     assert(root, "The method select was not upgraded to the shared dropdown");
     const button = root.querySelector(".custom-select-button");
@@ -2498,7 +2503,7 @@
     const privateKey = document.getElementById("key");
     assert(toggle.getAttribute("aria-expanded") === "true" && !keyboard.hidden, "Private-key keyboard did not inherit the shared open state");
     assert(
-      Boolean(document.getElementById("private-key-input-help").compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING)
+      Boolean(document.getElementById("private-key-input-label").compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING)
         && Boolean(toggle.compareDocumentPosition(privateKey) & Node.DOCUMENT_POSITION_FOLLOWING),
       "Private-key keyboard toggle is not immediately above its input",
     );
@@ -2511,7 +2516,7 @@
     assert(hexKeypad && !hexKeypad.hidden, "Private key Hex did not show its two-row keypad");
     hexKeypad.querySelector('[data-seed-key="a"]').click();
     equal(privateKey.value, "a");
-    assert(privateMeta.textContent.includes("1 of 64 hexadecimal characters entered") && privateMeta.textContent.includes("63 remaining"), "Hex progress did not report entered and remaining characters");
+    assert(privateMeta.textContent.includes("1 of 64 hexadecimal characters entered") && !privateMeta.textContent.includes("remaining"), "Hex progress did not report the entered count on its own");
     equal(passphrase.value, "");
     const mode = keyboard.querySelector("[data-seed-keyboard-mode]");
     assert(mode.closest(".seed-keyboard-space-row").hidden, "The character-mode control remained visible for Hex");
@@ -2523,10 +2528,10 @@
     assert(privateMeta.textContent.includes("63 of 64 hexadecimal characters entered") && privateMeta.textContent.includes("1 invalid character highlighted"), "Invalid Hex progress was not descriptive");
     equal(privateHighlight.querySelector(".dice-roll-invalid")?.textContent, "g");
     input(privateKey, "1".repeat(65));
-    assert(privateMeta.textContent.includes("65 hexadecimal characters entered") && privateMeta.textContent.includes("1 extra highlighted"), "Excess Hex progress was not descriptive");
+    assert(privateMeta.textContent.includes("65 hexadecimal characters entered") && privateMeta.textContent.includes("1 extra character highlighted"), "Excess Hex progress was not descriptive");
     equal(privateHighlight.querySelector(".dice-roll-invalid")?.textContent, "1");
     input(privateKey, "0".repeat(63) + "1");
-    assert(privateMeta.classList.contains("ok") && privateMeta.textContent.includes("ready to derive"), "Complete Hex progress did not report ready");
+    assert(privateMeta.querySelector(".meta-cue:not(.is-error):not(.is-next)")?.textContent.includes("ready to derive"), "Complete Hex progress did not report ready");
     document.querySelector('input[name="kk"][value="wif"]').click();
     equal(privateKey.value, "", "Hex input leaked into the empty WIF input");
     privateKey.value = "0".repeat(63) + "1";
@@ -2573,14 +2578,19 @@
     const trimControl = document.querySelector("[data-brain-wallet-trim-control]");
     const trimToggle = document.getElementById("brain-wallet-trim");
     assert(trimControl && !trimControl.hidden && trimToggle && !trimToggle.checked, "Brain-wallet trimming was not visible and off by default");
+    // The keyboard toggle joins the trim switch row while it shows, and goes
+    // back to the progress line for the other formats.
+    const privateToggle = document.getElementById("private-keyboard-toggle");
+    assert(privateToggle.parentElement === trimControl, "The keyboard toggle did not join the brain-wallet trim row");
     assert([...keyboard.querySelectorAll("[data-seed-character-key]")].every((button) => !button.disabled), "Brain-wallet characters were restricted");
     assert(!keyboard.querySelector(".seed-keyboard-space").disabled, "Brain-wallet space was disabled");
     input(privateKey, " isolated brain wallet recovery phrase ");
-    assert(crypto.privateKeyInputIsValid() && privateMeta.textContent.includes("exact text will be used, including boundary whitespace"), "Exact brain-wallet text was not valid by default");
+    assert(crypto.privateKeyInputIsValid() && privateMeta.textContent.includes("Exact text will be used, including boundary whitespace"), "Exact brain-wallet text was not valid by default");
     trimToggle.click();
-    assert(trimToggle.checked && crypto.privateKeyInputIsValid() && privateMeta.textContent.includes("boundary whitespace will be trimmed"), "Opt-in brain-wallet trimming was not applied");
+    assert(trimToggle.checked && crypto.privateKeyInputIsValid() && privateMeta.textContent.includes("Boundary whitespace will be trimmed"), "Opt-in brain-wallet trimming was not applied");
     document.querySelector('input[name="kk"][value="wif"]').click();
     assert(trimControl.hidden, "Brain-wallet trimming remained visible for WIF");
+    assert(privateToggle.parentElement === privateMeta.parentElement, "The keyboard toggle did not return to the progress line for WIF");
     equal(privateKey.value, "K", "WIF input was not preserved separately from the brain-wallet input");
     document.querySelector('input[name="kk"][value="brain"]').click();
     assert(!trimControl.hidden && trimToggle.checked, "Brain-wallet trimming did not persist after switching formats");

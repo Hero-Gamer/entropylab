@@ -43,7 +43,11 @@ test("the workload derives from the same extraction as the sync check", async ()
   // The committed es catalog is partial by design; the invariants that must
   // hold regardless of how many keys are missing or awaiting post-merge
   // dead-key pruning after an English UI change:
-  assert.ok(Object.keys(keep).length > 800, "committed entries survive");
+  // Most of the committed catalog still matches live source text. A share
+  // rather than a fixed count: an English UI pass retires real entries, and the
+  // post-merge translation run refills them, so a hard floor fails on honest
+  // copy changes while saying nothing about the extraction being sound.
+  assert.ok(Object.keys(keep).length > Object.keys(catalog).length * 0.8, "most committed entries survive");
   assert.ok(Object.keys(keep).every((key) => sources.has(key)), "kept entries come from the shared source extraction");
   assert.equal(Object.keys(keep).length + dead, Object.keys(catalog).length, "every committed entry is retained or queued for dead-key pruning");
   for (const key of missing) assert.equal(typeof key, "string");

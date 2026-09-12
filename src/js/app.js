@@ -1364,7 +1364,7 @@ function hodlPrivateDataControls(descriptionId, scope = "wallet") {
       <input type="checkbox" id="reveal" ${hodlRevealPrivate ? "checked" : ""} aria-describedby="${descriptionId} recovery-sheet-disclosure" />
       <span>${hodlT("Show private recovery material")} <span class="reveal-private-toggle-note">${hodlT("(air-gap only)")}</span></span>
     </label>
-    <button class="btn secondary save-recovery-sheet" id="save" type="button" aria-describedby="recovery-sheet-disclosure">${downloadLabel}</button>
+    <button class="btn secondary green save-recovery-sheet" id="save" type="button" aria-describedby="recovery-sheet-disclosure">${downloadLabel}</button>
     ${hodlWalletDatControl(privateSheet)}
     <p class="recovery-download-disclosure" id="recovery-sheet-disclosure"><strong>${privateSheet ? hodlT("Private export:") : hodlT("Watch-only export:")}</strong> ${disclosure}</p>
   </div>`;
@@ -1381,10 +1381,10 @@ function hodlWalletDatControl(includePrivate) {
   // keys created at this moment and skips past history (faster, and reveals
   // no older activity to anyone who later sees the file). If a loaded wallet
   // looks empty, repair it with Bitcoin Core's `rescanblockchain 0`.
-  return `<label class="wallet-dat-birthday">${hodlT("Wallet birthday")} <select data-wallet-dat-birthday aria-describedby="wallet-dat-birthday-help"><option value="genesis"${hodlWalletDatBirthday === "genesis" ? " selected" : ""}>${hodlT("Recovering keys · scan from genesis")}</option><option value="now"${hodlWalletDatBirthday === "now" ? " selected" : ""}>${hodlT("New keys · created today")}</option></select></label><button class="btn secondary save-wallet-dat" id="download-wallet-dat" type="button" aria-describedby="recovery-sheet-disclosure wallet-dat-birthday-help">${hodlWalletExport.walletDatButtonLabel(withSecrets)}</button><p class="muted wallet-dat-birthday-help" id="wallet-dat-birthday-help">${hodlT("Bitcoin Core only auto-scans history back to the birthday. Choose “New keys” only for entropy created right now; recovering older keys with today's birthday can look empty until you run <code>rescanblockchain 0</code> in Bitcoin Core.")}</p>`;
+  return `<label class="wallet-dat-birthday">${hodlT("Wallet birthday")} <select data-wallet-dat-birthday aria-describedby="wallet-dat-birthday-help"><option value="genesis"${hodlWalletDatBirthday === "genesis" ? " selected" : ""}>${hodlT("Recovering keys · scan from genesis")}</option><option value="now"${hodlWalletDatBirthday === "now" ? " selected" : ""}>${hodlT("New keys · created today")}</option></select></label><button class="btn secondary green save-wallet-dat" id="download-wallet-dat" type="button" aria-describedby="recovery-sheet-disclosure wallet-dat-birthday-help">${hodlWalletExport.walletDatButtonLabel(withSecrets)}</button><p class="muted wallet-dat-birthday-help" id="wallet-dat-birthday-help">${hodlT("Bitcoin Core only auto-scans history back to the birthday. Choose “New keys” only for entropy created right now; recovering older keys with today's birthday can look empty until you run <code>rescanblockchain 0</code> in Bitcoin Core.")}</p>`;
 }
 function hodlSaveRecoveryControl() {
-  return `<div class="wallet-data-actions no-print"><button class="btn secondary save-recovery-sheet" id="save" type="button">${hodlT("Save watch-only sheet")}</button>${hodlWalletDatControl(false)}</div>`;
+  return `<div class="wallet-data-actions no-print"><button class="btn secondary green save-recovery-sheet" id="save" type="button">${hodlT("Save watch-only sheet")}</button>${hodlWalletDatControl(false)}</div>`;
 }
 function hodlWalletMessages(wallet, idPrefix) {
   let warnings = [...wallet.warnings || []].filter((message) => !wallet.passphraseUsed || hodlNoteKey(message) !== "note.passphraseInUse"), notes = [...wallet.notes || []];
@@ -2249,6 +2249,15 @@ function hodlNormalizeEntropyFormat(format) {
 function hodlEntropyFormatConfig(format, targetWords = hodlTargetWordCount) {
   let definition = hodlEntropyFormats[hodlNormalizeEntropyFormat(format)], seed = hodlSeedConfig(targetWords), fullDigits = Math.floor(seed.bits / definition.bitsPerDigit), remainderBits = seed.bits % definition.bitsPerDigit, digits = fullDigits + (remainderBits ? definition.binaryRemainder ? remainderBits : 1 : 0), finalBase = remainderBits ? 2 ** remainderBits : definition.base, finalCharacters = remainderBits ? definition.binaryRemainder ? "01" : definition.alphabet.slice(0, finalBase) : definition.alphabet;
   return { ...definition, digits, fullDigits, remainderBits, finalBase, finalCharacters, seed };
+}
+// The choice box for a base carries everything that tells it apart: its
+// description, what one character is worth where the description leaves that
+// unsaid, and, when the seed length leaves bits over, how the last ones are
+// entered.
+function hodlEntropyFormatDesc(format, targetWords = hodlTargetWordCount) {
+  let meta = hodlEntropyFormatConfig(format, targetWords), n = meta.remainderBits, parts = [meta.desc, meta.detail].filter(Boolean).map((text) => hodlT(text));
+  if (n) parts.push(meta.binaryRemainder ? hodlT(n === 1 ? "{full} complete {label} characters are followed by {n} individual coin-flip entropy bit." : "{full} complete {label} characters are followed by {n} individual coin-flip entropy bits.", { full: meta.fullDigits, label: hodlTText(meta.shortLabel), n }) : hodlT(n === 1 ? "The final character is mixed-radix: it contributes the remaining {n} entropy bit and must be one of {chars}." : "The final character is mixed-radix: it contributes the remaining {n} entropy bits and must be one of {chars}.", { n, chars: [...meta.finalCharacters].join(", ") }));
+  return parts.join(" ");
 }
 function hodlLooksExtendedKey(value) {
   return /^[xtyzuvYZUV][A-Za-z0-9]+$/.test(value.trim()) && value.trim().length > 80;
@@ -3702,11 +3711,13 @@ function hodlPassphraseBip39ToggleMarkup(checked = hodlPassphraseBip39Enabled())
 function hodlBrainWalletTrimEnabled() {
   return Boolean(document.getElementById("brain-wallet-trim")?.checked);
 }
+// Brain wallet only: the trim switch gets its own row between the progress
+// line and the field, and the row is what hides for the other formats.
 function hodlBrainWalletTrimToggleMarkup(checked = Boolean(hodlKeys[hodlActiveKey]?.brainWalletTrim)) {
-  return `<label class="seed-autocomplete-toggle switch-toggle brain-wallet-trim-toggle" data-brain-wallet-trim-control hidden><input type="checkbox" id="brain-wallet-trim" ${checked ? "checked" : ""} /><span class="label">Trim leading and trailing whitespace</span></label>`;
+  return `<div class="passphrase-keyboard-tools" data-brain-wallet-trim-control hidden>${hodlSwitchRowMarkup("brain-wallet-trim", hodlT("Trim leading and trailing whitespace"), { checked })}</div>`;
 }
 function hodlPrivateKeyKeyboardToggleMarkup() {
-  return `<div class="passphrase-keyboard-tools">${hodlBrainWalletTrimToggleMarkup()}${hodlKeyboardToggleMarkup("private-keyboard-toggle", "on-screen private key keyboard", "private-keyboard")}</div>`;
+  return hodlKeyboardToggleMarkup("private-keyboard-toggle", "on-screen private key keyboard", "private-keyboard");
 }
 function hodlBase64KeyboardToggleMarkup() {
   return hodlKeyboardToggleMarkup("base64-keyboard-toggle", "on-screen Base64 keyboard", "base64-keyboard");
@@ -3956,7 +3967,7 @@ function hodlBrainOutputMarkup(output = "scalar", acked = hodlBrainAcked(output)
       <label class="choice"><input type="radio" name="bo" value="scalar" ${hd ? "" : "checked"} /><span><strong>Single key pair</strong><span class="desc">The digest is the private key. One address, the original brain-wallet behaviour.</span></span></label>
       <label class="choice"><input type="radio" name="bo" value="hd" ${hd ? "checked" : ""} /><span><strong>HD wallet with seed phrase</strong><span class="desc">The digest is 256-bit BIP39 entropy for a 24-word seed. Not the same wallet as the single key pair.</span></span></label>
     </div>
-    <div class="wallet-result-messages" id="brain-warning" role="alert">
+    <div class="wallet-result-messages is-danger" id="brain-warning" role="alert">
       <h3>Brain wallet warning — read before use</h3>
       <ul>
         <li class="is-warning">SHA-256(text) is unsalted and fast. Guessable phrases are stolen coins.</li>
@@ -3967,7 +3978,7 @@ function hodlBrainOutputMarkup(output = "scalar", acked = hodlBrainAcked(output)
         <li class="is-warning" data-brain-hd-warning ${hd ? "" : "hidden"}>A valid mnemonic does not mean it is the same wallet as hashing the text as a private-key scalar.</li>
       </ul>
     </div>
-    <label class="choice"><input type="checkbox" id="brain-lab-ack" ${acked ? "checked" : ""} /><span><strong>I understand</strong><span class="desc">Required once this session, in page memory only.</span></span></label>
+    ${hodlSwitchRowMarkup("brain-lab-ack", hodlT("I understand"), { note: hodlT("Required once this session, in page memory only."), checked: acked })}
     <div id="brain-lab-zone" ${hd ? "" : "hidden"}>
       <p class="muted" id="brain-lab-help">UTF-8 text is hashed with SHA-256. The 32-byte digest is BIP39 entropy for a 24-word seed. Nothing is derived until you press Derive Key.</p>
       <p class="muted" id="brain-lab-hex" aria-live="polite">SHA-256 hex appears here. 24 words appear only after Derive Key.</p>
@@ -3990,7 +4001,13 @@ function hodlSyncBrainOutput() {
     item.hidden = output !== "hd";
   });
   let trimControl = document.querySelector("[data-brain-wallet-trim-control]");
-  if (trimControl) trimControl.hidden = !brain;
+  if (trimControl) {
+    trimControl.hidden = !brain;
+    // The keyboard toggle shares the row above the field with the trim switch
+    // when there is one, and with the progress line when there is not.
+    let keyboardToggle = document.getElementById("private-keyboard-toggle"), home = brain ? trimControl : document.getElementById("private-key-meta")?.parentElement;
+    if (keyboardToggle && home && keyboardToggle.parentElement !== home) home.append(keyboardToggle);
+  }
   let hex = document.getElementById("brain-lab-hex");
   if (!hex || !brain || output !== "hd") return;
   if (!acked) {
@@ -4558,34 +4575,40 @@ function hodlManualCalculationMarkup(method, value, targetWords = hodlTargetWord
   let title = method === "cards" ? "Direct card calculations" : method === "dplus" ? "D++ calculations" : "BitBox diceware calculations", note = method === "cards" ? "Ranks are mapped to zero-based values (A=0 through 8=7), then combined with radices 8, 8, 8, and 4." : method === "dplus" ? "D8 contributes 8 values and each hexadecimal D16 contributes 16 values, giving 8 × 16 × 16 = 2048 possible indices." : "Each D4 contributes one base-4 value and the final die contributes the coin bit, giving 4⁵ × 2 = 2048 possible indices.";
   return `<div class="manual-calculation-panel"><p class="label">${title}</p><p class="muted">${note}</p><div class="manual-calculation-list">${rows.map((row) => method === "dplus" || method === "cards" || method === "bitbox" ? `<div class="manual-calculation-row dplus-calculation-row"><div class="manual-calculation-heading"><span>Word ${row.number}</span><strong>${row.word || "incomplete"}</strong></div><div class="dplus-calculation-stages">${row.stages.map((stage) => `<div class="dplus-calculation-stage"><span>${stage.label}</span><strong>${stage.face}</strong><small>&rarr; ${stage.value} &times; ${stage.multiplier}</small><b>= ${stage.value * stage.multiplier}</b></div>`).join("")}</div><div class="dplus-calculation-sum"><span>${row.stages.map((stage) => stage.value * stage.multiplier).join(" + ")}</span><b>= BIP39 index ${row.index} &middot; word number ${row.index + 1}</b></div></div>` : `<div class="manual-calculation-row"><span>Word ${row.number}</span><strong>${row.word || "incomplete"}</strong><code>${row.formula}</code><b>BIP39 index ${row.index} · word number ${row.index + 1}</b></div>`).join("")}</div></div>`;
 }
-function hodlRenderManualCalculations(id, method, value, targetWords = hodlTargetWordCount) {
-  let panel = document.getElementById(id);
-  if (!panel) return;
+// The switch every checkbox in the card uses: a checkbox and its title on one
+// row, and an optional note under both that the checkbox points at. A
+// component supplies only its id, its words, and how the row sits: a class
+// for its container, and whether it starts hidden.
+function hodlSwitchRowMarkup(id, label, { note = "", checked = false, rowClass = "", hidden = false } = {}) {
+  return `<div class="switch-row${rowClass ? ` ${rowClass}` : ""}"${hidden ? " hidden" : ""}><label class="seed-autocomplete-toggle switch-toggle"><input type="checkbox" id="${id}"${note ? ` aria-describedby="${id}-note"` : ""}${checked ? " checked" : ""} /><span class="label">${label}</span></label>${note ? `<p class="seed-autocomplete-note switch-note" id="${id}-note">${note}</p>` : ""}</div>`;
+}
+// The "Show calculations" switch and the panel it opens, shared by every
+// method that can show its working. The row ships hidden, because a fresh
+// form runs no update, and the panel is its immediate next sibling so
+// hodlShowCalculations can find the row from the panel.
+function hodlCalculationsSwitchMarkup(name, panelId, note, checked) {
+  return `${hodlSwitchRowMarkup(`show-${name}-calculations`, hodlT("Show calculations"), { note, checked, rowClass: "manual-calculations-row", hidden: true })}<div id="${panelId}" class="manual-calculations-container" hidden></div>`;
+}
+function hodlShowCalculations(panel, markup, open) {
   // The switch answers to the calculations, not to the method: offering it
   // before the first complete word gives the reader a control that opens on
   // nothing. So the markup is built either way, and the row it lives in comes
   // and goes with it; only the panel below answers to the checkbox.
-  let markup = hodlManualCalculationMarkup(method, value, targetWords), row = panel.previousElementSibling;
+  let row = panel.previousElementSibling;
   if (row?.classList.contains("manual-calculations-row")) row.hidden = !markup;
-  panel.hidden = !hodlManualCalculationsOpen || !markup;
-  panel.innerHTML = hodlManualCalculationsOpen ? markup : "";
+  panel.hidden = !open || !markup;
+  panel.innerHTML = open ? markup : "";
+}
+function hodlRenderManualCalculations(id, method, value, targetWords = hodlTargetWordCount) {
+  let panel = document.getElementById(id);
+  if (!panel) return;
+  hodlShowCalculations(panel, hodlManualCalculationMarkup(method, value, targetWords), hodlManualCalculationsOpen);
 }
 function hodlRenderNumberBaseCalculations(value, format = "bin", targetWords = hodlTargetWordCount) {
   let panel = document.getElementById("number-base-calculations"), toggle = document.getElementById("show-number-base-calculations");
   if (!panel || !toggle) return;
-  let meta = hodlEntropyFormatConfig(format, targetWords), rows = toggle.checked ? hodlNumberBaseCalculationRows(value, meta.id, targetWords) : [], conversion = toggle.checked ? hodlNumberBaseBinaryConversionMarkup(value, meta) : "";
-  panel.hidden = !toggle.checked || !rows.length && !conversion;
-  if (!rows.length) {
-    panel.innerHTML = conversion;
-    return;
-  }
-  panel.innerHTML = `<p class="label">${meta.label} calculations</p><p class="muted">Each 11-bit group is interpreted as a big-endian binary integer. Multiply each bit by its bit weight, then sum the contributions to get the zero-based BIP39 index. The corresponding word number is the index plus 1.</p><div class="number-base-calculation-list">${rows.map((row) => `<div class="number-base-calculation" data-calculation-word="${row.number}"><div class="number-base-calculation-title"><span>Word ${row.number}</span><strong>${row.word || "incomplete"}</strong></div><div class="number-base-calculation-row"><span class="number-base-calculation-label">Bit weight</span><div class="number-base-calculation-powers">${row.terms.map((term) => `<span>${term.place}</span>`).join("")}</div></div><div class="number-base-calculation-row"><span class="number-base-calculation-label">Bit</span><div class="number-base-calculation-bits">${row.terms.map((term) => `<span>${term.bit}</span>`).join("")}</div></div><div class="number-base-calculation-row"><span class="number-base-calculation-label">Contribution</span><div class="number-base-calculation-products">${row.terms.map((term) => `<span>${term.value}</span>`).join("")}</div></div><div class="number-base-calculation-sum"><span>${row.terms.map((term) => term.value).join(" + ")} <b>=</b></span><span>BIP39 index <strong>${row.index}</strong></span><span>word number <strong>${row.index + 1}</strong></span></div></div>`).join("")}</div>`;
-  let list = panel.querySelector(".number-base-calculation-list");
-  if (list && conversion) {
-    let wrapper = document.createElement("div");
-    wrapper.innerHTML = conversion;
-    panel.insertBefore(wrapper.firstElementChild, list);
-  }
+  let meta = hodlEntropyFormatConfig(format, targetWords), rows = hodlNumberBaseCalculationRows(value, meta.id, targetWords);
+  hodlShowCalculations(panel, rows.length ? `<p class="label">${meta.label} calculations</p><p class="muted">Each 11-bit group is interpreted as a big-endian binary integer. Multiply each bit by its bit weight, then sum the contributions to get the zero-based BIP39 index. The corresponding word number is the index plus 1.</p>${hodlNumberBaseBinaryConversionMarkup(value, meta)}<div class="number-base-calculation-list">${rows.map((row) => `<div class="number-base-calculation" data-calculation-word="${row.number}"><div class="number-base-calculation-title"><span>Word ${row.number}</span><strong>${row.word || "incomplete"}</strong></div><div class="number-base-calculation-row"><span class="number-base-calculation-label">Bit weight</span><div class="number-base-calculation-powers">${row.terms.map((term) => `<span>${term.place}</span>`).join("")}</div></div><div class="number-base-calculation-row"><span class="number-base-calculation-label">Bit</span><div class="number-base-calculation-bits">${row.terms.map((term) => `<span>${term.bit}</span>`).join("")}</div></div><div class="number-base-calculation-row"><span class="number-base-calculation-label">Contribution</span><div class="number-base-calculation-products">${row.terms.map((term) => `<span>${term.value}</span>`).join("")}</div></div><div class="number-base-calculation-sum"><span>${row.terms.map((term) => term.value).join(" + ")} <b>=</b></span><span>BIP39 index <strong>${row.index}</strong></span><span>word number <strong>${row.index + 1}</strong></span></div></div>`).join("")}</div>` : "", toggle.checked);
 }
 function hodlHexPreviewWords(value, targetWords = hodlTargetWordCount) {
   return hodlNumberBasePreviewWords(value, "hex", targetWords);
@@ -4953,8 +4976,10 @@ function hodlGlobalSyncMinimumBits() {
 function hodlCopiedIconMarkup() {
   return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path class="seed-copy-icon-board" d="M20 6 9 17l-5-5"/></svg>`;
 }
-function hodlSeedMetaRowMarkup(metaId, live = false) {
-  return `<div class="seed-word-meta"><p class="muted" id="${metaId}"${live ? ' aria-live="polite"' : ""}></p></div>`;
+// The progress line, with room at its right for a control that belongs to the
+// field below it, the way the passphrase keyboard toggle sits above its input.
+function hodlSeedMetaRowMarkup(metaId, live = false, trailing = "") {
+  return `<div class="seed-word-meta"><p class="muted" id="${metaId}"${live ? ' aria-live="polite"' : ""}></p>${trailing}</div>`;
 }
 // A dice progress line is a stack of short sentences, each carrying at most one
 // live number. The number takes colour and weight from whether the target is
@@ -5002,10 +5027,23 @@ function hodlRenderMeta(id, lines, tail) {
   if (tail) nodes.push(document.createTextNode(tail));
   hodlElement("#" + id).replaceChildren(...nodes);
 }
-// The title the derived words sit under, sharing its row with the copy button.
-// One builder, so every entry method that derives a phrase titles it the same.
+// The Seed phrase progress line: the count, coloured against the phrase
+// length, then at most one cue, the way the dice and card lines read. Past the
+// phrase length the count stops reading "N of M" and names both numbers.
+function hodlRenderSeedProgress(id, unit, entered, words, cue = null) {
+  let count = entered > words ? hodlTText("{entered} entered · {words} required", { entered: hodlMetaToken, words }) : hodlTText(unit === "numbers" ? "{entered} of {words} BIP39 word numbers entered" : "{entered} of {words} BIP39 words entered", { entered: hodlMetaToken, words });
+  hodlRenderMeta(id, [[count, hodlMetaValue(String(entered), entered === words)], ...(cue ? [[hodlMetaToken, cue]] : [])]);
+  // The count and the cue carry the colour, so the block keeps its own.
+  hodlElement("#" + id).className = "muted";
+}
+// The title a word grid sits under, sharing its row with the copy button. One
+// builder, so every entry method titles its phrase the same way; only the
+// words differ, between a phrase derived from entropy and one typed in.
+function hodlSeedPhraseRowMarkup(title) {
+  return hodlSeedCopyRowMarkup(`<p class="label">${title}</p>`);
+}
 function hodlDerivedSeedRowMarkup() {
-  return hodlSeedCopyRowMarkup(`<p class="label">${hodlT("Derived seed phrase")}</p>`);
+  return hodlSeedPhraseRowMarkup(hodlT("Derived seed phrase"));
 }
 function hodlSeedCopyRowMarkup(leading = "") {
   return `<div class="seed-word-copy-row">${leading}<span class="seed-phrase-copied" aria-live="polite"></span><button type="button" class="seed-phrase-copy" data-copy-seed-phrase disabled aria-label="${hodlT("Copy seed phrase")}" title="${hodlT("Copy seed phrase")}">${hodlClipboardIconMarkup()}</button></div>`;
@@ -5088,14 +5126,24 @@ function hodlRenderDiceWordGrid(container, words, targetWords = hodlTargetWordCo
   }
 }
 function hodlUpdateEntropyInput(input, format, targetWords = hodlTargetWordCount) {
-  let config = hodlSeedConfig(targetWords), analysis = hodlRenderEntropyInputState(input, format, config.words), definition = analysis.meta, meta = document.getElementById("entropy-meta"), words = hodlNumberBasePreviewWords(input.value, definition.id, config.words), wordsBox = document.getElementById("entropy-words"), coinPhase = Boolean(definition.binaryRemainder && definition.remainderBits && analysis.count >= definition.fullDigits), coinFlipsEntered = coinPhase ? Math.min(definition.remainderBits, Math.max(0, analysis.count - definition.fullDigits)) : 0, status = coinPhase ? analysis.ready ? `${definition.fullDigits} ${definition.shortLabel} characters complete \xB7 ${coinFlipsEntered} of ${definition.remainderBits} coin flips entered` : `${definition.fullDigits} ${definition.shortLabel} characters complete \xB7 coin flip ${Math.min(definition.remainderBits, coinFlipsEntered + 1)} of ${definition.remainderBits} \xB7 Heads (0) or Tails (1)` : `${analysis.count} of ${analysis.limit} ${definition.unit} \xB7 ${words.length} of ${config.words} seed words filled`;
-  if (analysis.invalidCharacterCount) status += ` \xB7 ${analysis.invalidCharacterCount} invalid character${analysis.invalidCharacterCount === 1 ? "" : "s"} highlighted`;
-  if (analysis.finalInvalid) status += definition.binaryRemainder ? ` \xB7 final ${definition.remainderBits} entropy bits must each be 0 or 1` : ` \xB7 final ${definition.remainderBits}-bit character must be one of ${[...definition.finalCharacters].join(", ")}`;
-  if (analysis.excessCount) status += ` \xB7 ${analysis.excessCount} extra highlighted \xB7 remove to continue`;
-  if (analysis.ready) status += " \xB7 ready to derive";
+  let config = hodlSeedConfig(targetWords), analysis = hodlRenderEntropyInputState(input, format, config.words), definition = analysis.meta, meta = document.getElementById("entropy-meta"), words = hodlNumberBasePreviewWords(input.value, definition.id, config.words), wordsBox = document.getElementById("entropy-words"), coinPhase = Boolean(definition.binaryRemainder && definition.remainderBits && analysis.count >= definition.fullDigits), coinFlipsEntered = coinPhase ? Math.min(definition.remainderBits, Math.max(0, analysis.count - definition.fullDigits)) : 0;
+  // Characters then seed words, each its own line with its number coloured:
+  // red while short, green once met. Line three is either what is wrong with
+  // the input, in red, or the next coin flip, in orange, never both: the shape
+  // the dice and card lines use.
+  let errors = [];
+  if (analysis.invalidCharacterCount) errors.push(hodlTText(analysis.invalidCharacterCount === 1 ? "{n} invalid character highlighted" : "{n} invalid characters highlighted", { n: analysis.invalidCharacterCount }));
+  if (analysis.finalInvalid) errors.push(definition.binaryRemainder ? hodlTText(definition.remainderBits === 1 ? "The final {n} entropy bit must be 0 or 1" : "The final {n} entropy bits must each be 0 or 1", { n: definition.remainderBits }) : hodlTText("The final {n}-bit character must be one of {chars}", { n: definition.remainderBits, chars: [...definition.finalCharacters].join(", ") }));
+  if (analysis.excessCount) errors.push(hodlTText(analysis.excessCount === 1 ? "{n} extra character highlighted · remove it to continue" : "{n} extra characters highlighted · remove them to continue", { n: analysis.excessCount }));
+  let next = coinPhase && !analysis.ready ? hodlTText("Coin flip {n} of {total} · Heads (0) or Tails (1)", { n: Math.min(definition.remainderBits, coinFlipsEntered + 1), total: definition.remainderBits }) : "";
   if (meta) {
-    meta.textContent = status;
-    meta.className = "muted" + (analysis.ready ? " ok" : analysis.invalidRanges.length ? " err" : "");
+    hodlRenderMeta("entropy-meta", [
+      [hodlTText("{have} of {need} {unit}", { have: hodlMetaToken, need: analysis.limit, unit: hodlTText(definition.unit) }), hodlMetaValue(String(analysis.count), analysis.count === analysis.limit)],
+      [hodlTText("{have} of {words} seed words filled", { have: hodlMetaToken, words: config.words }), hodlMetaValue(String(words.length), words.length === config.words)],
+      ...(errors.length ? errors.map((error) => [hodlMetaToken, hodlMetaCue(error, "error")]) : next ? [[hodlMetaToken, hodlMetaCue(next, "next")]] : []),
+    ]);
+    // The values and the cue carry the colour, so the block keeps its own.
+    meta.className = "muted";
   }
   hodlRenderDiceWordGrid(wordsBox, words, config.words, false);
   hodlRenderNumberBaseCalculations(input.value, definition.id, config.words);
@@ -5254,7 +5302,7 @@ function hodlRenderKeyForm() {
       ${hodlSeedMetaRowMarkup("dice-meta", true)}
       <div class="dice-input-shell"><pre class="dice-input-highlight" id="dice-highlight" aria-hidden="true"></pre><textarea id="dice" placeholder="${dicePlaceholder}" aria-describedby="dice-meta"></textarea></div>
       ${dicePad}
-      ${hodlDiceMethod === "bitbox" || hodlDiceMethod === "dplus" ? `<div class="switch-row manual-calculations-row" hidden><label class="seed-autocomplete-toggle switch-toggle manual-calculations-toggle"><input type="checkbox" id="show-manual-calculations" aria-describedby="manual-calculations-note" ${hodlManualCalculationsOpen ? "checked" : ""} /><span class="label">${hodlT("Show calculations")}</span></label><p class="seed-autocomplete-note switch-note" id="manual-calculations-note">${hodlT("show how direct word selection produces each BIP39 index")}</p></div><div id="dice-manual-calculations" class="manual-calculations-container" hidden></div>` : ""}
+      ${hodlDiceMethod === "bitbox" || hodlDiceMethod === "dplus" ? hodlCalculationsSwitchMarkup("manual", "dice-manual-calculations", hodlT("show how direct word selection produces each BIP39 index"), hodlManualCalculationsOpen) : ""}
       <div class="dice-fairness-row" hidden>${hodlDiceFairnessToggleMarkup(hodlKeys[hodlActiveKey]?.showDiceFairness)}</div>
       <aside id="dice-fairness" class="dice-fairness" hidden role="status" aria-live="polite"></aside>
       ${hodlDerivedSeedRowMarkup()}
@@ -5337,7 +5385,7 @@ function hodlRenderKeyForm() {
       <div class="card-controls-row"><label class="seed-autocomplete-toggle switch-toggle card-visibility-toggle"><input type="checkbox" id="show-cards" aria-controls="dealt-cards" ${showCards ? "checked" : ""} /><span class="label">${hodlT("Show cards")}</span></label><button class="card-undo-button seed-keyboard-delete" id="card-undo" type="button" aria-label="${hodlT("Undo last card")}" title="${hodlT("Undo last card")}" disabled><svg viewBox="0 0 24 18" aria-hidden="true" focusable="false"><path d="M9 2h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9L2 9l7-7Z"/><path d="m12 6 6 6m0-6-6 6"/></svg><span>${hodlT("Undo")}</span></button></div>
       <aside class="cards-reshuffle" id="cards-reshuffle" hidden></aside>
       <div class="dealt-cards" id="dealt-cards" aria-live="polite"${showCards ? "" : " hidden"}></div>
-      ${direct ? `<div class="switch-row manual-calculations-row" hidden><label class="seed-autocomplete-toggle switch-toggle manual-calculations-toggle"><input type="checkbox" id="show-manual-calculations" aria-describedby="manual-calculations-note" ${hodlManualCalculationsOpen ? "checked" : ""} /><span class="label">${hodlT("Show calculations")}</span></label><p class="seed-autocomplete-note switch-note" id="manual-calculations-note">${hodlT("show how direct card selection produces each BIP39 index")}</p></div><div id="cards-manual-calculations" class="manual-calculations-container" hidden></div>` : ""}
+      ${direct ? hodlCalculationsSwitchMarkup("manual", "cards-manual-calculations", hodlT("show how direct card selection produces each BIP39 index"), hodlManualCalculationsOpen) : ""}
       ${hodlDerivedSeedRowMarkup()}
       <div id="dice-words" class="dice-word-grid" aria-label="${hodlT("{n} seed-word slots", { n: config.words })}"></div>
     `;
@@ -5428,25 +5476,22 @@ function hodlRenderKeyForm() {
   if (hodlKeyMode === "hex") {
     let state = hodlKeys[hodlActiveKey], format = hodlEntropyFormatConfig(hodlEntropyFormat, config.words), inputId = format.id;
     let formatChoices = ["bin", "base4", "base8", "hex", "base32", "base64"].map((id) => {
-      return `<label class="choice"><input type="radio" name="entropy-format" value="${id}" ${format.id === id ? "checked" : ""} /><span><strong>${hodlT(hodlHexFormatLabels[id].label)}</strong><span class="desc">${hodlT(hodlHexFormatLabels[id].desc)}</span></span></label>`;
+      return `<label class="choice"><input type="radio" name="entropy-format" value="${id}" ${format.id === id ? "checked" : ""} /><span><strong>${hodlT(hodlHexFormatLabels[id].label)}</strong><span class="desc">${hodlEntropyFormatDesc(id, config.words)}</span></span></label>`;
     }).join("");
     let formatLabel = hodlT(format.label), formatShort = hodlT(format.shortLabel), formatUnit = hodlT(format.unit);
     let usesKeyboard = format.id === "base32" || format.id === "base64";
     let entropyPad = usesKeyboard ? "" : `<div class="dice-input-pad entropy-keypad entropy-keypad-${format.id}" role="group" aria-label="${hodlT("{label} keypad", { label: formatLabel })}">${[...format.alphabet].map((character) => `<button type="button"${format.id === "bin" ? ' class="coin-button"' : ""} data-entropy-digit="${character}" aria-label="${format.id === "bin" ? character === "0" ? hodlT("Enter Heads as binary 0") : hodlT("Enter Tails as binary 1") : hodlT("Enter {shortLabel} {character}", { shortLabel: formatShort, character })}">${format.id === "bin" ? character === "0" ? hodlT("Heads (0)") : hodlT("Tails (1)") : character}</button>`).join("")}</div>`;
-    let remainderHelp = format.remainderBits ? format.binaryRemainder ? hodlT(" Enter {fullDigits} complete {shortLabel} characters; the controls and progress message then switch to {n} coin flip(s), using Heads (0) or Tails (1).", { fullDigits: format.fullDigits, shortLabel: formatShort, n: format.remainderBits }) : hodlT(" The final character is mixed-radix: it contributes only {n} bit(s) and must be one of {chars}.", { n: format.remainderBits, chars: [...format.finalCharacters].join(", ") }) : "", keyboardTools = format.id === "base32" ? `<div class="seed-entry-tools base64-entry-tools">${hodlBase32KeyboardToggleMarkup()}</div>` : format.id === "base64" ? `<div class="seed-entry-tools base64-entry-tools">${hodlBase64KeyboardToggleMarkup()}</div>` : "", numberBaseKeyboard = format.id === "base32" ? hodlBase32KeyboardMarkup() : format.id === "base64" ? hodlBase64KeyboardMarkup() : "";
+    let keyboardToggle = format.id === "base32" ? hodlBase32KeyboardToggleMarkup() : format.id === "base64" ? hodlBase64KeyboardToggleMarkup() : "", numberBaseKeyboard = format.id === "base32" ? hodlBase32KeyboardMarkup() : format.id === "base64" ? hodlBase64KeyboardMarkup() : "";
     hodlFormEl.innerHTML = `
-      <p class="label">${hodlT("Number base")}</p>
+      <p class="label">${hodlT("Number base options")}</p>
       <div class="choice-grid entropy-format-grid">${formatChoices}</div>
-      ${["bin", "base4", "base8", "hex"].includes(format.id) ? `<label class="seed-autocomplete-toggle number-base-calculations-toggle"><input type="checkbox" id="show-number-base-calculations" ${state?.showNumberBaseCalculations ? "checked" : ""} /><span><strong>${hodlT("Show calculations")}</strong> <span class="seed-autocomplete-note">${hodlT("(show how each BIP39 word number is calculated)")}</span></span></label>` : ""}
       <p class="label" id="entropy-input-label">${format.label} entropy for a ${config.words}-word seed</p>
-      <p class="muted" id="entropy-input-help">Each complete ${format.shortLabel} character contributes ${format.bitsPerDigit} bit${format.bitsPerDigit === 1 ? "" : "s"}${format.binaryRemainder ? "" : " except for a mixed-radix final character when needed"}. Seed-word cards fill as enough bits arrive; the checksum-derived final word appears when all ${format.digits} characters are entered.${format.id === "bin" ? " Spaces are added every 11 bits." : ""}${remainderHelp} No generator \u2014 enter entropy you already created.</p>
-      ${keyboardTools}
-      <div class="dice-input-shell entropy-input-shell"><pre class="dice-input-highlight" id="entropy-input-highlight" aria-hidden="true"></pre><textarea id="${inputId}" placeholder="${hodlT("Exactly {digits} {unit}", { digits: format.digits, unit: formatUnit })}" aria-labelledby="entropy-input-label" aria-describedby="entropy-input-help entropy-meta" autocomplete="off" spellcheck="false" autocapitalize="${usesKeyboard ? "off" : format.base > 10 ? "characters" : "off"}"></textarea></div>
-      ${hodlSeedMetaRowMarkup("entropy-meta", true)}
+      ${hodlSeedMetaRowMarkup("entropy-meta", true, keyboardToggle)}
+      <div class="dice-input-shell entropy-input-shell"><pre class="dice-input-highlight" id="entropy-input-highlight" aria-hidden="true"></pre><textarea id="${inputId}" placeholder="${hodlT("Exactly {digits} {unit}", { digits: format.digits, unit: formatUnit })}" aria-labelledby="entropy-input-label" aria-describedby="entropy-meta" autocomplete="off" spellcheck="false" autocapitalize="${format.id === "base64" ? "off" : format.base > 10 ? "characters" : "off"}"></textarea></div>
       ${numberBaseKeyboard}
       ${entropyPad}
-      <div id="number-base-calculations" class="number-base-calculations-panel" hidden></div>
-      ${hodlSeedCopyRowMarkup()}
+      ${["bin", "base4", "base8", "hex"].includes(format.id) ? hodlCalculationsSwitchMarkup("number-base", "number-base-calculations", hodlT("show how each BIP39 word number is calculated"), state?.showNumberBaseCalculations) : ""}
+      ${hodlDerivedSeedRowMarkup()}
       <div id="entropy-words" class="dice-word-grid" aria-label="${hodlT("{n} seed-word slots", { n: config.words })}"></div>`;
     hodlFormEl.querySelectorAll('input[name="entropy-format"]').forEach((radio) => {
       radio.onchange = () => {
@@ -5482,7 +5527,7 @@ function hodlRenderKeyForm() {
     return;
   }
   if (hodlKeyMode === "seed") {
-    let state = hodlKeys[hodlActiveKey], autocompleteEnabled = Boolean(state?.seedAutocomplete), numbers = hodlSeedMethod === "numbers", choices = `<p class="label">${hodlT("Seed phrase format")}</p><div class="choice-grid seed-method-grid"><label class="choice"><input type="radio" name="seed-method" value="words" ${numbers ? "" : "checked"} /><span><strong>${hodlT("Direct word entry")}</strong><span class="desc">${hodlT("Type or paste the English BIP39 words themselves.")}</span></span></label><label class="choice"><input type="radio" name="seed-method" value="numbers" ${numbers ? "checked" : ""} /><span><strong>${hodlT("BIP39 word numbers")}</strong><span class="desc">${hodlT("Enter each word's position in the standard English list, using 1 through 2048 by default.")}</span></span></label></div>`;
+    let state = hodlKeys[hodlActiveKey], autocompleteEnabled = Boolean(state?.seedAutocomplete), numbers = hodlSeedMethod === "numbers", choices = `<p class="label">${hodlT("Seed phrase format")}</p><div class="choice-grid seed-method-grid"><label class="choice"><input type="radio" name="seed-method" value="words" ${numbers ? "" : "checked"} /><span><strong>${hodlT("Direct word entry")}</strong><span class="desc">${hodlT("Type or paste the English BIP39 words themselves.")} ${hodlT("An extended key can be pasted too. With {n} words entered, the final checksum word can be chosen from a list.", { n: config.partialWords })}</span></span></label><label class="choice"><input type="radio" name="seed-method" value="numbers" ${numbers ? "checked" : ""} /><span><strong>${hodlT("BIP39 word numbers")}</strong><span class="desc">${hodlT("Enter each word's position in the standard English list, using 1 through 2048 by default.")}</span></span></label></div>`;
     let bindMethodChoices = (input) => hodlFormEl.querySelectorAll('input[name="seed-method"]').forEach((radio) => {
       radio.onchange = () => {
         if (!radio.checked) return;
@@ -5508,28 +5553,17 @@ function hodlRenderKeyForm() {
       };
     });
     if (numbers) {
-      let range = hodlT(hodlSeedZeroIndexed ? "0 through 2047" : "1 through 2048");
-      hodlFormEl.innerHTML = `${choices}<p class="label" id="seed-number-label">${hodlT("Your {words} BIP39 word numbers", { words: config.words })}</p><p class="muted" id="seed-number-help">${hodlT("Enter one {range} number for each word, separated by spaces. The corresponding BIP39 words appear below.", { range })}</p><label class="seed-autocomplete-toggle seed-zero-index-toggle"><input type="checkbox" id="seed-zero-index" ${hodlSeedZeroIndexed ? "checked" : ""} /><span><strong>${hodlT("Use zero-indexed word numbers")}</strong> <span class="seed-autocomplete-note">${hodlT("(0–2047 instead of the default 1–2048)")}</span></span></label><div class="dice-input-shell seed-number-input-shell"><pre class="dice-input-highlight" id="seed-number-highlight" aria-hidden="true"></pre><textarea id="seed-numbers" inputmode="numeric" placeholder="${hodlT(hodlSeedZeroIndexed ? "0 1 2 …" : "1 2 3 …")}" aria-labelledby="seed-number-label" aria-describedby="seed-number-help seed-number-meta" autocomplete="off" spellcheck="false"></textarea></div>${hodlSeedMetaRowMarkup("seed-number-meta", true)}<div class="dice-input-pad seed-number-pad" role="group" aria-label="${hodlT("BIP39 word number keypad")}">${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => `<button type="button" data-seed-number-digit="${digit}" aria-label="${hodlT("Enter {n}", { n: digit })}">${digit}</button>`).join("")}<button type="button" class="seed-keyboard-delete seed-number-delete" data-seed-number-delete aria-label="${hodlT("Delete previous digit")}"><svg viewBox="0 0 24 18" aria-hidden="true" focusable="false"><path d="M9 2h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9L2 9l7-7Z"/><path d="m12 6 6 6m0-6-6 6"/></svg></button><button type="button" class="seed-number-next" data-seed-number-space>${hodlT("Next word")}</button></div>${hodlSeedCopyRowMarkup()}<div id="seed-number-words" class="dice-word-grid" aria-label="${hodlT("{n} seed-word slots", { n: config.words })}"></div>`;
+      hodlFormEl.innerHTML = `${choices}<p class="label" id="seed-number-label">${hodlT("Your {words} BIP39 word numbers", { words: config.words })}</p>${hodlSeedMetaRowMarkup("seed-number-meta", true)}<div class="passphrase-keyboard-tools">${hodlSwitchRowMarkup("seed-zero-index", hodlT("Use zero-indexed word numbers"), { note: hodlT("0–2047 instead of the default 1–2048"), checked: hodlSeedZeroIndexed })}</div><div class="dice-input-shell seed-number-input-shell"><pre class="dice-input-highlight" id="seed-number-highlight" aria-hidden="true"></pre><textarea id="seed-numbers" inputmode="numeric" placeholder="${hodlT(hodlSeedZeroIndexed ? "0 1 2 …" : "1 2 3 …")}" aria-labelledby="seed-number-label" aria-describedby="seed-number-meta" autocomplete="off" spellcheck="false"></textarea></div><div class="dice-input-pad seed-number-pad" role="group" aria-label="${hodlT("BIP39 word number keypad")}">${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => `<button type="button" data-seed-number-digit="${digit}" aria-label="${hodlT("Enter {n}", { n: digit })}">${digit}</button>`).join("")}<button type="button" class="seed-keyboard-delete seed-number-delete" data-seed-number-delete aria-label="${hodlT("Delete previous digit")}"><svg viewBox="0 0 24 18" aria-hidden="true" focusable="false"><path d="M9 2h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9L2 9l7-7Z"/><path d="m12 6 6 6m0-6-6 6"/></svg></button><button type="button" class="seed-number-next" data-seed-number-space>${hodlT("Next word")}</button></div>${hodlSeedPhraseRowMarkup(hodlT("Your seed phrase"))}<div id="seed-number-words" class="dice-word-grid" aria-label="${hodlT("{n} seed-word slots", { n: config.words })}"></div>`;
       let input = document.getElementById("seed-numbers"), update = () => {
-        let parsed = hodlRenderSeedNumberInputState(input, config.words, hodlSeedZeroIndexed), meta = hodlElement("#seed-number-meta"), entered = parsed.entries.length, progress = hodlT("{entered} of {words} BIP39 word numbers entered", { entered, words: config.words }), remaining = Math.max(0, config.words - entered);
+        let parsed = hodlRenderSeedNumberInputState(input, config.words, hodlSeedZeroIndexed), entered = parsed.entries.length, cue = null;
         hodlRenderDiceWordGrid(document.getElementById("seed-number-words"), parsed.wordSlots, config.words, false);
-        if (parsed.extraEntries.length) {
-          meta.textContent = hodlTText("{entered} entered · {words} required · {n} extra highlighted · remove to continue", { entered, words: config.words, n: parsed.extraEntries.length });
-          meta.className = "muted err";
-        } else if (parsed.invalidEntries.length) {
+        if (parsed.extraEntries.length) cue = hodlMetaCue(hodlTText(parsed.extraEntries.length === 1 ? "{n} extra number highlighted · remove it to continue" : "{n} extra numbers highlighted · remove them to continue", { n: parsed.extraEntries.length }), "error");
+        else if (parsed.invalidEntries.length) {
           let invalid = parsed.invalidEntries[0];
-          meta.textContent = hodlTText("{progress} · Word {n} number “{token}” is outside {min}–{max} · correct to continue", { progress, n: invalid.position + 1, token: invalid.token, min: parsed.minimum, max: parsed.maximum });
-          meta.className = "muted err";
-        } else if (parsed.checksumInvalid) {
-          meta.textContent = hodlTText("{progress} · BIP39 checksum invalid · final word number highlighted", { progress });
-          meta.className = "muted err";
-        } else if (parsed.complete) {
-          meta.textContent = hodlTText("{progress} · checksum valid · ready to derive", { progress });
-          meta.className = "muted ok";
-        } else {
-          meta.textContent = hodlTText("{progress} · {remaining} remaining · valid range {min}–{max}", { progress, remaining, min: parsed.minimum, max: parsed.maximum });
-          meta.className = "muted";
-        }
+          cue = hodlMetaCue(hodlTText("Word {n} number “{token}” is outside {min}–{max} · correct to continue", { n: invalid.position + 1, token: invalid.token, min: parsed.minimum, max: parsed.maximum }), "error");
+        } else if (parsed.checksumInvalid) cue = hodlMetaCue(hodlTText("BIP39 checksum invalid · final word number highlighted"), "error");
+        else if (parsed.complete) cue = hodlMetaCue(hodlTText("Checksum valid · ready to derive"));
+        hodlRenderSeedProgress("seed-number-meta", "numbers", entered, config.words, cue);
         hodlUpdateSeedNumberPad(input, parsed);
         hodlQueueMasterFingerprintPreview();
         return parsed;
@@ -5543,7 +5577,6 @@ function hodlRenderKeyForm() {
           state.seedZeroIndexed = hodlSeedZeroIndexed;
           state.fields.seedNumbers = input.value;
         }
-        document.getElementById("seed-number-help").textContent = hodlTText("Enter one {range} number for each word, separated by spaces. The corresponding BIP39 words appear below.", { range: hodlTText(hodlSeedZeroIndexed ? "0 through 2047" : "1 through 2048") });
         input.placeholder = hodlTText(hodlSeedZeroIndexed ? "0 1 2 …" : "1 2 3 …");
         hodlUpdateSeedLengthControl();
         update();
@@ -5565,7 +5598,7 @@ function hodlRenderKeyForm() {
       update();
       return;
     }
-    hodlFormEl.innerHTML = `${choices}<p class="label">Your ${config.words}-word seed phrase</p><p class="muted" id="seed-help">Enter exactly ${config.words} English BIP39 words. You can also paste an extended key here; the selected phrase length does not apply to extended keys. With ${config.partialWords} compatible diceware words, choose the final checksum word below.</p><div class="seed-entry-tools">${hodlSeedKeyboardToggleMarkup()}<label class="seed-autocomplete-toggle"><input type="checkbox" id="seed-autocomplete" ${autocompleteEnabled ? "checked" : ""} /><span>Autocomplete BIP39 words</span></label></div><div class="dice-input-shell seed-input-shell"><pre class="dice-input-highlight" id="seed-highlight" aria-hidden="true"></pre><textarea id="seed" placeholder="Enter exactly ${config.words} BIP39 words" aria-describedby="seed-help seed-meta" autocomplete="off" spellcheck="false" autocapitalize="off"></textarea></div><p class="muted" id="seed-meta" aria-live="polite"></p>${hodlSeedKeyboardMarkup()}<div id="last-words" class="row last-word-options"></div>`;
+    hodlFormEl.innerHTML = `${choices}<p class="label">Your ${config.words}-word seed phrase</p>${hodlSeedMetaRowMarkup("seed-meta", true)}<div class="passphrase-keyboard-tools">${hodlSwitchRowMarkup("seed-autocomplete", hodlT("Autocomplete BIP39 words"), { checked: autocompleteEnabled })}${hodlSeedKeyboardToggleMarkup()}</div><div class="dice-input-shell seed-input-shell"><pre class="dice-input-highlight" id="seed-highlight" aria-hidden="true"></pre><textarea id="seed" placeholder="Enter exactly ${config.words} BIP39 words" aria-describedby="seed-meta" autocomplete="off" spellcheck="false" autocapitalize="off"></textarea></div>${hodlSeedKeyboardMarkup()}<div id="last-words" class="row last-word-options"></div>`;
     let input = document.getElementById("seed"), update = () => {
       let rawValue = input.value, value = rawValue.trim(), meta = hodlElement("#seed-meta"), picker = hodlElement("#last-words"), analysis = hodlRenderSeedInputState(input, config.words);
       if (hodlLooksExtendedKey(value)) {
@@ -5575,47 +5608,22 @@ function hodlRenderKeyForm() {
         meta.className = "muted " + (status.ok ? status.warning ? "err" : "ok" : "err");
         return;
       }
-      let finalContext = analysis.finalContext, validation = hodlValidateTargetMnemonic(value, config.words), entered = analysis.tokens.length, progress = hodlSeedCountStatus(entered, config.words), remaining = Math.max(0, config.words - entered);
+      let finalContext = analysis.finalContext, validation = hodlValidateTargetMnemonic(value, config.words), entered = analysis.tokens.length, progress = (cue) => hodlRenderSeedProgress("seed-meta", "words", entered, config.words, cue);
       if (finalContext) {
         hodlRenderLastWordPicker(picker, finalContext.candidates, finalContext.selected, (word) => hodlReplaceSeedFinalWord(input, finalContext, word), { forceSelect: true, resettable: true, targetWords: config.words, placeholder: hodlTText("Choose {article} {n}th word", { article: hodlTText(config.words === 18 ? "an" : "a"), n: config.words }) });
-        if (!finalContext.finalToken) {
-          meta.textContent = hodlTText("{progress} · choose the final checksum word · {n} valid choices", { progress, n: finalContext.candidates.length });
-          meta.className = "muted ok";
-          return;
-        }
-        if (validation.ok) {
-          meta.textContent = hodlTText("{progress} · checksum valid · ready to derive", { progress });
-          meta.className = "muted ok";
-          return;
-        }
-        if (!finalContext.matchingCandidates.length) {
-          meta.textContent = hodlTText("{progress} · No valid checksum word starts with \"{prefix}\".", { progress, prefix: finalContext.prefix });
-          meta.className = "muted err";
-          return;
-        }
-        meta.textContent = hodlTText("{progress} · {n} valid checksum word(s) start with \"{prefix}\".", { progress, n: finalContext.matchingCandidates.length, prefix: finalContext.prefix });
-        meta.className = "muted";
+        // The final pick reads as the BitBox one does, and a checksum-valid
+        // phrase as the D++ one does, in the same words.
+        if (!finalContext.finalToken) progress(hodlMetaCue(hodlTText("Choose final checksum word below")));
+        else if (validation.ok) progress(hodlMetaCue(hodlTText("Checksum valid · ready to derive")));
+        else if (!finalContext.matchingCandidates.length) progress(hodlMetaCue(hodlTText("No valid checksum word starts with “{prefix}”", { prefix: finalContext.prefix }), "error"));
+        else progress(hodlMetaCue(hodlTText(finalContext.matchingCandidates.length === 1 ? "{n} valid checksum word starts with “{prefix}”" : "{n} valid checksum words start with “{prefix}”", { n: finalContext.matchingCandidates.length, prefix: finalContext.prefix }), "next"));
         return;
       }
       picker.innerHTML = "";
       let invalidWord = analysis.invalidWords[0];
-      if (analysis.excessCount) {
-        meta.textContent = hodlTText("{entered} entered · {words} required BIP39 words · {n} extra highlighted · remove to continue", { entered, words: config.words, n: analysis.excessCount });
-        meta.className = "muted err";
-        return;
-      }
-      if (invalidWord) {
-        meta.textContent = hodlTText("{progress} · Word {n} (“{word}”) is not on the BIP39 English list · correct to continue", { progress, n: invalidWord.index + 1, word: invalidWord.word });
-        meta.className = "muted err";
-        return;
-      }
-      if (validation.ok) {
-        meta.textContent = hodlTText("{progress} · checksum valid · ready to derive", { progress });
-        meta.className = "muted ok";
-        return;
-      }
-      meta.textContent = hodlTText("{progress} · {remaining} remaining", { progress, remaining });
-      meta.className = "muted";
+      if (analysis.excessCount) progress(hodlMetaCue(hodlTText(analysis.excessCount === 1 ? "{n} extra word highlighted · remove it to continue" : "{n} extra words highlighted · remove them to continue", { n: analysis.excessCount }), "error"));
+      else if (invalidWord) progress(hodlMetaCue(hodlTText("Word {n} (“{word}”) is not on the BIP39 English list · correct to continue", { n: invalidWord.index + 1, word: invalidWord.word }), "error"));
+      else progress(validation.ok ? hodlMetaCue(hodlTText("Checksum valid · ready to derive")) : null);
     };
     let toggle = document.getElementById("seed-autocomplete");
     toggle.onchange = () => {
@@ -5655,9 +5663,9 @@ function hodlRenderKeyForm() {
     ${hodlBrainOutputMarkup(hodlKeys[hodlActiveKey]?.brainWalletOutput || "scalar")}
     <div id="private-key-entry">
     <p class="label" id="private-key-input-label">${hodlT("Private key or recovery passphrase")}</p>
-    <p class="muted" id="private-key-input-help">${hodlT("Enter the value matching the selected format. Brain wallet text is hashed with SHA-256.")}</p>
-    ${hodlPrivateKeyKeyboardToggleMarkup()}
-    <div class="dice-input-shell private-key-input-shell"><pre class="dice-input-highlight" id="private-key-highlight" aria-hidden="true"></pre><textarea id="key" placeholder="${hodlT("5… / K… / L…")}" aria-labelledby="private-key-input-label" aria-describedby="private-key-input-help private-key-meta"></textarea></div><p class="muted" id="private-key-meta" aria-live="polite"></p><div class="passphrase-keyboard-host" id="private-keyboard-host" hidden></div></div>`;
+    ${hodlSeedMetaRowMarkup("private-key-meta", true, hodlPrivateKeyKeyboardToggleMarkup())}
+    ${hodlBrainWalletTrimToggleMarkup()}
+    <div class="dice-input-shell private-key-input-shell"><pre class="dice-input-highlight" id="private-key-highlight" aria-hidden="true"></pre><textarea id="key" placeholder="${hodlT("5… / K… / L…")}" aria-labelledby="private-key-input-label" aria-describedby="private-key-meta"></textarea></div><div class="passphrase-keyboard-host" id="private-keyboard-host" hidden></div></div>`;
   hodlBindKeyFields();
   hodlRenderPassphraseKeyboard();
 }
@@ -5779,10 +5787,15 @@ function hodlPrivateKeyCharacterEntries(value) {
   }
   return entries;
 }
+// The private-key progress line in the shape every entry method uses: a count
+// with its number coloured against the length the format needs, then at most
+// one kind of cue under it. Errors are red and hide the rest; otherwise the
+// next step is orange, or a key ready to derive is green. A brain wallet has
+// no length to count, so its first line states how the text will be read.
 function hodlPrivateKeyInputAnalysis(value, kind, network, trimBrainWallet = hodlBrainWalletTrimEnabled()) {
-  let selected = hodlNormalizePrivateKeyKind(kind, value), entries = hodlPrivateKeyCharacterEntries(value), invalidRanges = [], ready = false, status = "", first = entries[0], last = entries.at(-1), markAll = () => {
+  let selected = hodlNormalizePrivateKeyKind(kind, value), entries = hodlPrivateKeyCharacterEntries(value), invalidRanges = [], ready = false, first = entries[0], last = entries.at(-1), errors = [], next = "", done = "", markAll = () => {
     if (first && last) invalidRanges.push([first.start, last.end]);
-  };
+  }, counted = (text, count, required) => ({ text, value: count, met: count === required }), invalidError = (n, hint) => hodlTText(n === 1 ? "{n} invalid character highlighted · {hint}" : "{n} invalid characters highlighted · {hint}", { n, hint }), extraError = (n) => hodlTText(n === 1 ? "{n} extra character highlighted · remove it to continue" : "{n} extra characters highlighted · remove them to continue", { n }), result = (progress, extra = {}) => ({ invalidRanges, ready, kind: selected, progress, cues: errors.length ? errors.map((text) => ({ text, tone: "error" })) : next ? [{ text: next, tone: "next" }] : done ? [{ text: done, tone: "" }] : [], ...extra });
   if (selected === "brain") {
     let exact = String(value ?? ""), hasBoundaryWhitespace = exact !== exact.trim();
     try {
@@ -5791,72 +5804,78 @@ function hodlPrivateKeyInputAnalysis(value, kind, network, trimBrainWallet = hod
     } catch {
       ready = false;
     }
-    let convention = trimBrainWallet ? hasBoundaryWhitespace ? "boundary whitespace will be trimmed" : "trim enabled; no boundary whitespace present" : hasBoundaryWhitespace ? "exact text will be used, including boundary whitespace" : "exact text will be used";
-    let status = exact.length ? ready ? `Text entered \xB7 ${convention} \xB7 brain wallets are unsafe` : "Boundary whitespace trimming leaves an empty passphrase \xB7 enter non-whitespace text or turn trimming off" : "No text entered \xB7 brain wallets are unsafe";
-    return { invalidRanges, ready, status, kind: selected };
+    let convention = trimBrainWallet ? hasBoundaryWhitespace ? "Boundary whitespace will be trimmed" : "Trim enabled; no boundary whitespace present" : hasBoundaryWhitespace ? "Exact text will be used, including boundary whitespace" : "Exact text will be used";
+    if (exact.length) errors.push(ready ? hodlTText("Brain wallets are unsafe") : hodlTText("Boundary whitespace trimming leaves an empty passphrase · enter non-whitespace text or turn trimming off"));
+    return result({ text: hodlTText(exact.length ? convention : "No text entered") });
   }
   if (selected === "hex-key") {
     let prefixed = entries[0]?.character === "0" && /^x$/i.test(entries[1]?.character || ""), characters = entries.slice(prefixed ? 2 : 0), valid = characters.filter((entry) => /^[0-9a-fA-F]$/.test(entry.character)), invalid2 = characters.filter((entry) => !/^[0-9a-fA-F]$/.test(entry.character)), excess2 = valid.slice(64);
     invalidRanges.push(...invalid2.map((entry) => [entry.start, entry.end]), ...excess2.map((entry) => [entry.start, entry.end]));
-    let count2 = valid.length, remaining = Math.max(0, 64 - count2), parts2 = [count2 > 64 ? `${count2} hexadecimal characters entered \xB7 64 required` : `${count2} of 64 hexadecimal characters entered \xB7 ${remaining} remaining`];
-    if (invalid2.length) parts2.push(`${invalid2.length} invalid character${invalid2.length === 1 ? "" : "s"} highlighted \xB7 use only 0\u20139 and a\u2013f`);
-    if (excess2.length) parts2.push(`${excess2.length} extra highlighted \xB7 remove to continue`);
-    if (!invalid2.length && !excess2.length && count2 === 64) try {
+    let count2 = valid.length, remaining = Math.max(0, 64 - count2);
+    if (invalid2.length) errors.push(invalidError(invalid2.length, hodlTText("use only 0–9 and a–f")));
+    if (excess2.length) errors.push(extraError(excess2.length));
+    if (!errors.length && count2 === 64) try {
       hodlAssertPrivateKeyKind(value, network, selected);
       ready = true;
-      parts2 = ["64 of 64 hexadecimal characters entered", "valid secp256k1 private key", "ready to derive"];
+      done = hodlTText("Valid secp256k1 private key · ready to derive");
     } catch (error) {
       markAll();
-      parts2.push(error.message || "Invalid private key");
+      errors.push(error.message || hodlTText("Invalid private key"));
     }
-    status = parts2.join(" \xB7 ");
-    return { invalidRanges, ready, status, kind: selected, count: count2, required: 64, remaining };
+    return result(counted(count2 > 64 ? hodlTText("{count} hexadecimal characters entered · 64 required", { count: hodlMetaToken }) : hodlTText("{count} of 64 hexadecimal characters entered", { count: hodlMetaToken }), count2, 64), { count: count2, required: 64, remaining });
   }
   if (selected === "wif") {
     let alphabet = /^[1-9A-HJ-NP-Za-km-z]$/, prefixes = network === "testnet" ? ["9", "c"] : ["5", "K", "L"], invalid2 = entries.filter((entry) => !alphabet.test(entry.character));
     if (first && !prefixes.includes(first.character) && !invalid2.includes(first)) invalid2.push(first);
     let required2 = first && ["5", "9"].includes(first.character) ? 51 : first && ["K", "L", "c"].includes(first.character) ? 52 : null, count2 = entries.length, excess2 = required2 ? entries.slice(required2) : [];
     invalidRanges.push(...invalid2.map((entry) => [entry.start, entry.end]), ...excess2.map((entry) => [entry.start, entry.end]));
-    let parts2 = [required2 ? count2 > required2 ? `${count2} WIF characters entered \xB7 ${required2} required` : `${count2} of ${required2} WIF characters entered \xB7 ${Math.max(0, required2 - count2)} remaining` : `${count2} of 51 or 52 WIF characters entered \xB7 starts with ${network === "testnet" ? "9 or c" : "5, K, or L"}`];
-    if (invalid2.length) parts2.push(`${invalid2.length} invalid character${invalid2.length === 1 ? "" : "s"} highlighted \xB7 use ${network} Base58 WIF characters`);
-    if (excess2.length) parts2.push(`${excess2.length} extra highlighted \xB7 remove to continue`);
-    if (required2 && count2 === required2 && !invalid2.length && !excess2.length) try {
+    if (invalid2.length) errors.push(invalidError(invalid2.length, hodlTText("use {network} Base58 WIF characters", { network })));
+    if (excess2.length) errors.push(extraError(excess2.length));
+    // Until the first character settles the length, the prefix is the next
+    // thing to get right, and the error that a wrong one raises needs it too.
+    if (!required2) {
+      let prefixHint = hodlTText("Start with {prefixes}", { prefixes: network === "testnet" ? "9 or c" : "5, K, or L" });
+      if (errors.length) errors.push(prefixHint);
+      else next = prefixHint;
+    }
+    if (required2 && count2 === required2 && !errors.length) try {
       hodlAssertPrivateKeyKind(value, network, selected);
       ready = true;
-      parts2 = [`${required2} of ${required2} WIF characters entered`, `${network} checksum valid`, `ready to derive`];
+      done = hodlTText("Checksum valid for {network} · ready to derive", { network });
     } catch (error) {
       markAll();
-      parts2.push(error.message || "Invalid WIF checksum");
+      errors.push(error.message || hodlTText("Invalid WIF checksum"));
     }
-    status = parts2.join(" \xB7 ");
-    return { invalidRanges, ready, status, kind: selected, count: count2, required: required2, remaining: required2 ? Math.max(0, required2 - count2) : null };
+    return result(counted(required2 ? count2 > required2 ? hodlTText("{count} WIF characters entered · {required} required", { count: hodlMetaToken, required: required2 }) : hodlTText("{count} of {required} WIF characters entered", { count: hodlMetaToken, required: required2 }) : hodlTText("{count} of 51 or 52 WIF characters entered", { count: hodlMetaToken }), count2, required2), { count: count2, required: required2, remaining: required2 ? Math.max(0, required2 - count2) : null });
   }
   let invalid = entries.filter((entry, index) => index === 0 ? entry.character !== "S" : !/^[1-9A-HJ-NP-Za-km-z]$/.test(entry.character)), count = entries.length, required = count <= 22 ? 22 : 30, excess = entries.slice(30);
   invalidRanges.push(...invalid.map((entry) => [entry.start, entry.end]), ...excess.map((entry) => [entry.start, entry.end]));
-  let parts = [count > 30 ? `${count} Mini-key characters entered \xB7 30 maximum` : `${count} of ${required} Mini-key characters entered \xB7 ${Math.max(0, required - count)} remaining`];
-  if (!count) parts = ["0 of 22 or 30 Mini-key characters entered \xB7 must start with S"];
-  if (invalid.length) parts.push(`${invalid.length} invalid character${invalid.length === 1 ? "" : "s"} highlighted \xB7 use S followed by Bitcoin Base58 characters`);
-  if (excess.length) parts.push(`${excess.length} extra highlighted \xB7 remove to continue`);
-  if ((count === 22 || count === 30) && !invalid.length && !excess.length) try {
+  if (invalid.length) errors.push(invalidError(invalid.length, hodlTText("use S followed by Bitcoin Base58 characters")));
+  if (excess.length) errors.push(extraError(excess.length));
+  if (!count) next = hodlTText("Start with S");
+  if ((count === 22 || count === 30) && !errors.length) try {
     hodlAssertPrivateKeyKind(value, network, selected);
     ready = true;
-    parts = [`${count} of ${count} Mini-key characters entered`, `checksum valid`, `ready to derive`];
+    done = hodlTText("Checksum valid · ready to derive");
   } catch (error) {
     markAll();
-    parts.push(error.message || "Invalid Mini-key checksum");
+    errors.push(error.message || hodlTText("Invalid Mini-key checksum"));
   }
-  status = parts.join(" \xB7 ");
-  return { invalidRanges, ready, status, kind: selected, count, required, remaining: Math.max(0, required - count) };
+  return result(counted(count > 30 ? hodlTText("{count} Mini-key characters entered · 30 maximum", { count: hodlMetaToken }) : count ? hodlTText("{count} of {required} Mini-key characters entered", { count: hodlMetaToken, required }) : hodlTText("{count} of 22 or 30 Mini-key characters entered", { count: hodlMetaToken }), count, required), { count, required, remaining: Math.max(0, required - count) });
 }
 function hodlRenderPrivateKeyInputState(input) {
   if (!input) return null;
-  let kind = hodlNormalizePrivateKeyKind(document.querySelector('input[name="kk"]:checked')?.value, input.value), network = hodlSelectedNetwork(document.getElementById("network")), analysis = hodlPrivateKeyInputAnalysis(input.value, kind, network), meta = document.getElementById("private-key-meta"), invalid = analysis.invalidRanges.length > 0;
+  let kind = hodlNormalizePrivateKeyKind(document.querySelector('input[name="kk"]:checked')?.value, input.value), network = hodlSelectedNetwork(document.getElementById("network")), analysis = hodlPrivateKeyInputAnalysis(input.value, kind, network), meta = document.getElementById("private-key-meta"), invalid = analysis.invalidRanges.length > 0, progress = analysis.progress;
   input.classList.toggle("bad", invalid);
   input.setAttribute("aria-invalid", String(invalid));
   hodlRenderInputHighlight(input, analysis.invalidRanges);
   if (meta) {
-    meta.textContent = analysis.status;
-    meta.className = "muted" + (analysis.ready ? " ok" : invalid || kind === "brain" && input.value.length ? " err" : "");
+    hodlRenderMeta("private-key-meta", [
+      [progress.text, "value" in progress ? hodlMetaValue(String(progress.value), progress.met) : null],
+      ...analysis.cues.map((cue) => [hodlMetaToken, hodlMetaCue(cue.text, cue.tone)]),
+    ]);
+    // The number and the cues carry the colour, so the block keeps its own.
+    meta.className = "muted";
   }
   return analysis;
 }

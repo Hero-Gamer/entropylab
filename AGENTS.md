@@ -81,3 +81,17 @@ Guidelines for AI coding agents.
   it, rather than sweeping the suite, so the design diff stays reviewable and
   the count comes down as the work moves through each surface.
 - Before finishing, run `npm run build && npm test` and make sure they pass.
+
+### Testing - valid AND invalid (borrowed from Bitcoin Core)
+
+Following Bitcoin Core's contribution guidelines: https://github.com/bitcoin/bitcoin/blob/master/CONTRIBUTING.md
+
+For any PR touching verification, consensus, cryptography, script, or PSBT parsing:
+
+1. Every PR must include tests
+2. For validation logic, include BOTH valid and invalid vectors
+3. Invalid vectors must fail before your fix and be correctly rejected after
+
+This is not AI-specific - it's the same rule Bitcoin Core uses for `feature_taproot.py`.
+
+If your issue lists "Negative cases", copy them into tests first.

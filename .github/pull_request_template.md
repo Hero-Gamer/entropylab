@@ -1,0 +1,1 @@
+- [ ] Tests: Includes both valid and invalid vectors. Invalid cases fail before fix and are correctly rejected after (per Bitcoin Core guidelines)

@@ -1518,23 +1518,31 @@ pub fn verify_taproot_commitment(
     leaf_version: Option<u8>,
     merkle_root: Option<[u8; 32]>,
 ) -> Option<bool> {
+    use bitcoin::hashes::Hash;
+    use bitcoin::secp256k1::SecretKey;
     let (internal_bytes, control, version, root_bytes) =
         match (tap_internal_key, control_block, leaf_version, merkle_root) {
-            (Some(internal), Some(control), Some(version), Some(root)) => {
-                (internal, control, version, root)
-            }
+            (Some(internal), Some(control), Some(version), Some(root)) => (internal, control, version, root),
             _ => return None,
         };
 
-    if version != 0xc0 {
+    // 1. Reject all-zero internal key (bip341: invalid x-only)
+    if internal_bytes == [0u8; 32] {
         return Some(false);
     }
+
     let len = control.len();
-    if len < 33 || (len - 33) % 32 != 0 || (len - 33) / 32 > 128 {
+    if len < 33 || (len - 33) % 32!= 0 || (len - 33) / 32 > 128 {
         return Some(false);
     }
+
     let leaf_version_cb = control[0] & 0xFE;
-    if leaf_version_cb != version {
+    // Allow future leaf versions (0xc0, 0xc2, etc) - only require control matches passed version
+    if leaf_version_cb!= (version & 0xFE) {
+        return Some(false);
+    }
+    // leaf version must be even (consensus)
+    if version & 0x01!= 0 {
         return Some(false);
     }
 
@@ -1546,23 +1554,28 @@ pub fn verify_taproot_commitment(
         Ok(key) => key,
         Err(_) => return Some(false),
     };
-    if cb.internal_key.serialize() != internal_bytes {
+    if cb.internal_key.serialize()!= internal_bytes {
         return Some(false);
     }
 
-    // Siblings are the remaining 32-byte chunks; ControlBlock::decode
-    // already rejected a non-aligned or >128-node proof. The supplied
-    // merkle_root is the reconstructed TapBranch root (the leaf hash is
-    // not an argument here), so the path is checked by the tweak below.
     let output = match XOnlyPublicKey::from_slice(&output_key) {
         Ok(key) => key,
         Err(_) => return Some(false),
     };
-    let secp = Secp256k1::verification_only();
+
+    // 2. Check tweak is valid (secret key must be valid)
     let root = TapNodeHash::assume_hidden(root_bytes);
-    let tweak = TapTweakHash::from_key_and_tweak(internal_key, Some(root)).to_scalar();
+    let tweak_hash = TapTweakHash::from_key_and_tweak(internal_key, Some(root));
+    if SecretKey::from_slice(tweak_hash.as_byte_array()).is_err() {
+        return Some(false);
+    }
+
+    let secp = Secp256k1::verification_only();
+    let tweak = tweak_hash.to_scalar();
     Some(internal_key.tweak_add_check(&secp, &output, cb.output_key_parity, tweak))
 }
+
+
 
 #[cfg(test)]
 mod tests {

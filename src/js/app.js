@@ -48,6 +48,10 @@ import { initPsbtEditor, psbtBytesFromUpload } from "./psbt-editor.js";
 // and the LND/LDK node identity derivations live in lightning.js/aezeed.js.
 import { hodlInitLn, hodlLnWipeMem } from "./lightning.js";
 import { hodlTapKeySigs, hodlTapScriptSigs, hodlTapSighashProblems } from "./psbt-schnorr.js";
+import {
+  buildImportDescriptorsJson,
+  coreImportDescriptorsFilename,
+} from "./core-importdescriptors.js";
 import { initQrReferences } from "./qr-references.js";
 import { addressQrButtonHtml as hodlAddressQrButton, initAddressQr as hodlInitAddressQr } from "./address-qr.js";
 import { NONCE_HISTORY_MAX_TEXT, compareNonceHistory, mergeNonceHistory, nonceHistoryRecord, parseNonceHistory, serializeNonceHistory } from "./nonce-history.js";
@@ -1535,6 +1539,112 @@ function hodlDownloadWalletDat() {
   link.download = hodlWalletExport.walletDatFilename(hodlWalletResult, withSecrets);
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1e3);
+}
+function hodlMsigCoreImportCodec() {
+  return {
+    decode: (key) => hodlBase58Check.decode(key),
+    encode: (bytes) => hodlBase58Check.encode(bytes)
+  };
+}
+function hodlMsigCoreImportDescriptorsJson() {
+  if (!hodlWalletResult || hodlWalletResult.kind !== "msig") return "";
+  if (!hodlWalletResult.receiveDescriptor && !hodlWalletResult.changeDescriptor) return "";
+  const codec = hodlMsigCoreImportCodec();
+  return buildImportDescriptorsJson({
+    receiveDescriptor: hodlWalletResult.receiveDescriptor,
+    changeDescriptor: hodlWalletResult.changeDescriptor,
+    timestamp: hodlWalletDatBirthday === "now" ? "now" : 0,
+    decode: codec.decode,
+    encode: codec.encode
+  });
+}
+function hodlMsigCoreImportDescriptorsMarkup() {
+  if (!hodlWalletResult || hodlWalletResult.kind !== "msig") return "";
+  if (!hodlWalletResult.receiveDescriptor && !hodlWalletResult.changeDescriptor) return "";
+  return `<div class="wallet-data-actions no-print" id="msig-core-importdescriptors">
+    <label class="wallet-dat-birthday">${hodlT("Wallet birthday")} <select data-wallet-dat-birthday aria-describedby="msig-core-importdescriptors-help"><option value="genesis"${hodlWalletDatBirthday === "genesis" ? " selected" : ""}>${hodlT("Recovering keys · scan from genesis")}</option><option value="now"${hodlWalletDatBirthday === "now" ? " selected" : ""}>${hodlT("New keys · created today")}</option></select></label>
+    <button class="btn secondary" id="msig-copy-importdescriptors" type="button">${hodlT("Copy Core importdescriptors")}</button>
+    <button class="btn secondary green" id="msig-save-importdescriptors" type="button">${hodlT("Save Core watch-only JSON")}</button>
+    <p class="muted wallet-dat-birthday-help" id="msig-core-importdescriptors-help">${hodlT("Watch-only JSON for bitcoin-cli importdescriptors. No private keys. Online node: createwallet disable_private_keys=true blank=true, then importdescriptors. First getnewaddress must match receive index 0 here.")}</p>
+  </div>`;
+}
+function hodlCopyMsigCoreImportDescriptors() {
+  let json = "";
+  try {
+    json = hodlMsigCoreImportDescriptorsJson();
+  } catch (error) {
+    hodlSetWorkspaceError("msig", hodlErrorSpecFrom(error));
+    return;
+  }
+  if (!json) return;
+  let button = document.getElementById("msig-copy-importdescriptors");
+  let label = hodlTText("Copy Core importdescriptors");
+  let done = () => {
+    json = "";
+    if (!button) return;
+    button.classList.add("is-copied");
+    button.textContent = hodlTText("Copied");
+    clearTimeout(button.hodlCopiedTimer);
+    button.hodlCopiedTimer = setTimeout(() => {
+      if (!button.isConnected) return;
+      button.classList.remove("is-copied");
+      button.textContent = label;
+    }, 1600);
+  };
+  let fallback = () => {
+    let field = document.createElement("textarea");
+    field.value = json;
+    field.setAttribute("readonly", "");
+    field.style.position = "fixed";
+    field.style.left = "-9999px";
+    document.body.appendChild(field);
+    field.select();
+    try {
+      document.execCommand("copy");
+      done();
+    } finally {
+      field.value = "";
+      field.remove();
+    }
+  };
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(json).then(done).catch(fallback);
+  else fallback();
+}
+function hodlDownloadMsigCoreImportDescriptors() {
+  let json = "";
+  try {
+    json = hodlMsigCoreImportDescriptorsJson();
+  } catch (error) {
+    hodlSetWorkspaceError("msig", hodlErrorSpecFrom(error));
+    return;
+  }
+  if (!json) return;
+  let blob = new Blob([json], { type: "application/json" }), url = URL.createObjectURL(blob), link = document.createElement("a");
+  json = "";
+  link.href = url;
+  link.download = coreImportDescriptorsFilename(hodlWalletResult);
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1e3);
+}
+function hodlBindMsigCoreImportDescriptors() {
+  document.querySelectorAll("#msig-out [data-wallet-dat-birthday]").forEach((select) => {
+    select.value = hodlWalletDatBirthday;
+    select.onchange = () => {
+      hodlWalletDatBirthday = select.value === "now" ? "now" : "genesis";
+    };
+  });
+  let copy = document.getElementById("msig-copy-importdescriptors");
+  if (copy) {
+    let clean = copy.cloneNode(true);
+    copy.replaceWith(clean);
+    clean.addEventListener("click", hodlCopyMsigCoreImportDescriptors);
+  }
+  let save = document.getElementById("msig-save-importdescriptors");
+  if (save) {
+    let clean = save.cloneNode(true);
+    save.replaceWith(clean);
+    clean.addEventListener("click", hodlDownloadMsigCoreImportDescriptors);
+  }
 }
 function hodlBindWalletResultActions() {
   let reveal = document.getElementById("reveal");
@@ -8204,6 +8314,7 @@ function hodlShowMsig() {
           <p class="muted">These descriptors reveal every address in the selected branches for this multisig, but cannot authorize spending.</p>
         </div>
         ${hodlWatchOnlyDescriptorExport(hodlWalletResult.receiveDescriptor, hodlWalletResult.changeDescriptor, branches)}
+        ${hodlMsigCoreImportDescriptorsMarkup()}
       </section>
       <section class="account-result-section account-address-section" aria-labelledby="multisig-address-heading">
         <div class="wallet-data-section-head">
@@ -8217,7 +8328,8 @@ function hodlShowMsig() {
       <p class="muted">${hodlT("Import the watch-only wallet descriptor into Sparrow or another wallet.")}</p>
     </section>`;
   hodlBindAddressVirtualization(hodlAddressBranchVirtualConfigs(branches, false, "msig"));
-  hodlBindAddressMatch()
+  hodlBindAddressMatch();
+  hodlBindMsigCoreImportDescriptors();
 }
 var hodlPsbtPriv = null, hodlPsbtHd = null, hodlPsbtSource = "", hodlPsbtSessionSpec = { key: "No session key. Inspect-only mode." }, hodlPsbtLast = null, hodlPsbtErrorSpec = null;
 var hodlPsbtNonceHistory = [], hodlPsbtCurrentNonceRecords = [], hodlPsbtNonceVerdict = "", hodlPsbtNonceVerdictKind = "", hodlPsbtNonceHistoryVerdict = "", hodlPsbtNonceInspected = false;

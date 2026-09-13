@@ -50,6 +50,7 @@ import { hodlInitLn, hodlLnWipeMem } from "./lightning.js";
 import { hodlTapKeySigs, hodlTapScriptSigs, hodlTapSighashProblems } from "./psbt-schnorr.js";
 import {
   buildImportDescriptorsJson,
+  canonicalizeWatchDescriptor,
   coreImportDescriptorsFilename,
 } from "./core-importdescriptors.js";
 import { initQrReferences } from "./qr-references.js";
@@ -1523,22 +1524,33 @@ function hodlWalletDatDeps() {
     // Hardened-branch private key records are derived from the account xprv.
     deriveExtendedPrivateChild: (extendedKeyText, index) =>
       hodlHDKey.fromExtendedKey(hodlReversionExtendedKey(extendedKeyText, hodlExtendedKeyVersions.mainnet.x.prv)).deriveChild(index).privateExtendedKey,
-    publicKeyForPrivate: (secret) => hodlSecp256k1.getPublicKey(secret, true)
+    publicKeyForPrivate: (secret) => hodlSecp256k1.getPublicKey(secret, true),
+    canonicalizeDescriptor: (descriptor) => canonicalizeWatchDescriptor(descriptor, {
+      decode: (key) => hodlBase58Check.decode(key),
+      encode: (bytes) => hodlBase58Check.encode(bytes)
+    })
   };
 }
 function hodlDownloadWalletDat() {
   if (!hodlWalletResult || !hodlWalletExport.hasDescriptors(hodlWalletResult)) return;
   // Recovery default is a genesis birthday so Core scans from the start;
   // "now" is written only when the user confirms the keys are new (issue
-  // #95).
+  // #95). Multisig is watch-only even if the reveal toggle is on.
   let creationTime = hodlWalletDatBirthday === "now" ? Math.floor(Date.now() / 1000) : 0;
-  // The secrets variant follows the material, not the toggle alone (#366).
-  let withSecrets = hodlRevealPrivate && hodlWalletExport.hasPrivateDescriptors(hodlWalletResult);
-  let bytes = hodlWalletExport.buildWalletDat(hodlWalletResult, withSecrets, hodlWalletDatDeps(), creationTime), blob = new Blob([bytes], { type: "application/octet-stream" }), url = URL.createObjectURL(blob), link = document.createElement("a");
-  link.href = url;
-  link.download = hodlWalletExport.walletDatFilename(hodlWalletResult, withSecrets);
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1e3);
+  let withSecrets = hodlWalletResult.kind !== "msig" && hodlRevealPrivate && hodlWalletExport.hasPrivateDescriptors(hodlWalletResult);
+  try {
+    let bytes = hodlWalletExport.buildWalletDat(hodlWalletResult, withSecrets, hodlWalletDatDeps(), creationTime), blob = new Blob([bytes], { type: "application/octet-stream" }), url = URL.createObjectURL(blob), link = document.createElement("a");
+    link.href = url;
+    link.download = hodlWalletExport.walletDatFilename(hodlWalletResult, withSecrets);
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1e3);
+  } catch (error) {
+    if (hodlWalletResult.kind === "msig") {
+      hodlSetWorkspaceError("msig", hodlErrorSpecFrom(error));
+      return;
+    }
+    throw error;
+  }
 }
 function hodlMsigCoreImportCodec() {
   return {
@@ -1563,9 +1575,10 @@ function hodlMsigCoreImportDescriptorsMarkup() {
   if (!hodlWalletResult.receiveDescriptor && !hodlWalletResult.changeDescriptor) return "";
   return `<div class="wallet-data-actions no-print" id="msig-core-importdescriptors">
     <label class="wallet-dat-birthday">${hodlT("Wallet birthday")} <select data-wallet-dat-birthday aria-describedby="msig-core-importdescriptors-help"><option value="genesis"${hodlWalletDatBirthday === "genesis" ? " selected" : ""}>${hodlT("Recovering keys · scan from genesis")}</option><option value="now"${hodlWalletDatBirthday === "now" ? " selected" : ""}>${hodlT("New keys · created today")}</option></select></label>
+    <button class="btn secondary green save-wallet-dat" id="msig-download-wallet-dat" type="button">${hodlT("Download watch-only wallet.dat")}</button>
     <button class="btn secondary" id="msig-copy-importdescriptors" type="button">${hodlT("Copy Core importdescriptors")}</button>
     <button class="btn secondary green" id="msig-save-importdescriptors" type="button">${hodlT("Save Core watch-only JSON")}</button>
-    <p class="muted wallet-dat-birthday-help" id="msig-core-importdescriptors-help">${hodlT("Watch-only JSON for bitcoin-cli importdescriptors. No private keys. Online node: createwallet disable_private_keys=true blank=true, then importdescriptors. First getnewaddress must match receive index 0 here.")}</p>
+    <p class="muted wallet-dat-birthday-help" id="msig-core-importdescriptors-help">${hodlT("Watch-only Bitcoin Core wallet.dat — put it in a wallets folder and loadwallet. No private keys. JSON is for bitcoin-cli importdescriptors. First getnewaddress must match receive index 0 here.")}</p>
   </div>`;
 }
 function hodlCopyMsigCoreImportDescriptors() {
@@ -1644,6 +1657,12 @@ function hodlBindMsigCoreImportDescriptors() {
     let clean = save.cloneNode(true);
     save.replaceWith(clean);
     clean.addEventListener("click", hodlDownloadMsigCoreImportDescriptors);
+  }
+  let walletDat = document.getElementById("msig-download-wallet-dat");
+  if (walletDat) {
+    let clean = walletDat.cloneNode(true);
+    walletDat.replaceWith(clean);
+    clean.addEventListener("click", hodlDownloadWalletDat);
   }
 }
 function hodlBindWalletResultActions() {
@@ -8325,7 +8344,7 @@ function hodlShowMsig() {
         ${hodlAddressBranchTables(branches, false, "msig")}
         ${hodlAddressMatchMarkup()}
       </section>
-      <p class="muted">${hodlT("Import the watch-only wallet descriptor into Sparrow or another wallet.")}</p>
+      <p class="muted">${hodlT("Import the watch-only wallet descriptor into Sparrow or another wallet, or download a Bitcoin Core wallet.dat.")}</p>
     </section>`;
   hodlBindAddressVirtualization(hodlAddressBranchVirtualConfigs(branches, false, "msig"));
   hodlBindAddressMatch();
@@ -12665,7 +12684,7 @@ function hodlJournalAuditedClick(control) {
   let mapped = hodlJournalAuditedClicks[control.id];
   if (mapped) return mapped;
   if (control.id === "save") return [hodlJournalControlTool(control), "download", "recovery-sheet"];
-  if (control.id === "download-wallet-dat") return [hodlJournalControlTool(control), "download", "wallet-dat"];
+  if (control.id === "download-wallet-dat" || control.id === "msig-download-wallet-dat") return [hodlJournalControlTool(control), "download", "wallet-dat"];
   if (control.matches('a[download="entropylab.html"]')) return ["app", "download", "application"];
   if (control.matches("[data-copy-seed-phrase]")) return ["calc", "copy", "seed-phrase"];
   if (control.matches("[data-sp-mode]")) return ["sp", "mode", control.dataset.spMode];

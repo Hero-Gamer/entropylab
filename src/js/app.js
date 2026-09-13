@@ -53,6 +53,12 @@ import {
   canonicalizeWatchDescriptor,
   coreImportDescriptorsFilename,
 } from "./core-importdescriptors.js";
+import {
+  canPrintPolicySheet,
+  policySheetFilename,
+  policySheetHtml,
+  policySheetText,
+} from "./msig-policy-sheet.js";
 import { initQrReferences } from "./qr-references.js";
 import { addressQrButtonHtml as hodlAddressQrButton, initAddressQr as hodlInitAddressQr } from "./address-qr.js";
 import { initLowEntropyConfirm } from "./low-entropy-confirm.js";
@@ -1551,6 +1557,55 @@ function hodlDownloadWalletDat() {
     throw error;
   }
 }
+function hodlMsigPolicySheetMarkup() {
+  if (!hodlWalletResult || hodlWalletResult.kind !== "msig") return "";
+  if (!canPrintPolicySheet(hodlWalletResult)) return "";
+  return `<div class="wallet-data-actions no-print" id="msig-policy-sheet">
+    <button class="btn secondary green" id="msig-print-policy-sheet" type="button">${hodlT("Print watch-only policy sheet")}</button>
+    <button class="btn secondary green" id="msig-save-policy-sheet" type="button">${hodlT("Save watch-only policy sheet")}</button>
+    <p class="muted" id="msig-policy-sheet-help">${hodlT("One-page watch-only policy for every signer to verify before funding. No private keys.")}</p>
+  </div>`;
+}
+function hodlTearDownMsigPolicyPrint() {
+  document.body.classList.remove("msig-policy-print-mode");
+  document.getElementById("msig-policy-print")?.remove();
+  window.removeEventListener("afterprint", hodlTearDownMsigPolicyPrint);
+}
+function hodlPrintMsigPolicySheet() {
+  if (!hodlWalletResult || hodlWalletResult.kind !== "msig") return;
+  hodlTearDownMsigPolicyPrint();
+  let html = "";
+  try {
+    html = policySheetHtml(hodlWalletResult, { qrSvg: hodlQrSvg });
+  } catch (error) {
+    hodlSetWorkspaceError("msig", hodlErrorSpecFrom(error));
+    return;
+  }
+  let root = document.createElement("div");
+  root.id = "msig-policy-print";
+  root.className = "msig-policy-print-root";
+  root.innerHTML = html;
+  document.body.appendChild(root);
+  document.body.classList.add("msig-policy-print-mode");
+  window.addEventListener("afterprint", hodlTearDownMsigPolicyPrint);
+  window.print();
+}
+function hodlDownloadMsigPolicySheet() {
+  if (!hodlWalletResult || hodlWalletResult.kind !== "msig") return;
+  let text = "";
+  try {
+    text = policySheetText(hodlWalletResult);
+  } catch (error) {
+    hodlSetWorkspaceError("msig", hodlErrorSpecFrom(error));
+    return;
+  }
+  let blob = new Blob([text], { type: "text/plain" }), url = URL.createObjectURL(blob), link = document.createElement("a");
+  text = "";
+  link.href = url;
+  link.download = policySheetFilename(hodlWalletResult);
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1e3);
+}
 function hodlMsigCoreImportCodec() {
   return {
     decode: (key) => hodlBase58Check.decode(key),
@@ -1662,6 +1717,18 @@ function hodlBindMsigCoreImportDescriptors() {
     let clean = walletDat.cloneNode(true);
     walletDat.replaceWith(clean);
     clean.addEventListener("click", hodlDownloadWalletDat);
+  }
+  let printSheet = document.getElementById("msig-print-policy-sheet");
+  if (printSheet) {
+    let clean = printSheet.cloneNode(true);
+    printSheet.replaceWith(clean);
+    clean.addEventListener("click", hodlPrintMsigPolicySheet);
+  }
+  let saveSheet = document.getElementById("msig-save-policy-sheet");
+  if (saveSheet) {
+    let clean = saveSheet.cloneNode(true);
+    saveSheet.replaceWith(clean);
+    clean.addEventListener("click", hodlDownloadMsigPolicySheet);
   }
 }
 function hodlBindWalletResultActions() {
@@ -8375,6 +8442,7 @@ function hodlShowMsig() {
           <p class="muted">These descriptors reveal every address in the selected branches for this multisig, but cannot authorize spending.</p>
         </div>
         ${hodlWatchOnlyDescriptorExport(hodlWalletResult.receiveDescriptor, hodlWalletResult.changeDescriptor, branches, { labelClass: "muted" })}
+        ${hodlMsigPolicySheetMarkup()}
         ${hodlMsigCoreImportDescriptorsMarkup()}
       </section>
       <section class="account-result-section account-address-section" aria-labelledby="multisig-address-heading">

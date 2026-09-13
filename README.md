@@ -257,6 +257,9 @@ the limits of browser-memory cleanup.
   wallet looks empty, repair it with `rescanblockchain 0` in Bitcoin Core.
   Generated database files match Bitcoin Core's own record layout
   byte-for-byte (verified against Bitcoin Core v28.3.0).
+- A derived multisig can export Bitcoin Core `importdescriptors` JSON (watch-only
+  receive and change) for a blank `disable_private_keys` wallet. Calculator
+  export, not a generator. This is not a `wallet.dat`.
 - An optional **Sync entropy across methods** checkbox (off by default) keeps
   direct dice, card, number-base, seed-word, and private-key representations in
   sync while input is entered. Each destination waits for enough bits to emit

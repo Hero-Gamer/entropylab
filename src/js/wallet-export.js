@@ -187,6 +187,15 @@ var hodlWalletExport = (() => {
     return { branch: Number(branch[1]), hardened: Boolean(branch[2]) };
   };
 
+  // Core numbers every pubkey provider, including a constant Taproot
+  // internal key that is not an xpub. The supported tr(NUMS,sortedmulti_a)
+  // shape puts NUMS at key_exp_index 0, so co-signer caches belong at 1..n.
+  // Native / nested / legacy wrappers have no extra provider and stay 0..n-1.
+  const cacheKeyExpIndex = (descriptor, xpubIndex) => {
+    const body = stripChecksum(descriptor);
+    return /^tr\([0-9a-fA-F]{64},/.test(body) ? xpubIndex + 1 : xpubIndex;
+  };
+
   // One descriptor export unit per account branch: the watch-only descriptor
   // plus, when requested and available, its private key record material.
   const branchRangeFromRows = (rows) => {
@@ -209,13 +218,18 @@ var hodlWalletExport = (() => {
       if (!descriptor) continue;
       const branchRows = wallet.addressBranches?.find((entry) => entry.branch === branch)?.rows;
       const rows = Array.isArray(branchRows) ? branchRows : branch === 0 ? wallet.receive : wallet.change;
+      const range = branchRangeFromRows(rows);
       units.push({
         type,
         internal: branch === 1,
         descriptor,
         privateDescriptor: null,
         multiKey: true,
-        ...branchRangeFromRows(rows),
+        ...range,
+        // Fresh Core wallet: first getnewaddress is receive index 0, matching
+        // the MS Station copy. Displayed EntropyLab rows are not spent here.
+        nextIndex: 0,
+        rangeStart: 0,
       });
     }
     return units;
@@ -320,11 +334,12 @@ var hodlWalletExport = (() => {
         // ("…xpubBranch/*") — BIP32PubkeyProvider with an empty path caches
         // its root key. Caching the wrong parent makes Core watch a different
         // subtree than the descriptor's. Multisig writes one parent per
-        // co-signer (key_exp_index 0..n-1).
+        // co-signer at that key's Core key_exp_index (0..n-1, or 1..n when a
+        // Taproot NUMS internal key occupies 0).
         const branchBody = tail.branch === null ? extendedKeyBody(xpub) : deps.deriveBranchBody(xpub, tail.branch);
         if (branchBody.length !== 74) throw new Error("wallet.dat export: branch xpub body must be 74 bytes");
         push(
-          concat(streamString("walletdescriptorcache"), id, u32le(index)),
+          concat(streamString("walletdescriptorcache"), id, u32le(cacheKeyExpIndex(stored, index))),
           concat(compactSize(branchBody.length), branchBody),
         );
       });

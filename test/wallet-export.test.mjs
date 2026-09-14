@@ -515,6 +515,87 @@ test("msig cache parents match independent CKD of each co-signer", () => {
   assert.deepEqual(got, [...expected].sort());
 });
 
+const cacheKeyIndex = (keyHex) => {
+  const bytes = hexToBytes(keyHex);
+  const offset = bytes.length - 4;
+  return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24);
+};
+
+const readDescriptorRange = (value) => {
+  const first = value[0];
+  const lengthBytes = first < 253 ? 1 : first === 253 ? 3 : first === 254 ? 5 : 9;
+  const descriptorLength = first < 253 ? first : first === 253 ? value.readUInt16LE(1) : first === 254 ? value.readUInt32LE(1) : Number(value.readBigUInt64LE(1));
+  const offset = lengthBytes + descriptorLength + 8;
+  return {
+    nextIndex: value.readUInt32LE(offset),
+    rangeStart: value.readUInt32LE(offset + 4),
+    rangeEnd: value.readUInt32LE(offset + 8),
+  };
+};
+
+test("msig watch-only nextIndex is 0 so first getnewaddress is receive 0", () => {
+  const { walletDescriptorUnits, buildWalletRecords } = loadModule();
+  const units = walletDescriptorUnits(MSIG_WALLET, false);
+  assert.ok(units.every((unit) => unit.nextIndex === 0 && unit.rangeStart === 0));
+  const records = buildWalletRecords(MSIG_WALLET, false, msigDeps, 0);
+  const descriptorValues = records
+    .filter(([key]) => key[0] === 16 && new TextDecoder().decode(key.slice(1, 17)) === "walletdescriptor")
+    .map(([, value]) => Buffer.from(value));
+  assert.equal(descriptorValues.length, 2);
+  for (const value of descriptorValues) {
+    const range = readDescriptorRange(value);
+    assert.equal(range.nextIndex, 0);
+    assert.equal(range.rangeStart, 0);
+  }
+});
+
+const NUMS = "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0";
+const msigTrNode = (account) => msigMaster.derive(`m/86'/0'/${account}'`);
+const msigTrKey = (account) => {
+  const node = msigTrNode(account);
+  return `[${msigFingerprint}/86h/0h/${account}h]${node.publicExtendedKey}`;
+};
+const msigTrBody = (branch) => `tr(${NUMS},sortedmulti_a(2,${msigTrKey(0)}/${branch}/*,${msigTrKey(1)}/${branch}/*,${msigTrKey(2)}/${branch}/*))`;
+const msigTrDesc = (branch) => `${msigTrBody(branch)}#${descriptorChecksum(msigTrBody(branch))}`;
+const MSIG_TR_WALLET = {
+  kind: "msig",
+  network: "mainnet",
+  script: "p2tr",
+  m: 2,
+  n: 3,
+  receiveDescriptor: msigTrDesc(0),
+  changeDescriptor: msigTrDesc(1),
+  receive: [{ index: 0 }, { index: 1 }],
+  change: [{ index: 0 }, { index: 1 }],
+};
+
+test("msig Taproot cache indexes skip the NUMS internal key", () => {
+  const { buildWalletRecords } = loadModule();
+  const cachePrefix = "15" + "77616c6c657464657363726970746f726361636865";
+  const nativeIndexes = buildWalletRecords(MSIG_WALLET, false, msigDeps, 0)
+    .map(([key]) => bytesToHex(key))
+    .filter((key) => key.startsWith(cachePrefix))
+    .map(cacheKeyIndex);
+  assert.deepEqual([...new Set(nativeIndexes)].sort((a, b) => a - b), [0, 1, 2]);
+
+  const tap = buildWalletRecords(MSIG_TR_WALLET, false, msigDeps, 0);
+  const tapCaches = tap
+    .map(([key, value]) => [bytesToHex(key), bytesToHex(value)])
+    .filter(([key]) => key.startsWith(cachePrefix));
+  assert.equal(tapCaches.length, 6);
+  const tapIndexes = tapCaches.map(([key]) => cacheKeyIndex(key));
+  assert.deepEqual([...new Set(tapIndexes)].sort((a, b) => a - b), [1, 2, 3]);
+  assert.equal(tapIndexes.includes(0), false);
+
+  const expected = [];
+  for (const branch of [0, 1]) {
+    for (const account of [0, 1, 2]) {
+      expected.push("4a" + bytesToHex(deriveBranchBody(msigTrNode(account).publicExtendedKey, branch)));
+    }
+  }
+  assert.deepEqual(tapCaches.map(([, value]) => value).sort(), [...expected].sort());
+});
+
 test("msig Zpub is rewritten to xpub before it is stored", () => {
   const { buildWalletRecords } = loadModule();
   const raw = b58checkDecode(msigNode(0).publicExtendedKey);
@@ -914,6 +995,36 @@ test("bitcoind loads a generated msig watch-only wallet.dat", { skip: !BITCOIND,
     assert.equal(info.descriptors, true);
     assert.equal(info.private_keys_enabled, false);
     const address = cli(["-rpcwallet=elmsig", "getnewaddress"]).stdout.trim();
-    assert.ok(address.startsWith("bcrt1q"), `msig address ${address} has the wrong HRP`);
+    const expectedReceive = JSON.parse(cli(["deriveaddresses", wallet.receiveDescriptor, "[0,0]"]).stdout)[0];
+    assert.equal(address, expectedReceive);
+    const change = cli(["-rpcwallet=elmsig", "getrawchangeaddress"]).stdout.trim();
+    const expectedChange = JSON.parse(cli(["deriveaddresses", wallet.changeDescriptor, "[0,0]"]).stdout)[0];
+    assert.equal(change, expectedChange);
+  });
+});
+
+test("bitcoind loads a generated msig Taproot watch-only wallet.dat", { skip: !BITCOIND, timeout: 120000 }, async () => {
+  const { buildWalletDat } = loadModule();
+  const wallet = {
+    ...MSIG_TR_WALLET,
+    network: "regtest",
+    receiveDescriptor: reversionDescriptor(MSIG_TR_WALLET.receiveDescriptor, 0x043587cf, 0x04358394),
+    changeDescriptor: reversionDescriptor(MSIG_TR_WALLET.changeDescriptor, 0x043587cf, 0x04358394),
+  };
+  const bytes = buildWalletDat(wallet, true, msigDeps, 0);
+  await withChainNode("regtest", (cli, walletsDir) => {
+    mkdirSync(join(walletsDir, "elmsigtr"), { recursive: true });
+    writeFileSync(join(walletsDir, "elmsigtr", "wallet.dat"), bytes);
+    assert.equal(JSON.parse(cli(["loadwallet", "elmsigtr"]).stdout).name, "elmsigtr");
+    const info = JSON.parse(cli(["-rpcwallet=elmsigtr", "getwalletinfo"]).stdout);
+    assert.equal(info.format, "sqlite");
+    assert.equal(info.descriptors, true);
+    assert.equal(info.private_keys_enabled, false);
+    const address = cli(["-rpcwallet=elmsigtr", "getnewaddress"]).stdout.trim();
+    const expectedReceive = JSON.parse(cli(["deriveaddresses", wallet.receiveDescriptor, "[0,0]"]).stdout)[0];
+    assert.equal(address, expectedReceive);
+    const change = cli(["-rpcwallet=elmsigtr", "getrawchangeaddress"]).stdout.trim();
+    const expectedChange = JSON.parse(cli(["deriveaddresses", wallet.changeDescriptor, "[0,0]"]).stdout)[0];
+    assert.equal(change, expectedChange);
   });
 });

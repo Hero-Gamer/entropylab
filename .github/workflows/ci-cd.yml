@@ -46,6 +46,7 @@ jobs:
 
   build:
     name: Build · compile site + Pages artifact
+    needs: [build-wasm]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -63,6 +64,11 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Download the freshly tested WASM modules
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: entropylab-wasm
+          path: src/js
       - name: Build static site
         run: npm run build
       - name: Generate the SHA-256 checksum manifest
@@ -92,6 +98,10 @@ jobs:
           path: |
             entropylab.html
             service-worker.js
+            src/js/entropylab-wasm-b64.js
+            src/js/psbt-wasm-b64.js
+            src/js/vanity-wasm-b64.js
+          if-no-files-found: error
           retention-days: 7
       - name: Prepare static site
         run: |
@@ -113,9 +123,10 @@ jobs:
   # with Cargo.lock and rust-toolchain.toml). This job rebuilds them from
   # scratch and runs their test suites against the fresh build, so a stale or
   # hand-edited committed artifact cannot hide a broken crate. The artifacts
-  # themselves are committed back by the `artifact` job after merges, same as
-  # entropylab.html: byte identity across machines is not asserted because the
-  # C side compiles with the runner's clang.
+  # are shared with the site build, then bundled with the candidate for every
+  # downstream consumer (including tests that import source modules or build
+  # a hooks-enabled page). The post-merge job commits these same tested bytes,
+  # not a second compilation. Cross-machine build identity is not asserted.
   build-wasm:
     name: Build · WASM from Rust sources
     runs-on: ubuntu-latest
@@ -132,6 +143,16 @@ jobs:
         run: npm run build:wasm
       - name: Test the freshly built bindings
         run: node --test test/entropylab-wasm.test.mjs test/hashes-wasm.test.mjs test/hdkey-bip39-wasm.test.mjs test/addresses-wasm.test.mjs test/tx-sighash-wasm.test.mjs test/psbt-wasm.test.mjs test/psbt-sanitize.test.mjs test/wipe-wasm.test.mjs test/vanity-wasm.test.mjs test/aezeed-wasm.test.mjs
+      - name: Upload the freshly tested WASM modules
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: entropylab-wasm
+          path: |
+            src/js/entropylab-wasm-b64.js
+            src/js/psbt-wasm-b64.js
+            src/js/vanity-wasm-b64.js
+          if-no-files-found: error
+          retention-days: 7
 
   # Resolve the OS matrix from workflow_dispatch checkboxes (defaults to Ubuntu
   # for automatic triggers or when nothing is selected).
@@ -400,9 +421,8 @@ jobs:
   # ── Artifact: commit the tested site after merges to rock ────────────────
   # Gated on every behavioral job (unit, browser, structural, WASM), then
   # commits the exact tested candidate — it never rebuilds the wallet HTML.
-  # The WASM artifact is still rebuilt here from the pinned Rust
-  # sources (cross-machine byte identity is not claimed for it; the build-wasm
-  # job gates its behavior).
+  # The candidate also carries the exact WASM modules tested by build-wasm
+  # and embedded in the HTML; publication does not compile them again.
 
   artifact:
     name: Artifact · commit tested site after merge
@@ -420,8 +440,6 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Rebuild the WASM artifacts from the Rust sources
-        run: npm run build:wasm
       - name: Download the tested candidate
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:

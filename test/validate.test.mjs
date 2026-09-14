@@ -215,34 +215,155 @@ test("the GHCR image name is normalized for mixed-case organization logins", () 
   assert.doesNotMatch(workflow, /ghcr\.io\/\$\{\{ github\.repository \}\}/);
 });
 
+// Deliberately parse the workflow's simple job/step layout, not arbitrary YAML.
+// Bound sections before matching so another job's needs or upload cannot pass.
+function workflowJob(workflow, name) {
+  return workflow.match(new RegExp(`^  ${name}:\\n[\\s\\S]*?(?=^  [\\w-]+:|(?![\\s\\S]))`, "m"))?.[0] ?? "";
+}
+const workflowSteps = (job) => job.match(/^      - [\s\S]*?(?=^      - |(?![\s\S]))/gm) ?? [];
+const jobNeeds = (job) => (job.match(/^    needs: \[([^\]\n]*)\]/m)?.[1] ?? "").split(",").map(value => value.trim());
+const wasmModulePaths = ["src/js/entropylab-wasm-b64.js", "src/js/psbt-wasm-b64.js", "src/js/vanity-wasm-b64.js"];
+const candidateConsumers = {
+  "test-ci": "npm run test:ci",
+  "test-browser": "npm run test:browser",
+  "test-browser-check": "npm run test:browser-check",
+  "test-invariants": "npm run test:invariants",
+  verify: "npm run verify",
+  artifact: "git add -f entropylab.html",
+};
+
+function wasmArtifactFlowProblems(workflow) {
+  const problems = [];
+  const requireNeeds = (name, dependencies) => {
+    for (const dependency of dependencies) {
+      if (!jobNeeds(workflowJob(workflow, name)).includes(dependency)) problems.push(`${name} needs ${dependency}`);
+    }
+  };
+  const artifactStep = (steps, action, name) => steps.findIndex(step =>
+    step.includes(`uses: actions/${action}@`) && step.includes(`          name: ${name}\n`));
+  const upload = (steps, name, paths) => {
+    const index = artifactStep(steps, "upload-artifact", name);
+    const step = steps[index] ?? "";
+    const actual = (step.match(/^          path: \|\n((?:^            [^\n]+\n)+)/m)?.[1] ?? "")
+      .trim().split("\n").map(path => path.trim());
+    if (index < 0) problems.push(`missing ${name} upload`);
+    if (actual.length !== paths.length || paths.some(path => !actual.includes(path))) problems.push(`${name} must upload the explicit file paths`);
+    // This fails an empty upload; the explicit path guard catches omissions
+    // from the workflow, not individual missing files on a runner's disk.
+    if (!/^          if-no-files-found: error$/m.test(step)) problems.push(`${name} must fail an empty upload`);
+    return index;
+  };
+  requireNeeds("build", ["build-wasm"]);
+  const producer = workflowSteps(workflowJob(workflow, "build-wasm"));
+  const uploaded = upload(producer, "entropylab-wasm", wasmModulePaths);
+  const tested = producer.findIndex(step => /^        run: node --test /m.test(step));
+  if (tested < 0 || uploaded <= tested) problems.push("WASM upload must follow fresh tests");
+  const build = workflowSteps(workflowJob(workflow, "build"));
+  const downloaded = artifactStep(build, "download-artifact", "entropylab-wasm");
+  const compiled = build.findIndex(step => /^        run: npm run build$/m.test(step));
+  const checkout = build.findIndex(step => step.includes("uses: actions/checkout@"));
+  if (downloaded < 0 || !/^          path: src\/js$/m.test(build[downloaded] ?? "")) problems.push("build must download entropylab-wasm into src/js");
+  if (checkout < 0 || downloaded <= checkout || compiled <= downloaded) problems.push("build must checkout, download WASM, then compile");
+  const candidate = upload(build, "entropylab-candidate", ["entropylab.html", "service-worker.js", ...wasmModulePaths]);
+  if (compiled < 0 || candidate <= compiled) problems.push("candidate upload must follow compilation");
+  for (const [name, command] of Object.entries(candidateConsumers)) {
+    requireNeeds(name, ["build"]);
+    const job = workflowJob(workflow, name);
+    const steps = workflowSteps(job);
+    const download = artifactStep(steps, "download-artifact", "entropylab-candidate");
+    const checkout = steps.findIndex(step => step.includes("uses: actions/checkout@"));
+    const consume = steps.findIndex(step => step.includes(command));
+    const destination = steps[download]?.match(/^          path: (.+)$/m)?.[1];
+    if (download < 0 || (destination !== undefined && destination !== ".")) problems.push(`${name} must download candidate into the workspace root`);
+    if (checkout < 0 || download <= checkout || consume <= download) problems.push(`${name} must checkout, download candidate, then consume it`);
+    if (/npm run build:wasm/.test(job)) problems.push(`${name} must not recompile WASM`);
+  }
+  return problems;
+}
+
+test("fresh WASM travels through the single candidate to every consumer", () => {
+  assert.deepEqual(wasmArtifactFlowProblems(read(".github/workflows/ci-cd.yml")), []);
+});
+
+test("the WASM artifact flow guard detects broken handoffs", () => {
+  const workflow = read(".github/workflows/ci-cd.yml");
+  assert.deepEqual(wasmArtifactFlowProblems(workflow), [], "mutation baseline satisfies the contract");
+  const reject = (name, mutate, expected) => {
+    const original = workflowJob(workflow, name);
+    const changed = mutate(original);
+    assert.notEqual(changed, original, `${name}: mutation must change its fixture`);
+    const problems = wasmArtifactFlowProblems(workflow.replace(original, changed));
+    assert.ok(problems.some(problem => problem.includes(expected)), `${name}: expected ${expected}; got ${problems.join("; ")}`);
+  };
+  const moveStepBefore = (job, moving, before) => {
+    const steps = workflowSteps(job);
+    const source = steps.find(step => step.includes(moving));
+    const target = steps.find(step => step.includes(before));
+    assert.ok(source && target && source !== target, "reordering fixture has distinct steps");
+    return job.replace(source, "").replace(target, source + target);
+  };
+  reject("build", job => job.replace("needs: [build-wasm]", "needs: []"), "build needs build-wasm");
+  for (const [name, artifact] of [["build-wasm", "entropylab-wasm"], ["build", "entropylab-candidate"]]) {
+    for (const path of name === "build" ? ["entropylab.html", "service-worker.js", ...wasmModulePaths] : wasmModulePaths) {
+      reject(name, job => job.replace(`            ${path}\n`, ""), `${artifact} must upload the explicit file paths`);
+    }
+    reject(name, job => job.replace("if-no-files-found: error", "if-no-files-found: warn"), `${artifact} must fail an empty upload`);
+    reject(name, job => {
+      const step = workflowSteps(job).find(step => step.includes(`          name: ${artifact}\n`));
+      return job.replace(step, "");
+    }, `missing ${artifact} upload`);
+  }
+  reject("build-wasm", job => moveStepBefore(job, "          name: entropylab-wasm\n", "run: node --test"), "WASM upload must follow fresh tests");
+  reject("build", job => job.replace("name: entropylab-wasm\n", "name: wrong-wasm\n"), "build must download entropylab-wasm");
+  reject("build", job => job.replace("path: src/js\n", "path: .\n"), "build must download entropylab-wasm into src/js");
+  reject("build", job => moveStepBefore(job, "run: npm run build\n", "          name: entropylab-wasm\n"), "then compile");
+  reject("build", job => moveStepBefore(job, "          name: entropylab-candidate\n", "run: npm run build\n"), "candidate upload must follow compilation");
+  for (const [name, command] of Object.entries(candidateConsumers)) {
+    // Later jobs still have needs: [build]; they must never mask this loss.
+    reject(name, job => job.replace(/^(    needs: \[)build(?:, )?/m, "$1"), `${name} needs build`);
+    reject(name, job => job.replace("name: entropylab-candidate\n", "name: wrong-candidate\n"), `${name} must download candidate`);
+    reject(name, job => job.replace("name: entropylab-candidate\n", "name: entropylab-candidate\n          path: src/js\n"), `${name} must download candidate`);
+    reject(name, job => moveStepBefore(job, "          name: entropylab-candidate\n", "uses: actions/checkout@"), `${name} must checkout`);
+    reject(name, job => moveStepBefore(job, command, "          name: entropylab-candidate\n"), `${name} must checkout`);
+  }
+  reject("artifact", job => job + "      - run: npm run build:wasm\n", "artifact must not recompile WASM");
+  assert.equal(workflowJob("  first:\n    needs: []\n  last:\n    needs: [build]", "first"), "  first:\n    needs: []\n");
+  assert.deepEqual(jobNeeds(workflowJob("  last:\n    needs: [build]", "last")), ["build"], "last job works without a trailing newline");
+});
+
 test("every gate and publication path consumes the single tested candidate (issue #93)", () => {
   const workflow = read(".github/workflows/ci-cd.yml");
   // One build records the candidate's SHA-256 and shares the exact object.
-  assert.match(workflow, /^\s{2}build:\n(?:.|\n)*?^\s{4}outputs:\n\s*sha256: \$\{\{ steps\.digest\.outputs\.sha256 \}\}/m);
+  assert.match(workflowJob(workflow, "build"), /^    outputs:\n\s*sha256: \$\{\{ steps\.digest\.outputs\.sha256 \}\}/m);
   assert.match(workflow, /actions\/upload-artifact@[0-9a-f]{40}/);
   // Each job that reads the compiled artifact downloads that object and
   // verifies its digest instead of rebuilding it.
   for (const job of ["test-ci", "test-browser", "test-browser-check", "test-invariants", "verify", "artifact"]) {
-    const section = workflow.match(new RegExp(`^  ${job}:\\n(?:.|\\n)*?(?=^  [a-z-]+:|\\Z)`, "m"))?.[0] ?? "";
+    const section = workflowJob(workflow, job);
     assert.ok(section, `${job} job is missing`);
     assert.match(section, /actions\/download-artifact@[0-9a-f]{40}/, `${job} must download the tested candidate`);
     assert.match(section, /sha256sum -c -/, `${job} must verify the candidate digest`);
     assert.doesNotMatch(section, /^\s+run: npm run build\s*$/m, `${job} must not rebuild the wallet HTML`);
   }
   // The repository artifact cannot be committed when unit or browser tests fail.
-  assert.match(workflow, /^\s{2}artifact:\n(?:.|\n)*?^\s{4}needs: \[build, verify, test-ci, test-browser, build-wasm, fuzz-lifehash, fuzz-msig\]$/m);
+  for (const dependency of ["build", "verify", "test-ci", "test-browser", "build-wasm", "fuzz-lifehash", "fuzz-msig"]) {
+    assert.ok(jobNeeds(workflowJob(workflow, "artifact")).includes(dependency), `artifact needs ${dependency}`);
+  }
 });
 
 test("third-party actions are immutable and deployment is test-gated", () => {
   const workflow = read(".github/workflows/ci-cd.yml");
   assert.doesNotMatch(workflow, /^\s*uses:\s*[^\s]+@(?![0-9a-f]{40}(?:\s|$))/m);
-  assert.match(workflow, /^\s{2}test-ci:\n(?:.|\n)*?^\s{4}needs: \[build\]$/m);
-  assert.match(workflow, /^\s{2}test-browser:\n(?:.|\n)*?^\s{4}needs: \[build\]$/m);
+  for (const job of ["test-ci", "test-browser"]) {
+    for (const dependency of ["build", "setup"]) assert.ok(jobNeeds(workflowJob(workflow, job)).includes(dependency), `${job} needs ${dependency}`);
+  }
   // The WASM gate must rebuild the bindings from the Rust sources, test the
   // fresh build, and block both the artifact commit and the Pages deploy.
-  assert.match(workflow, /^\s{2}build-wasm:\n(?:.|\n)*?npm run build:wasm\n/m);
+  assert.match(workflowJob(workflow, "build-wasm"), /npm run build:wasm\n/);
   assert.deepEqual(wasmGateProblems(workflow), []);
-  assert.match(workflow, /^\s{2}deploy:\n(?:.|\n)*?^\s{4}needs: \[build, verify, test-ci, test-browser, build-wasm, fuzz-lifehash, fuzz-msig\]$/m);
+  for (const dependency of ["build", "verify", "test-ci", "test-browser", "build-wasm", "fuzz-lifehash", "fuzz-msig"]) {
+    assert.ok(jobNeeds(workflowJob(workflow, "deploy")).includes(dependency), `deploy needs ${dependency}`);
+  }
 });
 
 // The build-wasm gate only guards the crate if (a) the job rebuilds the
@@ -252,10 +373,10 @@ test("third-party actions are immutable and deployment is test-gated", () => {
 // check can be exercised against doctored workflows below.
 function wasmGateProblems(workflow) {
   const problems = [];
-  const job = workflow.match(/^  build-wasm:\n([\s\S]*?)(?=^  \w)/m);
+  const job = workflowJob(workflow, "build-wasm");
   if (!job) return ["the build-wasm job is missing"];
-  const buildAt = job[1].search(/^\s*run: npm run build:wasm$/m);
-  const testAt = job[1].search(/^\s*run: node --test /m);
+  const buildAt = job.search(/^\s*run: npm run build:wasm$/m);
+  const testAt = job.search(/^\s*run: node --test /m);
   if (buildAt === -1) problems.push("the build-wasm job never rebuilds the bindings from the Rust sources");
   if (testAt === -1) {
     problems.push("the build-wasm job runs no test suites against the fresh build");
@@ -264,7 +385,7 @@ function wasmGateProblems(workflow) {
   if (buildAt !== -1 && buildAt > testAt) {
     problems.push("build-wasm tests run before the rebuild, so they exercise the committed artifact instead");
   }
-  const step = job[1].match(/^\s*run: node --test ([^\n]+)$/m)[1];
+  const step = job.match(/^\s*run: node --test ([^\n]+)$/m)[1];
   for (const suite of readdirSync(join(root, "test")).filter((name) => name.endsWith("-wasm.test.mjs"))) {
     if (!step.includes(`test/${suite}`)) problems.push(`build-wasm must run test/${suite} against the fresh build`);
   }
@@ -297,11 +418,10 @@ test("the WASM gate check detects its own failure modes", () => {
     wasmGateProblems(noTest).some((problem) => problem.includes("no test suites")),
     "deleting the fresh-build test step must be detected",
   );
-  // The committed artifact is gated by test:ci; a WASM suite that runs only
-  // against the fresh build would let a broken committed artifact deploy.
+  // test:ci also exercises the fresh modules delivered with the candidate.
   const ciScript = pkg.scripts["test:ci"];
   for (const suiteName of readdirSync(join(root, "test")).filter((name) => name.endsWith("-wasm.test.mjs"))) {
-    assert.ok(ciScript.includes(`test/${suiteName}`), `test:ci must also run test/${suiteName} against the committed artifact`);
+    assert.ok(ciScript.includes(`test/${suiteName}`), `test:ci must also run test/${suiteName} against the candidate modules`);
   }
 });
 

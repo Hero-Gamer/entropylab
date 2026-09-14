@@ -42,14 +42,21 @@ material. Its security posture rests on the following model:
   RFC 6979 with caller-fixed extra entropy). BIP32 extended-key derivation,
   BIP39 mnemonics, Base58Check, bech32m, and address/script construction run
   on rust-bitcoin's crates in the same module. CI rebuilds the WASM from the
-  committed Rust sources and runs its test suite against
-  the fresh build before any deployment; the artifact job then commits the
-  runner's copy back to the repository, the same flow as the site artifact.
+  committed Rust sources and tests the fresh modules before building the
+  site. Those same modules are bundled with the HTML candidate for downstream
+  source and browser tests, deployment, and the post-merge artifact commit;
+  publication does not compile a second WASM copy.
    Cross-machine byte identity is not claimed — the C side compiles with the
    builder's clang, and build-host paths are remapped out of the binary.
   iOS/macOS Lockdown Mode disables WebAssembly. Exclude the site in Safari
   or use a host that can compile WASM. There is no JavaScript secp256k1
   fallback; a host that cannot run the module is treated as broken.
+- Vanity wipes its retained final child and fixed parent nodes in place;
+  matching a copy of a node and wiping that copy is not sufficient. Regression
+  tests scan WASM memory for independently derived nodes, private keys, and
+  chain codes after a grind. Passing these vectors does not guarantee erasure
+  of every compiler or crypto-library temporary; terminate the worker to
+  release its entire WASM instance.
 - Clearing a Key or Multisig station invalidates pending derivation work.
   Pagehide and persisted-page restoration also invalidate derivations and
   clear rendered seed-word grids, checksum choices, and brain-lab hex.

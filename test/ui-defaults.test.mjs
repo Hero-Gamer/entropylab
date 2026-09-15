@@ -2542,7 +2542,7 @@ test("every MS Station co-signer keeps its key and full path visible with synchr
 
 test("input help and validation messages share the same vertical spacing", () => {
   assert.match(css, /--space-control: 8px;/);
-  assert.match(css, /\.hint \{ font-size: 13px; margin: var\(--space-control\) 0 0; \}/);
+  assert.match(css, /\.hint \{[^}]*margin: var\(--space-control\) 0 0; \}/);
   assert.match(css, /\.field-note \{\s*display: block; margin-top: var\(--space-control\);/);
   assert.match(css, /\.station-key-source > \.field-note \{ display: block; margin: var\(--space-control\) 0 0; \}/);
   assert.match(css, /\.msig-full-path \{ font-family: var\(--mono\); \}/);

@@ -3755,19 +3755,19 @@ function hodlRenderPassphraseInputState(input, enabled = hodlPassphraseBip39Enab
     if (enabled) {
       if (invalid) {
         status.textContent = hodlTText(analysis.invalidRanges.length === 1 ? "{n} passphrase inconsistency highlighted · use complete lowercase English BIP39 words separated by single spaces" : "{n} passphrase inconsistencies highlighted · use complete lowercase English BIP39 words separated by single spaces", { n: analysis.invalidRanges.length });
-        status.className = "muted passphrase-bip39-status err";
+        status.className = "field-note passphrase-bip39-status err";
       } else if (analysis.incomplete) {
         status.textContent = hodlTText(analysis.completeWords === 1 ? "{n} complete BIP39 word · finish the current word" : "{n} complete BIP39 words · finish the current word", { n: analysis.completeWords });
-        status.className = "muted passphrase-bip39-status";
+        status.className = "field-note passphrase-bip39-status";
       } else if (analysis.trailingSeparator) {
         status.textContent = hodlTText(analysis.completeWords === 1 ? "{n} complete BIP39 word · start the next word or remove the final space" : "{n} complete BIP39 words · start the next word or remove the final space", { n: analysis.completeWords });
-        status.className = "muted passphrase-bip39-status";
+        status.className = "field-note passphrase-bip39-status";
       } else if (input.value) {
         status.textContent = hodlTText(analysis.completeWords === 1 ? "{n} lowercase BIP39 passphrase word entered" : "{n} lowercase BIP39 passphrase words entered", { n: analysis.completeWords });
-        status.className = "muted passphrase-bip39-status ok";
+        status.className = "field-note passphrase-bip39-status ok";
       } else {
         status.textContent = hodlTText("Use complete lowercase English BIP39 words separated by single spaces.");
-        status.className = "muted passphrase-bip39-status";
+        status.className = "field-note passphrase-bip39-status";
       }
     }
   }
@@ -4079,7 +4079,7 @@ function hodlBrainOutputMarkup(output = "scalar", acked = hodlBrainAcked(output)
       <label class="choice"><input type="radio" name="bo" value="scalar" ${hd ? "" : "checked"} /><span><strong>Single key pair</strong><span class="desc">The digest is the private key. One address, the original brain-wallet behaviour.</span></span></label>
       <label class="choice"><input type="radio" name="bo" value="hd" ${hd ? "checked" : ""} /><span><strong>HD wallet with seed phrase</strong><span class="desc">The digest is 256-bit BIP39 entropy for a 24-word seed. Not the same wallet as the single key pair.</span></span></label>
     </div>
-    <div class="wallet-result-messages is-danger" id="brain-warning" role="alert">
+    <div class="edge-note is-private" id="brain-warning" role="alert">
       <h3>Brain wallet warning — read before use</h3>
       <ul>
         <li class="is-warning">SHA-256(text) is unsalted and fast. Guessable phrases are stolen coins.</li>
@@ -4092,8 +4092,8 @@ function hodlBrainOutputMarkup(output = "scalar", acked = hodlBrainAcked(output)
     </div>
     ${hodlSwitchRowMarkup("brain-lab-ack", hodlT("I understand"), { note: hodlT("Required once this session, in page memory only."), checked: acked })}
     <div id="brain-lab-zone" ${hd ? "" : "hidden"}>
-      <p class="muted" id="brain-lab-help">UTF-8 text is hashed with SHA-256. The 32-byte digest is BIP39 entropy for a 24-word seed. Nothing is derived until you press Derive Key.</p>
-      <p class="muted" id="brain-lab-hex" aria-live="polite">SHA-256 hex appears here. 24 words appear only after Derive Key.</p>
+      <p class="field-note" id="brain-lab-help">UTF-8 text is hashed with SHA-256. The 32-byte digest is BIP39 entropy for a 24-word seed. Nothing is derived until you press Derive Key.</p>
+      <p class="field-note" id="brain-lab-hex" aria-live="polite">SHA-256 hex appears here. 24 words appear only after Derive Key.</p>
     </div>
   </div>`;
 }

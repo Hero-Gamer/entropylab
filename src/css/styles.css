@@ -284,7 +284,7 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
   color: var(--fg); font-size: 14px; font-weight: 600; cursor: pointer;
 }
 .switch-toggle input { margin: 0; }
-.switch-note { display: block; margin: 0; color: var(--muted); font-size: 13px; font-weight: 400; line-height: 1.45; }
+.switch-note { display: block; margin: 0; color: var(--muted); font-size: 12px; font-weight: 400; line-height: 1.4; }
 /* Tighter to the dropdown above than to the section below: the control reads
    as part of the method it qualifies. The rule belongs to this section, not to
    the length band under it: Method closes with the line rather than Seed
@@ -609,7 +609,7 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
 .dice-fairness[data-tone="danger"] .dice-fairness-head strong,
 .dice-fairness-test[data-tone="danger"] .dice-fairness-head strong { color: var(--danger); }
 .dice-fairness-head span { color: var(--muted); font-family: var(--mono); font-size: 12px; }
-.dice-fairness-note, .dice-fairness-caveat { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.dice-fairness-note, .dice-fairness-caveat { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
 .dice-fairness-caveat { margin-top: 12px; }
 /* The empty state is the whole panel: with nothing above it to separate from,
    its 6px lead only unbalances the padding, leaving 18px over 12px. Populated
@@ -743,7 +743,7 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
    label hands its own vertical margins to the row and pushes the rest right. */
 .seed-word-copy-row .label { margin: 0; margin-right: auto; }
 .copy-status {
-  flex: 0 0 auto; color: var(--ok); font-size: 13px; line-height: 21px; white-space: nowrap;
+  flex: 0 0 auto; color: var(--ok); font-size: 12px; line-height: 21px; white-space: nowrap;
 }
 .copy-status:empty { display: none; }
 .copy-button {
@@ -1125,7 +1125,7 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
 }
 
 input.bad, textarea.bad { border-color: var(--danger) !important; }
-.hint { font-size: 13px; margin: var(--space-control) 0 0; }
+.hint { font-size: 12px; margin: var(--space-control) 0 0; }
 .hint.bad { color: var(--danger); }
 .hint.ok { color: var(--ok); }
 .hint.neutral { color: var(--muted); }
@@ -1231,7 +1231,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-summary-lifehash[hidden] { display: none; }
 .key-summary-text { flex: 1 1 auto; min-width: 0; }
 .key-summary-fingerprint { display: block; font-family: var(--mono); font-weight: 700; letter-spacing: 0.04em; color: var(--fg); }
-.key-summary-meta { margin: 2px 0 0; color: var(--muted); font-size: 13px; line-height: 1.35; }
+.key-summary-meta { margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
 .key-summary-path { font-family: var(--mono); word-break: break-all; }
 .key-tab-lifehash { width: 22px; height: 22px; border-radius: 4px; image-rendering: pixelated; background: #fff; }
 .key-tab.is-lab { font-weight: 700; }
@@ -1961,7 +1961,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .derivation-harden {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   padding: 0; border: 0; background: none;
-  color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer;
+  color: var(--muted); font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer;
 }
 /* Grey at rest, like the accordion toggles: it qualifies the field rather than
    naming one, and at the title's own weight and colour the two competed for
@@ -2332,7 +2332,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .edge-note {
   margin: var(--space-component) 0 0; padding: 12px 14px; border: 0; border-left: 3px solid var(--edge-note-color, var(--border));
   font-size: 14px; line-height: 1.5;
-  border-radius: 0 8px 8px 0; background: color-mix(in oklab, var(--blue) 8%, var(--bg));
+  background: color-mix(in oklab, var(--blue) 8%, var(--bg));
 }
 .edge-note.is-private { --edge-note-color: var(--danger-bright); }
 .edge-note.is-public { --edge-note-color: var(--ok-bright); }
@@ -2440,7 +2440,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .key-group.is-revealed > summary { color: var(--danger-bright); }
 .privacy-bar-state { color: var(--fg); font-weight: var(--toolbar-row-weight); }
-.privacy-bar-hint { font-size: 13px; }
+.privacy-bar-hint { font-size: 12px; }
 .privacy-bar.is-revealed {
   border-color: var(--danger-bright);
   background: color-mix(in oklab, var(--danger-bright) 18%, var(--surface));

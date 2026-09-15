@@ -69,7 +69,7 @@
       <div class="tool-intro" id="calc-tool-intro">
         <div class="kicker">Your entropy enters the lab</div>
         <h2>Create. Derive. Verify.</h2>
-        <p class="muted calc-intro">Turn entropy you bring — dice rolls, playing cards, a number in any base, a seed phrase, or a private key — into a BIP-39 seed, then derive its master fingerprint, extended public keys, and receive addresses. The dice methods match COLDCARD, SeedSigner, Keystone, and BitBox, so the same rolls reproduce the same seed on those signers. This does not invent entropy — it is a calculator, and nothing leaves this page.</p>
+        <p class="muted tool-intro-note">Turn entropy you bring — dice rolls, playing cards, a number in any base, a seed phrase, or a private key — into a BIP-39 seed, then derive its master fingerprint, extended public keys, and receive addresses. The dice methods match COLDCARD, SeedSigner, Keystone, and BitBox, so the same rolls reproduce the same seed on those signers. This does not invent entropy — it is a calculator, and nothing leaves this page.</p>
       </div>
       <section class="key-manager no-print" id="key-manager">
       <div class="key-tab-strip"><div class="key-tabs" id="key-tabs" role="tablist" aria-label="Keys"></div><div class="add-item-control"><button class="add-key" id="add-key" type="button" aria-label="Open Key Station to derive another key" aria-describedby="add-key-tooltip" disabled>+</button><span class="add-item-tooltip" id="add-key-tooltip" role="tooltip">Open Key Station to derive another key</span></div><div class="add-item-control"><button class="add-key remove-key" id="delete-key" type="button" aria-label="Delete current key" aria-describedby="delete-key-tooltip" disabled>−</button><span class="add-item-tooltip" id="delete-key-tooltip" role="tooltip">Delete this key</span></div></div>
@@ -121,10 +121,10 @@ words, pick one of the checksum words.</span></span>
       </label>
       </div>
       <p class="label" id="dice-label">Dice rolls (D6)</p>
-      <div class="seed-word-meta"><p class="muted" id="dice-meta" aria-live="polite"><span class="meta-value is-short">0</span> of 99 recommended rolls<br><span class="meta-value is-short">0.0</span> bits estimated</p></div>
+      <div class="seed-word-meta label-description"><p class="muted" id="dice-meta" aria-live="polite"><span class="meta-value is-short">0</span> of 99 recommended rolls<br><span class="meta-value is-short">0.0</span> bits estimated</p></div>
       <div class="dice-input-shell"><pre class="dice-input-highlight" id="dice-highlight" aria-hidden="true"></pre><textarea id="dice" placeholder="415263415263…" inputmode="numeric" autocomplete="off" spellcheck="false" aria-describedby="dice-meta"></textarea></div>
       <div class="dice-input-pad faces-1-6"><button type="button" data-d="1">1</button><button type="button" data-d="2">2</button><button type="button" data-d="3">3</button><button type="button" data-d="4">4</button><button type="button" data-d="5">5</button><button type="button" data-d="6">6</button></div>
-      <div class="seed-word-copy-row"><p class="label">Derived seed phrase</p><span class="seed-phrase-copied" aria-live="polite"></span><button type="button" class="seed-phrase-copy" data-copy-seed-phrase disabled aria-label="Copy seed phrase" title="Copy seed phrase"></button></div>
+      <div class="seed-word-copy-row"><p class="label">Derived seed phrase</p><span class="copy-status" aria-live="polite"></span><button type="button" class="copy-button" data-copy-seed-phrase disabled aria-label="Copy seed phrase" title="Copy seed phrase"></button></div>
       <div id="dice-words" class="dice-word-grid" aria-label="24 seed-word slots"></div>
       <div id="last-words" class="row last-word-options"></div>
     </div>
@@ -288,7 +288,7 @@ words, pick one of the checksum words.</span></span>
         </div>
         <p class="muted" id="vanity-estimate" aria-live="polite"></p>
         <div class="switch-row vanity-first-row">
-          <label class="seed-autocomplete-toggle switch-toggle vanity-first-toggle"><input id="vanity-first" type="checkbox"><span>Stop on first find</span></label>
+          <label class="switch-toggle vanity-first-toggle"><input id="vanity-first" type="checkbox"><span>Stop on first find</span></label>
         </div>
         <div class="row current-item-actions tool-actions">
           <button class="btn primary" id="vanity-go" type="button">Start grinding</button>
@@ -303,7 +303,7 @@ words, pick one of the checksum words.</span></span>
       <div class="tool-intro" id="bip85-tool-intro" hidden>
         <div class="kicker">One seed. Many children.</div>
         <h2>Derive BIP-85 child entropy</h2>
-        <p class="muted bip85-intro">Deterministic child seeds, keys, and passwords from a Key Station BIP32 root. Same parent, application, and index always reproduce the same child. This does not invent entropy — it is a calculator. English BIP-39 children match COLDCARD.</p>
+        <p class="muted tool-intro-note">Deterministic child seeds, keys, and passwords from a Key Station BIP32 root. Same parent, application, and index always reproduce the same child. This does not invent entropy — it is a calculator. English BIP-39 children match COLDCARD.</p>
       </div>
       <section class="key-manager no-print" id="bip85-manager" hidden>
         <div class="key-tab-strip"><div class="key-tabs" id="bip85-tabs" role="tablist" aria-label="BIP-85 child seeds"></div><div class="add-item-control"><button class="add-key" id="add-bip85" type="button" aria-label="Open BIP-85 Station to derive another child" aria-describedby="add-bip85-tooltip">+</button><span class="add-item-tooltip" id="add-bip85-tooltip" role="tooltip">Open BIP-85 Station</span></div><div class="add-item-control"><button class="add-key remove-key" id="delete-bip85" type="button" aria-label="Delete current BIP-85 child" aria-describedby="delete-bip85-tooltip" disabled>−</button><span class="add-item-tooltip" id="delete-bip85-tooltip" role="tooltip">Delete this BIP-85 child</span></div></div>
@@ -368,7 +368,7 @@ words, pick one of the checksum words.</span></span>
       <div class="tool-intro" id="msig-tool-intro" hidden>
         <div class="kicker">Multiple keys, one wallet</div>
         <h2>Derive a multisig wallet</h2>
-        <p class="muted msig-intro" data-i18n-rich>Combine extended public keys into a multisignature wallet. Paste each key origin and extended public key as exported by its signer: <span class="mono">[fingerprint/48h/0h/0h/2h]xpub…</span>. A descriptor holding one co-signer key works too; split a full multisig descriptor into one key per field. A trailing branch step such as <span class="mono">/0/*</span> is accepted and ignored — the receive/change branches and address indexes are derived for you. A longer trailing path such as <span class="mono">/0/20</span> or <span class="mono">/0/0/20/*</span> is honored as descriptor key derivation in full: the co-signer's public keys derive through it, and the exported descriptor carries it before the branch step. Private keys are not needed. The derived addresses can receive bitcoin, and spending requires the configured number of signatures.</p>
+        <p class="muted tool-intro-note" data-i18n-rich>Combine extended public keys into a multisignature wallet. Paste each key origin and extended public key as exported by its signer: <span class="mono">[fingerprint/48h/0h/0h/2h]xpub…</span>. A descriptor holding one co-signer key works too; split a full multisig descriptor into one key per field. A trailing branch step such as <span class="mono">/0/*</span> is accepted and ignored — the receive/change branches and address indexes are derived for you. A longer trailing path such as <span class="mono">/0/20</span> or <span class="mono">/0/0/20/*</span> is honored as descriptor key derivation in full: the co-signer's public keys derive through it, and the exported descriptor carries it before the branch step. Private keys are not needed. The derived addresses can receive bitcoin, and spending requires the configured number of signatures.</p>
       </div>
       <section class="key-manager no-print" id="msig-manager" hidden>
       <div class="key-tab-strip"><div class="key-tabs" id="msig-tabs" role="tablist" aria-label="Multisigs"></div><div class="add-item-control"><button class="add-key" id="add-msig" type="button" aria-label="Open MS Station to derive another multisig" aria-describedby="add-msig-tooltip" disabled>+</button><span class="add-item-tooltip" id="add-msig-tooltip" role="tooltip">Open MS Station</span></div><div class="add-item-control"><button class="add-key remove-key" id="delete-msig" type="button" aria-label="Delete current multisig" aria-describedby="delete-msig-tooltip" disabled>−</button><span class="add-item-tooltip" id="delete-msig-tooltip" role="tooltip">Delete this multisig</span></div></div>
@@ -634,7 +634,7 @@ words, pick one of the checksum words.</span></span>
         <input type="file" id="psbted-file" accept=".psbt,.txt,.hex" hidden>
         <button class="btn secondary" id="psbted-wipe" type="button">Clear editor</button>
       </div>
-      <div class="switch-row"><label class="seed-autocomplete-toggle switch-toggle"><input type="checkbox" id="psbted-insane" aria-describedby="psbted-insane-note"><span class="label">Insane editing</span></label><p class="seed-autocomplete-note switch-note" id="psbted-insane-note">Disable the consensus layer: edits are no longer checked against Bitcoin's rules (transaction sanity, UTXO claims, signatures, witness data) and a violating result builds and exports anyway. The problem list still reports what it finds. For deliberately broken files only.</p></div>
+      <div class="switch-row"><label class="switch-toggle"><input type="checkbox" id="psbted-insane" aria-describedby="psbted-insane-note"><span class="label">Insane editing</span></label><p class="switch-note" id="psbted-insane-note">Disable the consensus layer: edits are no longer checked against Bitcoin's rules (transaction sanity, UTXO claims, signatures, witness data) and a violating result builds and exports anyway. The problem list still reports what it finds. For deliberately broken files only.</p></div>
       <p class="err" id="psbted-error" role="alert"></p>
       <div id="psbted-out" aria-live="polite"></div>
       <section class="psbted-compare" id="psbted-compare">
@@ -655,7 +655,7 @@ words, pick one of the checksum words.</span></span>
       <div class="tool-intro" id="ln-tool-intro" hidden>
         <div class="kicker">Your seed, your node identity</div>
         <h2>Derive a Lightning node key</h2>
-        <p class="muted ln-intro">Turn a seed phrase into the node identity public key its Lightning implementation would announce: decipher an LND 24-word aezeed cipher seed (passphrase-protected, with a wallet birthday) and derive the node key at its LND keychain path, or take a BIP-39 phrase down the ldk-node derivation. This does not invent entropy — it is a calculator, and nothing leaves this page.</p>
+        <p class="muted tool-intro-note">Turn a seed phrase into the node identity public key its Lightning implementation would announce: decipher an LND 24-word aezeed cipher seed (passphrase-protected, with a wallet birthday) and derive the node key at its LND keychain path, or take a BIP-39 phrase down the ldk-node derivation. This does not invent entropy — it is a calculator, and nothing leaves this page.</p>
       </div>
       <section class="card no-print tool-card" id="ln-card" role="tabpanel" hidden>
         <div class="ln-grid tool-section">
@@ -694,7 +694,7 @@ words, pick one of the checksum words.</span></span>
     <div class="tool-intro" id="journal-tool-intro" hidden>
         <div class="kicker">Your rolls, on paper you control.</div>
         <h2>Entropy Journal</h2>
-        <p class="muted tool-intro-note journal-intro">A local notebook of entropy you already produced — dice, coins, hex, brain-wallet text, or a seed. Protect its files with a password or leave the password blank. A file created without a password can be opened by anyone who has it. The file format is a pure function of the password and entries — nothing is generated for you. This is not a password manager and does not invent entropy.</p>
+        <p class="muted tool-intro-note">A local notebook of entropy you already produced — dice, coins, hex, brain-wallet text, or a seed. Protect its files with a password or leave the password blank. A file created without a password can be opened by anyone who has it. The file format is a pure function of the password and entries — nothing is generated for you. This is not a password manager and does not invent entropy.</p>
         <div class="row journal-global-actions tool-actions">
           <button class="btn secondary green journal-download-action" id="journal-global-download" type="button" disabled aria-disabled="true"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span>Download journal</span></button>
           <button class="btn red clear-current-action" id="journal-global-clear" type="button" disabled aria-disabled="true">Clear journal</button>
@@ -797,7 +797,7 @@ words, pick one of the checksum words.</span></span>
       <p class="muted">The journal lives in this page until you download its file. Password-protected files require the exact password; files created without one can be opened by anyone. Memory clearing is best-effort; close the page before reconnecting the computer.</p>
     </section>
       <section class="card no-print tool-card" id="journal-notes-card" role="tabpanel" hidden>
-      <div class="journal-section-intro" id="journal-notes-tool-intro">
+      <div class="tool-intro" id="journal-notes-tool-intro">
         <div class="kicker">Write it down. Stamp the clock. Download to keep it.</div>
         <h2>Notepad</h2>
         <p class="muted tool-intro-note">Freeform notes for this sitting, each stamped with this computer's date and time. Nothing is stored in the browser. Closing the page discards the notes unless you download them.</p>
@@ -813,7 +813,7 @@ words, pick one of the checksum words.</span></span>
         <div class="journal-notes-render" id="journal-notes-render" aria-hidden="true"></div>
         <textarea class="journal-notes-text" id="journal-notes-text" aria-label="Session notes" aria-placeholder="Add new note" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
         <div class="journal-notes-prompt" id="journal-notes-prompt" aria-hidden="true"><span id="journal-notes-prompt-before"></span><span class="journal-notes-prompt-text" id="journal-notes-prompt-text">Add new note</span></div>
-        <button class="seed-phrase-copy journal-notes-copy" id="journal-notes-copy" type="button" aria-label="Copy notepad page" title="Copy notepad page" data-copy-label="Copy notepad page" data-copied-label="Notepad page copied" disabled><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect class="seed-copy-icon-clip" x="8" y="2" width="8" height="4" rx="1"/><path class="seed-copy-icon-board" d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button>
+        <button class="copy-button journal-notes-copy" id="journal-notes-copy" type="button" aria-label="Copy notepad page" title="Copy notepad page" data-copy-label="Copy notepad page" data-copied-label="Notepad page copied" disabled><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect class="seed-copy-icon-clip" x="8" y="2" width="8" height="4" rx="1"/><path class="seed-copy-icon-board" d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button>
       </div>
       <div class="row psbt-actions journal-file-actions tool-actions">
         <div class="journal-download-options"><button class="btn secondary green journal-download-action journal-file-button" id="journal-notes-download" type="button" aria-label="Download notepad" title="Download notepad"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download notepad</span></button><label class="journal-encrypt-option"><input class="journal-encrypt-download" id="journal-notes-encrypt" type="checkbox" checked><span>Use Journal file encryption</span></label></div>
@@ -823,7 +823,7 @@ words, pick one of the checksum words.</span></span>
       <p class="muted journal-notes-status" id="journal-notes-status" role="status" aria-live="polite"></p>
     </section>
       <section class="card no-print tool-card" id="journal-keymanager-card" role="tabpanel" hidden>
-      <div class="journal-section-intro" id="journal-keymanager-tool-intro">
+      <div class="tool-intro" id="journal-keymanager-tool-intro">
         <div class="kicker">Keys on paper you control.</div>
         <h2>Key manager</h2>
         <p class="muted tool-intro-note" data-i18n-rich>Save key inputs and settings in one <code>.elkeys</code> file. Imported inputs are unverified: load and derive each key before using addresses or exports. New files use input-only version 2 and require an updated reader; older files remain importable, but cached outputs are discarded. The file uses this Journal's password setting and never leaves your machine; without a password it has no access protection.</p>
@@ -843,7 +843,7 @@ words, pick one of the checksum words.</span></span>
       <p class="muted journal-keymanager-status" id="journal-keymanager-status" role="status" aria-live="polite"></p>
     </section>
       <section class="card no-print tool-card" id="journal-state-card" role="tabpanel" hidden>
-      <div class="journal-section-intro" id="journal-state-tool-intro">
+      <div class="tool-intro" id="journal-state-tool-intro">
         <div class="kicker">What this sitting derived.</div>
         <h2>Session state</h2>
         <p class="muted tool-intro-note">A live text summary of every key, multisig, BIP-85 child, and calculator payload currently in this page. It updates as the session changes. Private recovery material is omitted unless you tick the box — the same rule as the recovery sheet.</p>
@@ -861,13 +861,13 @@ words, pick one of the checksum words.</span></span>
       </div>
     </section>
       <section class="card no-print tool-card" id="journal-log-card" role="tabpanel" hidden>
-      <div class="journal-section-intro" id="journal-log-tool-intro">
+      <div class="tool-intro" id="journal-log-tool-intro">
         <div class="kicker">A trace, not a memoir.</div>
         <h2>Session log</h2>
         <p class="muted tool-intro-note">An append-only record of meaningful dashboard actions — tool and station changes, calculations, safe settings, copies, file actions, clears, and errors — so a later bug report has a clock and a fingerprint instead of a guess. Seed phrases, xprvs, note bodies, filenames, PSBT bytes, and typed secrets are not written here. Last 400 events. This computer's clock.</p>
       </div>
       <p class="muted">Download this with a bug report. It names tools and fingerprints, not seeds.</p>
-      <div class="journal-log-wrap"><pre class="journal-log" id="journal-log-out" aria-live="polite">No events yet.</pre><button class="seed-phrase-copy journal-log-copy" id="journal-log-copy" type="button" aria-label="Copy session log" title="Copy session log" data-copy-label="Copy session log" data-copied-label="Session log copied"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect class="seed-copy-icon-clip" x="8" y="2" width="8" height="4" rx="1"/><path class="seed-copy-icon-board" d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button></div>
+      <div class="journal-log-wrap"><pre class="journal-log" id="journal-log-out" aria-live="polite">No events yet.</pre><button class="copy-button journal-log-copy" id="journal-log-copy" type="button" aria-label="Copy session log" title="Copy session log" data-copy-label="Copy session log" data-copied-label="Session log copied"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect class="seed-copy-icon-clip" x="8" y="2" width="8" height="4" rx="1"/><path class="seed-copy-icon-board" d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button></div>
       <div class="row psbt-actions journal-log-actions tool-actions">
         <div class="journal-download-options"><button class="btn secondary green journal-download-action journal-file-button" id="journal-log-download" type="button" aria-label="Download session log" title="Download session log"><svg class="download-mark" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12M7 11l5 5 5-5M5 21h14"/></svg><span class="control-label">Download session log</span></button><label class="journal-encrypt-option"><input class="journal-encrypt-download" id="journal-log-encrypt" type="checkbox" checked><span>Use Journal file encryption</span></label></div>
         <button class="btn red clear-current-action" id="journal-log-clear" type="button">Clear log</button>

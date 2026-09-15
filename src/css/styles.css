@@ -268,14 +268,6 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 /* On the 18-word coin turn the eight D8 keys become one Tails and one Heads. */
 .dice-input-pad.dplus button.dice-key-wide { grid-column: span 4; }
 .dice-input-pad button[hidden] { display: none; }
-.seed-autocomplete-toggle {
-  display: inline-flex; align-items: center; gap: 9px; min-height: 44px;
-  margin-top: var(--space-component); padding: 9px 12px;
-  border: 1px solid var(--border); border-radius: 10px;
-  background: var(--surface-2); color: var(--fg); font-size: 14px; font-weight: 600; cursor: pointer;
-}
-.seed-autocomplete-toggle input { margin: 0; }
-.seed-autocomplete-note { color: var(--muted); font-weight: 400; }
 /* The card's switch, written once: a checkbox and its title on one row, an
    explanation under both. Borderless, because these read as part of the card
    rather than as chips on it. A component adds only how it sits in its own
@@ -287,8 +279,12 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
    above one zeroes it through the card's own convention, so only these need
    saying. */
 .global-sync-host .switch-row, .passphrase-bip39-options .switch-row, .passphrase-keyboard-tools > .switch-row { margin-top: 0; }
-.switch-toggle { width: 100%; min-height: 24px; margin-top: 0; padding: 0; border: 0; background: none; }
-.switch-note { display: block; margin: 0; font-size: 13px; line-height: 1.45; }
+.switch-toggle {
+  display: inline-flex; align-items: center; gap: 9px; width: 100%; min-height: 24px; margin-top: 0;
+  color: var(--fg); font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.switch-toggle input { margin: 0; }
+.switch-note { display: block; margin: 0; color: var(--muted); font-size: 13px; font-weight: 400; line-height: 1.45; }
 /* Tighter to the dropdown above than to the section below: the control reads
    as part of the method it qualifies. The rule belongs to this section, not to
    the length band under it: Method closes with the line rather than Seed
@@ -746,21 +742,21 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
 /* The seed phrase title owns its row and the copy button trails it, so the
    label hands its own vertical margins to the row and pushes the rest right. */
 .seed-word-copy-row .label { margin: 0; margin-right: auto; }
-.seed-phrase-copied {
+.copy-status {
   flex: 0 0 auto; color: var(--ok); font-size: 13px; line-height: 21px; white-space: nowrap;
 }
-.seed-phrase-copied:empty { display: none; }
-.seed-phrase-copy {
+.copy-status:empty { display: none; }
+.copy-button {
   flex: 0 0 auto; display: grid; place-items: center;
   width: 21px; height: 21px; padding: 0; border: 0; background: transparent; color: var(--faint);
 }
-.seed-phrase-copy svg { display: block; width: 16px; height: 16px; }
+.copy-button svg { display: block; width: 16px; height: 16px; }
 .seed-copy-icon-clip, .seed-copy-icon-board { fill: none; stroke: currentColor; stroke-width: 2; }
-.seed-phrase-copy:disabled { color: var(--faint); cursor: not-allowed; }
-.seed-phrase-copy:not(:disabled) { color: var(--selection-accent); }
-.seed-phrase-copy:not(:disabled):hover { color: var(--accent); }
-.seed-phrase-copy.is-copied, .seed-phrase-copy.is-copied:not(:disabled),
-.seed-phrase-copy.is-copied:not(:disabled):hover { color: var(--ok); }
+.copy-button:disabled { color: var(--faint); cursor: not-allowed; }
+.copy-button:not(:disabled) { color: var(--selection-accent); }
+.copy-button:not(:disabled):hover { color: var(--accent); }
+.copy-button.is-copied, .copy-button.is-copied:not(:disabled),
+.copy-button.is-copied:not(:disabled):hover { color: var(--ok); }
 .dice-word-grid {
   --dice-word-rows: var(--dice-word-rows-wide);
   display: grid; grid-auto-flow: column; grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1241,9 +1237,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-tab.is-lab { font-weight: 700; }
 .key-tab-lab-icon { width: 16px; height: 16px; padding: 0; color: var(--muted); }
 .key-tab-lab-icon svg { display: block; width: 100%; height: 100%; }
-.key-result { margin-top: 16px; }
-.key-result .wallet-result-messages { margin: 0 0 16px; }
-.account-receive-section { margin-top: 0; }
+.key-view { margin-top: var(--space-component); }
 .station-key-source > .label { margin: 0 0 8px; }
 .station-key-source > .field-note { display: block; margin: var(--space-control) 0 0; }
 .msig-key-reuse-toggle { margin-top: var(--space-section); }
@@ -1349,7 +1343,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 #journal-card[hidden], #journal-notes-card[hidden], #journal-keymanager-card[hidden], #journal-state-card[hidden], #journal-log-card[hidden] { display: none !important; }
 #journal-card:not([hidden]), #journal-notes-card:not([hidden]), #journal-keymanager-card:not([hidden]), #journal-state-card:not([hidden]), #journal-log-card:not([hidden]) { margin-top: 0; border-radius: 0 0 20px 20px; position: relative; z-index: 1; }
 #journal-locked-panel[hidden], #journal-work-panel[hidden], #journal-create-panel[hidden], #journal-open-panel[hidden], #journal-editor[hidden], #journal-view[hidden] { display: none; }
-.journal-intro { margin: var(--space-control) 0 0; }
 .journal-global-actions { align-items: center; }
 .journal-global-actions .journal-download-action { display: inline-flex; align-items: center; gap: 6px; }
 .journal-status { display: flex; align-items: center; gap: 14px; margin-bottom: var(--space-component); }
@@ -1382,9 +1375,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .journal-create-ready { display: inline-flex; align-items: center; gap: 7px; color: var(--ok); font-size: 13px; font-weight: 700; }
 .journal-create-ready[hidden] { display: none; }
 .journal-create-ready-arrow { display: inline-block; font-size: 18px; line-height: 1; }
-.journal-section-intro { margin: 0 0 var(--space-intro); }
-.journal-section-intro h2 { margin: 5px 0 8px; }
-.journal-section-intro > .muted { max-width: 760px; margin: 0; }
 #journal-tool-tabs .key-tab:disabled,
 #journal-tool-tabs .key-tab:disabled:hover {
   background: transparent; color: var(--faint); opacity: .52; cursor: not-allowed;
@@ -1526,7 +1516,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .vanity-grid > [hidden] { display: none; }
 .vanity-secret { display: inline-flex; align-items: center; gap: 6px; }
-.vanity-secret .seed-phrase-copy { flex: 0 0 auto; }
+.vanity-secret .copy-button { flex: 0 0 auto; }
 /* The selected key, restated where the grind reads from it: which key, what
    kind, and its starting passphrase verbatim. */
 .vanity-source {
@@ -1792,21 +1782,22 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    height, so roughly 3.5px of half-leading sits above its first line and a
    full 8px reads wider than the same 8px above a bordered control. The label
    hands that back, keeping it the one thing that owns the gap. Optical, not
-   layout: the text lands where a control would, not the box around it. */
-#calc-card .label:has(+ :is(.seed-word-meta, .address-match-note, .wallet-dat-birthday-help, .script-type-description)) { margin-bottom: 4px; }
+   layout: the text lands where a control would, not the box around it. Text
+   written to sit directly under a label carries .label-description. */
+#calc-card .label:has(+ .label-description) { margin-bottom: 4px; }
 /* The exception: a checkbox's own text is not a heading over content. It sits
    inside the control, on one line with the box, so it owns no gap either side.
    The components above already say margin: 0; this repeats it only to outrank
    the convention, which an id lets win over their plain class selectors. */
-#calc-card .seed-autocomplete-toggle .label { margin: 0; color: var(--muted); }
+#calc-card .switch-toggle .label { margin: 0; color: var(--muted); }
 /* Grey at rest across the card, like the Harden qualifiers and the accordion
    toggles: a checkbox offers an option rather than naming a field, so it sits
    a step back until the pointer arrives. Set on the control as well as on the
    label class, because some of these title themselves with a bare <strong>
    that inherits and others with a .label that sets its own colour. */
-#calc-card .seed-autocomplete-toggle { color: var(--muted); }
-#calc-card .seed-autocomplete-toggle:hover,
-#calc-card .seed-autocomplete-toggle:hover .label { color: var(--fg); }
+#calc-card .switch-toggle { color: var(--muted); }
+#calc-card .switch-toggle:hover,
+#calc-card .switch-toggle:hover .label { color: var(--fg); }
 /* The fields rest on the page ground already, so the fill half of the shared
    hover has nowhere to go: the edge is what answers the pointer, as it does on
    the method cards. A field flagged invalid keeps its red — that rule carries
@@ -2056,7 +2047,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .msig-import[open] summary { margin-bottom: var(--space-component); color: var(--fg); }
 .msig-import textarea { min-height: 72px; }
 .msig-import .btn { margin-top: var(--space-control); }
-.msig-intro { margin: var(--space-control) 0 0; }
 .msig-threshold-control {
   --msig-slider-inset: 14px;
   min-width: 0; margin: var(--space-control) 0 0; padding: 16px 18px 14px;
@@ -2182,17 +2172,14 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   .msig-threshold-number { flex: 0 0 auto; width: 56px !important; min-width: 56px; height: 40px; min-height: 40px !important; font-size: 16px; }
   .msig-threshold-ticks { font-size: 9px; }
 }
-.tool-intro-note { margin: var(--space-control) 0 0; }
 .psbt-grid { margin-top: var(--space-component); }
 .psbt-grid > .field, .psbt-grid > div > .field:first-child { margin-top: 0; }
-.bip85-intro { margin: var(--space-control) 0 0; }
 .bip85-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 14px; margin-top: var(--space-component); }
 .bip85-grid .field[hidden] { display: none !important; }
 @media (min-width: 720px) {
   .bip85-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .bip85-grid > .field { margin-top: 0; }
 }
-.ln-intro { margin: var(--space-control) 0 0; }
 .ln-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 14px; margin-top: var(--space-component); }
 .ln-grid .field[hidden] { display: none !important; }
 @media (min-width: 720px) {
@@ -2283,9 +2270,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .key-tab.is-lab { font-weight: 700; }
 .key-tab:focus-visible { outline-offset: -3px; }
-#acct .account-result-card {
-  margin-top: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
-}
 .wallet-data-section { margin-top: 20px; }
 .wallet-data-section-head h3 { margin: 0 0 5px; }
 .wallet-data-section-head .muted { margin: 0; }
@@ -2293,7 +2277,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   padding: 16px; border: 1px solid color-mix(in oklab, var(--warn) 38%, var(--border));
   border-radius: 14px; background: color-mix(in oklab, var(--warn) 5%, var(--bg));
 }
-.wallet-public-section { padding-top: 18px; border-top: 1px solid var(--border); }
 .wallet-data-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: var(--space-section); }
 .reveal-private-toggle {
   display: inline-flex; align-items: center; gap: 9px; min-height: 44px; padding: 9px 12px;
@@ -2343,10 +2326,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .wallet-data-subtitle { margin: 20px 0 6px; color: var(--fg); font-family: var(--sans); font-size: 14px; font-weight: 700; }
 .account-result-section { margin-top: 24px; }
 .account-result-section > .wallet-data-section-head { margin-bottom: 16px; }
-.account-private-section {
-  padding: 18px; border: 1px solid color-mix(in oklab, var(--blue) 38%, var(--border));
-  border-radius: 14px; background: color-mix(in oklab, var(--blue) 5%, var(--bg));
-}
 /* A note in the flow with a coloured left edge: red in a group holding data
    the privacy bar can hide (the groups with the eye), green everywhere else.
    Each note supplies only its colour. */
@@ -2380,7 +2359,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .wallet-table tbody tr:not(.address-virtual-spacer) { height: 34px; }
 .wallet-table tbody tr:not(.address-virtual-spacer) > * { white-space: nowrap; }
 .wallet-table .address-virtual-spacer, .wallet-table .address-virtual-spacer td { padding: 0; border: 0; line-height: 0; }
-.wallet-address-table + .wallet-data-subtitle { margin-top: var(--space-section); }
 @media (max-width: 520px) {
   .derive-progress { order: 3; flex-basis: 100%; }
 }
@@ -2527,7 +2505,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   .key-panel-head > div:first-child { grid-column: 1 / -1; grid-row: 2; width: 100%; }
   .key-panel-head > .delete-key { grid-column: 2; grid-row: 1; justify-self: end; }
   .wallet-private-section { padding: 13px; }
-  .account-private-section { padding: 14px; }
   .wallet-data-actions { align-items: stretch; }
   .wallet-data-actions > * { width: 100%; justify-content: center; }
   /* The tools' closing button groups wrap into ragged lines here, each control

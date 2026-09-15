@@ -1764,7 +1764,7 @@
     equal(getComputedStyle(body).outlineStyle, "none", "the focused editor should replace the browser outline with its connected page outline");
     equal(getComputedStyle(pageTabs[0]).borderTopColor, getComputedStyle(body).borderTopColor, "the focused editor outline should climb around its active page tab");
     equal(getComputedStyle(pageTabs[0], "::after").backgroundColor, getComputedStyle(notesWrap).backgroundColor, "the active page tab should mask the editor outline beneath it");
-    assert(notesCopy && notesCopy.classList.contains("seed-phrase-copy"), "the notepad should reuse the clipboard icon button");
+    assert(notesCopy && notesCopy.classList.contains("copy-button"), "the notepad should reuse the clipboard icon button");
     equal(Math.round(notesCopy.getBoundingClientRect().top - notesWrap.getBoundingClientRect().top), 10, "the notepad copy button should align with the bottom of the first text line");
     equal(Math.round(notesWrap.getBoundingClientRect().right - notesCopy.getBoundingClientRect().right), 12, "the notepad copy button should sit in the top-right corner");
     equal(getComputedStyle(notesCopy).opacity, "0", "the notepad copy button should begin faded out");
@@ -2725,7 +2725,7 @@
     // button sits with the seed phrase title, above the grid it copies from.
     assert(toggle.closest(".dice-fairness-row"), "Fairness toggle left its own row");
     assert(!toggle.closest(".seed-word-copy-row"), "Fairness toggle is back in the copy row");
-    const titleRow = document.querySelector(".seed-word-copy-row:has(> .seed-phrase-copy)");
+    const titleRow = document.querySelector(".seed-word-copy-row:has(> .copy-button)");
     assert(titleRow?.querySelector(":scope > .label")?.textContent.trim(), "Copy button row lost its seed phrase title");
     input(dice, "");
     assert(panel.hidden && toggle.getAttribute("aria-expanded") === "false", "Empty rolls still showed the fairness panel");

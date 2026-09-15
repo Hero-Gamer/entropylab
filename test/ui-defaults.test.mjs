@@ -313,7 +313,6 @@ test("key and multisig derivation use an indexed address window with an estimate
   assert.match(appSource, /label\.innerHTML = `\$\{hodlCopiedIconMarkup\(\)\}<span>\$\{hodlT\("Done"\)\}<\/span>`/);
   assert.match(appSource, /async function hodlAddressRowsWithProgress/);
   assert.match(css, /\.derive-progress\.is-complete \{[^}]*var\(--ok\)/);
-  assert.match(css, /\.derive-progress \{[\s\S]*?border: 0;/);
   assert.match(css, /\.btn\.primary\[data-derivation-state="running"\][\s\S]*?background: var\(--danger\)/);
   assert.doesNotMatch(css, /derive-progress-slide|animation: derive-progress/);
   assert.match(appSource, /button\.textContent = hodlTText\("Stop"\)/);
@@ -433,7 +432,7 @@ test("seed phrase calculations and copy controls precede every numbered word gri
   assert.match(appSource, /<div class="dealt-cards"[^>]*><\/div>[\s\S]*?hodlCalculationsSwitchMarkup\("manual", "cards-manual-calculations"[\s\S]*?\$\{hodlDerivedSeedRowMarkup\(\)\}\s*<div id="dice-words"/);
   assert.match(appSource, /\$\{entropyPad\}\s*\$\{[^\n]*hodlCalculationsSwitchMarkup\("number-base", "number-base-calculations"[^\n]*\n\s*\$\{hodlDerivedSeedRowMarkup\(\)\}\s*<div id="entropy-words"/);
   assert.match(appSource, /<\/div>\$\{hodlSeedPhraseRowMarkup\(hodlT\("Your seed phrase"\)\)\}<div id="seed-number-words"/);
-  assert.match(appSource, /function hodlSeedMetaRowMarkup\(metaId, live = false, trailing = ""\) \{\s*return `<div class="seed-word-meta"><p[^`]+<\/p>\$\{trailing\}<\/div>`;\s*\}/);
+  assert.match(appSource, /function hodlSeedMetaRowMarkup\(metaId, live = false, trailing = ""\) \{\s*return `<div class="seed-word-meta label-description"><p[^`]+<\/p>\$\{trailing\}<\/div>`;\s*\}/);
 });
 
 test("every card switch comes from one builder that wires its note", () => {
@@ -442,10 +441,10 @@ test("every card switch comes from one builder that wires its note", () => {
   // The note is announced with the checkbox, because the checkbox points at it.
   assert.equal(
     build("x", "Title", { note: "Why", checked: true, rowClass: "r", hidden: true }),
-    '<div class="switch-row r" hidden><label class="seed-autocomplete-toggle switch-toggle"><input type="checkbox" id="x" aria-describedby="x-note" checked /><span class="label">Title</span></label><p class="seed-autocomplete-note switch-note" id="x-note">Why</p></div>',
+    '<div class="switch-row r" hidden><label class="switch-toggle"><input type="checkbox" id="x" aria-describedby="x-note" checked /><span class="label">Title</span></label><p class="switch-note" id="x-note">Why</p></div>',
   );
   // Without a note there is nothing to point at.
-  assert.equal(build("y", "Plain"), '<div class="switch-row"><label class="seed-autocomplete-toggle switch-toggle"><input type="checkbox" id="y" /><span class="label">Plain</span></label></div>');
+  assert.equal(build("y", "Plain"), '<div class="switch-row"><label class="switch-toggle"><input type="checkbox" id="y" /><span class="label">Plain</span></label></div>');
   for (const id of ['"seed-autocomplete"', '"seed-zero-index"', "`show-${name}-calculations`"]) assert.ok(appSource.includes(`hodlSwitchRowMarkup(${id}`), id);
 });
 
@@ -459,8 +458,6 @@ test("direct dice, direct cards and number bases expose BIP39 calculations befor
   // part of the card rather than a box floating on it.
   // The chrome is the card's shared switch, asserted once; a component states
   // only how it sits in its own container.
-  assert.match(css, /\.switch-toggle \{ width: 100%; min-height: 24px; margin-top: 0; padding: 0; border: 0; background: none; \}/);
-  assert.match(css, /\.switch-note \{ display: block; margin: 0; font-size: 13px; line-height: 1\.45; \}/);
   // Built on the shared switch with a note, so the checkbox points at it. The
   // switch waits for something to be behind it. It ships hidden, because a
   // fresh form runs no update: the field restore only dispatches input when
@@ -548,8 +545,7 @@ test("Number bases offers exact Base 2, 4, 8, 16, Bech32 Base32, and Base64-alph
   // The sync control stacks: switch and title on one row, explanation beneath.
   assert.match(appSource, /<div class="global-sync-head">/);
   assert.match(appSource, /<span class="label">\$\{hodlT\("Sync entropy across methods"\)\}<\/span><\/label>/);
-  assert.match(appSource, /<p class="seed-autocomplete-note switch-note" id="global-sync-note">/);
-  assert.match(css, /\.switch-note \{ display: block; margin: 0; font-size: 13px; line-height: 1\.45; \}/);
+  assert.match(appSource, /<p class="switch-note" id="global-sync-note">/);
   // The explanation describes the switch instead of naming it.
   assert.match(appSource, /id="global-entropy-sync" aria-describedby="global-sync-note"/);
   assert.doesNotMatch(appSource, /<strong>Sync entropy across methods<\/strong>/);
@@ -560,13 +556,10 @@ test("Number bases offers exact Base 2, 4, 8, 16, Bech32 Base32, and Base64-alph
   // hugs its content instead, staying full width and above the 24px floor.
   // The chrome is the card's shared switch, asserted once; a component states
   // only how it sits in its own container.
-  assert.match(css, /\.switch-toggle \{ width: 100%; min-height: 24px; margin-top: 0; padding: 0; border: 0; background: none; \}/);
   assert.match(css, /\.global-sync-toggle \{ flex: 1 1 auto; \}/);
-  assert.match(css, /\.seed-autocomplete-toggle \{[^}]*min-height: 44px;[^}]*border: 1px solid var\(--border\);[^}]*background: var\(--surface-2\);/s);
   // The title matches the Method label above it.
   assert.match(css, /\.global-sync-toggle \.label \{ margin: 0; \}/);
   // The explanation is subordinate to that title and sits directly under it.
-  assert.match(css, /\.switch-note \{ display: block; margin: 0; font-size: 13px; line-height: 1\.45; \}/);
   // The control sits with the method it qualifies rather than centred in its
   // own gap, and it carries the rule that closes the Method section — the
   // length band below opens without one, so the gap either side is even.
@@ -606,11 +599,11 @@ test("card undo uses the keyboard delete icon, a visible word, and closes the ro
   // what is seen and what is announced agree.
   assert.match(appSource, /id="card-undo"[^>]*aria-label="\$\{hodlT\("Undo last card"\)\}"[^>]*><svg[\s\S]*?<\/svg><span>\$\{hodlT\("Undo"\)\}<\/span><\/button>/);
   // Show cards is the card's shared switch, titled like the rest.
-  assert.match(appSource, /class="seed-autocomplete-toggle switch-toggle card-visibility-toggle"><input type="checkbox" id="show-cards"[^>]*><span class="label">/);
+  assert.match(appSource, /class="switch-toggle card-visibility-toggle"><input type="checkbox" id="show-cards"[^>]*><span class="label">/);
   assert.match(app, /class="card-undo-button seed-keyboard-delete" id="card-undo"[^>]*aria-label="\$\{hodlT\("Undo last card"\)\}"[^>]*><svg viewBox="0 0 24 18"/);
   // Show cards leads the row and undo closes it, in source order as well as on
   // screen, so keyboard focus meets them in the order the eye does.
-  assert.match(app, /<div class="card-controls-row"><label class="seed-autocomplete-toggle switch-toggle card-visibility-toggle">[\s\S]*?<\/label><button class="card-undo-button/);
+  assert.match(app, /<div class="card-controls-row"><label class="switch-toggle card-visibility-toggle">[\s\S]*?<\/label><button class="card-undo-button/);
   assert.match(appSource, /function hodlSetInputValueAtEnd\(input, value\)/);
   assert.match(appSource, /hodlSetInputValueAtEnd\(input, value\);\s*input\.dispatchEvent\(new Event\("input"\)\)/);
   assert.match(css, /\.card-controls-row \{[\s\S]*?grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/);
@@ -760,12 +753,10 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   assert.match(app, /<span class="label">Autocomplete BIP39 words<\/span>/);
   // The chrome is the card's shared switch, asserted once; a component states
   // only how it sits in its own container.
-  assert.match(css, /\.switch-toggle \{ width: 100%; min-height: 24px; margin-top: 0; padding: 0; border: 0; background: none; \}/);
   // The one with an explanation gets two rows, and the checkbox points at the
   // note now that it sits outside the label.
   assert.match(app, /id="passphrase-bip39-words" aria-describedby="passphrase-bip39-note"/);
-  assert.match(app, /<p class="seed-autocomplete-note switch-note" id="passphrase-bip39-note">lowercase words separated by single spaces<\/p>/);
-  assert.match(css, /\.switch-note \{ display: block; margin: 0; font-size: 13px; line-height: 1\.45; \}/);
+  assert.match(app, /<p class="switch-note" id="passphrase-bip39-note">lowercase words separated by single spaces<\/p>/);
   assert.match(app, /brainWalletTrim:!1/);
   assert.doesNotMatch(appSource, /bitaddress\.org-style brain wallet/);
   assert.match(app, /id="private-key-input-label"[\s\S]*hodlPrivateKeyKeyboardToggleMarkup\(\)[\s\S]*<textarea id="key"/);
@@ -785,7 +776,7 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   assert.match(app, /toggle\.checked&&hodlAutocompleteSeedInput\(input,null,!0\)/);
   assert.match(app, /inputType:"insertReplacementText"/);
   assert.match(appWhitespace, /toggle\.checked;input\.focus\(\{preventScroll:true\}\)/);
-  assert.match(app, /event\.relatedTarget\?\.closest\?\.\("#seed-keyboard,\.seed-autocomplete-toggle"\)/);
+  assert.match(app, /event\.relatedTarget\?\.closest\?\.\("#seed-keyboard,\.switch-toggle"\)/);
   // The keyboard toggle sits at the right of the autocomplete switch, the way
   // the passphrase toggle sits beside its switch.
   assert.match(appSource, /<div class="passphrase-keyboard-tools">\$\{hodlSwitchRowMarkup\("seed-autocomplete", hodlT\("Autocomplete BIP39 words"\), \{ checked: autocompleteEnabled \}\)\}\$\{hodlSeedKeyboardToggleMarkup\(\)\}<\/div>/);
@@ -802,8 +793,7 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   assert.match(css, /\.passphrase-bip39-options \{[^}]*flex: 1 1 auto[^}]*gap: var\(--space-control\)/s);
   // The chrome is the card's shared switch, asserted once; a component states
   // only how it sits in its own container.
-  assert.match(css, /\.switch-toggle \{ width: 100%; min-height: 24px; margin-top: 0; padding: 0; border: 0; background: none; \}/);
-  assert.match(appSource, /class="seed-autocomplete-toggle switch-toggle passphrase-bip39-toggle"/);
+  assert.match(appSource, /class="switch-toggle passphrase-bip39-toggle"/);
   assert.match(css, /\.passphrase-keyboard-host \.seed-keyboard \{ margin-top: var\(--space-control\); margin-right: auto; margin-left: 0; \}/);
   assert.match(css, /\.seed-keyboard-toggle,\s*\.theme-toggle\s*\{[^}]*width: 44px[^}]*min-height: 44px[^}]*height: auto/s);
   assert.match(css, /\.seed-keyboard-toggle svg \{[^}]*width: 30px[^}]*height: 22px/s);
@@ -946,7 +936,7 @@ test("key derivation shows the relevant paste-ready multisig co-signer exports",
   assert.match(app, /multisigCosignerExports:root\.privateKey\?hodlBuildMultisigCosignerExports\(root,network,accountIndex,masterFingerprint,coinType\):\[\]/);
   assert.match(app, /function hodlRenderMultisigCosignerExport\(exports,accountId\)/);
   assert.match(app, /exports\.filter\(candidate=>candidate\.accountId===accountId\)/);
-  assert.match(appWhitespace, /items\.map\(item=>hodlPublicFieldHtml\("Multisig co-signer \{prefix\} · \{label\}",item\.value,\{prefix:item\.prefix,label:item\.label\},"label"\)\)\.join\(""\)/);
+  assert.match(appWhitespace, /items\.map\(item=>hodlPublicFieldHtml\("Multisig co-signer \{prefix\} · \{label\}",item\.value,\{prefix:item\.prefix,label:item\.label\}\)\)\.join\(""\)/);
   assert.match(app, /\$\{hodlSlip132WatchFields\(account,hodlWalletResult\)\}\s*\$\{hodlImportedCoreRecoveryExport\(hodlWalletResult,account\)\}\s*\$\{hodlRenderMultisigCosignerExport\(hodlWalletResult.multisigCosignerExports,account\.def\.id\)\}/);
   assert.doesNotMatch(`${app}\n${css}`, /account-multisig-exports/);
   assert.match(app, /Legacy P2SH requires the depth-1 BIP45 purpose key at m\/45h/);
@@ -1726,7 +1716,7 @@ test("the Keys tool intro tells what the calculator does, like the other tool in
   for (const markup of [shell]) {
     // No placeholder copy rides the page's first tool intro.
     assert.doesNotMatch(markup, /lorem ipsum/i);
-    assert.match(markup, /<p class="muted calc-intro">Turn entropy you bring (?:—|\\u2014) dice rolls, playing cards, a number in any base, a seed phrase, or a private key/);
+    assert.match(markup, /<p class="muted tool-intro-note">Turn entropy you bring (?:—|\\u2014) dice rolls, playing cards, a number in any base, a seed phrase, or a private key/);
     assert.match(markup, /This does not invent entropy (?:—|\\u2014) it is a calculator, and nothing leaves this page\.<\/p>/);
   }
 });
@@ -1844,7 +1834,7 @@ test("dice rolls hide Pearson chi-squared fairness behind a text expand button",
   assert.match(app, /class="dice-fairness-toggle"/);
   assert.match(app, /data-dice-fairness-glyph/);
   assert.match(app, /hodlT\("Die Distribution \/ Fairness Analysis"\)/);
-  assert.match(appSource, /<div class="seed-word-copy-row">\$\{leading\}<span class="seed-phrase-copied"/);
+  assert.match(appSource, /<div class="seed-word-copy-row">\$\{leading\}<span class="copy-status"/);
   // The toggle has its own row now: it heads the panel under it rather than
   // trailing the copy button, which belongs with the seed phrase title.
   assert.match(css, /\.dice-fairness-row \{ display: flex; align-items: center; margin-top: var\(--space-control\); \}/);
@@ -1862,7 +1852,7 @@ test("dice rolls hide Pearson chi-squared fairness behind a text expand button",
   assert.match(shell, /<div class="seed-word-copy-row"><p class="label">Derived seed phrase<\/p>[\s\S]*?<\/div>\s*<div id="dice-words"/);
   // The pre-boot markup shows the same shape the app renders: the meta row in
   // its wrapper above the input, two lines, each number a coloured value.
-  assert.match(shell, /<div class="seed-word-meta"><p class="muted" id="dice-meta" aria-live="polite">/);
+  assert.match(shell, /<div class="seed-word-meta label-description"><p class="muted" id="dice-meta" aria-live="polite">/);
   assert.match(shell, /<span class="meta-value is-short">0<\/span> of 99 recommended rolls<br><span class="meta-value is-short">0\.0<\/span> bits estimated/);
   assert.match(shell, /id="dice-meta"[\s\S]*?<div class="dice-input-shell">[\s\S]*?<div class="dice-input-pad/);
   // No trace of the single-line form with its trailing method restatement.
@@ -2080,7 +2070,7 @@ test("Journal gates its five tools behind the local notebook", () => {
     assert.match(markup, /id="journal-key-insert"[^>]*aria-label="Insert a Key Station key"/);
     assert.match(markup, /id="journal-font"[\s\S]*?id="journal-size"[\s\S]*?id="journal-spacing"/);
     assert.match(markup, /<div class="journal-notes-wrap" id="journal-page-panel" role="tabpanel"[^>]*>\s*<div class="journal-notes-render" id="journal-notes-render" aria-hidden="true"><\/div>\s*<textarea class="journal-notes-text" id="journal-notes-text"[^>]*aria-placeholder="Add new note"[^>]*><\/textarea>\s*<div class="journal-notes-prompt" id="journal-notes-prompt" aria-hidden="true"><span id="journal-notes-prompt-before"><\/span><span class="journal-notes-prompt-text" id="journal-notes-prompt-text">Add new note<\/span><\/div>/);
-    assert.match(markup, /class="seed-phrase-copy journal-notes-copy" id="journal-notes-copy"[^>]*aria-label="Copy notepad page"[^>]*disabled><svg[^>]*><rect class="seed-copy-icon-clip"[^>]*\/><path class="seed-copy-icon-board"[^>]*\/><\/svg><\/button>/);
+    assert.match(markup, /class="copy-button journal-notes-copy" id="journal-notes-copy"[^>]*aria-label="Copy notepad page"[^>]*disabled><svg[^>]*><rect class="seed-copy-icon-clip"[^>]*\/><path class="seed-copy-icon-board"[^>]*\/><\/svg><\/button>/);
     assert(markup.indexOf('class="journal-format-bar"') < markup.indexOf('id="journal-page-tabs"') && markup.indexOf('id="journal-page-tabs"') < markup.indexOf('id="journal-page-panel"'), "notepad controls should precede the page tabs while the tabs stay joined to the editor");
     assert.match(markup, /class="btn secondary green journal-download-action journal-file-button" id="journal-notes-download"[^>]*aria-label="Download notepad"[^>]*><svg class="download-mark"[\s\S]*?<span class="control-label">Download notepad<\/span><\/button>/);
     assert.match(markup, /class="btn secondary blue journal-upload-action journal-file-button" id="journal-notes-upload"[^>]*aria-label="Upload notebook"[^>]*><svg class="download-mark"[\s\S]*?<path d="M12 17V5M7 10l5-5 5 5M5 21h14"\/>[\s\S]*?<span class="control-label">Upload<\/span><\/button>/);
@@ -2099,7 +2089,7 @@ test("Journal gates its five tools behind the local notebook", () => {
     assert.match(markup, /id="journal-state-private"/);
     assert(markup.indexOf('id="journal-state-text"') < markup.indexOf('id="journal-state-download"'), "Session state download should follow the live snapshot");
     assert.match(markup, /class="btn secondary green journal-download-action journal-file-button" id="journal-state-download"[^>]*aria-label="Download session state"[^>]*>[\s\S]*?<span class="control-label">Download session state<\/span><\/button>/);
-    assert.match(markup, /<div class="journal-log-wrap"><pre class="journal-log" id="journal-log-out"[^>]*>No events yet\.<\/pre><button class="seed-phrase-copy journal-log-copy" id="journal-log-copy"[^>]*aria-label="Copy session log"[^>]*><svg[^>]*><rect class="seed-copy-icon-clip"[^>]*\/><path class="seed-copy-icon-board"[^>]*\/><\/svg><\/button><\/div>/);
+    assert.match(markup, /<div class="journal-log-wrap"><pre class="journal-log" id="journal-log-out"[^>]*>No events yet\.<\/pre><button class="copy-button journal-log-copy" id="journal-log-copy"[^>]*aria-label="Copy session log"[^>]*><svg[^>]*><rect class="seed-copy-icon-clip"[^>]*\/><path class="seed-copy-icon-board"[^>]*\/><\/svg><\/button><\/div>/);
     assert.match(markup, /class="btn secondary green journal-download-action journal-file-button" id="journal-log-download"[^>]*aria-label="Download session log"[^>]*>[\s\S]*?<span class="control-label">Download session log<\/span><\/button>/);
     assert.match(markup, /class="btn red clear-current-action" id="journal-log-clear"[^>]*>Clear log<\/button>/);
     assert.match(markup, /class="row psbt-actions journal-log-actions tool-actions"/);
@@ -2120,8 +2110,6 @@ test("Journal gates its five tools behind the local notebook", () => {
   assert.match(css, /\.journal-create-ready \{[^}]*display: inline-flex;[^}]*color: var\(--ok\);/);
   assert.match(css, /\.journal-create-ready-arrow \{[^}]*font-size: 18px;/);
   assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*\.journal-create-ready-arrow \{ transform: rotate\(90deg\); \}/);
-  assert.match(css, /\.journal-section-intro \{ margin: 0 0 var\(--space-intro\); \}/);
-  assert.match(css, /\.journal-section-intro > \.muted \{ max-width: 760px; margin: 0; \}/);
   assert.match(css, /\.journal-global-actions \{ align-items: center; \}/);
   assert.match(css, /#journal-tool-tabs \.key-tab:disabled,[\s\S]*opacity: \.52; cursor: not-allowed;/);
   assert.match(css, /#journal-card:not\(\[hidden\]\), #journal-notes-card:not\(\[hidden\]\), #journal-keymanager-card:not\(\[hidden\]\), #journal-state-card:not\(\[hidden\]\), #journal-log-card:not\(\[hidden\]\) \{[^}]*border-radius: 0 0 20px 20px;/s);
@@ -2446,7 +2434,7 @@ test("derived-key summaries put the selected sub-method after the method", () =>
 test("derived key results put private recovery before script type and addresses", () => {
   // The HD result sits in the Key Station card, so the toolbar can follow the
   // reader through it: the selected script type renders into a container passed in.
-  assert.match(appSource, /\$\{hodlHdWalletData\(t, '<div id="acct" class="key-groups-slot"><\/div>'\)\}/);
+  assert.match(appSource, /hodlOutEl\.innerHTML = hodlHdWalletData\(t, '<div id="acct" class="key-groups-slot"><\/div>'\);/);
   // The sticky toolbar (script type, then privacy), then one list
   // of groups (recovery, identity, and the selected script type), and the
   // wallet-wide exports last.
@@ -2827,12 +2815,12 @@ test("the private recovery section lists the BIP39 passphrase beside the seed ph
   assert.match(appSource, /\{ mnemonic: null, passphraseUsed: false, passphrase: "", entropyHex: null,/);
   // Rendered right after the words, through the same masked private field as
   // the entropy and seed hex; absent when no passphrase is in use.
-  assert.match(appSource, /hodlSeedPhraseField\(`Your seed phrase[^\n]*\n[^\n]*\n[^\n]*\n\s*if \(wallet\.mnemonic && wallet\.passphraseUsed && wallet\.passphrase\) privateFields\.push\(hodlPrivateFieldHtml\("BIP39 passphrase", wallet\.passphrase, void 0, "label"\)\);\n\s*if \(wallet\.entropyHex\)/);
+  assert.match(appSource, /hodlSeedPhraseField\(`Your seed phrase[^\n]*\n[^\n]*\n[^\n]*\n\s*if \(wallet\.mnemonic && wallet\.passphraseUsed && wallet\.passphrase\) privateFields\.push\(hodlPrivateFieldHtml\("BIP39 passphrase", wallet\.passphrase\)\);\n\s*if \(wallet\.entropyHex\)/);
 });
 
 test("the vanity estimate is timed from a device sample, and Stop on first find halts the grind at the first match", () => {
   for (const markup of [shell]) {
-    assert.match(markup, /<label class="seed-autocomplete-toggle switch-toggle vanity-first-toggle"><input id="vanity-first" type="checkbox"><span>Stop on first find<\/span><\/label>[\s\S]*?<button class="btn primary" id="vanity-go"/);
+    assert.match(markup, /<label class="switch-toggle vanity-first-toggle"><input id="vanity-first" type="checkbox"><span>Stop on first find<\/span><\/label>[\s\S]*?<button class="btn primary" id="vanity-go"/);
     assert.doesNotMatch(markup, /id="vanity-first"[^>]*>[\s\S]*?<span class="label">Stop on first find/);
     assert.doesNotMatch(markup, /<button[^>]*id="vanity-first"/);
   }

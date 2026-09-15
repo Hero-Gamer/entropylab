@@ -64,22 +64,40 @@ Guidelines for AI coding agents.
 - Don't weaken or skip tests, and new behaviour needs a test. This too is
   about logic and functionality — parsing, derivation, wiring, state, and the
   contracts between components.
-- **Presentational detail is not unit-tested.** Colours, spacing, sizes,
-  radii, weights and transitions are design values: a designer tunes them by
-  eye, and a regex asserting one only restates the stylesheet in a second
-  syntax. Such assertions cannot see the cascade, specificity or computed
-  values, so they pass while the layout is visibly wrong, and they go stale
-  on every refactor — which makes the reuse asked for above more expensive,
-  not safer. Do assert what a value cannot express: DOM structure and
+- **Front-end presentation is not unit-tested.** Three things must never be
+  asserted: CSS declarations, markup and class attributes, and user-facing
+  copy. A regex over any of them only restates the source in a second syntax:
+  it cannot see the cascade, specificity or computed values, so it passes
+  while the layout is visibly wrong, and it breaks on every rename or
+  rewording. Assert instead what a rename cannot change — DOM structure and
   ordering, aria wiring, cross-component contracts (two controls reading one
   token), and guards against real hazards (a status line that must never
   become an HTML sink). Where a presentational invariant genuinely matters —
   the shared spacing rhythm, say — put it in the browser suite as a
   `getComputedStyle` check, which tests the outcome rather than the source
-  text. Removing existing value assertions is in scope for design work, but
-  opportunistically: delete one when a change would otherwise make you update
-  it, rather than sweeping the suite, so the design diff stays reviewable and
-  the count comes down as the work moves through each surface.
+  text. Delete value assertions on sight during design work; no replacement
+  is required.
+- **Tests hook on ids and `data-*` attributes, never on classes.** A class is
+  a styling decision and design work renames them freely; an id or a
+  `data-*` attribute is an interface. If a component has no stable handle,
+  add one rather than selecting `.some-class`. A renamed class that breaks a
+  selector does not just fail its own test — in the browser suite it aborts
+  that test part-way and leaves the shared page mid-state, so unrelated tests
+  after it fail too, and the time goes into chasing a product bug that is not
+  there.
+- **Copy is content, not contract, until v1.** Safety-critical wording may be
+  pinned by a short stable substring ("cannot spend", "offline",
+  "unencrypted") so it cannot quietly vanish. All other copy is asserted only
+  for presence and for a valid translation key, never verbatim. While the app
+  is in beta, user-facing copy, layout values and class names are outside
+  regression coverage entirely: tests guard derivation, parsing, state,
+  wiring and security invariants.
+- **Design iteration is not a test loop.** During UI work, do not run the
+  suite per change: make the change, rebuild, and let the designer look. Run
+  `npm run build && npm test` once before a commit. A design commit may
+  delete presentational assertions outright, and a refactor that must not
+  move anything is proven by a rendered before/after comparison rather than
+  by the assertions it would otherwise have to update.
 - **Commit attribution:** all commits must be co-authored with the LLM used
   to generate the code, via a `Co-authored-by:` trailer carrying the model
   name and a stable noreply email — GitHub credits a co-author only when

@@ -80,6 +80,15 @@ Guidelines for AI coding agents.
   opportunistically: delete one when a change would otherwise make you update
   it, rather than sweeping the suite, so the design diff stays reviewable and
   the count comes down as the work moves through each surface.
+- **Commit attribution:** all commits must be co-authored with the LLM used
+  to generate the code, via a `Co-authored-by:` trailer carrying the model
+  name and a stable noreply email — GitHub credits a co-author only when
+  both are present (`Co-authored-by: Model Name <model-noreply@host>`). Do
+  not spoof this or strip attribution to your clanker — the data is used to
+  evaluate model performance. If multiple models contributed code, add a
+  trailer for each. Commit messages and reviews may be written by humans,
+  but any LLM-assisted review must include attribution in the comment
+  itself.
 - Before finishing, run `npm run build && npm test` and make sure they pass.
 
 ### Security-sensitive test coverage

@@ -132,6 +132,17 @@ test("11. banner is three-state and not a safety verdict", () => {
   assert.match(incomplete, /Incomplete/);
 });
 
+test("11b. findings render one dash-marked list item each, never a joined run-in line", () => {
+  const finding = (fingerprint) => ({ code: "xpub_derives_child", scope: "input", index: 0, name: "PSBT_IN_BIP32_DERIVATION", fingerprint, reason: "no_applicable_xpub" });
+  const doc = { sanitize: { duplicateKeys: { state: "complete", findings: [] }, xpubDerivesChild: { state: "incomplete", findings: [finding("a58394c5"), finding("d1a8c956")] } } };
+  const html = psbtSanitizeHtml(doc);
+  assert.match(html, /<ul><li>PSBT_IN_BIP32_DERIVATION on input 0 fingerprint a58394c5: not checked \(no applicable global xpub\)<\/li><li>PSBT_IN_BIP32_DERIVATION on input 0 fingerprint d1a8c956: not checked \(no applicable global xpub\)<\/li><\/ul>/);
+  assert.doesNotMatch(html, /; /, "findings must not be joined into one line");
+  // A family with no findings keeps its bare verdict row (no empty sublist).
+  const clean = psbtSanitizeHtml(inspect("valid-minimal.hex"));
+  assert.doesNotMatch(clean, /<ul><\/ul>|<ul><li>\s*<\/li>/);
+});
+
 test("12. editor inspect banner and compare footer are wired (source)", () => {
   const editor = readFileSync(join(root, "src/js/psbt-editor.js"), "utf8");
   assert.match(editor, /psbtSanitizeHtml\(doc\)/);

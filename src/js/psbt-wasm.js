@@ -90,8 +90,12 @@ export const psbtInspectDoc = (bytes) => {
 };
 
 // Rebuilds PSBT bytes from a (possibly edited) editor document. Throws when
-// the result would not parse as a PSBT under rust-bitcoin.
-export const psbtBuildBytes = (doc) => {
+// the result would not parse as a PSBT under rust-bitcoin — and, unless
+// `insane` is set, when the document fails the consensus layer (transaction
+// sanity, UTXO claims, final scripts) listed in the inspect document's
+// `problems`. Insane mode skips that layer only: structural PSBT validity is
+// still enforced, so the output is always a parseable PSBT.
+export const psbtBuildBytes = (doc, { insane = false } = {}) => {
   if (!doc || typeof doc !== "object") throw new Error("editor document must be an object.");
-  return call(encoder.encode(JSON.stringify(doc)), wasm.psbt_build);
+  return call(encoder.encode(JSON.stringify(insane ? { ...doc, insane: true } : doc)), wasm.psbt_build);
 };

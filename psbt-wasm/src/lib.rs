@@ -41,6 +41,7 @@ use std::collections::BTreeSet;
 use std::str::FromStr;
 
 mod sanitize;
+mod verify;
 
 // Keep the inspector bounded like the JS side (src/js/app.js): 5 MB of PSBT,
 // 10k pairs per map, 100k transaction inputs/outputs.
@@ -48,6 +49,9 @@ const MAX_PSBT_BYTES: usize = 5_000_000;
 const MAX_JSON_BYTES: usize = 64_000_000;
 const MAX_PAIRS_PER_MAP: usize = 10_000;
 const MAX_TX_ELEMENTS: usize = 100_000;
+// The problem list is display-facing; a hostile file (10k malformed pairs)
+// must not blow the JSON budget on findings alone.
+const MAX_PROBLEMS: usize = 64;
 
 thread_local! {
     static LAST_ERROR: RefCell<String> = const { RefCell::new(String::new()) };
@@ -983,11 +987,12 @@ enum AmountClaim {
     Conflict,
 }
 
-/// The prevout amount this pair declares for the input at `input_index`, and
-/// only when this pair is that input's (witness or verified non-witness) UTXO
+/// The prevout this pair declares for the input at `input_index`, and only
+/// when this pair is that input's (witness or verified non-witness) UTXO
 /// declaration *and* decodes exactly like its typed decode does — a malformed
-/// declaration claims nothing. None otherwise.
-fn pair_amount_claim(pair: &RawPair, tx: &Transaction, input_index: usize) -> Option<u64> {
+/// declaration claims nothing. None otherwise. Shared by the fee arithmetic
+/// (amounts) and the problem analysis (amounts and scripts).
+pub(crate) fn pair_utxo_claim(pair: &RawPair, tx: &Transaction, input_index: usize) -> Option<TxOut> {
     match pair.key[0] {
         0x01 if pair.key.len() == 1 => {
             // TxOut consensus: 8-byte LE amount plus a compact-size script
@@ -1002,7 +1007,7 @@ fn pair_amount_claim(pair: &RawPair, tx: &Transaction, input_index: usize) -> Op
             if span_end(off, script_len, pair.value.len()) != Some(pair.value.len()) {
                 return None;
             }
-            Some(amount)
+            Some(TxOut { value: Amount::from_sat(amount), script_pubkey: ScriptBuf::from_bytes(pair.value[off..].to_vec()) })
         }
         0x00 if pair.key.len() == 1 => {
             let prev = Transaction::consensus_decode(&mut &pair.value[..]).ok()?;
@@ -1016,10 +1021,14 @@ fn pair_amount_claim(pair: &RawPair, tx: &Transaction, input_index: usize) -> Op
             if outpoint.txid != prev.compute_txid() {
                 return None;
             }
-            prev.output.get(outpoint.vout as usize).map(|o| o.value.to_sat())
+            prev.output.get(outpoint.vout as usize).cloned()
         }
         _ => None,
     }
+}
+
+fn pair_amount_claim(pair: &RawPair, tx: &Transaction, input_index: usize) -> Option<u64> {
+    pair_utxo_claim(pair, tx, input_index).map(|claim| claim.value.to_sat())
 }
 
 /// All of one input's amount declarations resolved as a set, independent of
@@ -1165,12 +1174,54 @@ fn inspect(bytes: &[u8]) -> Result<String, String> {
         None => Value::Null,
     };
 
+    let globals_view = raw.globals.iter().map(|p| pair_json("global", p, tx, None)).collect::<Vec<_>>();
+    let inputs_view = raw
+        .inputs
+        .iter()
+        .enumerate()
+        .map(|(n, map)| map.iter().map(|p| pair_json("input", p, tx, Some(n))).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    let outputs_view = raw
+        .outputs
+        .iter()
+        .map(|map| map.iter().map(|p| pair_json("output", p, tx, None)).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+
+    // The problem list: consensus and BIP-174 signing-rule findings from the
+    // verify layer, plus every typed field that failed to decode (BIP-174
+    // makes a malformed typed value an invalid PSBT) and the claim-derived
+    // fee impossibilities. Informational here; the build gate refuses the
+    // error-severity ones unless insane editing is on.
+    let mut problems = verify::analyze(tx, &raw.inputs);
+    let decode_warnings = |scope: &str, views: &[Value], problems: &mut Vec<verify::Problem>| {
+        for view in views {
+            if let Some(error) = view.get("decodeError").and_then(Value::as_str) {
+                let name = view.get("name").and_then(Value::as_str).unwrap_or("pair");
+                problems.push(verify::Problem::warning(scope.to_string(), "field_decode", format!("{name} does not decode: {error}")));
+            }
+        }
+    };
+    decode_warnings("global map", &globals_view, &mut problems);
+    for (index, map) in inputs_view.iter().enumerate() {
+        decode_warnings(&format!("input {index}"), map, &mut problems);
+    }
+    for (index, map) in outputs_view.iter().enumerate() {
+        decode_warnings(&format!("output {index}"), map, &mut problems);
+    }
+    if let Some(error) = fee.get("error").and_then(Value::as_str) {
+        if fee.get("known") == Some(&Value::Bool(true)) {
+            problems.push(verify::Problem::warning("transaction".into(), "fee_impossible", error.to_string()));
+        }
+    }
+    let problems_truncated = problems.len() > MAX_PROBLEMS;
+    problems.truncate(MAX_PROBLEMS);
+
     let doc = json!({
         "psbtVersion": raw.version,
         "tx": tx_json,
-        "globals": raw.globals.iter().map(|p| pair_json("global", p, tx, None)).collect::<Vec<_>>(),
-        "inputs": raw.inputs.iter().enumerate().map(|(n, map)| map.iter().map(|p| pair_json("input", p, tx, Some(n))).collect::<Vec<_>>()).collect::<Vec<_>>(),
-        "outputs": raw.outputs.iter().map(|map| map.iter().map(|p| pair_json("output", p, tx, None)).collect::<Vec<_>>()).collect::<Vec<_>>(),
+        "globals": globals_view,
+        "inputs": inputs_view,
+        "outputs": outputs_view,
         "totalIn": if conflicts.is_empty() && known_inputs == tx.input.len() { known_in_sats.map_or(Value::Null, sats_json) } else { Value::Null },
         "inputConflicts": conflicts,
         "totalOut": out_sum.map_or(Value::Null, sats_json),
@@ -1178,6 +1229,13 @@ fn inspect(bytes: &[u8]) -> Result<String, String> {
         "rustBitcoinError": rust_bitcoin_error,
         "txSanityError": tx_sanity,
         "sanitize": sanitize,
+        "problems": problems.iter().map(|p| json!({
+            "severity": p.severity,
+            "scope": p.scope,
+            "code": p.code,
+            "message": p.message,
+        })).collect::<Vec<_>>(),
+        "problemsTruncated": problems_truncated,
     });
     let text = serde_json::to_string(&doc).map_err(|e| format!("JSON encode failed: {e}"))?;
     if text.len() > MAX_JSON_BYTES {
@@ -1313,14 +1371,13 @@ fn build(json_bytes: &[u8]) -> Result<Vec<u8>, String> {
     let doc: Value = serde_json::from_slice(json_bytes)
         .map_err(|e| format!("edit document is not valid JSON: {e}"))?;
 
+    // Insane editing: the UI's opt-out from the consensus layer. Structural
+    // validity (parseable PSBT, well-formed maps, size caps) is enforced
+    // regardless — insane means "consensus and signing rules unchecked",
+    // never "emit a file that is not a PSBT".
+    let insane = doc.get("insane").and_then(Value::as_bool).unwrap_or(false);
+
     let tx = build_tx(&doc)?;
-    // Export gate: the unsigned transaction must be one a Bitcoin node would
-    // at least consider, not merely one PSBT deserialization accepts (issues
-    // #322, #361). A hand-edit must not produce an exportable file around a
-    // consensus-invalid transaction.
-    if let Some(reason) = tx_sanity_error(&tx) {
-        return Err(format!("the unsigned transaction is consensus-invalid: {reason}"));
-    }
     let unsigned = encode::serialize(&tx);
 
     // The unsigned transaction pair is regenerated from the tx section; a
@@ -1336,7 +1393,7 @@ fn build(json_bytes: &[u8]) -> Result<Vec<u8>, String> {
         }
     }
     if version == 2 {
-        return build_v2(&doc, &tx, global_pairs);
+        return build_v2(&doc, &tx, global_pairs, insane);
     }
     if version != 0 {
         return Err(format!("only PSBT v0 and v2 are supported: the global version pair declares v{version}"));
@@ -1357,6 +1414,17 @@ fn build(json_bytes: &[u8]) -> Result<Vec<u8>, String> {
             outputs.len(),
             tx.output.len()
         ));
+    }
+
+    // Export gate: the edited document must describe a transaction a Bitcoin
+    // node would at least consider and a PSBT whose signing claims hold —
+    // not merely one PSBT deserialization accepts (issues #322, #361). A
+    // hand-edit must not produce an exportable file around a
+    // consensus-invalid transaction or an invalid final script.
+    if !insane {
+        if let Some(message) = verify::gate_error(&tx, &inputs) {
+            return Err(message);
+        }
     }
 
     let mut out = Vec::with_capacity(unsigned.len() + 256);
@@ -1393,7 +1461,7 @@ fn build(json_bytes: &[u8]) -> Result<Vec<u8>, String> {
 /// prevout and non-default sequence, per-output amount and script), the
 /// locktime requirement fields pass through, and every other pair passes
 /// through in place. A passed-through PSBT_GLOBAL_UNSIGNED_TX is refused.
-fn build_v2(doc: &Value, tx: &Transaction, global_pairs: Vec<RawPair>) -> Result<Vec<u8>, String> {
+fn build_v2(doc: &Value, tx: &Transaction, global_pairs: Vec<RawPair>, insane: bool) -> Result<Vec<u8>, String> {
     use bitcoin::hashes::Hash as _;
     let inputs = build_pairs(doc, "inputs")?;
     let outputs = build_pairs(doc, "outputs")?;
@@ -1410,6 +1478,14 @@ fn build_v2(doc: &Value, tx: &Transaction, global_pairs: Vec<RawPair>) -> Result
             outputs.len(),
             tx.output.len()
         ));
+    }
+
+    // Same export gate as the v0 path: BIP-370 changes the container, not
+    // the consensus rules the transaction and its signing claims are held to.
+    if !insane {
+        if let Some(message) = verify::gate_error(tx, &inputs) {
+            return Err(message);
+        }
     }
 
     // The locktime is determined by the requirement fields, not edited

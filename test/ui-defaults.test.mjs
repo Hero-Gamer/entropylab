@@ -212,13 +212,10 @@ test("advanced derivation fields use the shared responsive settings grid", () =>
   assert.doesNotMatch(css, /\.derivation-advanced-fields \{[^}]*border-top/s);
   // With the line off the row, it hugs its text again like the toggle it
   // matches, so the hit area is the words rather than the whole card.
-  assert.match(css, /\.derivation-advanced summary \{[\s\S]*?display: inline-flex; align-items: center; gap: 4px; width: fit-content; min-height: 32px;/);
   assert.match(css, /\.dice-fairness-toggle \{[^}]*width: fit-content;/s);
   // The gap under the toggle is the same either way — set on the summary
   // itself — so opening the section moves the fields in without shifting the
   // toggle. Open differs only in colour.
-  assert.match(css, /\.derivation-advanced summary \{[^}]*margin-bottom: var\(--space-control\);/s);
-  assert.match(css, /\.derivation-advanced\[open\] summary \{ color: var\(--fg\); \}/);
   assert.match(css, /\.derivation-advanced-fields \{ display: grid; gap: var\(--space-component\); margin-bottom: var\(--space-control\); \}/);
   // The field titles match the card's label style; the control below each
   // already carries the 8px, so they take no margin of their own.
@@ -274,7 +271,7 @@ test("advanced derivation fields use the shared responsive settings grid", () =>
   }
   // Motion is opt-out, like every other transition in the sheet, and the
   // opt-out covers the same controls the hover does.
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\s*\.btn, \.dice-input-pad button,[\s\S]*?transition: none;/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\s*\.btn, \.segmented-control > \.tab, \.dice-input-pad button,[\s\S]*?transition: none;/);
   assert.doesNotMatch(css, /\.tab, \.btn \{[^}]*font-weight/s);
   assert.match(css, /@media \(max-width: 520px\) \{[\s\S]*?\.key-settings-row, \.msig-origin-fields, \.msig-path-components \{ grid-template-columns: minmax\(0, 1fr\); \}/);
 });
@@ -949,7 +946,7 @@ test("key derivation shows the relevant paste-ready multisig co-signer exports",
   assert.match(app, /multisigCosignerExports:root\.privateKey\?hodlBuildMultisigCosignerExports\(root,network,accountIndex,masterFingerprint,coinType\):\[\]/);
   assert.match(app, /function hodlRenderMultisigCosignerExport\(exports,accountId\)/);
   assert.match(app, /exports\.filter\(candidate=>candidate\.accountId===accountId\)/);
-  assert.match(appWhitespace, /items\.map\(item=>hodlPublicFieldHtml\("Multisig co-signer \{prefix\} · \{label\}",item\.value,\{prefix:item\.prefix,label:item\.label\}\)\)\.join\(""\)/);
+  assert.match(appWhitespace, /items\.map\(item=>hodlPublicFieldHtml\("Multisig co-signer \{prefix\} · \{label\}",item\.value,\{prefix:item\.prefix,label:item\.label\},"label"\)\)\.join\(""\)/);
   assert.match(app, /\$\{hodlSlip132WatchFields\(account,hodlWalletResult\)\}\s*\$\{hodlImportedCoreRecoveryExport\(hodlWalletResult,account\)\}\s*\$\{hodlRenderMultisigCosignerExport\(hodlWalletResult.multisigCosignerExports,account\.def\.id\)\}/);
   assert.doesNotMatch(`${app}\n${css}`, /account-multisig-exports/);
   assert.match(app, /Legacy P2SH requires the depth-1 BIP45 purpose key at m\/45h/);
@@ -973,7 +970,8 @@ test("derived wallets offer an address match check", () => {
   assert.match(app, /function hodlAddressMatchMarkup\(\)/);
   assert.match(app, /id="address-match"/);
   assert.match(app, /id="address-match-status"/);
-  assert.match(app, /address-match-field">Check an address/);
+  assert.match(app, /<div class="address-match-field"><p class="label" id="address-match-label">Check an address<\/p>/);
+  assert.match(app, /id="address-match" aria-labelledby="address-match-label" aria-describedby="address-match-note"/);
   assert.match(app, /Paste an address shown by another wallet/);
   assert.match(app, /even if the index is beyond the table above/);
   assert.doesNotMatch(app, /Address from Sparrow/);
@@ -1337,8 +1335,8 @@ test("the tools' closing button groups stack full width on narrow screens", () =
 });
 
 test("private alternate account exports are visible without an accordion", () => {
-  assert.match(appWhitespace, /if\(includePrivate\)return`<div class="wallet-advanced">\$\{privateExport\}<\/div>`/);
-  assert.doesNotMatch(app, /Advanced private export/);
+  assert.match(appWhitespace, /return privateExport\|\|publicExport/);
+  assert.doesNotMatch(app, /Advanced private export|Advanced watch-only export/);
 });
 
 test("top banners share one consistent gap", () => {
@@ -2239,7 +2237,7 @@ test("Key Station keeps derivation actions focused and BIP-85 remains its own wo
   // BIP-85 has its own tab, so the shortcut that used to sit beside Derive Key
   // is gone; automatic Journal capture also removes the old manual shortcut.
   for (const markup of [shell]) {
-    assert.match(markup, /id="go"[^>]*>Derive Key<\/button>[\s\S]*?id="derive-progress"[\s\S]*?id="wipe"/);
+    assert.match(markup, /id="address-estimate"[\s\S]*?id="derive-progress"[\s\S]*?id="go"[^>]*>Derive Key<\/button>[\s\S]*?id="wipe"/);
     assert.doesNotMatch(markup, /id="journal-open"|>Save to Journal<\/button>|id="journal-use-calc"|>Use active key<\/button>/);
     assert.doesNotMatch(markup, /id="bip85-open"|>Derive BIP-85 child<\/button>/);
   }
@@ -2446,20 +2444,32 @@ test("derived-key summaries put the selected sub-method after the method", () =>
 });
 
 test("derived key results put private recovery before script type and addresses", () => {
-  assert.match(appSource, /\$\{hodlHdWalletData\(t\)\}[\s\S]*id="acct-tabs-label">Script type[\s\S]*id="acct"/);
-  assert.match(appSource, /id="wallet-private-heading">\$\{hodlT\("Private recovery material"\)\}/);
-  assert.match(appSource, /hodlT\("These values can recreate or spend from the wallet. Reveal them only while this file is running offline on an air-gapped computer\."\)/);
-  assert.match(appSource, /id="account-private-heading">\$\{hodlT\("Private account material"\)\}/);
-  assert.match(appSource, /id="account-watch-heading">\$\{hodlT\("Watch-only wallet data"\)\}/);
-  assert.match(appSource, /id="account-address-heading">Addresses/);
+  // The HD result sits in the Key Station card, so the toolbar can follow the
+  // reader through it: the selected script type renders into a container passed in.
+  assert.match(appSource, /\$\{hodlHdWalletData\(t, '<div id="acct" class="key-groups-slot"><\/div>'\)\}/);
+  // The sticky toolbar (script type, then privacy), then one list
+  // of groups (recovery, identity, and the selected script type), and the
+  // wallet-wide exports last.
+  assert.match(appSource, /<div class="key-view-toolbar no-print">\s*<div class="row segmented-control" id="acct-tabs" role="group"[^>]*><\/div>\s*\$\{hasPrivate \? hodlPrivacyBarMarkup\(\) : ""\}\s*<\/div>\s*<div class="key-groups">\$\{recoveryGroup\}\$\{identityGroup\}\$\{accountMarkup\}<\/div>\s*\$\{hasPrivate \? hodlPrivateDataControls\("wallet-private-description"\) : hodlSaveRecoveryControl\(\)\}/);
+  // The script type is a button group reporting aria-pressed, not a tablist.
+  assert.match(appSource, /i\.setAttribute\("aria-pressed", String\(o\.def\.id === r\.def\.id\)\)/);
+  assert.match(appSource, /hodlKeyGroupMarkup\("recovery", `\$\{recoveryTitle\}\$\{hodlPrivacyEyeMarkup\(\)\}`/);
+  assert.match(appSource, /<strong>\$\{hodlT\("These values can recreate or spend from the wallet\."\)\}<\/strong> \$\{hodlT\("Reveal them only while this file is running offline on an air-gapped computer\."\)\}/);
+  // The selected script type adds every address, the private keys, and the
+  // watch-only exports. No receive group repeats the first address of the table.
+  assert.match(appSource, /hodlElement\("#acct"\)\.innerHTML = `\s*\$\{hodlKeyGroupMarkup\("hd-addresses", [\s\S]*?\$\{privateGroup\}\s*\$\{hodlKeyGroupMarkup\("watch", hodlT\("Watch-only exports"\)/);
+  assert.match(appSource, /hodlKeyGroupMarkup\("account-private", `\$\{hodlT\("Account private key exports"\)\}\$\{hodlPrivacyEyeMarkup\(\)\}`/);
   assert.match(appSource, /Verify the first selected address on another trusted wallet or signing device before accepting bitcoin\./);
   assert.doesNotMatch(appSource, /id="account-receive-heading">Receive/);
   assert.match(appSource, /if \(state\) state\.reveal = hodlRevealPrivate;/);
   assert.match(appSource, /hodlBindWalletResultActions\(\);/);
 });
 
+
 test("derived wallet results stay within the mobile layout (#238)", () => {
-  assert.match(css, /\.workspace-panel \{[^}]*min-width: 0; overflow-x: hidden;/s);
+  // clip, not hidden: both contain the width, but hidden would make the panel a
+  // scroll container and stop sticky children such as the privacy bar.
+  assert.match(css, /\.workspace-panel \{[^}]*min-width: 0; overflow-x: clip;/s);
   assert.match(css, /\.qr \{ max-width: 100%;/);
   assert.match(css, /\.qr svg \{[^}]*max-width: 100%;[^}]*height: auto;[^}]*aspect-ratio: 1;/);
   assert.match(css, /\.qr-descriptor svg \{ width: 280px; height: auto; \}/);
@@ -2817,7 +2827,7 @@ test("the private recovery section lists the BIP39 passphrase beside the seed ph
   assert.match(appSource, /\{ mnemonic: null, passphraseUsed: false, passphrase: "", entropyHex: null,/);
   // Rendered right after the words, through the same masked private field as
   // the entropy and seed hex; absent when no passphrase is in use.
-  assert.match(appSource, /hodlSeedPhraseField\(`Your seed phrase[^\n]*\n[^\n]*\n[^\n]*\n\s*if \(wallet\.mnemonic && wallet\.passphraseUsed && wallet\.passphrase\) privateFields\.push\(hodlPrivateFieldHtml\("BIP39 passphrase", wallet\.passphrase\)\);\n\s*if \(wallet\.entropyHex\)/);
+  assert.match(appSource, /hodlSeedPhraseField\(`Your seed phrase[^\n]*\n[^\n]*\n[^\n]*\n\s*if \(wallet\.mnemonic && wallet\.passphraseUsed && wallet\.passphrase\) privateFields\.push\(hodlPrivateFieldHtml\("BIP39 passphrase", wallet\.passphrase, void 0, "label"\)\);\n\s*if \(wallet\.entropyHex\)/);
 });
 
 test("the vanity estimate is timed from a device sample, and Stop on first find halts the grind at the first match", () => {

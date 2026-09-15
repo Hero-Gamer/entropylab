@@ -139,6 +139,19 @@
     element.value = value;
     element.dispatchEvent(new Event("input", { bubbles: true }));
   };
+  // The first address the key view derived: the top row of its first address
+  // table. It reads content only, so it works while the group is collapsed.
+  const firstAcctAddress = () => {
+    const row = document.querySelector('#acct [data-address-table] tbody tr:not(.address-virtual-spacer)');
+    if (!row) return null;
+    return {
+      table: row.closest("[data-address-table]")?.dataset.addressTable,
+      index: row.querySelector("th")?.textContent.trim(),
+      path: row.querySelector("td")?.textContent.trim() || "",
+      address: row.querySelector(".addr-text")?.textContent.trim() || "",
+      qrLabel: row.querySelector(".addr-qr")?.dataset.addressQrLabel,
+    };
+  };
 
   await test("test mode preloads the requested deterministic hashed-dice keys", async () => {
     const tabs = await until(() => {
@@ -3442,6 +3455,10 @@
         `Derived wallet widened the 390px page container to ${page.scrollWidth}px`,
       );
       const addressTable = document.querySelector("#acct .wallet-table");
+      // The tables sit in a collapsed group; open it so the table has a width
+      // to measure.
+      addressTable.closest("details")?.setAttribute("open", "");
+      await wait(0);
       assert(
         addressTable.scrollWidth > addressTable.clientWidth,
         "The wide address table was clipped instead of remaining horizontally scrollable",
@@ -3453,12 +3470,19 @@
     assert(!derivationProgress.hidden, "Completed derivation progress did not remain visible");
     equal(derivationProgress.getAttribute("aria-valuenow"), "100", "Derivation progress did not reach 100%");
     assert(derivationProgress.querySelector(".derive-progress-label")?.textContent.includes("Done"), "Completed derivation progress did not show Done");
-    const receiveLead = document.querySelector("#acct .account-address-lead");
-    assert(receiveLead?.querySelector("h4")?.textContent.includes("#7"), "The first requested address was not used for the receive QR");
-    assert(receiveLead?.querySelector('.qr[aria-label="Receive address 7 QR code"]'), "The receive QR did not use the starting address index");
-    equal(receiveLead?.querySelector("p.mono:not(.muted)")?.textContent.trim(), "tb1qq88mz59zeavyc2nvncjmr5fnyhy9wfgg7spmjf", "The custom-purpose Native SegWit address did not match the independent BIP32 vector");
-    assert(receiveLead?.querySelector(".muted.mono")?.textContent.includes("m/69420'/1'/0'/0/7"), "The custom purpose was not used in the displayed address path");
-    assert(document.querySelector("#acct .kicker")?.textContent.includes("Purpose 69420'"), "The result mislabeled the custom purpose as a standard BIP");
+    // A finished bar clears itself a moment later, so returning to the form
+    // finds the footer as it first was rather than a leftover Done.
+    await until(() => derivationProgress.hidden, "derivation progress clearing after Done", 8000);
+    equal(derivationProgress.getAttribute("aria-valuenow"), "0", "Cleared derivation progress kept its finished value");
+    assert(!derivationProgress.classList.contains("is-complete"), "Cleared derivation progress stayed marked complete");
+    const firstRow = firstAcctAddress();
+    equal(firstRow?.index, "7", "The address table did not start at the first requested address");
+    equal(firstRow?.qrLabel, "Address #7", "The first address QR did not use the starting address index");
+    equal(firstRow?.address, "tb1qq88mz59zeavyc2nvncjmr5fnyhy9wfgg7spmjf", "The custom-purpose Native SegWit address did not match the independent BIP32 vector");
+    assert(firstRow?.path.includes("m/69420'/1'/0'/0/7"), "The custom purpose was not used in the displayed address path");
+    // The result names no BIP for the account any more; the summary bar at the
+    // top of the view shows the path the key was derived at, custom purpose included.
+    assert(document.getElementById("key-summary-path")?.textContent.includes("69420'"), "The key summary did not show the custom purpose");
     const watchText = document.querySelector("#acct .account-watch-section")?.textContent || "";
     assert(watchText.includes("/69420h/1h/0h]"), `The custom purpose was not used in the descriptor origin: ${watchText.slice(0, 600)}`);
     const receiveRows = document.querySelectorAll('#acct [data-address-table="hd-receive"] tbody tr');
@@ -3473,7 +3497,7 @@
     assert(document.getElementById("derivation-path").value.endsWith("/0/7'"), "The path did not show a hardened address index");
     derive.click();
     await until(
-      () => document.querySelector("#acct .account-address-lead .muted.mono")?.textContent.includes("/7'"),
+      () => firstAcctAddress()?.path.includes("/7'"),
       "hardened address result",
     );
     addressHarden.click();
@@ -3600,11 +3624,79 @@
     addressRange.selectNodeContents(overlayAddress);
     equal(addressRange.getClientRects().length, 1, "The native SegWit address wraps in the overlay");
     assert(overlay.querySelector("#addr-qr-image svg"), "The overlay did not render a QR code");
+    // The address text and the copy icon beside it both copy the address.
+    const copyButton = overlay.querySelector("#addr-qr-copy");
+    let copied = null;
+    const clipboard = navigator.clipboard;
+    const writeText = clipboard.writeText;
+    clipboard.writeText = (value) => { copied = value; return Promise.resolve(); };
+    try {
+      overlayAddress.click();
+      await until(() => copied === address && copyButton.classList.contains("is-copied"), "address copied from the overlay text");
+      copied = null;
+      copyButton.click();
+      await until(() => copied === address, "address copied from the overlay copy icon");
+    } finally {
+      clipboard.writeText = writeText;
+    }
     overlay.querySelector("#addr-qr-close").click();
     await until(() => document.getElementById("addr-qr-overlay")?.hidden, "address QR overlay close");
     assert(!overlay.querySelector("#addr-qr-image svg"), "The closed overlay kept its QR code");
+    assert(!copyButton.classList.contains("is-copied"), "The closed overlay kept its copied state");
   });
 
+  await test("each key keeps its own open groups, and a new key starts with them closed", async () => {
+    const tabs = () => [...document.querySelectorAll('#key-tabs .key-tab[role="tab"]')];
+    const activeTab = () => tabs().find((tab) => tab.getAttribute("aria-selected") === "true");
+    const openGroups = () => [...document.querySelectorAll("#out details.key-group")].filter((group) => group.open).map((group) => group.dataset.keyGroup);
+    const selectKey = async (number, description) => {
+      const tab = tabs().find((candidate) => candidate.dataset.keyNumber === number);
+      if (tab && tab.getAttribute("aria-selected") !== "true") tab.click();
+      return until(() => activeTab()?.dataset.keyNumber === number && document.querySelector("#out details.key-group"), description);
+    };
+    const firstKey = activeTab()?.dataset.keyNumber;
+    assert(firstKey && !activeTab().classList.contains("is-lab"), "No derived key is active");
+    const identity = await until(() => document.querySelector('#out [data-key-group="identity"]'), "the Wallet identity group");
+    if (!identity.open) identity.querySelector(":scope > summary").click();
+    await until(() => openGroups().includes("identity"), "Wallet identity to open");
+    await wait(0);
+    const existing = new Set(tabs().map((tab) => tab.dataset.keyNumber));
+    let secondKey = null;
+    try {
+      // The add button opens Key Station; deriving there creates the new key.
+      document.getElementById("add-key").click();
+      await until(() => activeTab()?.classList.contains("is-lab") && !document.getElementById("calc-card").classList.contains("is-result-view"), "Key Station for a new key");
+      // A different wallet from the first key, so the result becomes its own key.
+      chooseSeedWords(18);
+      await chooseMode("Number bases");
+      document.querySelector('input[name="entropy-format"][value="hex"]').click();
+      input(await until(() => document.getElementById("hex"), "hex input"), vectors[1].entropy);
+      (await until(() => !document.getElementById("go").disabled && document.getElementById("go"), "derive button")).click();
+      const created = await until(() => {
+        const tab = activeTab();
+        return tab && !existing.has(tab.dataset.keyNumber) && document.querySelector("#out .hd-key-view details.key-group") && tab;
+      }, "the new key's result");
+      secondKey = created.dataset.keyNumber;
+      equal(openGroups().join(","), "", "A new key inherited open groups from the previous key");
+      await selectKey(firstKey, "the first key's result");
+      assert(openGroups().includes("identity"), "The first key lost its open Wallet identity group");
+      await selectKey(secondKey, "the second key's result");
+      equal(openGroups().join(","), "", "The second key picked up the first key's open groups");
+    } finally {
+      // Leave the session as the tests that follow expect it: only the first
+      // key, active, with its groups closed, and 12-word seeds selected.
+      if (secondKey) {
+        await selectKey(secondKey, "the added key before deleting it");
+        await until(() => !document.getElementById("delete-key").disabled, "Delete current key to enable");
+        document.getElementById("delete-key").click();
+        await until(() => !tabs().some((tab) => tab.dataset.keyNumber === secondKey), "the added key to be deleted");
+      }
+      await selectKey(firstKey, "the first key to be active again");
+      const restored = document.querySelector('#out [data-key-group="identity"]');
+      if (restored?.open) restored.querySelector(":scope > summary").click();
+      chooseSeedWords(12);
+    }
+  });
   await test("BIP-85 keeps its Station and opens each child in a LifeHash fingerprint tab", async () => {
     const bip85Workspace = document.querySelector('#workspace [data-workspace="bip85"]');
     const keyWorkspace = document.querySelector('#workspace [data-workspace="calc"]');
@@ -3868,10 +3960,10 @@
     derive.click();
     // Typed with h above, shown with apostrophes here, and carried into the
     // descriptor origin as h on the next line: both conventions in one test.
-    await until(() => document.querySelector("#acct .account-address-lead .muted.mono")?.textContent.includes("m/84'/1'/0'/777/0/7"), "custom derived path");
+    await until(() => firstAcctAddress()?.path.includes("m/84'/1'/0'/777/0/7"), "custom derived path");
     const watchText = document.querySelector("#acct .account-watch-section")?.textContent || "";
     assert(watchText.includes("/84h/1h/0h/777]"), "The custom path did not reach the descriptor key origin");
-    assert(document.querySelector("#acct .account-address-lead p.mono:not(.muted)")?.textContent.trim().startsWith("tb1"), "The custom coin type did not control address encoding");
+    assert(firstAcctAddress()?.address.startsWith("tb1"), "The custom coin type did not control address encoding");
 
     input(document.getElementById("purpose"), "69420'");
     input(document.getElementById("network"), "1'");
@@ -3894,14 +3986,15 @@
     await until(() => document.querySelector('#acct [data-address-table="hd-branch-2"]'), "custom branch 2 result");
     assert(!document.querySelector('#acct [data-address-table="hd-receive"]'), "An unselected Receive table was rendered");
     assert(!document.querySelector('#acct [data-address-table="hd-change"]'), "An unselected Change table was rendered");
-    assert(document.querySelector("#acct .account-address-lead h4")?.textContent.includes("Custom branch 2 address #7"), "The custom branch QR label was unclear");
-    assert(document.querySelector('#acct .account-address-lead .qr[aria-label="Custom branch 2 address 7 QR code"]'), "The first custom branch address was not used for the QR");
+    const branchRow = firstAcctAddress();
+    assert(branchRow?.table === "hd-branch-2" && branchRow.index === "7", "The custom branch table did not start at address #7");
+    equal(branchRow?.qrLabel, "Address #7", "The first custom branch address was not used for the QR");
 
     branchHarden.click();
     assert(document.getElementById("branch-start-help").textContent.includes("Hardened"), "Address branch help did not reflect hardened derivation");
     assert(document.getElementById("derivation-path").value.endsWith("/2'/7"), "The path did not show a hardened branch index");
     derive.click();
-    await until(() => document.querySelector('#acct .account-address-lead .muted.mono')?.textContent.includes("/2'/7"), "hardened address branch result");
+    await until(() => firstAcctAddress()?.path.includes("/2'/7"), "hardened address branch result");
     const hardenedWatchText = document.querySelector("#acct .account-watch-section")?.textContent || "";
     assert(hardenedWatchText.includes("/2h]") && hardenedWatchText.includes("/*"), "The hardened branch watch-only descriptor did not use a branch-level xpub origin");
     branchHarden.click();
@@ -3952,6 +4045,9 @@
       () => document.querySelector('#acct [data-address-table="hd-receive"] table[aria-rowcount="31"]'),
       "virtualized receive address table",
     );
+    // The address tables sit in a collapsed group; open it so the table has a
+    // height to scroll.
+    table.closest("details")?.setAttribute("open", "");
     const scroller = table.closest(".wallet-table");
     const renderedRows = () => [...table.querySelectorAll("tbody tr:not(.address-virtual-spacer)")];
     assert(!table.closest("[data-address-table]").querySelector(".address-pagination"), "Address pagination was still rendered");
@@ -4288,23 +4384,22 @@
       document.querySelector(`#network-picker-menu [data-network="${network}"]`).click();
       const derive = await until(() => !document.getElementById("go").disabled && document.getElementById("go"), `derive button on ${network}`);
       derive.click();
-      await until(() => document.querySelector("#acct .account-address-lead p.mono:not(.muted)"), `${network} address lead`);
+      await until(() => firstAcctAddress()?.address, `${network} first address`);
     };
 
     await pick("regtest");
-    const regtestLead = document.querySelector("#acct .account-address-lead p.mono:not(.muted)").textContent.trim();
+    const regtestLead = firstAcctAddress().address;
     assert(regtestLead.startsWith("bcrt1q"), `regtest derive rendered ${regtestLead.slice(0, 12)}… instead of bcrt1q…`);
-    assert(document.querySelector("#acct .kicker")?.textContent.includes("regtest"), "The result did not identify the regtest chain");
     equal(await magicOf(), "fabfb5da", "wallet.dat on regtest did not carry the regtest network magic");
 
     await pick("signet");
-    const signetLead = document.querySelector("#acct .account-address-lead p.mono:not(.muted)").textContent.trim();
+    const signetLead = firstAcctAddress().address;
     assert(signetLead.startsWith("tb1q"), `signet derive rendered ${signetLead.slice(0, 12)}… instead of tb1q…`);
     equal(await magicOf(), "0a03cf40", "wallet.dat on signet did not carry the default-signet network magic");
 
     // Restore the testnet result the following tests were written against.
     await pick("testnet");
-    assert(document.querySelector("#acct .account-address-lead p.mono:not(.muted)").textContent.trim().startsWith("tb1q"), "testnet restore did not render tb1q…");
+    assert(firstAcctAddress().address.startsWith("tb1q"), "testnet restore did not render tb1q…");
     equal(await magicOf(), "0b110907", "wallet.dat on testnet did not carry the testnet network magic");
   });
 

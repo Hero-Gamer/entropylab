@@ -242,10 +242,7 @@ test("legitimate numeric indexes render unchanged", () => {
   }
 });
 
-test("the first-address lead and the multisig lead route the index through the same guard", () => {
-  const show = loadSlice("hodlShowAccount");
-  assert.ok(show.includes("address #${hodlAddressIndexHtml(firstIndex)}"), "HD account heading");
-  assert.ok(show.includes('address ${hodlAddressIndexHtml(firstIndex)} QR code'), "HD account QR label");
+test("the multisig first-address lead routes the index through the index guard", () => {
   const msig = loadSlice("hodlShowMsig");
   assert.ok(msig.includes("address #${hodlAddressIndexHtml(firstIndex)}"), "multisig heading");
   assert.ok(msig.includes('address ${hodlAddressIndexHtml(firstIndex)} QR code'), "multisig QR label");

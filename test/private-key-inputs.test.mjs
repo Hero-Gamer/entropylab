@@ -71,8 +71,9 @@ const source = [
     "hodlAssertPrivateKeyKind",
     "hodlPrivateKeyCharacterEntries",
     "hodlPrivateKeyInputAnalysis",
+    "hodlSingleLeadAddress",
   ].map(slice),
-  "export { hodlIsMiniKey, hodlDetectPrivateKeyKind, hodlNormalizePrivateKeyKind, hodlHexPrivateKeyPrefix, hodlWifPrivateKeyPrefix, hodlMiniPrivateKeyPrefix, hodlDecodeMiniPrivateKey, hodlAssertPrivateKeyKind, hodlPrivateKeyCharacterEntries, hodlPrivateKeyInputAnalysis };",
+  "export { hodlIsMiniKey, hodlDetectPrivateKeyKind, hodlNormalizePrivateKeyKind, hodlHexPrivateKeyPrefix, hodlWifPrivateKeyPrefix, hodlMiniPrivateKeyPrefix, hodlDecodeMiniPrivateKey, hodlAssertPrivateKeyKind, hodlPrivateKeyCharacterEntries, hodlPrivateKeyInputAnalysis, hodlSingleLeadAddress };",
 ].join("\n");
 
 const modulePath = join(root, "test", `.private-key-inputs-${process.pid}.mjs`);
@@ -94,6 +95,7 @@ const {
   hodlAssertPrivateKeyKind,
   hodlPrivateKeyCharacterEntries,
   hodlPrivateKeyInputAnalysis,
+  hodlSingleLeadAddress,
 } = api;
 
 // The progress line as a reader sees it: the count with its number filled in,
@@ -380,4 +382,16 @@ test("minikey analysis tracks the 22-or-30 length rule and the checksum", () => 
   analysis = hodlPrivateKeyInputAnalysis(MINIKEY_TAMPERED, "minikey", "mainnet", false);
   assert.equal(analysis.ready, false);
   assert.deepEqual(analysis.invalidRanges, [[0, 30]], "a failed checksum is highlighted whole");
+});
+
+test("the single-key view leads with the address the key most likely holds funds at", () => {
+  // A WIF records whether its key is compressed, and the lead address follows it.
+  assert.equal(hodlSingleLeadAddress({ source: "wif", compressed: true }), "p2wpkh");
+  assert.equal(hodlSingleLeadAddress({ source: "wif", compressed: false }), "p2pkhUncompressed");
+  // Casascius mini keys and early brain wallets were used with uncompressed legacy addresses.
+  assert.equal(hodlSingleLeadAddress({ source: "minikey", compressed: null }), "p2pkhUncompressed");
+  assert.equal(hodlSingleLeadAddress({ source: "brain", compressed: null }), "p2pkhUncompressed");
+  // Hex carries no hint, and a result without a source takes the same default.
+  assert.equal(hodlSingleLeadAddress({ source: "hex", compressed: null }), "p2wpkh");
+  assert.equal(hodlSingleLeadAddress({ kind: "single" }), "p2wpkh");
 });

@@ -143,6 +143,12 @@ for UI testing only and must never receive funds. The loader and its
 - **Pull requests:** small and focused, one change each. No drive-by
   reformatting or refactors. Describe what and why, and list the commands you
   ran. Comments explain intent and security reasoning, not the code.
+- **AI attribution:** all commits must be co-authored with the LLM used to
+  generate the code — a `Co-authored-by:` trailer naming the model. Do not
+  spoof this or strip attribution to your clanker; the data is used to
+  evaluate model performance. If multiple models contributed code, attribute
+  all of them. Commit messages and reviews may be written by humans, but any
+  LLM-assisted review must include attribution in the comment itself.
 - **Not accepted:** anything violating sections 1 or 3; license/authorship
   changes (the software is public domain); changes that obscure what the
   compiled `entropylab.html` does.

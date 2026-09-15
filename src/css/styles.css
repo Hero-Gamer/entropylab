@@ -1557,6 +1557,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .psbt-analysis-summary > p { margin: 0 0 8px; }
 .psbt-analysis-summary ul { margin: 0 0 8px; padding-left: 20px; }
 .psbt-analysis-summary li + li { margin-top: 8px; }
+/* A check family's findings nest as a dash-marked sublist, one line each. */
+.psbt-analysis-summary li ul { margin: 4px 0 2px; padding-left: 18px; list-style-type: "- "; }
+.psbt-analysis-summary li li + li { margin-top: 2px; }
 /* The editor's own action row: keep the buttons text-sized rather than
    stretched to the row's full height. (.psbt-actions alone is shared with the
    other cards' button rows, so scope by the editor's own class.) */

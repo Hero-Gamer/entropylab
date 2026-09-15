@@ -501,11 +501,15 @@ export const psbtSanitizeHtml = (doc, title = "") => {
   const row = (label, family) => {
     const [word, cls] = sanitizeFamilyLabel[family.state] || sanitizeFamilyLabel.incomplete;
     const extra = family.truncated ? " (report truncated)" : "";
-    const details = (family.findings || []).slice(0, 8).map(sanitizeFindingText).join("; ");
-    return `<li><strong>${escapeHtml(label)}</strong> — <span class="psbted-note-${cls}">${word}</span>${extra}${details ? ` — ${escapeHtml(details)}` : ""}</li>`;
+    // One dash-marked line per finding — a "; "-joined run-in reads as one
+    // giant line once a family has several.
+    const findings = (family.findings || []).slice(0, 8);
+    const list = findings.length ? `<ul>${findings.map((finding) => `<li>${escapeHtml(sanitizeFindingText(finding))}</li>`).join("")}</ul>` : "";
+    return `<li><strong>${escapeHtml(label)}</strong> — <span class="psbted-note-${cls}">${word}</span>${extra}${list}</li>`;
   };
   const heading = title ? `${escapeHtml(title)} — ` : "";
-  return `<section class="psbted-sanitize" aria-label="${title ? escapeHtml(title) + " " : ""}PSBT format and origin checks">
+  return `<section class="psbted-sanitize psbt-analysis-summary" aria-label="${title ? escapeHtml(title) + " " : ""}PSBT format and origin checks">
+    <p class="label">PSBT format and origin checks</p>
     <p class="psbted-note-${tone}"><strong>${heading}${overall}</strong></p>
     <ul>${row("Duplicate keys", dup)}${row("Origin derivation", orig)}</ul>
     <p class="muted">Format and origin-consistency facts from this file. Not a safety verdict.</p>
@@ -539,7 +543,8 @@ export const psbtProblemsHtml = (doc, insane = false) => {
         `<li><span class="psbted-note-${problem.severity === "error" ? "bad" : "warn"}">${escapeHtml(problem.scope)}</span> — ${escapeHtml(problem.message)}</li>`,
     )
     .join("");
-  return `<section class="psbted-sanitize" aria-label="PSBT consensus and signing problems">
+  return `<section class="psbted-sanitize psbt-analysis-summary" aria-label="PSBT consensus and signing problems">
+    <p class="label">PSBT consensus and signing problems</p>
     <p class="psbted-note-${tone}"><strong>${escapeHtml(heading)}</strong>${gate ? ` — ${escapeHtml(gate)}` : ""}</p>
     ${items ? `<ul>${items}</ul>` : ""}
     ${doc.problemsTruncated ? `<p class="muted">List truncated; more problems exist than are shown.</p>` : ""}
@@ -721,8 +726,6 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
 
     out.innerHTML = `
       <p class="psbt-kv"><strong>PSBT v${escapeHtml(String(doc.psbtVersion))}</strong> · ${tx.inputs.length} input(s) · ${tx.outputs.length} output(s) · fee ${fee} · ${verdict} · ${sanity}</p>
-      ${psbtProblemsHtml(doc, insane)}
-      ${psbtSanitizeHtml(doc)}
       <p class="muted" id="psbted-status" aria-live="polite">${stale ? "The fields do not build right now — see the error above; the result below is the last valid build." : "Every edit rebuilds the PSBT immediately; the fields show rust-bitcoin's decode of the current build."}</p>
 
       ${psbtVizHtml(doc, network(), selected)}
@@ -733,6 +736,9 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
       <section class="psbted-map"><h3>Global key-value map</h3>${pairRows("global", doc.globals, 0)}</section>
       ${inputSections}
       ${outputSections}
+
+      ${psbtProblemsHtml(doc, insane)}
+      ${psbtSanitizeHtml(doc)}
 
       <div id="psbted-result"></div>`;
 

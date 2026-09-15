@@ -152,6 +152,9 @@ test("psbtProblemsHtml lists problems escaped, in the sanitize section's style",
   const doc = fixtureDoc("p2wpkh-1in-2out");
   const html = psbtProblemsHtml(doc, false);
   assert.match(html, /psbted-sanitize/);
+  // The inspector's analysis-section paradigm: same classes, real <ul>/<li>.
+  assert.match(html, /psbt-analysis-summary/);
+  assert.match(html, /<ul><li>/);
   assert.match(html, /warning\(s\), no consensus violations/);
   assert.match(html, /partial signature \(pubkey 0279be667ef9dcbb…\) signature does not verify/);
   // An error-severity problem names the gate and the escape hatch.

@@ -2818,6 +2818,14 @@
     const insaneToggle = document.getElementById("psbted-insane");
     assert(insaneToggle && !insaneToggle.checked, "Insane editing switch missing or on by default");
     assert(outText().includes("No consensus or signing problems found"), "problem list missing its clean verdict");
+    // The analysis sections sit below the editing area, after the last
+    // key-value map, and their findings render as real list items.
+    const mapSections = document.querySelectorAll("#psbted-out .psbted-map");
+    const analysisSections = document.querySelectorAll("#psbted-out .psbt-analysis-summary");
+    equal(analysisSections.length, 2, "analysis sections missing");
+    assert(analysisSections[0].compareDocumentPosition(mapSections[mapSections.length - 1]) & Node.DOCUMENT_POSITION_PRECEDING, "analysis is not below the editor");
+    const finding = analysisSections[1].querySelector("ul li");
+    equal(getComputedStyle(finding).display, "list-item", "analysis findings do not render as list items");
     const valueInput = document.querySelector("[data-txout-val='0']");
     input(valueInput, "199901000");
     // Live editing: the input event itself rebuilds — there is no Re-serialize.
@@ -2952,6 +2960,16 @@
     assert(outText().includes("PSBT_GLOBAL_TX_VERSION"), "v2 typed field names missing");
     assert(outText().includes("PSBT_IN_PREVIOUS_TXID"), "v2 input field names missing");
     assert(document.getElementById("psbted-result-b64").value === v2, "v2 rebuild was not byte-identical");
+    // Every finding in a check family renders as its own dash-marked list
+    // item, never one "; "-joined run-in line: the 2-of-3 P2WSH fixture
+    // (test/fixtures/psbt/multisig-2of3-p2wsh.b64) carries three origin
+    // findings, so its sublist must hold three items.
+    const multisig = "cHNidP8BAKkCAAAAAkREREREREREREREREREREREREREREREREREREREREREAAAAAAD/////VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUBAAAAAP////8CCEwBAAAAAAAiACASwv+8bsHPXXRt+9SbEGM1YhLqVfQwI//AFFk0ryDFcogTAAAAAAAAGXapFAav1GvN/SLvlKwSKqEfJBJEo37MiKwAAAAAAAEBK2DqAAAAAAAAIgAgEsL/vG7Bz110bfvUmxBjNWIS6lX0MCP/wBRZNK8gxXIBBWlSIQJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmCECxgR/lEHtfW0wRUBulcB82Fx3jkuM7zynq6wJuVxwnuUhAvkwigGSWMMQSTRPhfidUim1MchFg2+ZsIYB8RO84Db5U64iAgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmEcwRAIgMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMCIEREREREREREREREREREREREREREREREREREREREREREASICAsYEf5RB7X1tMEVAbpXAfNhcd45LjO88p6usCblccJ7lRzBEAiBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVQIgZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmYBIgYCeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gcEjRWeDAAAIAAAACAAAAAgAIAAIAAAAAAAAAAACIGAsYEf5RB7X1tMEVAbpXAfNhcd45LjO88p6usCblccJ7lHBI0VngwAACAAAAAgAAAAIACAACAAAAAAAEAAAAAAQErQJwAAAAAAAAiACASwv+8bsHPXXRt+9SbEGM1YhLqVfQwI//AFFk0ryDFcgEFaVIhAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYIQLGBH+UQe19bTBFQG6VwHzYXHeOS4zvPKerrAm5XHCe5SEC+TCKAZJYwxBJNE+F+J1SKbUxyEWDb5mwhgHxE7zgNvlTriIGAvkwigGSWMMQSTRPhfidUim1MchFg2+ZsIYB8RO84Db5HBI0VngwAACAAAAAgAAAAIACAACAAAAAAAIAAAAAAAA=";
+    input(box, multisig);
+    document.getElementById("psbted-load").click();
+    await until(() => document.querySelector("#psbted-out .psbt-analysis-summary li ul") || document.getElementById("psbted-error").textContent, "multisig findings list");
+    equal(document.getElementById("psbted-error").textContent, "", "multisig fixture load failed");
+    equal(document.querySelectorAll("#psbted-out .psbt-analysis-summary li ul li").length, 3, "each origin finding did not render as its own list item");
     input(box, "");
     document.querySelector('#workspace [data-workspace="calc"]').click();
     await until(() => !document.getElementById("calc-card").hidden, "key workspace");

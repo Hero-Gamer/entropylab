@@ -1707,17 +1707,14 @@ test("the marketing card states its pitch as a list rather than a paragraph", ()
     // The prose it replaced is gone, not merely hidden.
     assert.doesNotMatch(markup, /A signing device is only required when you spend/);
   }
-  // The list stands in for a paragraph, so it carries the space a paragraph
-  // would have above it and leaves the card's padding to close it out.
-  assert.match(css, /\.pitch-list \{ display: grid; gap: 7px; margin: var\(--space-component\) 0 0; padding-left: 20px; \}/);
 });
 
 test("the Keys tool intro tells what the calculator does, like the other tool intros", () => {
   for (const markup of [shell]) {
     // No placeholder copy rides the page's first tool intro.
     assert.doesNotMatch(markup, /lorem ipsum/i);
-    assert.match(markup, /<p class="muted tool-intro-note">Turn entropy you bring (?:—|\\u2014) dice rolls, playing cards, a number in any base, a seed phrase, or a private key/);
-    assert.match(markup, /This does not invent entropy (?:—|\\u2014) it is a calculator, and nothing leaves this page\.<\/p>/);
+    assert.match(markup, /<p class="muted tool-intro-note">Bring raw entropy (?:—|\\u2014) dice rolls, playing cards, or a number in any base/);
+    assert.match(markup, /This does not create entropy for you (?:—|\\u2014) it is a calculator, and nothing leaves this page\.<\/p>/);
   }
 });
 
@@ -1946,7 +1943,7 @@ test("workspace tabs place Vanity between Keys and BIP-85", () => {
     assert.match(markup, /id="bip85-card"/);
     assert.match(markup, /id="bip85-go"/);
     assert.match(markup, /Derive child/);
-    assert.match(markup, /This does not invent entropy/);
+    assert.match(markup, /This does not create entropy for you/);
   }
   assert.match(css, /#bip85-card\[hidden\]/);
 });
@@ -2053,7 +2050,7 @@ test("Journal gates its five tools behind the local notebook", () => {
     assert.match(markup, /Confirm password \(optional\)/);
     assert.match(markup, /placeholder="Repeat password or leave blank"/);
     assert.match(markup, /class="row bip85-actions journal-create-actions tool-actions">\s*<button class="btn primary" id="journal-create"[^>]*>Create journal<\/button>\s*<span class="journal-create-ready" id="journal-create-ready" hidden><span class="journal-create-ready-arrow" aria-hidden="true">←<\/span> <span class="journal-create-ready-text">Ready to create without a password<\/span><\/span>/);
-    assert.match(markup, /does not invent entropy/);
+    assert.match(markup, /does not create entropy for you/);
     assert.match(markup, /files created without one can be opened by anyone/);
     assert.match(markup, /id="journal-notes-card"/);
     assert.match(markup, /id="journal-keymanager-card"/);

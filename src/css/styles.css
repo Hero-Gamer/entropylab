@@ -147,7 +147,7 @@ button:not(:disabled):active * { color: inherit !important; }
 /* The pitch is a set of discrete claims rather than prose, so it reads as a
    list. The top margin stands in for the paragraph's, and dropping the
    bottom one lets the card's own padding close it out. */
-.pitch-list { display: grid; gap: 7px; margin: var(--space-component) 0 0; padding-left: 20px; }
+.pitch-list { display: grid; gap: var(--space-control); margin: var(--space-control) 0 0; padding-left: 20px; }
 .sources-heading { color: var(--fg); font-size: 1.17rem; }
 /* One step dimmer than the .muted it carries for its size and leading, so
    the closing line sits behind the sources it follows. The emoji row is the
@@ -497,7 +497,7 @@ label.field { display: block; margin-top: var(--space-component); font-size: 14p
   transition: border-color .14s ease;
 }
 .choice strong { display: block; color: var(--fg); font-weight: 600; }
-.choice .desc { display: block; margin-top: 4px; color: var(--muted); font-size: 13px; line-height: 1.45; font-weight: 400; }
+.choice .desc { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.4; font-weight: 400; }
 .choice:has(input:checked) { border-color: color-mix(in oklab, var(--accent) 55%, var(--border)); }
 .choice:has(input:disabled) { cursor: not-allowed; opacity: 0.52; }
 /* The whole card is the target, so the edge is what answers the pointer. It
@@ -1199,7 +1199,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    grey surface starts at the controls rather than at the explanation. */
 .tool-intro { margin: 0 0 var(--space-intro); }
 .tool-intro[hidden] { display: none; }
-.tool-intro h2 { margin: 5px 0 8px; }
+.tool-intro h2 { margin: var(--space-control) 0; }
 .tool-intro > .muted { max-width: 760px; margin: 0; }
 /* Tools with fixed inner tabs stack their introductions in one grid cell so
    the tab strip starts below the longest copy at the current width. Hidden
@@ -2313,7 +2313,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* A warning that guards funds rather than informs: square, edged and titled
    in the alert red. The notice supplies only these three values. */
 .wallet-result-messages.is-danger { --notice-edge: var(--danger-bright); --notice-radius: 0; --notice-title: var(--danger-bright); }
-.wallet-result-messages ul { display: grid; gap: 7px; margin: 0; padding-left: 20px; }
+.wallet-result-messages ul { display: grid; gap: var(--space-control); margin: 0; padding-left: 20px; }
 .wallet-result-messages li { color: var(--muted); font-size: 13px; line-height: 1.5; }
 .address-match-field input { display: block; font-family: var(--mono); }
 .address-match-note { margin: 0; }

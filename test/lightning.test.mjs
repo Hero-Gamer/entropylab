@@ -113,7 +113,7 @@ test("the Lightning card ships in the shell with its controls", () => {
     assert.ok(shell.includes(`id="${id}"`), `${id} is missing from the shell`);
   }
   assert.match(shell, /id="ln-tool-intro"/);
-  assert.match(shell, /This does not invent entropy/);
+  assert.match(shell, /This does not create entropy for you/);
 });
 
 test("the tab registry and workspace switcher carry the Lightning tool", () => {

@@ -513,14 +513,15 @@ function hodlBrainLabEntropy(value, trimmed = false) {
 }
 function hodlSingleKeyWallet(e, t, r, trimBrainWallet = false) {
   let n = [], o = [], i, s = null, c = t, a = r === "brain" ? hodlBrainWalletPassphrase(e, trimBrainWallet) : e.trim();
+  let source = r === "brain" ? "brain" : "hex", compressed = null;
   if (r === "brain") {
     o.push(hodlNote("Brain wallets are dangerous. Humans pick guessable phrases. Anyone who guesses the phrase takes the coins. Prefer dice or a hardware-verified seed.")), i = hodlBrainWalletPrivateKey(e, trimBrainWallet), n.push(hodlNote(trimBrainWallet ? "Brain wallet recovery: SHA-256 used the passphrase after trimming leading and trailing whitespace." : "Brain wallet recovery: SHA-256 used the passphrase exactly as entered."));
-  } else if (r === "minikey" || hodlIsMiniKey(a)) i = hodlDecodeMiniKey(a), s = a, n.push(hodlNote("Casascius mini private key decoded via SHA-256."));
+  } else if (r === "minikey" || hodlIsMiniKey(a)) i = hodlDecodeMiniKey(a), s = a, source = "minikey", n.push(hodlNote("Casascius mini private key decoded via SHA-256."));
   else if (/^[5KL9c][1-9A-HJ-NP-Za-km-z]{50,51}$/.test(a)) {
     let E = hodlDecodeWif(a);
     // A WIF only settles the encoding family; when it matches the selected
     // chain's family, keep the chain so regtest still renders bcrt1….
-    i = E.priv, c = hodlNetworkFamily(t) === E.network ? t : E.network, n.push(hodlNote(E.compressed ? "Decoded a compressed WIF private key (starts with K or L on mainnet)." : "Decoded an uncompressed WIF private key (starts with 5 on mainnet)."));
+    i = E.priv, source = "wif", compressed = E.compressed, c = hodlNetworkFamily(t) === E.network ? t : E.network, n.push(hodlNote(E.compressed ? "Decoded a compressed WIF private key (starts with K or L on mainnet)." : "Decoded an uncompressed WIF private key (starts with 5 on mainnet)."));
   } else {
     let E = a.replace(/\s/g, "").replace(/^0x/i, "");
     if (!/^[0-9a-fA-F]{64}$/.test(E)) throw hodlError("Enter a WIF key (5/K/L…), a 64-character hex private key, or a Casascius mini key (S…).");
@@ -528,7 +529,7 @@ function hodlSingleKeyWallet(e, t, r, trimBrainWallet = false) {
   }
   hodlAssertPrivateKey(i);
   let f = hodlSecp256k1.getPublicKey(i, true), d = hodlSecp256k1.getPublicKey(i, false), l = addressFor("p2pkh", d, c), u = addressFor("p2pkh", f, c), p = addressFor("p2sh-p2wpkh", f, c), b = addressFor("p2wpkh", f, c), w = addressFor("p2tr", f, c);
-  let wallet = { kind: "single", network: c, warnings: o, notes: n, privHex: hodlHex.encode(i), wifCompressed: hodlEncodeWif(i, true, c), wifUncompressed: hodlEncodeWif(i, false, c), pubkeyCompressed: hodlHex.encode(f), pubkeyUncompressed: hodlHex.encode(d), p2pkhUncompressed: l, p2pkhCompressed: u, p2shP2wpkh: p, p2wpkh: b, p2tr: w, minikey: s };
+  let wallet = { kind: "single", network: c, warnings: o, notes: n, privHex: hodlHex.encode(i), wifCompressed: hodlEncodeWif(i, true, c), wifUncompressed: hodlEncodeWif(i, false, c), pubkeyCompressed: hodlHex.encode(f), pubkeyUncompressed: hodlHex.encode(d), p2pkhUncompressed: l, p2pkhCompressed: u, p2shP2wpkh: p, p2wpkh: b, p2tr: w, minikey: s, source, compressed };
   i.fill(0); // the decoded private key bytes; the result keeps its hex/WIF strings
   return wallet;
 }
@@ -641,21 +642,20 @@ function hodlRenderKeyResult() {
   if (hodlWalletResult.kind === "single") {
     let t = hodlWalletResult;
     hodlOutEl.innerHTML = `<div class="key-result">${hodlSingleWalletData(t)}</div>`;
+    hodlWatchKeyGroups();
   } else {
     let t = hodlWalletResult, r = t.accounts.find((o) => o.def.id === hodlAccountId) ?? t.accounts.find((o) => o.def.id === "bip84") ?? t.accounts[0];
     hodlOutEl.innerHTML = `
       <div class="key-result">
-        ${hodlHdWalletData(t)}
-        <p class="key-result-scripts-label" id="acct-tabs-label">Script type</p>
-        <div class="account-tabs no-print" id="acct-tabs" role="tablist" aria-labelledby="acct-tabs-label"></div>
-        <div id="acct" role="tabpanel"></div>
+        ${hodlHdWalletData(t, '<div id="acct" class="key-groups-slot"></div>')}
       </div>
     `;
     let n = hodlElement("#acct-tabs");
     t.accounts.forEach((o) => {
       let i = document.createElement("button");
-      i.type = "button", i.id = `account-tab-${o.def.id}`, i.className = "tab account-tab" + (o.def.id === r.def.id ? " active" : ""), i.dataset.account = o.def.id, i.textContent = hodlScriptUiLabel(o.def), i.setAttribute("role", "tab"), i.setAttribute("aria-controls", "acct"), i.setAttribute("aria-selected", String(o.def.id === r.def.id)), i.tabIndex = o.def.id === r.def.id ? 0 : -1, i.onclick = () => hodlShowAccount(o.def.id), n.appendChild(i);
-    }), n.onkeydown = hodlAccountTabsKeydown, hodlShowAccount(r.def.id);
+      i.type = "button", i.id = `account-tab-${o.def.id}`, i.className = "tab account-tab" + (o.def.id === r.def.id ? " active" : ""), i.dataset.account = o.def.id, hodlSetScriptTabLabel(i, o.def), i.setAttribute("aria-pressed", String(o.def.id === r.def.id)), i.onclick = () => hodlShowAccount(o.def.id), n.appendChild(i);
+    }), hodlShowAccount(r.def.id);
+    hodlWatchKeyGroups();
   }
   let e = document.getElementById("reveal");
   e && (e.onchange = () => {
@@ -784,7 +784,7 @@ function hodlWatchOnlyMultipathDescriptor(receiveDescriptor, branches = [0, 1]) 
 function hodlDescriptorQrSvg(payload) {
   return hodlUqrRenderSvg(payload, { ecc: "M", border: 4, pixelSize: 4, blackColor: "#111111", whiteColor: "#ffffff" });
 }
-function hodlWatchOnlyDescriptorExport(receiveDescriptor, changeDescriptor, addressBranches = null) {
+function hodlWatchOnlyDescriptorExport(receiveDescriptor, changeDescriptor, addressBranches = null, labelClass = "muted", collapsible = true) {
   let branches = (addressBranches?.length ? addressBranches : [
     { branch: 0, label: "Receive", publicDescriptor: receiveDescriptor },
     { branch: 1, label: "Change", publicDescriptor: changeDescriptor }
@@ -797,8 +797,8 @@ function hodlWatchOnlyDescriptorExport(receiveDescriptor, changeDescriptor, addr
       qr = `<p class="muted">${hodlEscapeHtml(error.message || "Descriptor too long for a static QR.")} Copy the text instead, or import the selected branch descriptors separately.</p>`;
     }
   }
-  let details = branches.map((entry) => hodlPublicFieldHtml(`Watch-only ${hodlAddressBranchLabel(entry.branch).toLowerCase()} descriptor`, entry.publicDescriptor)).join("");
-  return `${hodlPublicFieldHtml("Watch-only wallet descriptor", multipath || "\u2014")}${qr}<details class="wallet-advanced"><summary>Address branch descriptors</summary>${details}</details>`;
+  let details = branches.map((entry) => hodlPublicFieldHtml(`Watch-only ${hodlAddressBranchLabel(entry.branch).toLowerCase()} descriptor`, entry.publicDescriptor, void 0, labelClass)).join("");
+  return `${hodlPublicFieldHtml("Watch-only wallet descriptor", multipath || "\u2014", void 0, labelClass)}${qr}${collapsible ? `<details class="wallet-advanced"><summary>Address branch descriptors</summary>${details}</details>` : details}`;
 }
 function hodlAccountResult(node, definition, network, count, options = {}) {
   let rawPublic = node.publicExtendedKey, rawPrivate = node.privateKey ? node.privateExtendedKey : null, family = hodlAccountExportFamily(definition, options), keyVersions = hodlExtendedKeyVersions[hodlNetworkFamily(network)], primaryConfig = keyVersions[family] || keyVersions.x, genericConfig = keyVersions.x;
@@ -1018,12 +1018,12 @@ function hodlAccountAddressBranches(account) {
     { branch: 1, role: "change", label: "Change", rows: account?.change || [], publicDescriptor: account?.changeDescriptor, privateDescriptor: account?.changeDescriptorPriv }
   ].filter((entry) => entry.rows.length || entry.publicDescriptor || entry.privateDescriptor);
 }
-function hodlAddressBranchDescriptorFields(branches, isPrivate = false) {
+function hodlAddressBranchDescriptorFields(branches, isPrivate = false, labelClass = "muted") {
   return branches.map((branch) => {
     let descriptor = isPrivate ? branch.privateDescriptor : branch.publicDescriptor;
     if (!descriptor) return "";
     let label = `${isPrivate ? "Spending" : "Watch-only"} ${hodlAddressBranchLabel(branch.branch).toLowerCase()} descriptor`;
-    return isPrivate ? hodlPrivateFieldHtml(label, descriptor) : hodlPublicFieldHtml(label, descriptor);
+    return isPrivate ? hodlPrivateFieldHtml(label, descriptor, void 0, labelClass) : hodlPublicFieldHtml(label, descriptor, void 0, labelClass);
   }).join("");
 }
 function hodlAddressBranchKey(prefix, branch) {
@@ -1032,19 +1032,19 @@ function hodlAddressBranchKey(prefix, branch) {
 function hodlAddressBranchTables(branches, includeWif, prefix) {
   return branches.map((branch) => {
     let label = hodlAddressBranchLabel(branch.branch), key = hodlAddressBranchKey(prefix, branch.branch);
-    return `<h4 class="wallet-data-subtitle">${hodlEscapeHtml(label)}</h4>${hodlAddressTable(branch.rows, `${label} addresses`, includeWif, key)}`;
+    return `<p class="label">${hodlEscapeHtml(`${label} addresses`)}</p>${hodlAddressTable(branch.rows, `${label} addresses`, includeWif, key)}`;
   }).join("");
 }
 function hodlAddressBranchVirtualConfigs(branches, includeWif, prefix) {
   return branches.map((branch) => ({ key: hodlAddressBranchKey(prefix, branch.branch), rows: branch.rows, includeWif }));
 }
-function hodlAccountAdvancedExports(account, includePrivate = false) {
+function hodlAccountAdvancedExports(account, includePrivate = false, labelClass = "muted") {
   if (!account.hasAlternateExport) return "";
-  let privateExport = includePrivate && account.genericPrivate ? hodlPrivateFieldHtml("Generic {name} for descriptor compatibility", account.genericPrivate, { name: account.genericPrivateLabel }) : "";
-  let publicExport = !includePrivate && account.genericPublic ? hodlPublicFieldHtml("Generic {name} for descriptor compatibility", account.genericPublic, { name: account.genericPublicLabel }) : "";
+  let privateExport = includePrivate && account.genericPrivate ? hodlPrivateFieldHtml("Generic {name} for descriptor compatibility", account.genericPrivate, { name: account.genericPrivateLabel }, labelClass) : "";
+  let publicExport = !includePrivate && account.genericPublic ? hodlPublicFieldHtml("Generic {name} for descriptor compatibility", account.genericPublic, { name: account.genericPublicLabel }, labelClass) : "";
   if (!privateExport && !publicExport) return "";
-  if (includePrivate) return `<div class="wallet-advanced">${privateExport}</div>`;
-  return `<details class="wallet-advanced"><summary>${hodlT("Advanced watch-only export")}</summary>${publicExport}</details>`;
+  // One more field among the account exports, not a disclosure of its own.
+  return privateExport || publicExport;
 }
 function hodlImportedCoreRecoveryData(wallet, account) {
   if (!wallet?.importedPublicKey || !account?.imported || !["y", "z"].includes(account.primaryFamily) || !account.genericPublic || !account.def?.script) return null;
@@ -1060,11 +1060,11 @@ function hodlImportedCoreRecoveryData(wallet, account) {
 function hodlImportedCoreRecoveryExport(wallet, account) {
   let data = hodlImportedCoreRecoveryData(wallet, account);
   if (!data) return "";
-  return `<div class="wallet-data-fields imported-core-recovery"><h4 class="wallet-data-subtitle">Bitcoin Core recovery export</h4><p class="muted">The SLIP-132 prefix records the script type. The Core key above is the same payload with generic version bytes; this descriptor keeps the script type explicit and stays on the conventional receive/change branches for Bitcoin Core.</p>${hodlPublicFieldHtml(data.descriptorLabel, data.descriptor)}</div>`;
+  return `<div class="wallet-data-fields imported-core-recovery"><p class="label">Bitcoin Core recovery export</p><p class="muted">The SLIP-132 prefix records the script type. The Core key above is the same payload with generic version bytes; this descriptor keeps the script type explicit and stays on the conventional receive/change branches for Bitcoin Core.</p>${hodlPublicFieldHtml(data.descriptorLabel, data.descriptor, void 0, "label")}</div>`;
 }
 function hodlRenderMultisigCosignerExport(exports, accountId) {
   let items = Array.isArray(exports) ? exports.filter((candidate) => candidate.accountId === accountId) : [];
-  return items.map((item) => hodlPublicFieldHtml("Multisig co-signer {prefix} · {label}", item.value, { prefix: item.prefix, label: item.label })).join("");
+  return items.map((item) => hodlPublicFieldHtml("Multisig co-signer {prefix} · {label}", item.value, { prefix: item.prefix, label: item.label }, "label")).join("");
 }
 function hodlNormalizeAddressCheck(value){
   let text=String(value??"").trim();
@@ -1105,11 +1105,11 @@ function hodlAddressCheckRows(){
   return{receive:[],change:[],branches:[]}
 }
 function hodlAddressMatchMarkup(){
-  return `<label class="field address-match-field">Check an address
-    <input id="address-match" autocomplete="off" spellcheck="false" placeholder="Paste bc1\u2026 or a 1\u2026 / 3\u2026 address">
-    <span class="field-note">Paste an address shown by another wallet. A match means that wallet computed the same selected branch and derivation, even if the index is beyond the table above.</span>
+  return `<div class="address-match-field"><p class="label" id="address-match-label">Check an address</p>
+    <p class="muted address-match-note" id="address-match-note">Paste an address shown by another wallet. A match means that wallet computed the same selected branch and derivation, even if the index is beyond the table above.</p>
+    <input id="address-match" aria-labelledby="address-match-label" aria-describedby="address-match-note" autocomplete="off" spellcheck="false" placeholder="Paste bc1\u2026 or a 1\u2026 / 3\u2026 address">
     <span class="hint" id="address-match-status" role="status"></span>
-  </label>`
+  </div>`
 }
 var hodlAddressSearchLimit = 1000;
 
@@ -1268,22 +1268,22 @@ function hodlBindAddressVirtualization(configs = []) {
     render();
   });
 }
-function hodlSlip132Fields(account, wallet, isPrivate = false) {
+function hodlSlip132Fields(account, wallet, isPrivate = false, labelClass = "muted") {
   let pasted = isPrivate ? (wallet?.importedPrivateKey || "") : (wallet?.importedPublicKey || "");
   let core = (isPrivate ? account.genericPrivate : account.genericPublic) || "";
   let coreLabel = isPrivate ? account.genericPrivateLabel : account.genericPublicLabel;
   let slip = account.hasAlternateExport ? (isPrivate ? account.primaryPrivate : account.primaryPublic) : "";
   let slipLabel = isPrivate ? account.primaryPrivateLabel : account.primaryPublicLabel;
   let field = isPrivate ? hodlPrivateFieldHtml : hodlPublicFieldHtml, parts = [];
-  if (pasted) parts.push(field("As pasted", pasted));
-  if (core && core !== pasted) parts.push(field(`Bitcoin Core ${coreLabel}`, core));
-  if (slip && slip !== pasted && slip !== core) parts.push(field(`SLIP-132 ${slipLabel}`, slip));
-  if (!parts.length && core) parts.push(field(`Account ${coreLabel}`, core));
+  if (pasted) parts.push(field("As pasted", pasted, void 0, labelClass));
+  if (core && core !== pasted) parts.push(field(`Bitcoin Core ${coreLabel}`, core, void 0, labelClass));
+  if (slip && slip !== pasted && slip !== core) parts.push(field(`SLIP-132 ${slipLabel}`, slip, void 0, labelClass));
+  if (!parts.length && core) parts.push(field(`Account ${coreLabel}`, core, void 0, labelClass));
   if (!isPrivate) parts.push(`<p class="muted slip132-note">Prefix swap only (same payload, new version bytes and checksum). Script lives in the descriptor, not the prefix. x = legacy, y = nested BIP49, z = native BIP84, Y = nested BIP48 nested-msig, Z = native BIP48 native-msig. Testnet: t / u / v / U / V. No Taproot SLIP prefix.</p>`);
   return parts.join("");
 }
 function hodlSlip132WatchFields(account, wallet) {
-  return hodlSlip132Fields(account, wallet, false);
+  return hodlSlip132Fields(account, wallet, false, "label");
 }
 function hodlShowAccount(id) {
   if (!hodlWalletResult || hodlWalletResult.kind !== "hd") return;
@@ -1291,45 +1291,24 @@ function hodlShowAccount(id) {
   if (!account) return;
   hodlSetSelectedScriptType(id);
   hodlSyncAccountTabs(id);
-  let branches = hodlAccountAddressBranches(account), firstBranch = branches[0], firstAddress = firstBranch?.rows[0], firstIndex = firstAddress?.index ?? 0, firstLabel = firstBranch ? hodlAddressBranchLabel(firstBranch.branch) : "Address", hasPrivate = hodlAccountHasPrivate(account), purposeLabel = account.imported ? account.def.bip : `Purpose ${hodlPathComponent(account.def.purpose, account.def.purposeHardened !== false)}`;
-  let privateSection = hasPrivate ? `
-    <section class="account-result-section account-private-section" aria-labelledby="account-private-heading">
-      <div class="wallet-data-section-head">
-        <h3 id="account-private-heading">${hodlT("Private account material")}</h3>
-        <p class="muted">${hodlT("These exports can spend from this account. They are shown only for a seed or extended private-key source.")}</p>
-      </div>
-      ${hodlSlip132Fields(account, hodlWalletResult, true)}
-      ${hodlAddressBranchDescriptorFields(branches, true)}
-      ${hodlAccountAdvancedExports(account, true)}
-      <p class="account-private-warning">${hodlT("<strong>Keep these exports together only in secure offline backups.</strong> An account extended public key combined with any non-hardened descendant private key, including a WIF shown in the address tables below, can reconstruct that account's extended private key.")}</p>
-    </section>` : "";
+  let branches = hodlAccountAddressBranches(account), hasPrivate = hodlAccountHasPrivate(account);
+  // The selected script type adds its groups to the card list: every address,
+  // the private keys, and the watch-only exports. The address tables already
+  // carry each address, its path and its QR code, so no separate receive group
+  // repeats the first one. The pressed script type button names the account.
+  let privateGroup = hasPrivate ? hodlKeyGroupMarkup("account-private", `${hodlT("Account private key exports")}${hodlPrivacyEyeMarkup()}`, `<p class="edge-note is-private account-private-warning"><strong>${hodlT("These exports can spend from this account.")}</strong> ${hodlT("They are shown only for a seed or extended private-key source.")} ${hodlT("Keep these exports together only in secure offline backups. An account extended public key combined with any non-hardened descendant private key, including a WIF shown in the address tables, can reconstruct that account's extended private key.")}</p>
+      ${hodlSlip132Fields(account, hodlWalletResult, true, "label")}
+      ${hodlAddressBranchDescriptorFields(branches, true, "label")}
+      ${hodlAccountAdvancedExports(account, true, "label")}`, hodlRevealPrivate ? "is-private is-revealed" : "is-private") : "";
   hodlElement("#acct").innerHTML = `
-    <div class="key-result-main">
-      <div class="kicker">${hodlEscapeHtml(purposeLabel)} \xB7 ${hodlEscapeHtml(hodlWalletResult.network)}</div>
-      <h2>${hodlEscapeHtml(account.def.label)}</h2>
-      <p class="muted">${hodlEscapeHtml(account.def.beginner)}</p>
-      ${privateSection}
-      <section class="account-result-section account-watch-section" aria-labelledby="account-watch-heading">
-        <div class="wallet-data-section-head">
-          <h3 id="account-watch-heading">${hodlT("Watch-only wallet data")}</h3>
-          <p class="watch-only-note">${hodlT("<strong>Cannot spend:</strong> these exports can monitor every address and reveal this account's transaction history and balance. Treat them as privacy-sensitive.")}</p>
-        </div>
+        ${hodlKeyGroupMarkup("hd-addresses", hasPrivate ? `${hodlT("Addresses")}${hodlPrivacyEyeMarkup()}` : hodlT("Addresses"), `<p class="edge-note is-public">${hodlT("Verify the first selected address on another trusted wallet or signing device before accepting bitcoin.")}</p>${hasPrivate ? `<p class="edge-note is-private"><strong>${hodlT("When private data is visible, these tables also show the WIF private key for each address.")}</strong> ${hodlT("Anyone who sees or copies a WIF can spend what that address holds.")}</p>` : ""}${hodlScriptBeginnerTexts[account.def.id] ? `<p class="label">${hodlT("Script type:")} <span class="label-value">${hodlScriptUiLabel(account.def)}</span></p><p class="muted script-type-description">${hodlScriptBeginner(account.def)}</p>` : ""}${hodlAddressBranchTables(branches, hasPrivate, "hd")}${hodlAddressMatchMarkup()}`, hasPrivate ? hodlRevealPrivate ? "is-private is-revealed" : "is-private" : "")}
+        ${privateGroup}
+        ${hodlKeyGroupMarkup("watch", hodlT("Watch-only exports"), `<p class="edge-note is-public watch-only-note">${hodlT("<strong>Cannot spend:</strong> these exports can monitor every address and reveal this account's transaction history and balance. Treat them as privacy-sensitive.")}</p>
         ${hodlSlip132WatchFields(account, hodlWalletResult)}
         ${hodlImportedCoreRecoveryExport(hodlWalletResult, account)}
         ${hodlRenderMultisigCosignerExport(hodlWalletResult.multisigCosignerExports, account.def.id)}
-        ${hodlWatchOnlyDescriptorExport(account.receiveDescriptor, account.changeDescriptor, branches)}
-        ${hodlAccountAdvancedExports(account, false)}
-      </section>
-      <section class="account-result-section account-address-section" aria-labelledby="account-address-heading">
-        <div class="wallet-data-section-head">
-          <h3 id="account-address-heading">Addresses</h3>
-          <p class="muted">Verify the first selected address on another trusted wallet or signing device before accepting bitcoin.</p>
-        </div>
-        ${firstAddress ? `<div class="account-address-lead"><h4 class="wallet-data-subtitle">${hodlEscapeHtml(firstLabel)} address #${hodlAddressIndexHtml(firstIndex)}</h4><div class="qr" aria-label="${hodlEscapeHtml(firstLabel)} address ${hodlAddressIndexHtml(firstIndex)} QR code">${hodlQrSvg(firstAddress.address)}</div><p class="mono">${hodlEscapeHtml(firstAddress.address)}</p><p class="muted mono">${hodlEscapeHtml(hodlDisplayDerivationPath(firstAddress.path))}</p></div>` : ""}
-        ${hodlAddressBranchTables(branches, hasPrivate, "hd")}
-        ${hodlAddressMatchMarkup()}
-      </section>
-    </div>`;
+        ${hodlWatchOnlyDescriptorExport(account.receiveDescriptor, account.changeDescriptor, branches, "label", false)}
+        ${hodlAccountAdvancedExports(account, false, "label")}`, "account-watch-section")}`;
   hodlBindAddressVirtualization(hodlAddressBranchVirtualConfigs(branches, hasPrivate, "hd"));
   hodlBindAddressMatch();
   hodlBindWalletResultActions();
@@ -1338,9 +1317,9 @@ function hodlShowAccount(id) {
 // optional placeholder values); the helper translates with the text view and
 // escapes for its HTML slot. That keeps raw translation calls out of template
 // interpolations and keeps the literals extractable by scripts/i18n-sync.mjs.
-function hodlPublicFieldHtml(label, value, vars) {
+function hodlPublicFieldHtml(label, value, vars, labelClass = "muted") {
   let labelHtml = hodlEscapeHtml(hodlTText(label, vars));
-  return `<p><span class="muted">${labelHtml}</span><br><span class="mono">${hodlEscapeHtml(value ?? "\u2014")}</span></p>`;
+  return `<p><span class="${labelClass}">${labelHtml}</span><br><span class="mono">${hodlEscapeHtml(value ?? "\u2014")}</span></p>`;
 }
 function hodlPrivateValue(value, className = "secret private-field-value") {
   let mask = "************", text = String(value ?? "\u2014");
@@ -1348,9 +1327,9 @@ function hodlPrivateValue(value, className = "secret private-field-value") {
   let bullets = "\u2022".repeat(Math.max(Array.from(text).length, mask.length));
   return `<span class="${className} secret-placeholder"><span class="secret-placeholder-mask" aria-hidden="true">${bullets}</span><span class="secret-placeholder-message" aria-hidden="true">${mask}</span><span class="secret-placeholder-label">${hodlT("Private value hidden")}</span></span>`;
 }
-function hodlPrivateFieldHtml(label, value, vars) {
+function hodlPrivateFieldHtml(label, value, vars, labelClass = "muted") {
   let labelHtml = hodlEscapeHtml(hodlTText(label, vars));
-  return `<p class="private-field"><span class="muted">${labelHtml}</span>${hodlPrivateValue(value)}</p>`;
+  return `<p class="private-field"><span class="${labelClass}">${labelHtml}</span>${hodlPrivateValue(value)}</p>`;
 }
 function hodlDisplayDerivationPath(value) {
   return String(value ?? "").replace(/(^|\/)(\d+)[hH](?=\/|$)/g, "$1$2'");
@@ -1363,13 +1342,10 @@ function hodlPrivateDataControls(descriptionId, scope = "wallet") {
   let privateSheet = hodlRevealPrivate, downloadLabel = privateSheet ? hodlT("Save unencrypted private sheet") : hodlT("Save watch-only sheet");
   let disclosure = privateSheet ? scope === "wallet" ? hodlT("The downloaded plain-text file is unencrypted and includes all available root and account private recovery material across every script type.") : hodlT("The downloaded plain-text file is unencrypted and includes every private key shown in this section.") : hodlT("The downloaded sheet omits all private recovery material.");
   return `<div class="wallet-data-actions no-print">
-    <label class="reveal-private-toggle">
-      <input type="checkbox" id="reveal" ${hodlRevealPrivate ? "checked" : ""} aria-describedby="${descriptionId} recovery-sheet-disclosure" />
-      <span>${hodlT("Show private recovery material")} <span class="reveal-private-toggle-note">${hodlT("(air-gap only)")}</span></span>
-    </label>
+    ${hodlWalletDatBirthdayField()}
     <button class="btn secondary green save-recovery-sheet" id="save" type="button" aria-describedby="recovery-sheet-disclosure">${downloadLabel}</button>
     ${hodlWalletDatControl(privateSheet)}
-    <p class="recovery-download-disclosure" id="recovery-sheet-disclosure"><strong>${privateSheet ? hodlT("Private export:") : hodlT("Watch-only export:")}</strong> ${disclosure}</p>
+    <p class="edge-note ${privateSheet ? "is-private" : "is-public"} recovery-download-disclosure" id="recovery-sheet-disclosure"><strong>${privateSheet ? hodlT("Private export:") : hodlT("Watch-only export:")}</strong> ${disclosure}</p>
   </div>`;
 }
 function hodlWalletDatControl(includePrivate) {
@@ -1378,117 +1354,143 @@ function hodlWalletDatControl(includePrivate) {
   // the reveal toggle, so the label and filename never lie for an imported
   // watch-only wallet (issue #366).
   const withSecrets = includePrivate && hodlWalletExport.hasPrivateDescriptors(hodlWalletResult);
+  return `<button class="btn secondary green save-wallet-dat" id="download-wallet-dat" type="button" aria-describedby="recovery-sheet-disclosure wallet-dat-birthday-help">${hodlWalletExport.walletDatButtonLabel(withSecrets)}</button>`;
+}
+// The footer opens on the wallet birthday, titled and explained the way
+// Key Station titles a field: label, what the choice does, then the picker.
+function hodlWalletDatBirthdayField() {
+  if (!hodlWalletExport.hasDescriptors(hodlWalletResult)) return "";
   // Bitcoin Core starts its automatic scan at the wallet birthday stored in
   // the descriptor records. Recovery needs genesis (creation time 0) so
   // transactions predating this export are found; "now" is only safe for
   // keys created at this moment and skips past history (faster, and reveals
   // no older activity to anyone who later sees the file). If a loaded wallet
-  // looks empty, repair it with Bitcoin Core's `rescanblockchain 0`.
-  return `<label class="wallet-dat-birthday">${hodlT("Wallet birthday")} <select data-wallet-dat-birthday aria-describedby="wallet-dat-birthday-help"><option value="genesis"${hodlWalletDatBirthday === "genesis" ? " selected" : ""}>${hodlT("Recovering keys · scan from genesis")}</option><option value="now"${hodlWalletDatBirthday === "now" ? " selected" : ""}>${hodlT("New keys · created today")}</option></select></label><button class="btn secondary green save-wallet-dat" id="download-wallet-dat" type="button" aria-describedby="recovery-sheet-disclosure wallet-dat-birthday-help">${hodlWalletExport.walletDatButtonLabel(withSecrets)}</button><p class="muted wallet-dat-birthday-help" id="wallet-dat-birthday-help">${hodlT("Bitcoin Core only auto-scans history back to the birthday. Choose “New keys” only for entropy created right now; recovering older keys with today's birthday can look empty until you run <code>rescanblockchain 0</code> in Bitcoin Core.")}</p>`;
+  // looks empty, repair it in Bitcoin Core with `rescanblockchain 0`.
+  return `<div class="wallet-birthday-field"><p class="label" id="wallet-dat-birthday-label">${hodlT("Wallet birthday")}</p><p class="muted wallet-dat-birthday-help" id="wallet-dat-birthday-help">${hodlT("Bitcoin Core only auto-scans history back to the birthday. Choose “New keys” only for entropy created right now; recovering older keys with today's birthday can look empty until you run <code>rescanblockchain 0</code> in Bitcoin Core.")}</p><select data-wallet-dat-birthday aria-labelledby="wallet-dat-birthday-label" aria-describedby="wallet-dat-birthday-help"><option value="genesis"${hodlWalletDatBirthday === "genesis" ? " selected" : ""}>${hodlT("Recovering keys · scan from genesis")}</option><option value="now"${hodlWalletDatBirthday === "now" ? " selected" : ""}>${hodlT("New keys · created today")}</option></select></div>`;
 }
 function hodlSaveRecoveryControl() {
-  return `<div class="wallet-data-actions no-print"><button class="btn secondary green save-recovery-sheet" id="save" type="button">${hodlT("Save watch-only sheet")}</button>${hodlWalletDatControl(false)}</div>`;
+  return `<div class="wallet-data-actions no-print">${hodlWalletDatBirthdayField()}<button class="btn secondary green save-recovery-sheet" id="save" type="button">${hodlT("Save watch-only sheet")}</button>${hodlWalletDatControl(false)}</div>`;
 }
 function hodlWalletMessages(wallet, idPrefix) {
   let warnings = [...wallet.warnings || []].filter((message) => !wallet.passphraseUsed || hodlNoteKey(message) !== "note.passphraseInUse"), notes = [...wallet.notes || []];
   if (wallet.passphraseUsed) warnings.unshift(hodlNote("A BIP39 passphrase is in use. It creates a different wallet, is not printed in the recovery sheet, and must be preserved separately to recover this wallet."));
   if (!warnings.length && !notes.length) return "";
   let items = [...warnings.map((message) => `<li class="is-warning">${hodlEscapeHtml(hodlFormatNote(message))}</li>`), ...notes.map((message) => `<li>${hodlEscapeHtml(hodlFormatNote(message))}</li>`)].join("");
-  return `<section class="wallet-result-messages" aria-labelledby="${idPrefix}-safety-heading"><h3 id="${idPrefix}-safety-heading">Safety notes</h3><ul>${items}</ul></section>`;
+  return `<section class="edge-note is-private wallet-result-messages" aria-labelledby="${idPrefix}-safety-heading"><h3 id="${idPrefix}-safety-heading">Safety notes</h3><ul>${items}</ul></section>`;
 }
+// The privacy bar: one switch for every masked value in the key view, kept in
+// sight while the reader scrolls. A checkbox underneath, announced as a
+// switch, so the existing reveal wiring and its tests keep working.
+function hodlPrivacyBarMarkup() {
+  let revealed = hodlRevealPrivate;
+  return `<label class="privacy-bar${revealed ? " is-revealed" : ""}">
+    <input type="checkbox" role="switch" id="reveal" ${revealed ? "checked" : ""} aria-describedby="recovery-sheet-disclosure" />
+    <span class="privacy-bar-state">${revealed ? hodlT("Private data visible") : hodlT("Private data hidden")}</span>
+    <span class="privacy-bar-hint">${revealed ? hodlT("Hide it before sharing your screen or stepping away") : hodlT("Reveal only offline, on an air-gapped computer")}</span>
+  </label>`;
+}
+// The eye beside the Private key group title repeats the privacy state where
+// the private values are: crossed out while hidden, open once revealed.
+function hodlPrivacyEyeMarkup() {
+  let paths = hodlRevealPrivate
+    ? '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>'
+    : '<path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 7 10 7a18.5 18.5 0 0 1-2.16 3.19"/><path d="M6.6 6.6A18.4 18.4 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="m2 2 20 20"/>';
+  return `<svg class="key-group-eye" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${paths}</svg><span class="sr-only">${hodlRevealPrivate ? hodlT("private data visible") : hodlT("private data hidden")}</span>`;
+}
+// A collapsible group of related values in the key view. Which groups are open
+// is remembered for each key, by its id: revealing or hiding private data does
+// not fold them shut, switching keys reopens each the way it was left, and a
+// new key starts fresh. Only the single-key Receive group starts open. The HD
+// view opens with every group closed, so the full scope of what it holds reads
+// at a glance.
+var hodlKeyGroupsOpenByKey = new Map();
+function hodlKeyGroupsOpen() {
+  let id = hodlKeys[hodlActiveKey]?.id;
+  if (id == null) return new Set(["receive"]);
+  if (!hodlKeyGroupsOpenByKey.has(id)) hodlKeyGroupsOpenByKey.set(id, new Set(["receive"]));
+  return hodlKeyGroupsOpenByKey.get(id);
+}
+function hodlKeyGroupMarkup(id, title, body, className = "") {
+  return `<details class="key-group${className ? ` ${className}` : ""}" data-key-group="${id}"${hodlKeyGroupsOpen().has(id) ? " open" : ""}><summary>${title}</summary><div class="key-group-body">${body}</div></details>`;
+}
+// The toggle event does not bubble, so it is caught on the way down.
+function hodlWatchKeyGroups() {
+  if (hodlOutEl.hodlKeyGroupsWatched) return;
+  hodlOutEl.hodlKeyGroupsWatched = true;
+  hodlOutEl.addEventListener("toggle", (event) => {
+    let group = event.target;
+    if (!group?.dataset?.keyGroup) return;
+    if (group.open) hodlKeyGroupsOpen().add(group.dataset.keyGroup);
+    else hodlKeyGroupsOpen().delete(group.dataset.keyGroup);
+  }, true);
+}
+// The address a single key most likely holds funds at, which the Receive
+// group leads with. A WIF records whether its key is compressed. Casascius mini
+// keys and early brain wallets were used with uncompressed legacy addresses. A
+// hex key carries no hint, and neither does a result without a source, so both
+// take the modern default.
+function hodlSingleLeadAddress(wallet) {
+  if (wallet?.source === "wif") return wallet.compressed === false ? "p2pkhUncompressed" : "p2wpkh";
+  if (wallet?.source === "minikey" || wallet?.source === "brain") return "p2pkhUncompressed";
+  return "p2wpkh";
+}
+// Grouped by what a reader comes to do: receive to the key, back it up, or
+// reach a format another wallet needs. Only receiving starts open. The
+// recovery sheet is an action rather than data, so it is never folded away.
 function hodlSingleWalletData(wallet) {
-  let miniKey = wallet.minikey ? hodlPrivateFieldHtml("Mini private key", wallet.minikey) : "";
-  return `<section class="card wallet-data-card">
-    <div class="wallet-data-intro">
-      <div class="kicker">${hodlT("Single-key wallet data")}</div>
-      <h2 tabindex="-1">${hodlT("Key recovery details")}</h2>
-      <p class="muted">${hodlT("Review the private key and addresses derived from this input. Sensitive recovery material is grouped first; public wallet data appears below.")}</p>
-      ${hodlWalletMessages(wallet, "single")}
+  let miniKey = wallet.minikey ? hodlPrivateFieldHtml("Mini private key", wallet.minikey) : "", lead = hodlSingleLeadAddress(wallet);
+  // Canonical order for the list; the lead is lifted out of it into Receive.
+  let addressFields = {
+    p2pkhUncompressed: hodlPublicFieldHtml("Legacy uncompressed", wallet.p2pkhUncompressed),
+    p2pkhCompressed: hodlPublicFieldHtml("Legacy compressed", wallet.p2pkhCompressed),
+    p2shP2wpkh: hodlPublicFieldHtml("Nested SegWit", wallet.p2shP2wpkh),
+    p2wpkh: hodlPublicFieldHtml("Native SegWit", wallet.p2wpkh),
+    p2tr: hodlPublicFieldHtml("Taproot", wallet.p2tr),
+  };
+  return `<div class="key-view single-key-view">
+    ${hodlWalletMessages(wallet, "single")}
+    <div class="key-view-toolbar no-print">${hodlPrivacyBarMarkup()}</div>
+    <div class="key-groups">
+      ${hodlKeyGroupMarkup("receive", hodlT("Receive address"), `${addressFields[lead]}<div class="qr" aria-label="${hodlTAttr("Receive address QR code")}">${hodlQrSvg(wallet[lead])}</div>`)}
+      ${hodlKeyGroupMarkup("addresses", hodlT("Other address formats"), Object.keys(addressFields).filter((key) => key !== lead).map((key) => addressFields[key]).join(""))}
+      ${hodlKeyGroupMarkup("private", `${hodlT("Private key")}${hodlPrivacyEyeMarkup()}`, `${hodlPrivateFieldHtml("WIF compressed", wallet.wifCompressed)}${hodlPrivateFieldHtml("WIF uncompressed", wallet.wifUncompressed)}${hodlPrivateFieldHtml("Hex private key", wallet.privHex)}${miniKey}`, hodlRevealPrivate ? "is-private is-revealed" : "is-private")}
+      ${hodlKeyGroupMarkup("public", hodlT("Public keys"), `${hodlPublicFieldHtml("Compressed public key", wallet.pubkeyCompressed)}${hodlPublicFieldHtml("Uncompressed public key", wallet.pubkeyUncompressed)}`)}
     </div>
-    <section class="wallet-data-section wallet-private-section" aria-labelledby="single-private-heading">
-      <div class="wallet-data-section-head">
-        <h3 id="single-private-heading">${hodlT("Private key material")}</h3>
-        <p class="muted" id="single-private-description">${hodlT("These values can spend the bitcoin held by the addresses below. Reveal them only while this file is running offline on an air-gapped computer.")}</p>
-      </div>
-      ${hodlPrivateDataControls("single-private-description", "single")}
-      <div class="wallet-data-fields">
-        ${hodlPrivateFieldHtml("WIF compressed", wallet.wifCompressed)}
-        ${hodlPrivateFieldHtml("WIF uncompressed", wallet.wifUncompressed)}
-        ${hodlPrivateFieldHtml("Hex private key", wallet.privHex)}
-        ${miniKey}
-      </div>
-    </section>
-    <section class="wallet-data-section wallet-public-section" aria-labelledby="single-public-heading">
-      <div class="wallet-data-section-head">
-        <h3 id="single-public-heading">${hodlT("Public keys & addresses")}</h3>
-        <p class="muted">${hodlT("Use these values for verification or watch-only monitoring. They do not reveal the private key.")}</p>
-      </div>
-      <div class="wallet-data-fields">
-        ${hodlPublicFieldHtml("Compressed public key", wallet.pubkeyCompressed)}
-        ${hodlPublicFieldHtml("Uncompressed public key", wallet.pubkeyUncompressed)}
-        <h4 class="wallet-data-subtitle">${hodlT("Addresses")}</h4>
-        ${hodlPublicFieldHtml("Legacy uncompressed", wallet.p2pkhUncompressed)}
-        ${hodlPublicFieldHtml("Legacy compressed", wallet.p2pkhCompressed)}
-        ${hodlPublicFieldHtml("Nested SegWit", wallet.p2shP2wpkh)}
-        ${hodlPublicFieldHtml("Native SegWit", wallet.p2wpkh)}
-        ${hodlPublicFieldHtml("Taproot", wallet.p2tr)}
-        <h4 class="wallet-data-subtitle">${hodlT("Native SegWit QR code")}</h4>
-        <div class="qr" aria-label="${hodlTAttr("Native SegWit address QR code")}">${hodlQrSvg(wallet.p2wpkh)}</div>
-      </div>
-    </section>
-  </section>`;
+    ${hodlPrivateDataControls("single-private-description", "single")}
+  </div>`;
 }
-function hodlHdWalletData(wallet) {
+function hodlHdWalletData(wallet, accountMarkup = "") {
   let privateFields = [];
   if (wallet.mnemonic) privateFields.push(hodlSeedPhraseField(`Your seed phrase \xB7 ${wallet.mnemonic.trim().split(/\s+/).length} words`, wallet.mnemonic), hodlSeedQrExport(wallet.mnemonic, { passphraseUsed: wallet.passphraseUsed, entropyHex: wallet.entropyHex }));
   // The passphrase sits right under the words it belongs to: without it the
   // words recover a different wallet, so it is recovery material too.
-  if (wallet.mnemonic && wallet.passphraseUsed && wallet.passphrase) privateFields.push(hodlPrivateFieldHtml("BIP39 passphrase", wallet.passphrase));
-  if (wallet.entropyHex) privateFields.push(hodlPrivateFieldHtml("BIP39 entropy hex", wallet.entropyHex));
-  if (wallet.seedHex) privateFields.push(hodlPrivateFieldHtml("Master seed hex", wallet.seedHex));
-  if (wallet.rootXprv) privateFields.push(hodlPrivateFieldHtml(`Root ${wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName}`, wallet.rootXprv));
-  if (wallet.importedPrivateKey) privateFields.push(hodlPrivateFieldHtml(`Imported ${wallet.importedPrivateLabel || "extended private key"}`, wallet.importedPrivateKey));
+  if (wallet.mnemonic && wallet.passphraseUsed && wallet.passphrase) privateFields.push(hodlPrivateFieldHtml("BIP39 passphrase", wallet.passphrase, void 0, "label"));
+  if (wallet.entropyHex) privateFields.push(hodlPrivateFieldHtml("BIP39 entropy hex", wallet.entropyHex, void 0, "label"));
+  if (wallet.seedHex) privateFields.push(hodlPrivateFieldHtml("Master seed hex", wallet.seedHex, void 0, "label"));
+  if (wallet.rootXprv) privateFields.push(hodlPrivateFieldHtml(`Root ${wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName}`, wallet.rootXprv, void 0, "label"));
+  if (wallet.importedPrivateKey) privateFields.push(hodlPrivateFieldHtml(`Imported ${wallet.importedPrivateLabel || "extended private key"}`, wallet.importedPrivateKey, void 0, "label"));
   let hasAccountPrivate = wallet.accounts.some(hodlAccountHasPrivate), hasPrivate = privateFields.length > 0 || hasAccountPrivate;
-  let privateContent = privateFields.length ? privateFields.join("") : `<p class="muted">Private account material is available in the selected script panel below; no BIP32 root private key was supplied.</p>`;
-  let intro = wallet.mnemonic ? "Review the root material derived from this seed. Private recovery data is grouped first; watch-only data appears below." : "Review the material available from this imported extended key. Private data, when present, is grouped first; watch-only data appears below.";
-  let source = wallet.mnemonic ? "" : `<p><span class="muted">Source</span><br><span>Imported extended ${hasPrivate ? "private" : "public"} key; no seed phrase was entered.</span></p>`;
-  let privateSection = hasPrivate ? `<section class="wallet-data-section wallet-private-section" aria-labelledby="wallet-private-heading">
-      <div class="wallet-data-section-head">
-        <h3 id="wallet-private-heading">${hodlT("Private recovery material")}</h3>
-        <p class="muted" id="wallet-private-description">${hodlT("These values can recreate or spend from the wallet. Reveal them only while this file is running offline on an air-gapped computer.")}</p>
-      </div>
-      ${hodlPrivateDataControls("wallet-private-description")}
-      <div class="wallet-data-fields">${privateContent}</div>
-    </section>` : "";
-  let fingerprint = wallet.masterFingerprint ? hodlPublicFieldHtml("Master fingerprint", wallet.masterFingerprint) : "";
-  let parentFingerprint = !wallet.masterFingerprint && wallet.parentFingerprint ? hodlPublicFieldHtml("Encoded parent fingerprint (not a master fingerprint)", wallet.parentFingerprint) : "";
-  let nodeFingerprint = !wallet.masterFingerprint && wallet.nodeFingerprint ? hodlPublicFieldHtml("Imported key fingerprint (not a master fingerprint)", wallet.nodeFingerprint) : "";
-  let rootPublic = wallet.rootXpub ? hodlPublicFieldHtml("Root {name}", wallet.rootXpub, { name: wallet.rootPublicLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.pubName }) : "";
-  let importedPublic = wallet.importedPublicKey ? hodlPublicFieldHtml("Imported {name}", wallet.importedPublicKey, { name: wallet.importedPublicLabel || hodlTText("extended public key") }) : "";
-  return `<section class="card wallet-data-card">
-    <div class="wallet-data-intro">
-      <div class="kicker">${hodlT("Wallet data")}</div>
-      <h2 tabindex="-1">${hodlT("Wallet recovery details")}</h2>
-      <p class="muted">${intro}</p>
-      ${hodlWalletMessages(wallet, "wallet")}
+  let source = wallet.mnemonic ? "" : `<p><span class="label">Source</span><br><span>Imported extended ${hasPrivate ? "private" : "public"} key; no seed phrase was entered.</span></p>`;
+  let fingerprint = wallet.masterFingerprint ? hodlPublicFieldHtml("Master fingerprint", wallet.masterFingerprint, void 0, "label") : "";
+  let parentFingerprint = !wallet.masterFingerprint && wallet.parentFingerprint ? hodlPublicFieldHtml("Encoded parent fingerprint (not a master fingerprint)", wallet.parentFingerprint, void 0, "label") : "";
+  let nodeFingerprint = !wallet.masterFingerprint && wallet.nodeFingerprint ? hodlPublicFieldHtml("Imported key fingerprint (not a master fingerprint)", wallet.nodeFingerprint, void 0, "label") : "";
+  let rootPublic = wallet.rootXpub ? hodlPublicFieldHtml("Root {name}", wallet.rootXpub, { name: wallet.rootPublicLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.pubName }, "label") : "";
+  let importedPublic = wallet.importedPublicKey ? hodlPublicFieldHtml("Imported {name}", wallet.importedPublicKey, { name: wallet.importedPublicLabel || hodlTText("extended public key") }, "label") : "";
+  // The toolbar holds the script type and the privacy bar, and sticks under the
+  // header as one piece. Below it: what recovers the wallet, what identifies it,
+  // the selected script type, and the wallet-wide exports closing the card.
+  let recoveryTitle = wallet.mnemonic ? hodlT("Recovery material") : hodlT("Root private key");
+  let recoveryGroup = privateFields.length ? hodlKeyGroupMarkup("recovery", `${recoveryTitle}${hodlPrivacyEyeMarkup()}`, `<p class="edge-note is-private"><strong>${hodlT("These values can recreate or spend from the wallet.")}</strong> ${hodlT("Reveal them only while this file is running offline on an air-gapped computer.")}</p><div class="wallet-data-fields">${privateFields.join("")}</div>`, hodlRevealPrivate ? "is-private is-revealed" : "is-private") : "";
+  let identityGroup = hodlKeyGroupMarkup("identity", hodlT("Wallet identity"), `<p class="edge-note is-public">${hodlT("These values identify the wallet or enable watch-only use, but do not authorize spending. Treat them as privacy-sensitive because extended public keys and descriptors can reveal wallet addresses, balances, and transaction history.")}</p><div class="wallet-data-fields">${fingerprint}${parentFingerprint}${nodeFingerprint}${rootPublic}${importedPublic}${source}</div>`);
+  return `<div class="key-view hd-key-view">
+    ${hodlWalletMessages(wallet, "wallet")}
+    <div class="key-view-toolbar no-print">
+      <div class="row segmented-control" id="acct-tabs" role="group" aria-label="${hodlTAttr("Script type")}"></div>
+      ${hasPrivate ? hodlPrivacyBarMarkup() : ""}
     </div>
-    ${privateSection}
-    <section class="wallet-data-section wallet-public-section" aria-labelledby="wallet-public-heading">
-      <div class="wallet-data-section-head">
-        <h3 id="wallet-public-heading">${hodlT("Watch-only wallet data")}</h3>
-        <p class="muted">${hodlT("These values identify the wallet or enable watch-only use, but do not authorize spending. Treat them as privacy-sensitive because extended public keys and descriptors can reveal wallet addresses, balances, and transaction history.")}</p>
-      </div>
-      ${hasPrivate ? "" : hodlSaveRecoveryControl()}
-      <div class="wallet-data-fields">
-        ${fingerprint}
-        ${parentFingerprint}
-        ${nodeFingerprint}
-        ${rootPublic}
-        ${importedPublic}
-        ${source}
-      </div>
-    </section>
-  </section>`;
+    <div class="key-groups">${recoveryGroup}${identityGroup}${accountMarkup}</div>
+    ${hasPrivate ? hodlPrivateDataControls("wallet-private-description") : hodlSaveRecoveryControl()}
+  </div>`;
 }
 // Stamp the recovery sheet with the build version (substituted by the build).
 function hodlFormatRecoverySheet(text) {
@@ -1675,7 +1677,7 @@ function hodlBindWalletResultActions() {
   hodlBindAddressMatch();
 }
 function hodlFocusWalletResult() {
-  requestAnimationFrame(() => (hodlWorkspace === "msig" ? document.getElementById("msig-summary-policy") || document.querySelector("#msig-out h2") : document.getElementById("key-summary-fingerprint") || hodlOutEl.querySelector(".account-address-lead, .wallet-data-intro h2"))?.focus?.({ preventScroll: false }));
+  requestAnimationFrame(() => (hodlWorkspace === "msig" ? document.getElementById("msig-summary-policy") || document.querySelector("#msig-out h2") : document.getElementById("key-summary-fingerprint") || hodlOutEl.querySelector(".account-address-lead"))?.focus?.({ preventScroll: false }));
 }
 function hodlRefreshKeyResult() {
   hodlRenderKeyResult();
@@ -1764,6 +1766,13 @@ function hodlScriptDefinition(id) {
 }
 function hodlScriptUiLabel(definition) {
   return definition.id === "bip44" ? hodlT("Legacy") : definition.id === "bip49" ? hodlT("Nested SegWit") : definition.id === "bip84" ? hodlT("Native SegWit") : definition.id === "bip86" ? hodlT("Taproot") : definition.label;
+}
+// The two SegWit names shorten on phones so the script type buttons stay on
+// one line; CSS picks which of the two labels shows. Other labels stay text.
+function hodlSetScriptTabLabel(button, definition) {
+  let short = definition.id === "bip49" ? hodlT("Nested SW") : definition.id === "bip84" ? hodlT("Native SW") : "";
+  if (!short) return void (button.textContent = hodlScriptUiLabel(definition));
+  button.innerHTML = `<span class="script-label-full">${hodlScriptUiLabel(definition)}</span><span class="script-label-short">${short}</span>`;
 }
 function hodlScriptBeginner(definition) {
   return hodlT(hodlScriptBeginnerTexts[definition.id]);
@@ -1891,32 +1900,13 @@ function hodlUpdateVisibleDerivationPathFromAdvanced() {
   }
 }
 function hodlSyncAccountTabs(id) {
-  let box = document.getElementById("acct-tabs"), panel = document.getElementById("acct");
+  let box = document.getElementById("acct-tabs");
   if (!box) return;
-  let buttons = [...box.querySelectorAll("[data-account]")], activeIndex = -1;
-  buttons.forEach((button, index) => {
-    let active2 = button.dataset.account === id;
-    button.classList.toggle("active", active2);
-    button.setAttribute("aria-selected", String(active2));
-    button.tabIndex = active2 ? 0 : -1;
-    if (active2) activeIndex = index;
+  box.querySelectorAll("[data-account]").forEach((button) => {
+    let active = button.dataset.account === id;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
   });
-  let active = activeIndex >= 0 ? buttons[activeIndex] : null;
-  if (panel && active) panel.setAttribute("aria-labelledby", active.id);
-  if (activeIndex >= 0) hodlRevealTab(box, activeIndex);
-}
-function hodlAccountTabsKeydown(event) {
-  let current = event.target instanceof Element ? event.target.closest(".account-tab") : null, box = event.currentTarget;
-  if (!current || !box) return;
-  let buttons = [...box.querySelectorAll(".account-tab")], index = buttons.indexOf(current), next = null;
-  if (event.key === "ArrowRight") next = (index + 1) % buttons.length;
-  else if (event.key === "ArrowLeft") next = (index - 1 + buttons.length) % buttons.length;
-  else if (event.key === "Home") next = 0;
-  else if (event.key === "End") next = buttons.length - 1;
-  if (next === null) return;
-  event.preventDefault();
-  buttons[next].click();
-  buttons[next].focus();
 }
 var hodlMaxAddressIndex = 2147483647, hodlMaxAddressRange = 10000, hodlAddressBenchmarkMs = null;
 function hodlSyncBranchRangeLimit(prefix = "") {
@@ -2067,7 +2057,11 @@ function hodlSetDerivationButtonState(kind, state) {
     button.style.removeProperty("width");
   }
 }
+// A finished bar clears itself after a moment, so a return to the form finds
+// the footer as it first was rather than a leftover Done.
+var hodlDerivationProgressTimers = {};
 function hodlResetDerivationProgress(kind, hide = true) {
+  clearTimeout(hodlDerivationProgressTimers[kind]);
   let progress = document.getElementById(kind === "msig" ? "msig-derive-progress" : "derive-progress"), bar = progress?.querySelector(".derive-progress-bar"), label = progress?.querySelector(".derive-progress-label");
   if (!progress) return;
   progress.classList.remove("is-complete");
@@ -2156,7 +2150,12 @@ async function hodlDeriveWithProgress(kind, derive) {
     if (control.cancelled) throw new HodlDerivationCancelledError();
     let tracker = hodlCreateDerivationTracker(progress, control), succeeded = await derive(tracker);
     if (succeeded === false) hodlResetDerivationProgress(kind);
-    else tracker.complete();
+    else {
+      tracker.complete();
+      hodlDerivationProgressTimers[kind] = setTimeout(() => {
+        if (hodlActiveDerivation?.kind !== kind) hodlResetDerivationProgress(kind);
+      }, 3e3);
+    }
   } catch (error) {
     if (error instanceof HodlDerivationCancelledError) hodlResetDerivationProgress(kind);
     else throw error;
@@ -2306,8 +2305,8 @@ function hodlSeedPhraseTokens(value, mask = false) {
 }
 function hodlSeedPhraseField(label, value) {
   let text = String(value ?? "\u2014");
-  if (hodlRevealPrivate) return `<p class="private-field seed-phrase-field"><span class="muted">${hodlEscapeHtml(label)}</span><span class="secret private-field-value seed-phrase-value">${hodlSeedPhraseTokens(text)}</span></p>`;
-  return `<p class="private-field seed-phrase-field"><span class="muted">${hodlEscapeHtml(label)}</span><span class="secret private-field-value secret-placeholder seed-phrase-value"><span class="secret-placeholder-mask" aria-hidden="true">${hodlSeedPhraseTokens(text, true)}</span><span class="secret-placeholder-message" aria-hidden="true">************</span><span class="secret-placeholder-label">${hodlT("Private value hidden")}</span></span></p>`;
+  if (hodlRevealPrivate) return `<p class="private-field seed-phrase-field"><span class="label">${hodlEscapeHtml(label)}</span><span class="secret private-field-value seed-phrase-value">${hodlSeedPhraseTokens(text)}</span></p>`;
+  return `<p class="private-field seed-phrase-field"><span class="label">${hodlEscapeHtml(label)}</span><span class="secret private-field-value secret-placeholder seed-phrase-value"><span class="secret-placeholder-mask" aria-hidden="true">${hodlSeedPhraseTokens(text, true)}</span><span class="secret-placeholder-message" aria-hidden="true">************</span><span class="secret-placeholder-label">${hodlT("Private value hidden")}</span></span></p>`;
 }
 function hodlSeedQrDigits(mnemonic) {
   let words = String(mnemonic ?? "").trim().split(/\s+/).filter(Boolean);
@@ -2328,7 +2327,7 @@ function hodlCompactSeedQrBytes(entropyHex) {
 function hodlSeedQrExport(mnemonic, options = {}) {
   let words = String(mnemonic ?? "").trim().split(/\s+/).filter(Boolean);
   if (!words.length || !hodlRevealPrivate) return "";
-  if (words.length !== 12 && words.length !== 24) return `<details class="wallet-advanced"><summary>${hodlT("SeedQR")}</summary><p class="muted">${hodlT("SeedQR is defined for 12 and 24 word phrases. Type this {n}-word seed on the signer.", { n: words.length })}</p></details>`;
+  if (words.length !== 12 && words.length !== 24) return `<details class="wallet-advanced seed-qr-export"><summary>${hodlT("SeedQR")}</summary><p class="muted">${hodlT("SeedQR is defined for 12 and 24 word phrases. Type this {n}-word seed on the signer.", { n: words.length })}</p></details>`;
   let digits = hodlSeedQrDigits(mnemonic);
   if (!digits) return "";
   let passNote = options.passphraseUsed ? hodlT(" This QR is the seed only. Enter the passphrase on the signer after scanning.") : "";
@@ -2338,7 +2337,7 @@ function hodlSeedQrExport(mnemonic, options = {}) {
     if (bytes) compact = `<div class="watch-only-qr seed-qr"><div class="qr qr-seed" aria-label="CompactSeedQR">${hodlUqrRenderSvg(bytes, { ecc: "L", border: 4, pixelSize: 4, blackColor: "#111111", whiteColor: "#ffffff" })}</div><p class="muted">${hodlT("CompactSeedQR. Same seed, smaller binary code.")}</p><p class="muted">${hodlT("Compatible with: SeedSigner, Krux, Jade, Passport.")}</p></div>`;
   } catch {
   }
-  return `<details class="wallet-advanced"><summary>${hodlT("SeedQR")}</summary><p class="muted">${hodlT("Scan into a camera signer. This is the seed.")}${passNote}</p><div class="seed-qr-pair"><div class="watch-only-qr seed-qr"><div class="qr qr-seed" aria-label="SeedQR">${hodlUqrRenderSvg(digits, { ecc: "L", border: 4, pixelSize: 4, blackColor: "#111111", whiteColor: "#ffffff" })}</div><p class="muted">${hodlT("SeedQR. Numeric.")}</p><p class="muted">${hodlT("Compatible with: SeedSigner, Krux, Jade, Passport, Coldcard Q.")}</p><p class="muted mono">${hodlEscapeHtml(digits)}</p></div>${compact}</div></details>`;
+  return `<details class="wallet-advanced seed-qr-export"><summary>${hodlT("SeedQR")}</summary>${passNote ? `<p class="muted">${passNote}</p>` : ""}<div class="seed-qr-pair"><div class="watch-only-qr seed-qr"><div class="qr qr-seed" aria-label="SeedQR">${hodlUqrRenderSvg(digits, { ecc: "L", border: 4, pixelSize: 4, blackColor: "#111111", whiteColor: "#ffffff" })}</div><p class="muted">${hodlT("SeedQR. Numeric.")}</p><p class="muted">${hodlT("Compatible with: SeedSigner, Krux, Jade, Passport, Coldcard Q.")}</p><p class="muted mono">${hodlEscapeHtml(digits)}</p></div>${compact}</div></details>`;
 }
 var hodlSeedLengths = Object.freeze({
   12: Object.freeze({ words: 12, bits: 128, bytes: 16, hexChars: 32, hashRolls: 50, partialWords: 11, candidates: 128 }),
@@ -15091,7 +15090,7 @@ function hodlApplyLocale() {
 }
 async function hodlBoot() {
   hodlInitWorkspace();
-  hodlInitAddressQr(hodlQrSvg);
+  hodlInitAddressQr(hodlQrSvg, { copy: hodlClipboardIconMarkup, copied: hodlCopiedIconMarkup });
   hodlInitDefaultTabStates();
   if (__ENTROPYLAB_TEST_HOOKS__) await hodlLoadTestKeys();
   hodlInitKeyManager();

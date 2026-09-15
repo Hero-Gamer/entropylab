@@ -216,15 +216,20 @@ test("fee computes once every input carries a claimed amount", () => {
   const doc = inspectValid();
   // Claim input 0 spends a 5000-sat P2PKH prevout: witness utxo = amount +
   // compact-size script, hex (here deliberately smaller than the outputs so
-  // the inconsistent-amounts path is exercised too).
+  // the inconsistent-amounts path is exercised too). The claim is knowingly
+  // fabricated — a witness UTXO declaring a non-witness output, on a
+  // finalized input whose signature predates it — so the builds run under
+  // the insane-editing policy: the consensus layer reports such documents
+  // and the gate refuses them by default (test/psbt-editor-sanity.test.mjs).
+  const rebuildInsane = (d) => psbtBuildBytes(psbtEditorBuildDoc(d), { insane: true });
   doc.inputs[0].push({ key: "01", value: "88130000000000001976a914" + "00".repeat(20) + "88ac" });
-  const fresh = psbtInspectDoc(rebuild(doc));
+  const fresh = psbtInspectDoc(rebuildInsane(doc));
   assert.equal(fresh.fee.known, true);
   assert.equal(fresh.fee.sats, null);
   assert.equal(fresh.fee.error, "outputs exceed claimed inputs");
 
   doc.inputs[0].at(-1).value = "00a3e111000000001976a914" + "00".repeat(20) + "88ac"; // 300,000,000 sats
-  const richer = psbtInspectDoc(rebuild(doc));
+  const richer = psbtInspectDoc(rebuildInsane(doc));
   assert.equal(richer.fee.known, true);
   assert.equal(richer.totalIn, "400000000");
   assert.equal(richer.fee.sats, String(400000000 - 199909358));
@@ -270,7 +275,7 @@ test("a non-witness utxo that does not match its input's outpoint is not claimed
   // the other input by txid — the prevout and amount are omitted instead.
   const a = prevTx([1000, [0x51]]);
   const b = prevTx([9000, [0x52]]);
-  const build = (first, second) => psbtInspectDoc(psbtBuildBytes({
+  const build = (first, second, options) => psbtInspectDoc(psbtBuildBytes({
     tx: {
       version: 2,
       locktime: 0,
@@ -286,7 +291,7 @@ test("a non-witness utxo that does not match its input's outpoint is not claimed
       [{ key: "00", value: second }],
     ],
     outputs: [[]],
-  }));
+  }, options));
 
   const correct = build(a.hex, b.hex);
   assert.equal(correct.inputs[0][0].decoded.prevout.value, "1000");
@@ -294,9 +299,13 @@ test("a non-witness utxo that does not match its input's outpoint is not claimed
   assert.equal(correct.totalIn, "10000");
   assert.deepEqual(correct.fee, { known: true, sats: "8500" });
 
-  // Reversing the maps must not silently associate either utxo with the wrong
-  // input: the txid no longer matches, so the prevout and amount are omitted.
-  const reversed = build(b.hex, a.hex);
+  // Reversed, both embedded transactions mismatch their input's prevout —
+  // which the consensus layer now refuses to build by default (BIP-174 makes
+  // that PSBT invalid); the inspect-level behavior below runs on the
+  // insane-editing build of the same knowingly-invalid document.
+  assert.throws(() => build(b.hex, a.hex), /non-witness UTXO's txid does not match/);
+  const reversed = build(b.hex, a.hex, { insane: true });
+  assert.equal(reversed.problems.filter((p) => p.code === "nonwitness_txid_mismatch" && p.severity === "error").length, 2);
   assert.equal(reversed.inputs[0][0].decoded.prevout, undefined);
   assert.equal(reversed.inputs[1][0].decoded.prevout, undefined);
   assert.equal(reversed.totalIn, null);
@@ -312,10 +321,14 @@ test("conflicting witness and non-witness UTXO claims mark amount and fee unknow
     for (let i = 0; i < 8; i++) { bytes.push(Number(n & 255n)); n >>= 8n; }
     return Buffer.from(bytes).toString("hex");
   };
-  const prev = prevTx([1000, [0x51]]);
-  const witness = (sats) => ({ key: "01", value: le64hex(sats) + "0151" }); // 5,000-sat claim, same script
+  // The claims are segwit-shaped (a P2WPKH script, the normal home of a
+  // witness UTXO) so the agreed case below stays clean under the default
+  // policy.
+  const p2wpkhScript = [0x00, 0x14, ...new Array(20).fill(0x11)];
+  const prev = prevTx([1000, p2wpkhScript]);
+  const witness = (sats) => ({ key: "01", value: le64hex(sats) + "16" + Buffer.from(p2wpkhScript).toString("hex") }); // 5,000-sat claim, same script
   const nonWitness = { key: "00", value: prev.hex };
-  const build = (pairs) => psbtInspectDoc(psbtBuildBytes({
+  const build = (pairs, options) => psbtInspectDoc(psbtBuildBytes({
     tx: {
       version: 2,
       locktime: 0,
@@ -325,9 +338,14 @@ test("conflicting witness and non-witness UTXO claims mark amount and fee unknow
     globals: [],
     inputs: [pairs],
     outputs: [[]],
-  }));
+  }, options));
   for (const ordered of [[witness(5000), nonWitness], [nonWitness, witness(5000)]]) {
-    const doc = build(ordered);
+    // Conflicting claims are a consensus-layer error: the default policy
+    // refuses to build the document at all; the fee-unknown behavior under
+    // test is inspect-level, exercised on the insane build.
+    assert.throws(() => build(ordered), /claim different previous outputs/);
+    const doc = build(ordered, { insane: true });
+    assert.ok(doc.problems.some((p) => p.code === "utxo_claim_conflict" && p.severity === "error"));
     assert.deepEqual(doc.inputConflicts, [0]);
     assert.equal(doc.totalIn, null);
     assert.equal(doc.fee.known, false);
@@ -341,6 +359,8 @@ test("conflicting witness and non-witness UTXO claims mark amount and fee unknow
   // A malformed witness declaration (amount only, no script) claims nothing —
   // it neither resolves nor conflicts, the input simply has no claim. The
   // build gate would reject such a value, so splice it into valid bytes.
+  // (The base document's witness claim has an empty — non-witness — script,
+  // which the consensus layer names, so it builds under the insane policy.)
   const validBytes = Buffer.from(psbtBuildBytes({
     tx: {
       version: 2,
@@ -351,9 +371,13 @@ test("conflicting witness and non-witness UTXO claims mark amount and fee unknow
     globals: [],
     inputs: [[witness(5000), nonWitness]],
     outputs: [[]],
-  })).toString("hex");
+  }, { insane: true })).toString("hex");
+  // The witness pair serializes as key-length, key 01, value-length, value:
+  // 8-byte amount plus compact-size length plus script. Splice the script
+  // off, leaving the amount alone.
+  const witnessPairHex = "01" + "01" + "1f" + le64hex(5000) + "16" + Buffer.from(p2wpkhScript).toString("hex");
   const malformedHex = validBytes.replace(
-    "01" + "01" + "0a" + le64hex(5000) + "0151",
+    witnessPairHex,
     "01" + "01" + "08" + le64hex(5000)
   );
   assert.notEqual(malformedHex, validBytes); // the splice must have happened
@@ -379,6 +403,10 @@ test("hostile amount totals mark totals and fee invalid instead of wrapping (iss
     return Buffer.from(bytes).toString("hex");
   };
   // Each input claims `sats` via a witness utxo with an empty scriptPubKey.
+  // The claims are knowingly fabricated (a witness UTXO declaring a
+  // non-witness output — the consensus layer names it), so the builds run
+  // under the insane-editing policy; the overflow arithmetic under test is
+  // unaffected by the gate.
   const hostile = ({ claims, outputs }) => psbtInspectDoc(psbtBuildBytes({
     tx: {
       version: 2,
@@ -389,7 +417,7 @@ test("hostile amount totals mark totals and fee invalid instead of wrapping (iss
     globals: [],
     inputs: claims.map((sats) => [{ key: "01", value: le64hex(sats) + "00" }]),
     outputs: outputs.map(() => []),
-  }));
+  }, { insane: true }));
   const U64_MAX = 18446744073709551615n;
   const MAX_MONEY = 2100000000000000n;
 
@@ -419,9 +447,9 @@ test("hostile amount totals mark totals and fee invalid instead of wrapping (iss
       outputs: [{ value: 0, scriptPubKey: "51" }, { value: 0, scriptPubKey: "51" }],
     },
     globals: [],
-    inputs: [[{ key: "01", value: le64hex(1000n) + "00" }]],
+    inputs: [[{ key: "01", value: le64hex(1000n) + "00" }]], // empty-script claim: consensus-named, insane-built
     outputs: [[], []],
-  });
+  }, { insane: true });
   const overOut = Buffer.from(zeroed).toString("hex").replaceAll("0000000000000000" + "0151", "ffffffffffffffff" + "0151");
   const outs = psbtInspectDoc(unhex(overOut));
   assert.equal(outs.txSanityError, "bad-txns-vout-toolarge"); // per-output rule fires first, as in Core

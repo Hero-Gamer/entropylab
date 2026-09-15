@@ -328,6 +328,21 @@ const prevoutNotNull = (txid, vout) => {
   return !(String(txid).toLowerCase() === "0".repeat(64) && Number(BigInt(String(vout))) === 4294967295);
 };
 
+// …and the consensus layer (psbt-wasm verify.rs) refuses a prevout edit that
+// orphans a non-witness UTXO declaration: the embedded transaction's txid
+// must equal the candidate prevout's, or the PSBT is invalid per BIP-174 and
+// the build rejects. (The pair's decoded.txid is present exactly when the
+// embedded transaction decodes — the same condition the Rust check uses.)
+const nonWitUtxoBlocks = (doc, index, txid) => {
+  const candidate = String(txid).toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(candidate)) return false; // rejected for shape anyway
+  return (doc.inputs[index] ?? []).some((pair) => pair.key === "00" && pair.decoded?.txid && pair.decoded.txid !== candidate);
+};
+// The txid a claim-carrying input's prevout must equal: the repair target
+// when a prevout edit bounced off the embedded declaration (a user undoes
+// the repoint — or deletes the claim, covered by the structural ops).
+const claimTxid = (doc, index) => (doc.inputs[index] ?? []).find((pair) => pair.key === "00" && pair.decoded?.txid)?.decoded.txid ?? null;
+
 const txidPool = [
   () => randomHex(64),
   () => randomHex(64).toUpperCase(),
@@ -386,7 +401,7 @@ const fieldTargets = (state) => {
         kind: "txid", index, name: `input ${index} txid`, hex: true, pool: txidPool,
         write: (doc, text) => { doc.tx.inputs[index].txid = text; },
         read: (doc) => doc.tx.inputs[index].txid,
-        ok: (text, doc) => /^[0-9a-f]{64}$/i.test(String(text)) && outpointFree(doc, index, text, doc.tx.inputs[index].vout) && prevoutNotNull(text, doc.tx.inputs[index].vout),
+        ok: (text, doc) => /^[0-9a-f]{64}$/i.test(String(text)) && outpointFree(doc, index, text, doc.tx.inputs[index].vout) && prevoutNotNull(text, doc.tx.inputs[index].vout) && !nonWitUtxoBlocks(doc, index, text),
         normalize: (text) => String(text).toLowerCase(),
       },
       {
@@ -716,7 +731,12 @@ const fieldEditOp = (state, label) => {
   // fields — a second poison would muddy the expectation; the typed text
   // still sticks and the rebuild still fails on the poisoned field.
   if (state.poisoned && (state.poisoned.kind !== target.kind || state.poisoned.index !== target.index)) {
-    while (!target.ok(typeof text === "string" ? text.trim() : text, state.doc)) text = pick(target.pool)();
+    // Only valid text goes to the other fields — but a txid on an input with
+    // a non-witness UTXO declaration has exactly one valid text (the embedded
+    // transaction's), so go straight to it instead of redrawing forever.
+    const claimed = target.kind === "txid" ? claimTxid(state.doc, target.index) : null;
+    if (claimed) text = claimed;
+    else while (!target.ok(typeof text === "string" ? text.trim() : text, state.doc)) text = pick(target.pool)();
   }
   writeField(state, label, target, text);
 };
@@ -725,7 +745,11 @@ const fieldEditOp = (state, label) => {
 // editor depends on it (its error state clears on the next good keystroke).
 const repairOp = (state, label) => {
   const target = fieldTargets(state).find((t) => t.kind === state.poisoned.kind && t.index === state.poisoned.index);
-  let text = pick(target.pool)();
+  // A prevout edit that orphaned the input's non-witness UTXO declaration is
+  // rejected by the consensus layer; the repair is restoring the declared
+  // prevout's txid, exactly what a user undoes their edit with.
+  const claimed = state.poisoned.kind === "txid" ? claimTxid(state.doc, state.poisoned.index) : null;
+  let text = claimed ?? pick(target.pool)();
   while (!target.ok(typeof text === "string" ? text.trim() : text, state.doc)) text = pick(target.pool)();
   writeField(state, label, target, text);
 };

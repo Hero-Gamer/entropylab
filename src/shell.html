@@ -634,6 +634,7 @@ words, pick one of the checksum words.</span></span>
         <input type="file" id="psbted-file" accept=".psbt,.txt,.hex" hidden>
         <button class="btn secondary" id="psbted-wipe" type="button">Clear editor</button>
       </div>
+      <div class="switch-row"><label class="seed-autocomplete-toggle switch-toggle"><input type="checkbox" id="psbted-insane" aria-describedby="psbted-insane-note"><span class="label">Insane editing</span></label><p class="seed-autocomplete-note switch-note" id="psbted-insane-note">Disable the consensus layer: edits are no longer checked against Bitcoin's rules (transaction sanity, UTXO claims, signatures, witness data) and a violating result builds and exports anyway. The problem list still reports what it finds. For deliberately broken files only.</p></div>
       <p class="err" id="psbted-error" role="alert"></p>
       <div id="psbted-out" aria-live="polite"></div>
       <section class="psbted-compare" id="psbted-compare">

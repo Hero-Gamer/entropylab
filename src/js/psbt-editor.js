@@ -512,6 +512,41 @@ export const psbtSanitizeHtml = (doc, title = "") => {
   </section>`;
 };
 
+// The consensus layer's findings (verify.rs in the WASM crate), rendered as
+// a flat list in the sanitize section's style. Error-severity problems are
+// what the build gate refuses — with Insane editing off the build cannot
+// succeed while any are listed, so the note says which mode the list speaks
+// from. Every string is escaped here; messages name pair types and verdicts
+// but never echo raw signature bytes to the DOM.
+export const psbtProblemsHtml = (doc, insane = false) => {
+  const problems = doc?.problems;
+  if (!problems) return "";
+  const errors = problems.filter((problem) => problem.severity === "error");
+  const tone = errors.length ? "bad" : problems.length ? "warn" : "ok";
+  const heading = !problems.length
+    ? "No consensus or signing problems found"
+    : errors.length
+      ? `${errors.length} consensus/signing problem(s)${problems.length > errors.length ? ` and ${problems.length - errors.length} warning(s)` : ""}`
+      : `${problems.length} warning(s), no consensus violations`;
+  const gate = !errors.length
+    ? ""
+    : insane
+      ? "Insane editing is on — these did not block the build."
+      : "Errors block the build and export until fixed (Insane editing above disables this layer).";
+  const items = problems
+    .map(
+      (problem) =>
+        `<li><span class="psbted-note-${problem.severity === "error" ? "bad" : "warn"}">${escapeHtml(problem.scope)}</span> — ${escapeHtml(problem.message)}</li>`,
+    )
+    .join("");
+  return `<section class="psbted-sanitize" aria-label="PSBT consensus and signing problems">
+    <p class="psbted-note-${tone}"><strong>${escapeHtml(heading)}</strong>${gate ? ` — ${escapeHtml(gate)}` : ""}</p>
+    ${items ? `<ul>${items}</ul>` : ""}
+    ${doc.problemsTruncated ? `<p class="muted">List truncated; more problems exist than are shown.</p>` : ""}
+    <p class="muted">Checked against Bitcoin's consensus rules and BIP-174's signer checks, using the PSBT's own UTXO claims — amounts and scripts are not verified against the chain.</p>
+  </section>`;
+};
+
 // The editor has no network control of its own: addresses decode against the
 // header network picker's choice, read through the `networkDefault` getter
 // (mainnet/testnet), and re-decoded live when the picker changes it (the
@@ -527,6 +562,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
   let resultBytes = null; // last successfully built PSBT
   let stale = false; // true while the current fields do not build; resultBytes is then the last valid build
   let pristineTx = null; // signingAnchor of the document the current signing pairs commit to; null while unknown
+  let insane = $("psbted-insane")?.checked ?? false; // insane editing: the consensus layer reports but does not gate
   let qrTimer = null; // animation timer of the UR fragment QR, when running
   // Which flow-diagram part is open ({ kind: "input"|"output", index } for a
   // box or { kind: "tx" } for the middle transaction box); its fields render
@@ -616,7 +652,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
     // transaction's sanity state explicitly so "parses" never reads as
     // "accepted by Bitcoin" (issues #322, #361).
     const sanity = doc.txSanityError
-      ? `<span class="psbted-note-bad">unsigned transaction is consensus-invalid (${escapeHtml(doc.txSanityError)}) — export is blocked</span>`
+      ? `<span class="psbted-note-bad">unsigned transaction is consensus-invalid (${escapeHtml(doc.txSanityError)}) — ${insane ? "insane editing is on, so the build is not blocked" : "export is blocked"}</span>`
       : `<span class="psbted-note-ok">unsigned transaction passes consensus sanity checks</span>`;
 
     // The last remaining input carries no delete control: a zero-input
@@ -685,6 +721,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
 
     out.innerHTML = `
       <p class="psbt-kv"><strong>PSBT v${escapeHtml(String(doc.psbtVersion))}</strong> · ${tx.inputs.length} input(s) · ${tx.outputs.length} output(s) · fee ${fee} · ${verdict} · ${sanity}</p>
+      ${psbtProblemsHtml(doc, insane)}
       ${psbtSanitizeHtml(doc)}
       <p class="muted" id="psbted-status" aria-live="polite">${stale ? "The fields do not build right now — see the error above; the result below is the last valid build." : "Every edit rebuilds the PSBT immediately; the fields show rust-bitcoin's decode of the current build."}</p>
 
@@ -723,13 +760,19 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
     // Name the gate that actually ran: rust-bitcoin's PSBT type is v0-only,
     // so a v2 build is closed-loop-checked by the crate's own BIP-370 reader
     // (lib.rs build_v2) — crediting rust-bitcoin here would be a lie, the
-    // same distinction the header verdict makes (issue #358).
+    // same distinction the header verdict makes (issue #358). Under insane
+    // editing the consensus layer did not gate the build, and the line must
+    // not claim otherwise.
     const gate = doc.psbtVersion === 2
       ? "Rebuilt PSBT v2 round-trips through EntropyLab's own BIP-370 reader (rust-bitcoin checks v0 only)"
       : "Rebuilt PSBT parses under rust-bitcoin";
+    const knownErrors = (doc.problems ?? []).filter((problem) => problem.severity === "error").length;
+    const verdictLine = insane
+      ? `<p class="psbted-note-warn">${gate} (${resultBytes.length} bytes) — built with Insane editing on: consensus and signing checks reported above did not gate this build${knownErrors ? ` (${knownErrors} error-level problem(s) ignored)` : ""}.</p>`
+      : `<p class="psbt-ok">${gate}; its unsigned transaction passes consensus sanity checks (${resultBytes.length} bytes).</p>`;
     box.innerHTML = `
       ${stale ? `<p class="psbted-note-warn" id="psbted-stale-note">The fields do not build right now — this is the last valid build. Export is unavailable until they build again.</p>` : ""}
-      <p class="psbt-ok">${gate}; its unsigned transaction passes consensus sanity checks (${resultBytes.length} bytes).</p>
+      ${verdictLine}
       <label class="field">Edited PSBT (base64)<textarea id="psbted-result-b64" readonly spellcheck="false"${gated}>${stale ? "" : escapeHtml(b64)}</textarea></label>
       <div class="row psbt-actions tool-actions">
         <button class="btn secondary" id="psbted-copy-b64" type="button"${gated}>Copy base64</button>
@@ -889,7 +932,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
       dropSigningPairs(doc);
       pristineTx = null; // pairs and transaction agree again (or are gone)
     }
-    const fresh = psbtBuildBytes(psbtEditorBuildDoc(doc));
+    const fresh = psbtBuildBytes(psbtEditorBuildDoc(doc), { insane });
     const decoded = psbtInspectDoc(fresh);
     doc = decoded;
     resultBytes = fresh;
@@ -1206,6 +1249,14 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
   load.onclick = () => {
     psbtWasmReady.then(loadFromText).catch((exception) => setError(exception.message || String(exception)));
   };
+  // Insane editing (checkbox above the editor output): flips the build
+  // policy for the current fields. Toggling re-runs the build — turning it
+  // off can revoke a build that only passed insanely (the fields then show
+  // the consensus layer's rejection), turning it on rescues one.
+  $("psbted-insane")?.addEventListener("change", (event) => {
+    insane = event.target.checked;
+    if (doc) liveRebuild();
+  });
   // File upload is a second load path for the same loader: Sparrow & co. save
   // the PSBT as raw binary; a text export decodes through the paste rules.
   // The textarea mirrors the upload (as base64) so the loaded bytes and the
@@ -1260,8 +1311,9 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
           // PSBTs. The working document is rebuilt first so mid-edit field
           // text (an amount field holds a string while typed) cannot fake a
           // difference; a state that does not build refuses to compare
-          // instead of guessing.
-          beforeDoc = psbtInspectDoc(psbtBuildBytes(psbtEditorBuildDoc(doc)));
+          // instead of guessing. The insane-editing policy applies here too:
+          // a document the editor is holding insanely compares as it builds.
+          beforeDoc = psbtInspectDoc(psbtBuildBytes(psbtEditorBuildDoc(doc), { insane }));
         } catch (exception) {
           setCompareError(`The editor fields do not build right now: ${exception.message || exception}`);
           return;

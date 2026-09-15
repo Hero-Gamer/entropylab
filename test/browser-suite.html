@@ -2813,6 +2813,11 @@
     // The loaded PSBT builds at once: result text and QR without a click.
     assert((document.getElementById("psbted-result-b64") || {}).value.startsWith("cHNidP8B"), "result did not follow the load");
     assert(document.querySelector("#psbted-qr-code svg"), "QR did not follow the load");
+    // The consensus layer reports on the loaded file (this vector is clean),
+    // and the Insane editing switch sits at the top of the card, off.
+    const insaneToggle = document.getElementById("psbted-insane");
+    assert(insaneToggle && !insaneToggle.checked, "Insane editing switch missing or on by default");
+    assert(outText().includes("No consensus or signing problems found"), "problem list missing its clean verdict");
     const valueInput = document.querySelector("[data-txout-val='0']");
     input(valueInput, "199901000");
     // Live editing: the input event itself rebuilds — there is no Re-serialize.
@@ -2862,6 +2867,20 @@
     assert(!document.getElementById("psbted-copy-b64").disabled, "copy stayed disabled after a clean rebuild");
     assert(!document.getElementById("psbted-download").disabled, "download stayed disabled after a clean rebuild");
     assert(document.querySelector("#psbted-qr-code svg"), "QR did not resume after a clean rebuild");
+    // The consensus layer gates an edit the transaction cannot survive (an
+    // output past MAX_MONEY), and Insane editing is the explicit bypass:
+    // the build then proceeds — and every surface says the gate was off.
+    input(document.querySelector("[data-txout-val='0']"), "2100000000000001");
+    await until(() => document.getElementById("psbted-error").textContent, "consensus gate rejection");
+    assert(document.getElementById("psbted-error").textContent.includes("consensus-invalid"), "unexpected gate message");
+    insaneToggle.click();
+    await until(() => document.getElementById("psbted-error").textContent === "" && document.getElementById("psbted-result-b64").value.includes("cHNidP8B"), "insane rebuild");
+    assert(outText().includes("insane editing is on"), "the header does not name the disabled gate");
+    assert(document.getElementById("psbted-result").textContent.includes("Insane editing on"), "the result does not name the disabled gate");
+    insaneToggle.click();
+    await until(() => document.getElementById("psbted-error").textContent, "re-rejection once the gate is back");
+    input(document.querySelector("[data-txout-val='0']"), "199904000");
+    await until(() => document.getElementById("psbted-error").textContent === "" && document.getElementById("psbted-result-b64").value.includes("cHNidP8B"), "rebuild after the insane dance");
     // Structural edits round-trip too: add an input and an output, delete
     // them again. The row delete buttons share the psbted-del styling class
     // with the pair deletes; the pair handler must not fire for them (it

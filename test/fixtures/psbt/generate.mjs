@@ -6,16 +6,21 @@
 //
 // Nothing here is random, per CONTRIBUTING.md: keys are the public test
 // private keys 1, 2 and 3 (their public keys are published constants used
-// across Bitcoin Core's own tests), txids/hashes/signatures are fixed byte
-// patterns, and the one published BIP-174 vector is embedded verbatim. The
+// across Bitcoin Core's own tests), txids/hashes are fixed byte patterns,
+// and the one published BIP-174 vector is embedded verbatim. The partial
 // signatures are structurally valid DER/Schnorr byte strings so the typed
-// decodes render — they sign nothing and validate nowhere.
+// decodes render — they sign nothing and validate nowhere, and the problem
+// analysis says so. The one exception is mixed-many-inputs' finalized
+// P2WPKH input: its final witness carries a real RFC 6979 signature over the
+// fixture's own BIP-143 digest, so the analysis has a valid signature to
+// accept (and its tests a corrupted one to reject).
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { ripemd160 } from "@noble/hashes/legacy.js";
 import { secp256k1 } from "../../../src/js/secp256k1.js";
+import { wasmExports, withInput, withOutput } from "../../../src/js/entropylab-wasm.js";
 import { psbtBuildBytes } from "../../../src/js/psbt-wasm.js";
 
 const bytesToHex = (bytes) => [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -36,6 +41,14 @@ const varint = (n) => {
 
 const sha256Hex = (hex) => bytesToHex(sha256(hexToBytes(hex)));
 const hash160 = (hex) => bytesToHex(ripemd160(sha256(hexToBytes(hex))));
+
+// BIP-143 segwit-v0 sighash from the entropylab-wasm module (pinned against
+// the published BIP-143 vectors in test/tx-sighash-wasm.test.mjs).
+const sighashV0 = (raw, index, scriptCode, amount) =>
+  withInput(raw, (p) => withInput(scriptCode, (sc) => withOutput(32, (o) => wasmExports().el_sighash_segwit_v0(p, raw.length, index, sc, scriptCode.length, amount, o))));
+// Deterministic RFC 6979 ECDSA (no invented entropy), DER plus sighash byte.
+const realEcdsaSig = (sighash, privN, sighashByte = "01") =>
+  bytesToHex(secp256k1.Signature.fromBytes(secp256k1.sign(sighash, hexToBytes(privN.toString(16).padStart(64, "0")), { prehash: false })).toBytes("der")) + sighashByte;
 
 // --- Keys and scripts -------------------------------------------------------
 // Public test keys: secp256k1 pubkeys for the private keys 1, 2, 3.
@@ -200,12 +213,20 @@ const FIXTURES = [
     description: "Five-input fan-in: P2PKH via full previous transaction, signed P2WPKH, P2TR, 2-of-3 P2WSH with an ANYONECANPAY sighash, and a finalized P2WPKH.",
     doc: (() => {
       const prev = prevTx(250000, p2pkh(pk1));
+      const inputs = [txin(displayTxid(prev), 0), txin(R("aa"), 1), txin(R("bb"), 0), txin(R("cc"), 3), txin(R("dd"), 2)];
+      const outputs = [txout(500000, p2tr(xo2)), txout(50000, p2pkh(pk3))];
+      // Input 4 is the finalized P2WPKH spend: its final witness carries a
+      // real signature by key 3 over this transaction's BIP-143 digest, so
+      // the problem analysis has a fully valid signed input to accept.
+      // (rawTx below is byte-identical to what psbtBuildBytes emits for this
+      // tx section — the empty-scriptSig legacy serialization.)
+      // The sighash helper takes the bare 25-byte P2PKH scriptCode (no
+      // compact-size prefix — the encoder adds it), per the BIP-143 vectors.
+      const sighash = sighashV0(hexToBytes(rawTx(2, inputs, outputs, 0)), 4, hexToBytes(`76a914${hash160(pk3)}88ac`), 55000n);
+      const sig = realEcdsaSig(sighash, 3n);
+      const finalWitness = "02" + varint(sig.length / 2) + sig + "21" + pk3;
       return doc(
-        {
-          version: 2, locktime: 0,
-          inputs: [txin(displayTxid(prev), 0), txin(R("aa"), 1), txin(R("bb"), 0), txin(R("cc"), 3), txin(R("dd"), 2)],
-          outputs: [txout(500000, p2tr(xo2)), txout(50000, p2pkh(pk3))],
-        },
+        { version: 2, locktime: 0, inputs, outputs },
         [],
         [
           [pair("00", prev), pair("06" + pk1, bip32Path(FP, [44 + HARD, 0 + HARD, 0 + HARD, 0, 12]))],
@@ -216,7 +237,7 @@ const FIXTURES = [
             pair("05", multisig2of3),
             pair("02" + pk1, ecdsaSig(R("11"), R("99"), "81")), // SIGHASH_ALL | ANYONECANPAY: the warn tone
           ],
-          [pair("01", witnessUtxo(55000, p2wpkh(pk3))), pair("08", "02" + "47" + ecdsaSig(R("33"), R("55")) + "21" + pk3)],
+          [pair("01", witnessUtxo(55000, p2wpkh(pk3))), pair("08", finalWitness)],
         ],
         [[], []],
       );

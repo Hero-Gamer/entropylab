@@ -136,8 +136,8 @@ for UI testing only and must never receive funds. The loader and its
 - **Tests:** new or changed behaviour needs a test; published vectors (BIP39,
   BIP32, Bitcoin Core) are preferred. Security-sensitive changes — derivation,
   parsing, validation, verification, cryptography, consensus-sensitive
-  behaviour, scripts, transaction/PSBT handling, network-silence, and “we do
-  not invent entropy” — must cover accepted and rejected inputs where both
+  behaviour, scripts, transaction/PSBT handling, network-silence, and "we do
+  not invent entropy" — must cover accepted and rejected inputs where both
   apply. Write or extend that test first and run it on current sources before
   changing production code: a bug-fix or tighter-validation case must fail for
   the claimed reason; a new capability may first fail as a missing export/API
@@ -161,7 +161,7 @@ for UI testing only and must never receive funds. The loader and its
   generate the code — a `Co-authored-by:` trailer carrying the model name
   and a stable noreply email, e.g. `Co-authored-by: Model Name
   <model-noreply@host>` (GitHub credits a co-author only when both are
-  present). Do not spoof this or strip attribution to your clanker — the
+  present). Do not spoof this or strip attribution to your clanker; the
   data is used to evaluate model performance. If multiple models
   contributed code, attribute all of them. Commit messages and reviews may
   be written by humans, but any LLM-assisted review must include

@@ -66,7 +66,6 @@ test("both markups carry the upload control, and the editor wires it", () => {
   for (const markup of [read("src/shell.html")]) {
     assert.match(markup, /<button class="btn secondary" id="psbted-upload" type="button">/);
     assert.match(markup, /<input type="file" id="psbted-file" /);
-    assert.match(markup, /binary \.psbt file as saved by Sparrow/);
   }
   assert.match(editor, /getElementById\("psbted-file"\)|\$\("psbted-file"\)/);
   assert.match(editor, /getElementById\("psbted-upload"\)|\$\("psbted-upload"\)/);

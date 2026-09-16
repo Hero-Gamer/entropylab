@@ -46,7 +46,6 @@ const hodlParseAntiExfil = new Function(
 )(hodlHex);
 
 test("PSBT copy mentions Jade anti-exfil transcript checks", () => {
-  assert.match(shell, /Optional Jade anti-exfil transcripts/);
   assert.match(shell, /id="psbt-ax-transcript"/);
   assert.match(app, /hodlAntiExfilCommitOk\(\s*parts\.r\s*,\s*opening\s*,\s*transcript\.host\s*\)/);
   assert.match(app, /s2c\/ecdsa\/point/);

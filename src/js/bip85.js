@@ -171,7 +171,7 @@ export function deriveBip39(root, { words = 24, index = 0, language = BIP39_LANG
       path,
       entropy,
       secret: entropyToMnemonic(entropy, bip39English),
-      secretLabel: `BIP-39 mnemonic · ${wordCount} English words`,
+      secretLabel: `BIP-39 seed phrase · ${wordCount} English words`,
       notes: [`English wordlist (0'). Path ${path}.`]
     });
   } finally {

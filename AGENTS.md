@@ -87,7 +87,7 @@ Guidelines for AI coding agents.
   there.
 - **Copy is content, not contract, until v1.** Safety-critical wording may be
   pinned by a short stable substring ("cannot spend", "offline",
-  "unencrypted") so it cannot vanish. All other copy is asserted only
+  "unencrypted") so it cannot quietly vanish. All other copy is asserted only
   for presence and for a valid translation key, never verbatim. While the app
   is in beta, user-facing copy, layout values and class names are outside
   regression coverage entirely: tests guard derivation, parsing, state,

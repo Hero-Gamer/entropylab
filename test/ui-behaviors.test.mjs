@@ -309,3 +309,55 @@ test("focus loss, window blur, and tab hides all stop the repeat", () => {
     mock.timers.reset();
   }
 });
+
+// The on-screen delete button has its own pointer-driven hold state machine.
+function keyboardDeleteHarness() {
+  const input = { value: "abandon" };
+  const listeners = new Map();
+  const button = {
+    disabled: false,
+    addEventListener: (type, listener) => listeners.set(type, listener),
+  };
+  const bind = new Function(`${appSlice("hodlBindSeedKeyboardDelete")}; return hodlBindSeedKeyboardDelete;`)();
+  bind(() => input, button, (field, text, deleting) => {
+    assert.equal(deleting, true);
+    field.value = field.value.slice(0, -1);
+    button.disabled = !field.value;
+  });
+  const fire = (type) => {
+    const event = { button: 0, pointerId: 17, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+    listeners.get(type)(event);
+    return event;
+  };
+  return { input, fire };
+}
+
+test("holding keyboard delete removes once after the delay, then repeats until release", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const { input, fire } = keyboardDeleteHarness();
+  fire("pointerdown");
+  t.mock.timers.tick(419);
+  assert.equal(input.value, "abandon", "the hold delay has not elapsed");
+  t.mock.timers.tick(1);
+  assert.equal(input.value, "abando", "the initial delayed deletion is not a repeat");
+  t.mock.timers.tick(69);
+  assert.equal(input.value, "aband", "the interval deletes another character");
+  fire("pointerup");
+  assert.equal(fire("click").defaultPrevented, true, "the release click is suppressed");
+  t.mock.timers.tick(1000);
+  assert.equal(input.value, "aband", "release cancels the repeat timer");
+  fire("click");
+  assert.equal(input.value, "aban", "a subsequent ordinary click still deletes once");
+});
+
+test("releasing or cancelling keyboard delete before the delay prevents a late deletion", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  for (const stop of ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"]) {
+    const { input, fire } = keyboardDeleteHarness();
+    fire("pointerdown");
+    t.mock.timers.tick(100);
+    fire(stop);
+    t.mock.timers.tick(1000);
+    assert.equal(input.value, "abandon", `${stop} cancels the pending hold timer`);
+  }
+});

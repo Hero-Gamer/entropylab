@@ -9403,8 +9403,10 @@ function hodlRenderBip85Out() {
         <img class="key-summary-lifehash" id="bip85-child-lifehash" width="72" height="72" alt="" hidden>
         <div class="key-summary-text">
           <code class="key-summary-fingerprint">${hodlEscapeHtml(state.fingerprint || "")}</code>
-          <p class="key-summary-meta">${state.parentFingerprint ? hodlT("Child of {parent}", { parent: state.parentFingerprint }) : hodlEscapeHtml(fingerprintLabel)}</p>
           <p class="key-summary-meta key-summary-path">${hodlEscapeHtml(derived.path || "")}</p>
+          <p class="key-summary-meta bip85-child-parent">${state.parentFingerprint
+            ? `${hodlT("Child key of parent key")}<img class="key-tab-lifehash bip85-parent-lifehash" id="bip85-parent-lifehash" width="22" height="22" alt="" hidden><span class="bip85-parent-fingerprint" id="bip85-parent-fingerprint">${hodlEscapeHtml(state.parentFingerprint)}</span>`
+            : hodlEscapeHtml(fingerprintLabel)}</p>
         </div>
       </div>
       <div class="edge-note is-private wallet-data-section-head">
@@ -9428,6 +9430,7 @@ function hodlRenderBip85Out() {
       </div>
     </section>`;
   hodlFillKeyTabLifehash(document.getElementById("bip85-child-lifehash"), state.fingerprint || "");
+  hodlFillKeyTabLifehash(document.getElementById("bip85-parent-lifehash"), state.parentFingerprint || "");
   document.getElementById("bip85-reveal")?.addEventListener("change", (event) => {
     hodlBip85Reveal = event.target.checked;
     state.reveal = hodlBip85Reveal;

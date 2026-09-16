@@ -3778,7 +3778,9 @@
     assert(/^[0-9a-f]{8}$/.test(firstTab.querySelector(".key-tab-label")?.textContent || ""), "The first BIP-85 child tab did not show an XFP");
     await until(() => !firstTab.querySelector(".key-tab-lifehash")?.hidden, "first BIP-85 child LifeHash");
     assert(/^[0-9a-f]{8}$/.test(document.querySelector("#bip85-out .key-summary-fingerprint")?.textContent.trim() || ""), "The BIP39 child did not identify its own fingerprint");
-    assert(/Child of [0-9a-f]{8}/.test(document.querySelector("#bip85-out .key-summary")?.textContent || ""), "The BIP39 child did not name the parent it came from");
+    const parentFingerprint = document.getElementById("bip85-parent-fingerprint")?.textContent.trim() || "";
+    assert(/^[0-9a-f]{8}$/.test(parentFingerprint), "The BIP39 child did not name the parent it came from");
+    equal(document.getElementById("bip85-parent-lifehash")?.dataset.fingerprint, parentFingerprint, "The parent LifeHash did not follow the parent fingerprint");
     assert(!document.getElementById("delete-bip85").disabled, "The child delete control did not become available");
 
     document.querySelector('#workspace [data-workspace="journal"]').click();

@@ -1247,6 +1247,11 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-summary-fingerprint { display: block; font-family: var(--mono); font-weight: 700; letter-spacing: 0.04em; color: var(--fg); }
 .key-summary-meta { margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
 .key-summary-path { font-family: var(--mono); word-break: break-all; }
+/* The parent line sits apart from the child's own two lines, and carries the
+   parent's LifeHash beside the fingerprint it names. */
+.bip85-child-parent { display: flex; align-items: center; gap: 6px; margin-top: var(--space-control); }
+.bip85-parent-lifehash { flex: 0 0 auto; }
+.bip85-parent-fingerprint { font-family: var(--mono); font-weight: 600; color: var(--fg); }
 .key-tab-lifehash { width: 22px; height: 22px; border-radius: 4px; image-rendering: pixelated; background: #fff; }
 .key-tab.is-lab { font-weight: 700; }
 .key-tab-lab-icon { width: 16px; height: 16px; padding: 0; color: var(--muted); }

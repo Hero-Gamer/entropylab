@@ -143,3 +143,13 @@ network-silence, or "we do not invent entropy":
 Documentation-only and presentation-only changes do not need test vectors solely
 to satisfy this section. "When practicable" is not an exemption for the
 security-sensitive changes covered above.
+
+As optional additional evidence, contributors may use targeted fault injection
+when a small, meaningful weakening can be tested cleanly: temporarily change a
+comparison boundary, remove a required condition or check, or otherwise weaken
+the protected behaviour, confirm that the focused test fails, and revert the
+temporary change. Never commit or push the temporary change to the pull request.
+
+This provides additional evidence of test adequacy, not proof of completeness
+or correctness. It does not require exhaustive mutations, a mutation score, or
+a mutation-testing framework.

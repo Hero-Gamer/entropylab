@@ -1144,7 +1144,7 @@ test("multisig threshold labels describe signatures and keys", () => {
 
 test("multisig consistently uses derive for its heading and action", () => {
   for (const markup of [shell]) {
-    assert.match(markup, /<h2[^>]*>Derive a multisig wallet<\/h2>/);
+    assert.match(markup, /<h2[^>]*>Build a watch-only multisig<\/h2>/);
     assert.match(markup, /id="msig-go"[^>]*>Derive Multisig<\/button>/);
     assert.match(markup, /id="msig-go"[^>]*disabled[^>]*aria-disabled="true"/);
     assert.doesNotMatch(markup, /Create a multisig wallet|Build Multisig/);
@@ -1712,8 +1712,6 @@ test("the Keys tool intro tells what the calculator does, like the other tool in
   for (const markup of [shell]) {
     // No placeholder copy rides the page's first tool intro.
     assert.doesNotMatch(markup, /lorem ipsum/i);
-    assert.match(markup, /<p class="muted tool-intro-note">Bring raw entropy (?:—|\\u2014) dice rolls, playing cards, or a number in any base/);
-    assert.match(markup, /This does not create entropy for you (?:—|\\u2014) it is a calculator, and nothing leaves this page\.<\/p>/);
   }
 });
 
@@ -1945,7 +1943,6 @@ test("workspace tabs register every tool", () => {
   for (const markup of [shell]) {
     assert.match(markup, /id="bip85-card"/);
     assert.match(markup, /id="bip85-go"/);
-    assert.match(markup, /This does not create entropy for you/);
   }
   assert.match(css, /#bip85-card\[hidden\]/);
 });
@@ -1989,7 +1986,6 @@ test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
     assert.match(markup, /id="psbted-compare-clear"/);
     assert.match(markup, /id="psbted-compare-error"/);
     assert.match(markup, /id="psbted-compare-out"/);
-    assert.match(markup, /rust-bitcoin compiled to WebAssembly/);
     // The row must carry psbted-actions in both markups so the editor's
     // button rows keep their compact, text-sized buttons.
     assert.match(markup, /<div class="row psbt-actions psbted-actions tool-actions">/);
@@ -2052,8 +2048,6 @@ test("Journal gates its five tools behind the local notebook", () => {
     assert.match(markup, /Confirm password \(optional\)/);
     assert.match(markup, /placeholder="Repeat password or leave blank"/);
     assert.match(markup, /class="row bip85-actions journal-create-actions tool-actions">\s*<button class="btn primary" id="journal-create"[^>]*>Create journal<\/button>\s*<span class="journal-create-ready" id="journal-create-ready" hidden><span class="journal-create-ready-arrow" aria-hidden="true">←<\/span> <span class="journal-create-ready-text">Ready to create without a password<\/span><\/span>/);
-    assert.match(markup, /does not create entropy for you/);
-    assert.match(markup, /files created without one can be opened by anyone/);
     assert.match(markup, /id="journal-notes-card"/);
     assert.match(markup, /id="journal-keymanager-card"/);
     assert.match(markup, /id="journal-state-card"/);

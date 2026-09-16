@@ -1211,6 +1211,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .tool-intro { margin: 0 0 var(--space-intro); }
 /* A tool intro that is also a note keeps the seam below it. */
 .tool-intro.edge-note { margin: 0 0 var(--space-intro); }
+.tool-intro-note code { font-family: var(--mono); }
 .tool-intro[hidden] { display: none; }
 .tool-intro h2 { margin: var(--space-control) 0; }
 .tool-intro > .muted { max-width: 760px; margin: 0; }

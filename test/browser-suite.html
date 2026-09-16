@@ -586,12 +586,22 @@
     input(seed, "abandon");
     const deleteButton = keyboard.querySelector("[data-seed-delete]");
     deleteButton.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerId: 17 }));
-    await wait(650);
-    deleteButton.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0, pointerId: 17 }));
-    // Browsers synthesize this click after a real pointer sequence. Dispatch it
-    // explicitly here so the long-press suppression state cannot leak onward.
-    deleteButton.click();
+    let valueAtRelease;
+    try {
+      // A busy browser can deliver the hold-delay callback and a fixed sleep
+      // together, before the newly armed repeat interval has had a turn.
+      await until(() => seed.value.length <= 5, "held delete to repeat");
+    } finally {
+      deleteButton.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0, pointerId: 17 }));
+      valueAtRelease = seed.value;
+      // Browsers synthesize this click after a real pointer sequence. Dispatch
+      // it even on failure so the hold state cannot leak into later checks.
+      deleteButton.click();
+    }
     assert(seed.value.length <= 5, "Holding delete did not repeat after its initial delay");
+    equal(seed.value, valueAtRelease, "The click following a hold deleted another character");
+    await wait(150);
+    equal(seed.value, valueAtRelease, "Delete continued repeating after pointer release");
     const passphraseKeyboardInput = document.getElementById("pass");
     input(passphraseKeyboardInput, "");
     passphraseKeyboardInput.focus();

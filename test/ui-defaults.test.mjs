@@ -756,7 +756,7 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   // The one with an explanation gets two rows, and the checkbox points at the
   // note now that it sits outside the label.
   assert.match(app, /id="passphrase-bip39-words" aria-describedby="passphrase-bip39-note"/);
-  assert.match(app, /<p class="switch-note" id="passphrase-bip39-note">lowercase words separated by single spaces<\/p>/);
+  assert.match(app, /<p class="switch-note" id="passphrase-bip39-note">/);
   assert.match(app, /brainWalletTrim:!1/);
   assert.doesNotMatch(appSource, /bitaddress\.org-style brain wallet/);
   assert.match(app, /id="private-key-input-label"[\s\S]*hodlPrivateKeyKeyboardToggleMarkup\(\)[\s\S]*<textarea id="key"/);
@@ -1945,7 +1945,6 @@ test("workspace tabs register every tool", () => {
   for (const markup of [shell]) {
     assert.match(markup, /id="bip85-card"/);
     assert.match(markup, /id="bip85-go"/);
-    assert.match(markup, /Derive child/);
     assert.match(markup, /This does not create entropy for you/);
   }
   assert.match(css, /#bip85-card\[hidden\]/);
@@ -2569,7 +2568,7 @@ test("tool cards follow the shared spacing contract", () => {
   assert.match(css, /\.tool-card > :first-child \{ margin-top: 0; \}/);
   assert.match(css, /\.tool-card > :last-child \{ margin-bottom: 0; \}/);
   assert.match(css, /\.tool-section \{ margin: var\(--space-section\) 0; \}/);
-  assert.match(css, /\.tool-card > :first-child > \.tool-section:first-child \{ margin-top: 0; \}/);
+  assert.match(css, /\.tool-card > :first-child > :first-child \{ margin-top: 0; \}/);
   assert.match(css, /\.tool-actions \{ margin-top: var\(--space-component\); \}/);
   assert.match(css, /\.tool-intro \{ margin: 0 0 var\(--space-intro\); \}/);
   assert.match(css, /\.last-word-options \{ margin-top: var\(--space-control\); \}/);

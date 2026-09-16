@@ -1338,10 +1338,11 @@ function hodlPrivateDataControls(descriptionId, scope = "wallet") {
   let privateSheet = hodlRevealPrivate, downloadLabel = privateSheet ? hodlT("Save unencrypted private sheet") : hodlT("Save watch-only sheet");
   let disclosure = privateSheet ? scope === "wallet" ? hodlT("The downloaded plain-text file is unencrypted and includes all available root and account private recovery material across every script type.") : hodlT("The downloaded plain-text file is unencrypted and includes every private key shown in this section.") : hodlT("The downloaded sheet omits all private recovery material.");
   return `<div class="wallet-data-actions no-print">
+    <p class="label">${hodlT("Downloads")}</p>
+    <p class="edge-note ${privateSheet ? "is-private" : "is-public"} recovery-download-disclosure" id="recovery-sheet-disclosure"><strong>${privateSheet ? hodlT("Private export:") : hodlT("Watch-only export:")}</strong> ${disclosure}</p>
     ${hodlWalletDatBirthdayField()}
     <button class="btn secondary green save-recovery-sheet" id="save" type="button" aria-describedby="recovery-sheet-disclosure">${downloadLabel}</button>
     ${hodlWalletDatControl(privateSheet)}
-    <p class="edge-note ${privateSheet ? "is-private" : "is-public"} recovery-download-disclosure" id="recovery-sheet-disclosure"><strong>${privateSheet ? hodlT("Private export:") : hodlT("Watch-only export:")}</strong> ${disclosure}</p>
   </div>`;
 }
 function hodlWalletDatControl(includePrivate) {
@@ -1365,7 +1366,7 @@ function hodlWalletDatBirthdayField() {
   return `<div class="wallet-birthday-field"><p class="label" id="wallet-dat-birthday-label">${hodlT("Wallet birthday")}</p><p class="muted label-description wallet-dat-birthday-help" id="wallet-dat-birthday-help">${hodlT("Bitcoin Core only auto-scans history back to the birthday. Choose “New keys” only for entropy created right now; recovering older keys with today's birthday can look empty until you run <code>rescanblockchain 0</code> in Bitcoin Core.")}</p><select data-wallet-dat-birthday aria-labelledby="wallet-dat-birthday-label" aria-describedby="wallet-dat-birthday-help"><option value="genesis"${hodlWalletDatBirthday === "genesis" ? " selected" : ""}>${hodlT("Recovering keys · scan from genesis")}</option><option value="now"${hodlWalletDatBirthday === "now" ? " selected" : ""}>${hodlT("New keys · created today")}</option></select></div>`;
 }
 function hodlSaveRecoveryControl() {
-  return `<div class="wallet-data-actions no-print">${hodlWalletDatBirthdayField()}<button class="btn secondary green save-recovery-sheet" id="save" type="button">${hodlT("Save watch-only sheet")}</button>${hodlWalletDatControl(false)}</div>`;
+  return `<div class="wallet-data-actions no-print"><p class="label">${hodlT("Downloads")}</p>${hodlWalletDatBirthdayField()}<button class="btn secondary green save-recovery-sheet" id="save" type="button">${hodlT("Save watch-only sheet")}</button>${hodlWalletDatControl(false)}</div>`;
 }
 function hodlWalletMessages(wallet, idPrefix) {
   let warnings = [...wallet.warnings || []].filter((message) => !wallet.passphraseUsed || hodlNoteKey(message) !== "note.passphraseInUse"), notes = [...wallet.notes || []];
@@ -1387,11 +1388,11 @@ function hodlPrivacyBarMarkup() {
 }
 // The eye beside the Private key group title repeats the privacy state where
 // the private values are: crossed out while hidden, open once revealed.
-function hodlPrivacyEyeMarkup() {
-  let paths = hodlRevealPrivate
+function hodlPrivacyEyeMarkup(revealed = hodlRevealPrivate) {
+  let paths = revealed
     ? '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>'
     : '<path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 7 10 7a18.5 18.5 0 0 1-2.16 3.19"/><path d="M6.6 6.6A18.4 18.4 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="m2 2 20 20"/>';
-  return `<svg class="key-group-eye" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${paths}</svg><span class="sr-only">${hodlRevealPrivate ? hodlT("private data visible") : hodlT("private data hidden")}</span>`;
+  return `<svg class="key-group-eye" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${paths}</svg><span class="sr-only">${revealed ? hodlT("private data visible") : hodlT("private data hidden")}</span>`;
 }
 // A collapsible group of related values in the key view. Which groups are open
 // is remembered for each key, by its id: revealing or hiding private data does
@@ -3754,7 +3755,7 @@ function hodlRenderPassphraseInputState(input, enabled = hodlPassphraseBip39Enab
     status.hidden = !enabled;
     if (enabled) {
       if (invalid) {
-        status.textContent = hodlTText(analysis.invalidRanges.length === 1 ? "{n} passphrase inconsistency highlighted · use complete lowercase English BIP39 words separated by single spaces" : "{n} passphrase inconsistencies highlighted · use complete lowercase English BIP39 words separated by single spaces", { n: analysis.invalidRanges.length });
+        status.textContent = hodlTText(analysis.invalidRanges.length === 1 ? "{n} passphrase inconsistency highlighted" : "{n} passphrase inconsistencies highlighted", { n: analysis.invalidRanges.length });
         status.className = "field-note passphrase-bip39-status err";
       } else if (analysis.incomplete) {
         status.textContent = hodlTText(analysis.completeWords === 1 ? "{n} complete BIP39 word · finish the current word" : "{n} complete BIP39 words · finish the current word", { n: analysis.completeWords });
@@ -3766,8 +3767,9 @@ function hodlRenderPassphraseInputState(input, enabled = hodlPassphraseBip39Enab
         status.textContent = hodlTText(analysis.completeWords === 1 ? "{n} lowercase BIP39 passphrase word entered" : "{n} lowercase BIP39 passphrase words entered", { n: analysis.completeWords });
         status.className = "field-note passphrase-bip39-status ok";
       } else {
-        status.textContent = hodlTText("Use complete lowercase English BIP39 words separated by single spaces.");
+        status.textContent = "";
         status.className = "field-note passphrase-bip39-status";
+        status.hidden = true;
       }
     }
   }
@@ -3818,7 +3820,7 @@ function hodlPassphraseKeyboardToggleMarkup() {
 }
 function hodlPassphraseBip39ToggleMarkup(checked = hodlPassphraseBip39Enabled()) {
   let autocomplete = hodlPassphraseAutocompleteEnabled();
-  return `<div class="passphrase-bip39-options"><div class="switch-row"><label class="switch-toggle passphrase-bip39-toggle"><input type="checkbox" id="passphrase-bip39-words" aria-describedby="passphrase-bip39-note" ${checked ? "checked" : ""} /><span class="label">Build passphrase from BIP39 words</span></label><p class="switch-note" id="passphrase-bip39-note">lowercase words separated by single spaces</p></div><label class="switch-toggle passphrase-autocomplete-toggle" id="passphrase-autocomplete-control"${checked ? "" : " hidden"}><input type="checkbox" id="passphrase-autocomplete" ${autocomplete ? "checked" : ""} /><span class="label">Autocomplete BIP39 words</span></label></div>`;
+  return `<div class="passphrase-bip39-options"><div class="switch-row"><label class="switch-toggle passphrase-bip39-toggle"><input type="checkbox" id="passphrase-bip39-words" aria-describedby="passphrase-bip39-note" ${checked ? "checked" : ""} /><span class="label">Build passphrase from BIP39 words</span></label><p class="switch-note" id="passphrase-bip39-note">Use complete lowercase English BIP39 words separated by single spaces</p></div><label class="switch-toggle passphrase-autocomplete-toggle" id="passphrase-autocomplete-control"${checked ? "" : " hidden"}><input type="checkbox" id="passphrase-autocomplete" ${autocomplete ? "checked" : ""} /><span class="label">Autocomplete BIP39 words</span></label></div>`;
 }
 function hodlBrainWalletTrimEnabled() {
   return Boolean(document.getElementById("brain-wallet-trim")?.checked);
@@ -9267,7 +9269,7 @@ function hodlBip85PrivateValue(value) {
   return `<span class="secret private-field-value secret-placeholder"><span class="secret-placeholder-mask" aria-hidden="true">${bullets}</span><span class="secret-placeholder-message" aria-hidden="true">${mask}</span><span class="secret-placeholder-label">${hodlT("Private value hidden")}</span></span>`;
 }
 function hodlBip85SecretField(label, value) {
-  return `<p class="private-field"><span class="muted">${hodlEscapeHtml(label)}</span>${hodlBip85PrivateValue(value)}</p>`;
+  return `<p class="private-field${hodlBip85Reveal ? " is-revealed" : ""}"><span class="label">${hodlEscapeHtml(label)}${hodlPrivacyEyeMarkup(hodlBip85Reveal)}</span>${hodlBip85PrivateValue(value)}</p>`;
 }
 function hodlBip85Spec() {
   let app = document.getElementById("bip85-app")?.value || "bip39";
@@ -9350,20 +9352,21 @@ function hodlPickBip85SessionKey(state) {
     let rootXprv = state.result?.rootXprv || hodlBip85Root?.privateExtendedKey;
     if (!rootXprv) throw new Error("This Key Station key does not expose a BIP32 root xprv/tprv.");
     document.getElementById("bip85-key").value = rootXprv;
-    document.getElementById("bip85-session").textContent = hodlBip85Note;
   } catch (exception) {
     if (error) error.textContent = exception.message || String(exception);
   }
+  hodlSyncBip85Parent();
   hodlRefreshStationKeyPickers();
 }
 function hodlCopyBip85Child(button) {
   let phrase = button?.dataset.phrase;
   if (!phrase || button.disabled) return;
   let done = () => {
-    button.textContent = "Copied derived child";
+    let note = document.getElementById("bip85-copy-status");
+    if (note) note.innerHTML = `${hodlCopiedIconMarkup()}${hodlT("Copied")}`;
     clearTimeout(button.hodlCopiedTimer);
     button.hodlCopiedTimer = setTimeout(() => {
-      if (button.isConnected) button.textContent = "Copy derived child";
+      if (note?.isConnected) note.textContent = "";
     }, 1600);
   };
   let fallback = () => {
@@ -9393,28 +9396,38 @@ function hodlRenderBip85Out() {
     box.innerHTML = "";
     return;
   }
-  let derived = hodlBip85Result, notes = [...derived.notes || [], ...derived.warnings || []].map((message) => `<li>${hodlEscapeHtml(message)}</li>`).join("");
+  let derived = hodlBip85Result;
   let fingerprintLabel = state.fingerprintKind === "master" ? "Master fingerprint" : state.fingerprintKind === "key" ? "Key fingerprint" : "Child fingerprint";
-  box.innerHTML = `<section class="wallet-data-section wallet-private-section" aria-labelledby="bip85-private-heading">
-      <div class="wallet-data-section-head">
-        <h3 id="bip85-private-heading">Derived child</h3>
-        <p class="muted" id="bip85-private-description">This child is derived from your seed. Anyone with the parent, application, and index can reproduce it.</p>
+  box.innerHTML = `<section class="wallet-data-section" aria-label="${hodlTAttr("Derived child")}">
+      <div class="key-summary bip85-child-summary">
+        <img class="key-summary-lifehash" id="bip85-child-lifehash" width="72" height="72" alt="" hidden>
+        <div class="key-summary-text">
+          <code class="key-summary-fingerprint">${hodlEscapeHtml(state.fingerprint || "")}</code>
+          <p class="key-summary-meta">${state.parentFingerprint ? hodlT("Child of {parent}", { parent: state.parentFingerprint }) : hodlEscapeHtml(fingerprintLabel)}</p>
+          <p class="key-summary-meta key-summary-path">${hodlEscapeHtml(derived.path || "")}</p>
+        </div>
+      </div>
+      <div class="edge-note is-private wallet-data-section-head">
+        <p class="muted" id="bip85-private-description">Anyone with the parent, application, and index can reproduce this child key.</p>
       </div>
       <div class="wallet-data-actions no-print">
-        <label class="reveal-private-toggle">
-          <input type="checkbox" id="bip85-reveal" ${hodlBip85Reveal ? "checked" : ""} aria-describedby="bip85-private-description">
-          <span>Show derived child <span class="reveal-private-toggle-note">(air-gap only)</span></span>
+        <label class="privacy-bar${hodlBip85Reveal ? " is-revealed" : ""}">
+          <input type="checkbox" role="switch" id="bip85-reveal" ${hodlBip85Reveal ? "checked" : ""} aria-describedby="bip85-private-description">
+          <span class="privacy-bar-state">${hodlBip85Reveal ? hodlT("Private data visible") : hodlT("Private data hidden")}</span>
+          <span class="privacy-bar-hint">${hodlBip85Reveal ? hodlT("Hide it before sharing your screen or stepping away") : hodlT("Reveal only offline, on an air-gapped computer")}</span>
         </label>
-        <button class="btn secondary" id="bip85-copy" type="button">Copy derived child</button>
       </div>
       <div class="wallet-data-fields">
-        ${hodlPublicFieldHtml("Path", derived.path, void 0, "muted")}
-        ${hodlPublicFieldHtml(fingerprintLabel, state.fingerprint, void 0, "muted")}
         ${hodlBip85SecretField(derived.secretLabel, derived.secret)}
         ${hodlBip85SecretField("Derived entropy", derived.entropyHex)}
       </div>
-      ${notes ? `<ul class="bip85-notes">${notes}</ul>` : ""}
+      <p class="edge-note is-private">Button below copies the child key's seed phrase regardless of whether that data is revealed above.</p>
+      <div class="row bip85-actions current-item-actions tool-actions no-print">
+        <button class="btn secondary" id="bip85-copy" type="button">Copy Child Seed Phrase</button>
+        <span class="copy-status bip85-copy-status" id="bip85-copy-status" aria-live="polite"></span>
+      </div>
     </section>`;
+  hodlFillKeyTabLifehash(document.getElementById("bip85-child-lifehash"), state.fingerprint || "");
   document.getElementById("bip85-reveal")?.addEventListener("change", (event) => {
     hodlBip85Reveal = event.target.checked;
     state.reveal = hodlBip85Reveal;
@@ -9480,7 +9493,25 @@ function hodlRenderBip85Tabs() {
   hodlRevealTab(box, hodlActiveBip85);
   hodlSyncBip85DeleteButton();
 }
+// A parent is in hand once a session key is picked, or once text is pasted in
+// the root field. Pasted text is only parsed on derive, so it counts here as
+// supplied rather than as valid; the derive path still checks it.
+function hodlBip85HasParent() {
+  return Boolean(hodlBip85Root) || Boolean(document.getElementById("bip85-key")?.value.trim());
+}
+function hodlSyncBip85Parent() {
+  let go = document.getElementById("bip85-go"), wipe = document.getElementById("bip85-wipe"), supplied = hodlBip85HasParent();
+  if (wipe) {
+    wipe.disabled = !supplied;
+    wipe.setAttribute("aria-disabled", String(wipe.disabled));
+  }
+  if (go) {
+    go.disabled = !supplied;
+    go.setAttribute("aria-disabled", String(go.disabled));
+  }
+}
 function hodlSyncBip85View() {
+  hodlSyncBip85Parent();
   let state = hodlBip85ActiveState(), bench = document.getElementById("bip85-bench"), card = document.getElementById("bip85-card");
   if (bench) bench.hidden = !state?.isLab;
   if (card) card.classList.toggle("is-result-view", Boolean(state && !state.isLab));
@@ -9543,7 +9574,8 @@ function hodlRunBip85() {
     } else if (!hodlBip85Root) throw new Error("Choose a compatible Key Station key, or paste a root xprv/tprv.");
     result = deriveApplication(hodlBip85Root, hodlBip85Spec());
     let fingerprint = hodlBip85ChildFingerprint(result);
-    let state = { isLab: false, id: hodlNextBip85ChildId++, name: fingerprint.value, result, reveal: false, fingerprint: fingerprint.value, fingerprintKind: fingerprint.kind };
+    let state = { isLab: false, id: hodlNextBip85ChildId++, name: fingerprint.value, result, reveal: false, fingerprint: fingerprint.value, fingerprintKind: fingerprint.kind,
+      parentFingerprint: hodlBip85Root ? hodlFingerprintHex(hodlBip85Root.fingerprint) : "" };
     hodlBip85Children.push(state);
     hodlActiveBip85 = hodlBip85Children.length - 1;
     hodlBip85Result = state.result;
@@ -9559,6 +9591,7 @@ function hodlRunBip85() {
     if (error) error.textContent = exception.message || String(exception);
     hodlJournalLog("derive-error", "", "bip85");
   }
+  hodlSyncBip85Parent();
   hodlRefreshStationKeyPickers();
 }
 function hodlInitBip85() {
@@ -9575,10 +9608,10 @@ function hodlInitBip85() {
   hodlSyncBip85View();
   hodlRefreshStationKeyPickers();
   document.getElementById("bip85-key").addEventListener("input", () => {
-    if (!hodlBip85Source.startsWith("key:")) return;
+    if (!hodlBip85Source.startsWith("key:")) return hodlSyncBip85Parent();
     hodlBip85WipeParent();
     hodlBip85Source = document.getElementById("bip85-key").value.trim() ? "manual" : "";
-    document.getElementById("bip85-session").textContent = hodlBip85Source ? "Manual root key entered. It will be validated when you derive a child." : hodlBip85Note;
+    hodlSyncBip85Parent();
     hodlRefreshStationKeyPickers();
   });
   go.onclick = hodlRunBip85;
@@ -9586,7 +9619,7 @@ function hodlInitBip85() {
     hodlBip85WipeParent();
     document.getElementById("bip85-key").value = "";
     document.getElementById("bip85-error").textContent = "";
-    document.getElementById("bip85-session").textContent = "Parent session cleared (best effort). Derived child tabs remain until deleted.";
+    hodlSyncBip85Parent();
     hodlRefreshStationKeyPickers();
   };
   for (let id of ["bip85-app", "bip85-index", "bip85-words", "bip85-bytes", "bip85-pwdlen"]) {

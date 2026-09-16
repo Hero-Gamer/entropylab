@@ -133,7 +133,7 @@ button:not(:disabled):active * { color: inherit !important; }
 .tool-card > :last-child { margin-bottom: 0; }
 .tool-section { margin: var(--space-section) 0; }
 .tool-card > .tool-section:first-child { margin-top: 0; }
-.tool-card > :first-child > .tool-section:first-child { margin-top: 0; }
+.tool-card > :first-child > :first-child { margin-top: 0; }
 .tool-card > .tool-section:last-child { margin-bottom: 0; }
 /* Major seam above the closing Sources card. It collapses with the previous
    card's 16px, so the larger value wins rather than the two adding up. The seam
@@ -170,6 +170,10 @@ button:not(:disabled):active * { color: inherit !important; }
   min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--bg); color: var(--muted);
 }
+/* Buttons carry one type across the app. Stated here rather than in the block
+   above, which also dresses the segmented controls: those size themselves from
+   the row they sit in. */
+.btn { font-size: 16px; font-weight: 600; }
 .tab.active {
   background: var(--selection-accent);
   color: var(--selection-fg);
@@ -407,6 +411,9 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 .dice-input-shell.passphrase-input-shell input::placeholder { color: var(--faint); -webkit-text-fill-color: var(--faint); }
 .passphrase-input-shell .dice-input-highlight { white-space: pre; overflow-wrap: normal; word-break: normal; letter-spacing: 0; }
 .passphrase-bip39-status { margin: var(--space-control) 0 0; font-weight: 400; }
+/* .field-note sits later in the cascade than .err and carries the same weight,
+   so it was muting the colour .err asks for. The error line states it here. */
+.passphrase-bip39-status.err { color: var(--danger); }
 .passphrase-keyboard-host .seed-keyboard { margin-top: var(--space-control); margin-right: auto; margin-left: 0; }
 /* The theme toggle shares this button chrome; it is not a keyboard toggle. */
 .seed-keyboard-toggle, .theme-toggle {
@@ -746,6 +753,10 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
   flex: 0 0 auto; color: var(--ok); font-size: 12px; line-height: 21px; white-space: nowrap;
 }
 .copy-status:empty { display: none; }
+/* The check carries the confirmation, so it takes the green and a little more
+   size; the word beside it is a status line, not a signal, and stays grey. */
+.bip85-copy-status { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 14px; line-height: normal; }
+.bip85-copy-status svg { width: 20px; height: 20px; color: var(--ok-bright); fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 .copy-button {
   flex: 0 0 auto; display: grid; place-items: center;
   width: 21px; height: 21px; padding: 0; border: 0; background: transparent; color: var(--faint);
@@ -1798,7 +1809,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .seed-length-control { margin-top: var(--space-component); padding-bottom: var(--space-component); border-bottom: 1px solid var(--border); }
 .seed-length-control[hidden] { display: none !important; }
 .seed-length-control .label { margin: 0 0 8px; }
-.seed-length-control .muted { margin: var(--space-control) 0 0; }
+.seed-length-control .field-note { margin: var(--space-control) 0 0; }
 .key-form { margin-top: var(--space-section); }
 .key-form > :first-child { margin-top: 0; }
 .key-form > .muted { margin: var(--space-control) 0 0; }
@@ -2014,6 +2025,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   display: block; margin-top: var(--space-control); color: var(--muted); font-size: 12px; font-weight: 400; line-height: 1.4;
 }
 .address-estimate { color: var(--accent); }
+/* Until the key can be derived the estimate is not advice to act on, so it
+   steps back to the dim grey. The button follows the estimate in the markup,
+   so the state is read from their shared parent rather than a sibling. */
+.key-lab:has(#go:disabled) #address-estimate { color: var(--faint); }
 /* A deliberate asymmetry: the estimate belongs to the section above it, whose
    closing rule it answers to, and not to the Derive button under it. So it
    takes a wide seam above and sits close beneath. 16px is the floor below —
@@ -2051,7 +2066,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* A card's closing actions are the things to press, so their labels carry the
    weight. On the row rather than on .btn, which the tabs share: a tab reads as
    a place you are, not an action you take. */
-.tool-actions .btn, .disclaimer-card .btn { font-weight: 700; }
+.disclaimer-card .btn { font-weight: 700; }
 .current-item-actions { align-items: center; width: 100%; }
 .current-item-actions .clear-current-action { margin-inline-start: auto; }
 .btn.primary[data-derivation-state="running"],
@@ -2226,12 +2241,20 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   .ln-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .ln-grid > .field { margin-top: 0; }
 }
-.bip85-path-row { margin: var(--space-component) 0 0; }
+/* The actions close the bench. The gap is set from here, so the shared
+   .tool-actions rhythm stays 16px everywhere: adjacent margins collapse to
+   the larger of the two. */
+.bip85-path-row { margin: var(--space-component) 0 var(--space-section); }
+#bip85-out .edge-note:has(+ .bip85-actions) { margin-bottom: var(--space-section); }
 .bip85-path-row code { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
-.bip85-notes { margin: var(--space-component) 0 0; padding-left: 20px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+/* The actions close the bench, so they sit a step further from the block
+   above them than peer controls do. */
 #bip85-out { margin-top: var(--space-component); }
+/* The results container is always in the markup and empty until a child is
+   derived, so on the bench its margin was spacing nothing at all. */
+#bip85-out:empty { display: none; }
 #bip85-card.is-result-view #bip85-out { margin-top: 0; }
-#bip85-out .wallet-private-section { margin-top: 0; }
+#bip85-out .wallet-data-section { margin-top: 0; }
 #psbt-session { margin: var(--space-control) 0 0; }
 .key-manager { margin: 14px 0 -1px; position: relative; z-index: 2; }
 .key-manager-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -2347,6 +2370,8 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* The footer's first row: the birthday title, what the choice does, then the
    picker. The footer already sets the space above, so the title takes none;
    the enhanced picker keeps the 8px every custom select carries above it. */
+.wallet-data-actions > .label { flex: 1 1 100%; margin: 0; }
+.wallet-data-actions > .privacy-bar { flex: 1 1 100%; }
 .wallet-birthday-field { flex: 1 1 100%; }
 .wallet-birthday-field > .label { margin-top: 0; }
 .wallet-result-messages {
@@ -2379,6 +2404,12 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .edge-note.is-private { --edge-note-color: var(--danger-bright); }
 .edge-note.is-public { --edge-note-color: var(--ok-bright); }
 .edge-note.is-info { --edge-note-color: var(--accent); }
+/* Help text wearing the note pattern hands its colour to the edge, the way
+   every other note does, rather than staying the muted grey of a bare note. */
+.field-note.edge-note { color: var(--fg); }
+/* The derivation estimate keeps the larger gap that ties it to the section
+   above it rather than to the button below. */
+#address-estimate.edge-note { margin-top: var(--space-intro); }
 /* A note with a title, like the Safety notes list, sets the title the way the
    other notes set their bold lead: body text, not a display heading. */
 /* A tool intro titles the page rather than raising an alarm, so it keeps the
@@ -2472,9 +2503,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    even at the edge of vision. Opaque in both states. */
 .privacy-bar {
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
-  padding: var(--toolbar-row-padding);
+  padding: var(--toolbar-row-padding, 10px 14px);
   border: 1px solid var(--border); border-radius: 10px;
-  background: var(--surface-2); color: var(--muted); font-size: var(--toolbar-row-font); cursor: pointer;
+  background: var(--surface-2); color: var(--muted); font-size: var(--toolbar-row-font, 14px); cursor: pointer;
   transition: background-color .14s ease, border-color .14s ease, color .14s ease;
 }
 .privacy-bar input { margin: 0; }
@@ -2490,7 +2521,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
 }
 .key-group.is-revealed > summary { color: var(--danger-bright); }
-.privacy-bar-state { color: var(--fg); font-weight: var(--toolbar-row-weight); }
+.private-field > .label { display: inline-flex; align-items: center; margin: 0; }
+.private-field.is-revealed > .label { color: var(--danger-bright); }
+.privacy-bar-state { color: var(--fg); font-weight: var(--toolbar-row-weight, 600); }
 .privacy-bar-hint { font-size: 12px; }
 .privacy-bar.is-revealed {
   border-color: var(--danger-bright);
@@ -2582,7 +2615,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* The MS ring does not shrink its Station mark: normalize the key cluster to
    an 18px core. SP deliberately keeps its original compact 18px whole mark. */
 .multisig-tab-icon.bench-tab-icon { flex-basis: 21px; width: 21px; height: 24px; }
-.key-tab-label { display: inline-block; white-space: nowrap; }
+.key-tab-label { display: inline-block; white-space: nowrap; font-size: 14px; font-weight: 600; }
 .key-tab-editing { height: 44px; }
 .key-tabs .key-tab-editing input.key-tab-name-input {
   width: auto; min-width: 72px; max-width: none; min-height: 28px; height: 28px; margin: 0; padding: 3px 7px;

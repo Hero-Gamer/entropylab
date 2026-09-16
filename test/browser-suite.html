@@ -1413,9 +1413,11 @@
       document.querySelector('#workspace [data-workspace="bip85"]').click();
       await until(() => !document.getElementById("bip85-card").hidden, "BIP-85 spacing audit");
       const bipCard = document.getElementById("bip85-card");
-      const bipSection = bipCard.querySelector(".station-key-source");
-      assert(bipSection, "BIP-85 key-source block is missing");
-      equal(Math.round(bipSection.getBoundingClientRect().top - bipCard.getBoundingClientRect().top - parseFloat(getComputedStyle(bipCard).borderTopWidth)), token("--space-section"), "BIP-85 first-section card inset");
+      assert(bipCard.querySelector(".station-key-source"), "BIP-85 key-source block is missing");
+      // Measured against whatever opens the card, so reordering the blocks
+      // below it does not make this a test of their order.
+      const bipFirst = document.getElementById("bip85-source-note");
+      equal(Math.round(bipFirst.getBoundingClientRect().top - bipCard.getBoundingClientRect().top - parseFloat(getComputedStyle(bipCard).borderTopWidth)), token("--space-section"), "BIP-85 first-section card inset");
     } finally {
       document.querySelector('#workspace [data-workspace="calc"]').click();
       await until(() => !document.getElementById("key-manager").hidden, "key workspace after spacing audit");
@@ -3755,16 +3757,28 @@
 
     const parentKey = document.querySelector("#bip85-session-keys .session-key-option");
     assert(parentKey, "BIP-85 Station did not offer the compatible Key Station key");
+    // Derive child stays out of reach until a parent is supplied, and the note
+    // says why. Cleared first so this does not depend on earlier cases.
+    input(document.getElementById("bip85-key"), "");
+    assert(document.getElementById("bip85-go").disabled, "Derive child should be disabled with no parent key");
+    assert(document.getElementById("bip85-wipe").disabled, "Clear Parent should be disabled with nothing to clear");
+    input(document.getElementById("bip85-key"), "pasted-root-placeholder");
+    assert(!document.getElementById("bip85-go").disabled, "Pasting a root should enable Derive child");
+    assert(!document.getElementById("bip85-wipe").disabled, "Pasting a root should enable Clear Parent");
+    input(document.getElementById("bip85-key"), "");
+    assert(document.getElementById("bip85-go").disabled, "Clearing the root should disable Derive child again");
     parentKey.click();
+    assert(!document.getElementById("bip85-go").disabled, "Picking a Key Station key should enable Derive child");
     assert(!document.getElementById("bip85-error").textContent, "The active key could not be loaded for BIP-85");
     assert(/^[xt]prv/.test(document.getElementById("bip85-key").value), "BIP-85 Station did not populate the selected root xprv/tprv");
     document.getElementById("bip85-index").value = "0";
     document.getElementById("bip85-go").click();
-    await until(() => tabs.children.length === 2 && document.querySelector("#bip85-out #bip85-private-heading"), "first BIP-85 child tab");
+    await until(() => tabs.children.length === 2 && document.querySelector("#bip85-out .key-summary"), "first BIP-85 child tab");
     const firstTab = tabs.children[1];
     assert(/^[0-9a-f]{8}$/.test(firstTab.querySelector(".key-tab-label")?.textContent || ""), "The first BIP-85 child tab did not show an XFP");
     await until(() => !firstTab.querySelector(".key-tab-lifehash")?.hidden, "first BIP-85 child LifeHash");
-    assert(document.querySelector("#bip85-out .wallet-data-fields")?.textContent.includes("Master fingerprint"), "The BIP39 child did not identify its master fingerprint");
+    assert(/^[0-9a-f]{8}$/.test(document.querySelector("#bip85-out .key-summary-fingerprint")?.textContent.trim() || ""), "The BIP39 child did not identify its own fingerprint");
+    assert(/Child of [0-9a-f]{8}/.test(document.querySelector("#bip85-out .key-summary")?.textContent || ""), "The BIP39 child did not name the parent it came from");
     assert(!document.getElementById("delete-bip85").disabled, "The child delete control did not become available");
 
     document.querySelector('#workspace [data-workspace="journal"]').click();
@@ -3793,7 +3807,7 @@
     assert(!document.getElementById("bip85-out").textContent.trim(), "Returning to the bench left a child result visible");
     input(document.getElementById("bip85-index"), "1");
     document.getElementById("bip85-go").click();
-    await until(() => tabs.children.length === 3 && document.querySelector("#bip85-out #bip85-private-heading"), "second BIP-85 child tab");
+    await until(() => tabs.children.length === 3 && document.querySelector("#bip85-out .key-summary"), "second BIP-85 child tab");
     assert(tabs.children[2].querySelector(".key-tab-lifehash"), "The second BIP-85 child tab is missing its LifeHash target");
     equal([...document.getElementById("journal-key-insert").options].filter((option) => option.dataset.referenceKind === "bip85").length, 2, "The Journal picker did not list every BIP-85 child");
     document.getElementById("delete-bip85").click();

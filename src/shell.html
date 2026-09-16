@@ -92,7 +92,7 @@
         <div class="seed-length-select">
           <select id="seed-length-select" aria-labelledby="seed-length-label"><option value="12">12 words</option><option value="15">15 words</option><option value="18">18 words</option><option value="21">21 words</option><option value="24" selected="selected">24 words</option></select>
         </div>
-        <p class="field-note" id="seed-length-help">24 words use 256 bits of BIP39 entropy.</p>
+        <p class="field-note edge-note is-public" id="seed-length-help">24 words use 256 bits of BIP39 entropy.</p>
       </section>
       <div id="form" class="key-form">
       <p class="label">Dice roll options</p>
@@ -128,7 +128,7 @@ words, pick one of the checksum words.</span></span>
       <div id="last-words" class="row last-word-options"></div>
     </div>
       <div class="passphrase-field" id="passphrase-field">
-        <label for="pass">Optional BIP39 passphrase</label>
+        <label for="pass">Passphrase (optional)</label>
         <div class="passphrase-keyboard-tools" id="passphrase-keyboard-toggle-host" hidden></div>
         <div class="dice-input-shell passphrase-input-shell"><pre class="dice-input-highlight" id="passphrase-highlight" aria-hidden="true"></pre><input id="pass" autocomplete="off" spellcheck="false" placeholder="Enter a BIP39 passphrase, or leave blank for none" aria-describedby="passphrase-bip39-status" /></div>
         <p class="field-note passphrase-bip39-status" id="passphrase-bip39-status" aria-live="polite" hidden></p>
@@ -200,7 +200,7 @@ words, pick one of the checksum words.</span></span>
           </div>
         </details>
       </div>
-      <p class="field-note address-estimate derivation-estimate" id="address-estimate" role="status">Measuring this device…</p>
+      <p class="field-note address-estimate derivation-estimate edge-note is-public" id="address-estimate" role="status">Measuring this device…</p>
       <div class="derive-progress" id="derive-progress" role="progressbar" aria-label="Key derivation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete" hidden><span class="derive-progress-track"><span class="derive-progress-bar"></span></span><span class="derive-progress-label">0%</span></div>
       <div class="row key-action-row current-item-actions tool-actions">
         <button class="btn primary" id="go" disabled aria-disabled="true">Derive Key</button>
@@ -330,10 +330,11 @@ words, pick one of the checksum words.</span></span>
       </section>
       <section class="card no-print tool-card" id="bip85-card" role="tabpanel" hidden>
       <div class="bip85-bench" id="bip85-bench">
+      <p class="edge-note is-public" id="bip85-source-note">Choose a compatible HD-root key from this session, or paste a root extended private key below.</p>
+      <p class="edge-note is-private" id="bip85-retention-note">Derived children remain in this page only. Anyone with the parent seed, passphrase, application, and index can reproduce them.</p>
       <div class="station-key-source tool-section">
-        <p class="label">Bring in a key from Key Station</p>
+        <p class="label">Use a key from Key Station</p>
         <div class="session-key-picker" id="bip85-session-keys" role="group" aria-label="Compatible Key Station keys" hidden></div>
-        <p class="field-note">Choose a compatible HD-root key from this session, or paste a root extended private key below.</p>
       </div>
       <label class="field">Root xprv (optional)
         <textarea id="bip85-key" placeholder="Paste a root xprv or tprv" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
@@ -374,16 +375,14 @@ words, pick one of the checksum words.</span></span>
           <span class="field-note" id="bip85-pwdlen-help">Base64: 20–86. Base85: 10–80.</span>
         </label>
       </div>
-      <p class="muted bip85-path-row">Path <code id="bip85-path">m/83696968'/39'/0'/24'/0'</code></p>
-      <div class="row bip85-actions tool-actions">
-        <button class="btn primary" id="bip85-go" type="button">Derive child</button>
-        <button class="btn secondary" id="bip85-wipe" type="button">Clear parent session</button>
-      </div>
-      <p class="muted" id="bip85-session" aria-live="polite">No parent loaded. Choose a Key Station key, or paste a root xprv.</p>
+      <p class="edge-note is-public bip85-path-row">Path <code id="bip85-path">m/83696968'/39'/0'/24'/0'</code></p>
       <p class="err" id="bip85-error" role="alert"></p>
+      <div class="row bip85-actions current-item-actions tool-actions">
+        <button class="btn primary" id="bip85-go" type="button" disabled aria-disabled="true">Derive Child Key</button>
+        <button class="btn secondary clear-current-action" id="bip85-wipe" type="button" disabled aria-disabled="true">Clear Parent Key</button>
+      </div>
       </div>
       <div id="bip85-out" aria-live="polite"></div>
-      <p class="muted">Derived children remain in this page only. Anyone with the parent seed, passphrase, application, and index can reproduce them. Memory clearing is best-effort; close the page before reconnecting the computer.</p>
     </section>
       <div class="tool-intro edge-note is-info" id="msig-tool-intro" hidden>
         <h2>Derive a multisig wallet</h2>

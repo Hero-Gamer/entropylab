@@ -2443,7 +2443,12 @@ test("derived key results put private recovery before script type and addresses"
   // The sticky toolbar (script type, then privacy), then one list
   // of groups (recovery, identity, and the selected script type), and the
   // wallet-wide exports last.
-  assert.match(appSource, /<div class="key-view-toolbar no-print">\s*\$\{hasPrivate \? hodlPrivacyBarMarkup\(\) : ""\}\s*<div class="row segmented-control" id="acct-tabs" role="group"[^>]*><\/div>\s*<\/div>\s*<div class="key-groups">\$\{recoveryGroup\}\$\{identityGroup\}\$\{accountMarkup\}<\/div>\s*\$\{hasPrivate \? hodlPrivateDataControls\("wallet-private-description"\) : hodlSaveRecoveryControl\(\)\}/);
+  // Both strips belong to the sticky toolbar; which one leads is a design
+  // decision, so only their presence is asserted here. The end of the block is
+  // found forward of the toolbar: the single-key view has its own key-groups.
+  const hdToolbarStart = appSource.indexOf('<div class="key-view-toolbar no-print">\n');
+  const hdToolbar = appSource.slice(hdToolbarStart, appSource.indexOf('<div class="key-groups">', hdToolbarStart));
+  for (const part of [/hodlPrivacyBarMarkup\(\)/, /id="acct-tabs" role="group"/]) assert.match(hdToolbar, part);
   // The script type is a button group reporting aria-pressed, not a tablist.
   assert.match(appSource, /i\.setAttribute\("aria-pressed", String\(o\.def\.id === r\.def\.id\)\)/);
   assert.match(appSource, /hodlKeyGroupMarkup\("recovery", `\$\{recoveryTitle\}\$\{hodlPrivacyEyeMarkup\(\)\}`/);

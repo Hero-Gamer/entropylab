@@ -737,7 +737,7 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
 .meta-cue.is-error { --meta-cue-ink: var(--danger-bright); }
 .seed-word-copy-row {
   display: flex; align-items: center; justify-content: flex-end; gap: 8px;
-  margin-top: var(--space-component);
+  margin-top: var(--space-component); margin-bottom: var(--space-control);
 }
 /* The seed phrase title owns its row and the copy button trails it, so the
    label hands its own vertical margins to the row and pushes the rest right. */

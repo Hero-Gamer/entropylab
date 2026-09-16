@@ -128,17 +128,17 @@ network-silence, or “we do not invent entropy”:
   rejection condition.
 - Expected results must be established independently of the implementation
   under test. Prefer published BIP / Bitcoin Core vectors, protocol
-  specifications, independently implemented reference behaviour, or a stated
-  rejection condition. Never compute the expected answer by running the code
-  under test and copying its output.
+  specifications, stated rejection conditions, or behaviour already pinned by
+  existing tests in this repository that independently pin the same contract.
+  Never compute the expected answer by running the code under test and copying
+  its output. Do not add a second implementation in the test and compare the two.
 - Include meaningful accepted and rejected inputs where both apply. Cover
   negative cases named in the issue or review; if one is intentionally out of
   scope, explain why in the PR.
 - Only then make the smallest production change that makes the test pass.
 - Do not delete, skip, weaken, or soften a test to make it pass.
 - In the PR, record the command/test used for the initial red and the same
-  test/command after the implementation is green, with a brief explanation
-  where necessary.
+  test/command after the implementation is green.
 
 Documentation-only and presentation-only changes do not need test vectors solely
 to satisfy this section. “When practicable” is not an exemption for the

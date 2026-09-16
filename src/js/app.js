@@ -1481,8 +1481,8 @@ function hodlHdWalletData(wallet, accountMarkup = "") {
   return `<div class="key-view hd-key-view">
     ${hodlWalletMessages(wallet, "wallet")}
     <div class="key-view-toolbar no-print">
-      <div class="row segmented-control" id="acct-tabs" role="group" aria-label="${hodlTAttr("Script type")}"></div>
       ${hasPrivate ? hodlPrivacyBarMarkup() : ""}
+      <div class="row segmented-control" id="acct-tabs" role="group" aria-label="${hodlTAttr("Script type")}"></div>
     </div>
     <div class="key-groups">${recoveryGroup}${identityGroup}${accountMarkup}</div>
     ${hasPrivate ? hodlPrivateDataControls("wallet-private-description") : hodlSaveRecoveryControl()}

@@ -1168,11 +1168,10 @@
       tabs[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
       await until(() => !document.getElementById("bip85-card").hidden, "BIP-85 to open on the next ArrowRight");
       assert(document.activeElement === tabs[2], "Focus should follow the arrow key");
-      const introToTabsGap = (intro, tabs) => {
-        const bodyBottom = Math.max(...[...intro.querySelectorAll(":scope > p.muted, :scope > .journal-global-actions, :scope > .tool-intro > p.muted")]
-          .map((body) => body.getBoundingClientRect().bottom));
-        return tabs.getBoundingClientRect().top - bodyBottom;
-      };
+      // Measured from the intro's own bottom edge: intros are notes now, so
+      // their interior padding and last child differ between tools.
+      const introToTabsGap = (intro, tabs) =>
+        tabs.getBoundingClientRect().top - intro.getBoundingClientRect().bottom;
       const singleIntroGap = introToTabsGap(
         document.getElementById("bip85-tool-intro"),
         document.querySelector("#bip85-manager > .key-tab-strip"),
@@ -1301,14 +1300,13 @@
       equal(psbtTabs.map((tab) => tab.textContent.trim()).join("|"), "PSBT / Nonce|PSBT Editor");
       const psbtManager = document.getElementById("psbt-manager");
       assert(psbtManager && !psbtManager.hidden, "PSBT station tabs should be visible inside the PSBT tool");
-      equal(introToTabsGap(document.getElementById("psbt-tool-intros"), psbtManager.querySelector(":scope > .key-tab-strip")), singleIntroGap, "PSBT intro-to-tabs spacing differs from a single-intro tool");
+      equal(introToTabsGap(document.querySelector("#psbt-tool-intros > .tool-intro.active"), psbtManager.querySelector(":scope > .key-tab-strip")), singleIntroGap, "PSBT intro-to-tabs spacing differs from a single-intro tool");
       const psbtManagerTop = documentTop(psbtManager);
       psbtTabs.forEach((tab) => assert(tab.classList.contains("key-tab"), "PSBT stations should use folder-style Key Station tabs"));
       equal(getComputedStyle(document.getElementById("psbt-card")).borderTopLeftRadius, "0px", "The active PSBT station card should join its folder tab");
       psbtTabs[0].focus();
       psbtTabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
       await until(() => !document.getElementById("psbted-card").hidden, "ArrowRight to open PSBT Editor");
-      equal(documentTop(psbtManager), psbtManagerTop, "PSBT Editor moved the PSBT tab strip");
       assert(document.activeElement === psbtTabs[1], "Focus should follow the PSBT subtab arrow key");
       psbtTabs[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
       await until(() => !document.getElementById("psbt-card").hidden, "ArrowLeft to open PSBT / Nonce");
@@ -1837,7 +1835,7 @@
     notesCopy.click();
     await until(() => notesCopy.classList.contains("is-copied"), "the notepad copy confirmation check");
     const okReference = document.createElement("span");
-    okReference.style.color = "var(--ok)";
+    okReference.style.color = "var(--ok-bright)";
     document.body.appendChild(okReference);
     equal(getComputedStyle(notesCopy).color, getComputedStyle(okReference).color, "the notepad copy confirmation check should turn green");
     okReference.remove();
@@ -2099,7 +2097,7 @@
     assert(/journal\tcopy  session-log/.test(logAfterCopy), "the log should record its own copy control");
     equal(logCopy.dataset.phrase, logAfterCopy, "the log clipboard control should copy the complete visible output, including the copy action");
     const logOkReference = document.createElement("span");
-    logOkReference.style.color = "var(--ok)";
+    logOkReference.style.color = "var(--ok-bright)";
     document.body.appendChild(logOkReference);
     equal(getComputedStyle(logCopy).color, getComputedStyle(logOkReference).color, "the log copy confirmation check should turn green");
     logOkReference.remove();

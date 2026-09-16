@@ -65,6 +65,7 @@ export const initAddressQr = (renderQr, icons = {}) => {
     copyIcon = icons.copy?.() ?? "",
     copiedIcon = icons.copied?.() ?? "";
   text.title = copyLabel;
+  image.title = copyLabel;
   let button = null,
     copiedTimer = 0;
 
@@ -142,4 +143,5 @@ export const initAddressQr = (renderQr, icons = {}) => {
   closeButton.addEventListener("click", close);
   text.addEventListener("click", copy);
   copyButton.addEventListener("click", copy);
+  image.addEventListener("click", copy);
 };

@@ -756,7 +756,7 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
 .copy-button:not(:disabled) { color: var(--selection-accent); }
 .copy-button:not(:disabled):hover { color: var(--accent); }
 .copy-button.is-copied, .copy-button.is-copied:not(:disabled),
-.copy-button.is-copied:not(:disabled):hover { color: var(--ok); }
+.copy-button.is-copied:not(:disabled):hover { color: var(--ok-bright); }
 .dice-word-grid {
   --dice-word-rows: var(--dice-word-rows-wide);
   display: grid; grid-auto-flow: column; grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1198,16 +1198,19 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* The tool's context sits on the panel's own ground above the card, so the
    grey surface starts at the controls rather than at the explanation. */
 .tool-intro { margin: 0 0 var(--space-intro); }
+/* A tool intro that is also a note keeps the seam below it. */
+.tool-intro.edge-note { margin: 0 0 var(--space-intro); }
 .tool-intro[hidden] { display: none; }
 .tool-intro h2 { margin: var(--space-control) 0; }
 .tool-intro > .muted { max-width: 760px; margin: 0; }
 /* Tools with fixed inner tabs stack their introductions in one grid cell so
    the tab strip starts below the longest copy at the current width. Hidden
    introductions stay invisible, but still set that shared row height. */
-.tool-intro-stack { display: grid; }
+/* Two intros share this slot; only the active one is in the document, so the
+   block is as tall as the text it shows. */
 .tool-intro-stack[hidden] { display: none !important; }
-.tool-intro-stack > .tool-intro { grid-area: 1 / 1; visibility: hidden; }
-.tool-intro-stack > .tool-intro.active { visibility: visible; }
+.tool-intro-stack > .tool-intro { display: none; }
+.tool-intro-stack > .tool-intro.active { display: block; }
 /* A direct intro's 24px bottom margin collapses with .key-manager's 14px top
    and .key-tab-strip's 12px top margins. The grid wrapper prevents that
    collapse, so remove both trailing margins here and keep the same 24px
@@ -1745,6 +1748,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   box-shadow: 0 16px 36px rgb(0 0 0 / 55%);
 }
 .addr-qr-title { margin: 0 0 var(--space-control); font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
+.addr-qr-image { cursor: pointer; }
 .addr-qr-image svg { width: 220px; height: 220px; }
 /* The address copies on a click, on the text or the icon trailing it; the
    icon is the shared copy button, and the text lights with it on hover. */
@@ -1907,6 +1911,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    the same either way — set on the summary itself — so opening the section
    moves the fields in without shifting the toggle. */
 :is(.derivation-advanced, .key-group, .wallet-advanced)[open] > summary { color: var(--fg); }
+/* A key view group is a row, not a word: the whole line answers the pointer,
+   so there is no dead space beside the title. */
+.key-group > summary { display: flex; width: auto; min-height: 36px; }
 .derivation-advanced-fields { display: grid; gap: var(--space-component); margin-bottom: var(--space-control); }
 /* These title their inputs the way the rest of the card does. The control
    below each already carries the 8px, so the title takes only the size, weight
@@ -2307,19 +2314,18 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .wallet-birthday-field > .label { margin-top: 0; }
 .wallet-result-messages {
   margin-top: 18px; padding: 14px 16px; border: 1px solid var(--notice-edge, color-mix(in oklab, var(--warn) 42%, var(--border)));
-  border-radius: var(--notice-radius, 12px); background: color-mix(in oklab, var(--warn) 6%, var(--bg));
+  background: color-mix(in oklab, var(--warn) 6%, var(--bg));
 }
 .wallet-result-messages h3 { margin: 0 0 8px; color: var(--notice-title, inherit); }
 /* A warning that guards funds rather than informs: square, edged and titled
    in the alert red. The notice supplies only these three values. */
-.wallet-result-messages.is-danger { --notice-edge: var(--danger-bright); --notice-radius: 0; --notice-title: var(--danger-bright); }
+.wallet-result-messages.is-danger { --notice-edge: var(--danger-bright); --notice-title: var(--danger-bright); }
 .wallet-result-messages ul { display: grid; gap: var(--space-control); margin: 0; padding-left: 20px; }
-.wallet-result-messages li { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.wallet-result-messages li { color: var(--fg); font-size: 13px; line-height: 1.5; }
+.wallet-result-messages li::marker { color: var(--muted); }
 .address-match-field input { display: block; font-family: var(--mono); }
 .address-match-note { margin: 0; }
 .address-match-field .hint { display: block; margin-top: var(--space-control); }
-.wallet-result-messages li.is-warning { color: var(--fg); }
-.wallet-result-messages li.is-warning::marker { color: var(--warn); }
 .wallet-data-fields { margin-top: var(--space-component); }
 .wallet-data-fields > :first-child { margin-top: 0; }
 .wallet-data-fields > :last-child { margin-bottom: 0; }
@@ -2332,13 +2338,16 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .edge-note {
   margin: var(--space-component) 0 0; padding: 12px 14px; border: 0; border-left: 3px solid var(--edge-note-color, var(--border));
   font-size: 14px; line-height: 1.5;
-  background: color-mix(in oklab, var(--blue) 8%, var(--bg));
+  /* Lift the ground a little before tinting it: on pure black a mix this
+     faint is invisible, and on pure white it has nowhere to go. */
+  background: color-mix(in oklab, var(--edge-note-color, var(--border)) 8%, color-mix(in oklab, var(--fg) 7%, var(--bg)));
 }
 .edge-note.is-private { --edge-note-color: var(--danger-bright); }
 .edge-note.is-public { --edge-note-color: var(--ok-bright); }
+.edge-note.is-info { --edge-note-color: var(--accent); }
 /* A note with a title, like the Safety notes list, sets the title the way the
    other notes set their bold lead: body text, not a display heading. */
-.edge-note > h3 { margin: 0 0 4px; font: inherit; font-weight: 700; letter-spacing: normal; color: inherit; }
+.edge-note > :is(h2, h3) { margin: 0 0 var(--space-control); font: inherit; font-size: 16px; font-weight: 600; letter-spacing: normal; color: var(--edge-note-color, inherit); }
 .edge-note li { font-size: inherit; }
 .account-watch-section, .account-address-section { padding-top: 22px; border-top: 1px solid var(--border); }
 .account-address-lead { display: grid; gap: 10px; justify-items: start; margin-bottom: 22px; }
@@ -2403,9 +2412,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* The script type stays one horizontal strip at every width: it never wraps,
    so the shared stacking never engages, and on phones the two SegWit labels
    shorten to fit instead. */
-.key-view-toolbar .segmented-control { flex-wrap: nowrap; }
+.key-view-toolbar .segmented-control { flex-wrap: nowrap; width: 100%; }
 .key-view-toolbar .segmented-control > .tab {
-  min-height: 0; padding: var(--toolbar-row-padding); font-size: var(--toolbar-row-font); font-weight: var(--toolbar-row-weight);
+  flex: 1 1 0; min-height: 0; padding: var(--toolbar-row-padding); font-size: var(--toolbar-row-font); font-weight: var(--toolbar-row-weight);
 }
 .script-label-short { display: none; }
 @media (max-width: 520px) {
@@ -2443,7 +2452,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .privacy-bar-hint { font-size: 12px; }
 .privacy-bar.is-revealed {
   border-color: var(--danger-bright);
-  background: color-mix(in oklab, var(--danger-bright) 18%, var(--surface));
+  background: color-mix(in oklab, var(--danger-bright) 10%, var(--surface));
   color: var(--danger-bright);
 }
 .privacy-bar.is-revealed .privacy-bar-state { color: var(--danger-bright); }

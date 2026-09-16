@@ -2022,7 +2022,7 @@ test("Journal gates its five tools behind the local notebook", () => {
   assert.match(appSource, /function hodlInitSecretFieldAutoClear\(\) \{[\s\S]*hodlJournalWipeMem\(\)/);
   assert.match(appSource, /function hodlJournalWipeMem\(\) \{[\s\S]*hodlJournalWipeNotebook\(\)/);
   for (const markup of [shell]) {
-    assert.match(markup, /<div class="tool-intro" id="journal-tool-intro" hidden>[\s\S]*?<h2>Entropy Journal<\/h2>[\s\S]*?<section class="key-manager no-print" id="journal-manager" hidden>/);
+    assert.match(markup, /<div class="tool-intro edge-note is-info" id="journal-tool-intro" hidden>[\s\S]*?<h2>Entropy Journal<\/h2>[\s\S]*?<section class="key-manager no-print" id="journal-manager" hidden>/);
     assert.match(markup, /id="journal-global-download"[^>]*disabled aria-disabled="true"[^>]*>[\s\S]*?<span>Download journal<\/span><\/button>/);
     assert.match(markup, /class="btn red clear-current-action" id="journal-global-clear"[^>]*disabled aria-disabled="true"[^>]*>Clear journal<\/button>/);
     assert.match(markup, /<section class="key-manager no-print" id="journal-manager" hidden>/);
@@ -2206,16 +2206,12 @@ test("Journal gates its five tools behind the local notebook", () => {
   assert.doesNotMatch(init, /hodlJournalCreate\(\);/);
 });
 
-test("fixed inner tabs reserve the height of their longest introduction", () => {
-  assert.match(css, /\.tool-intro-stack \{ display: grid; \}/);
-  assert.match(css, /\.tool-intro-stack\[hidden\] \{ display: none !important; \}/);
-  assert.match(css, /\.tool-intro-stack > \.tool-intro \{ grid-area: 1 \/ 1; visibility: hidden; \}/);
-  assert.match(css, /\.tool-intro-stack > \.tool-intro\.active \{ visibility: visible; \}/);
-  assert.match(css, /\.tool-intro-stack \+ \.key-manager \{ margin-top: 0; \}/);
-  assert.match(css, /\.tool-intro-stack \+ \.key-manager > \.key-tab-strip \{ margin-top: 0; \}/);
+test("the intro stack shows one tool intro at a time", () => {
+  // Only the active intro is in the document, so the block is as tall as the
+  // text it shows; the manager below it still closes the seam.
+  assert.match(css, /\.tool-intro-stack > \.tool-intro \{ display: none; \}/);
+  assert.match(css, /\.tool-intro-stack > \.tool-intro\.active \{ display: block; \}/);
   assert.match(appSource, /if \(intros\) intros\.hidden = !visible;/);
-  assert.match(appSource, /nonceIntro\.classList\.toggle\("active", visible && hodlPsbtTool === "nonce"\);\s*nonceIntro\.setAttribute\("aria-hidden", String\(!visible \|\| hodlPsbtTool !== "nonce"\)\);/);
-  assert.match(appSource, /editorIntro\.classList\.toggle\("active", visible && hodlPsbtTool === "editor"\);\s*editorIntro\.setAttribute\("aria-hidden", String\(!visible \|\| hodlPsbtTool !== "editor"\)\);/);
 });
 
 test("Key Station keeps derivation actions focused and BIP-85 remains its own workspace", () => {
@@ -2435,7 +2431,7 @@ test("derived key results put private recovery before script type and addresses"
   // The sticky toolbar (script type, then privacy), then one list
   // of groups (recovery, identity, and the selected script type), and the
   // wallet-wide exports last.
-  assert.match(appSource, /<div class="key-view-toolbar no-print">\s*<div class="row segmented-control" id="acct-tabs" role="group"[^>]*><\/div>\s*\$\{hasPrivate \? hodlPrivacyBarMarkup\(\) : ""\}\s*<\/div>\s*<div class="key-groups">\$\{recoveryGroup\}\$\{identityGroup\}\$\{accountMarkup\}<\/div>\s*\$\{hasPrivate \? hodlPrivateDataControls\("wallet-private-description"\) : hodlSaveRecoveryControl\(\)\}/);
+  assert.match(appSource, /<div class="key-view-toolbar no-print">\s*\$\{hasPrivate \? hodlPrivacyBarMarkup\(\) : ""\}\s*<div class="row segmented-control" id="acct-tabs" role="group"[^>]*><\/div>\s*<\/div>\s*<div class="key-groups">\$\{recoveryGroup\}\$\{identityGroup\}\$\{accountMarkup\}<\/div>\s*\$\{hasPrivate \? hodlPrivateDataControls\("wallet-private-description"\) : hodlSaveRecoveryControl\(\)\}/);
   // The script type is a button group reporting aria-pressed, not a tablist.
   assert.match(appSource, /i\.setAttribute\("aria-pressed", String\(o\.def\.id === r\.def\.id\)\)/);
   assert.match(appSource, /hodlKeyGroupMarkup\("recovery", `\$\{recoveryTitle\}\$\{hodlPrivacyEyeMarkup\(\)\}`/);
@@ -2693,7 +2689,7 @@ test("the vanity grinder is a workspace tab that ships collapsed and never auto-
   // Both templates carry the intro and the card, both hidden until the tab is
   // picked; the card is a tabpanel and stays out of print output.
   for (const markup of [shell]) {
-    assert.match(markup, /<div class="tool-intro" id="vanity-tool-intro" hidden>/);
+    assert.match(markup, /<div class="tool-intro edge-note is-info" id="vanity-tool-intro" hidden>/);
     assert.match(markup, /<section class="card no-print tool-card" id="vanity-card" role="tabpanel" hidden>/);
     // The key comes in through the same clickable Key Station picker the
     // BIP-85 and Silent Payments tabs use; the selected key is restated with

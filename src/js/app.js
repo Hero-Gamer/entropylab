@@ -12326,7 +12326,7 @@ async function hodlLoadTestKeys() {
 }
 // Each tool carries a full name and a short one. Narrow screens show the
 // short form so more tools stay on screen instead of off the right edge.
-var hodlWorkspaceTabs = [["calc", "Keys", "Keys"], ["vanity", "Vanity", "Vanity"], ["bip85", "BIP-85", "BIP85"], ["msig", "Multi Signature", "MultiSig"], ["sp", "Silent Payments", "SP"], ["psbt", "PSBT", "PSBT"], ["ln", "Lightning", "LN"], ["journal", "Journal", "Journal"]];
+var hodlWorkspaceTabs = [["calc", "Keys", "Keys"], ["bip85", "BIP-85", "BIP85"], ["msig", "Multi Signature", "MultiSig"], ["psbt", "PSBT", "PSBT"], ["sp", "Silent Payments", "SP"], ["vanity", "Vanity", "Vanity"], ["ln", "Lightning", "LN"], ["journal", "Journal", "Journal"]];
 var hodlPsbtTool = "nonce";
 function hodlSyncPsbtTool() {
   let visible = hodlWorkspace === "psbt",
@@ -14019,13 +14019,49 @@ function hodlPickVanitySessionKey(state) {
   hodlVanitySyncSource();
   hodlRefreshStationKeyPickers();
 }
+var hodlVanityMethodSelection = "passphrase";
 function hodlVanityMethod() {
-  let value = document.getElementById("vanity-method")?.value;
-  return VANITY_METHODS[value] ? value : "passphrase";
+  return VANITY_METHODS[hodlVanityMethodSelection] ? hodlVanityMethodSelection : "passphrase";
 }
+// The pressed button is the method, reported the way every other button group
+// in the app reports its selection.
+function hodlSyncVanityMethodTabs() {
+  let box = document.getElementById("vanity-method-tabs");
+  if (!box) return;
+  box.querySelectorAll("[data-vanity-method-option]").forEach((button) => {
+    let active = button.dataset.vanityMethodOption === hodlVanityMethod();
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+function hodlSelectVanityMethod(id) {
+  if (!VANITY_METHODS[id] || id === hodlVanityMethodSelection) return;
+  let button = document.querySelector(`#vanity-method-tabs [data-vanity-method-option="${id}"]`);
+  if (button?.disabled) return;
+  hodlVanityMethodSelection = id;
+  hodlSyncVanityMethodTabs();
+  hodlVanityMethodChanged();
+}
+var hodlVanityScriptSelection = "p2wpkh";
 function hodlVanityScriptId() {
-  let value = document.getElementById("vanity-script")?.value;
-  return VANITY_SCRIPTS[value] ? value : "p2wpkh";
+  return VANITY_SCRIPTS[hodlVanityScriptSelection] ? hodlVanityScriptSelection : "p2wpkh";
+}
+// The pressed button is the address type, reported the way the key view's
+// script buttons report theirs.
+function hodlSyncVanityScriptTabs() {
+  let box = document.getElementById("vanity-script-tabs");
+  if (!box) return;
+  box.querySelectorAll("[data-vanity-script]").forEach((button) => {
+    let active = button.dataset.vanityScript === hodlVanityScriptId();
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+function hodlSelectVanityScript(id) {
+  if (!VANITY_SCRIPTS[id] || id === hodlVanityScriptSelection) return;
+  hodlVanityScriptSelection = id;
+  hodlSyncVanityScriptTabs();
+  hodlVanityScriptChanged();
 }
 function hodlVanityScript() {
   return VANITY_SCRIPTS[hodlVanityScriptId()];
@@ -14035,22 +14071,45 @@ function hodlVanityFormatCount(value) {
 }
 function hodlFilterVanityPrefix(value, meta = hodlVanityScript()) {
   let text = String(value ?? "");
+  // The fixed characters are shown beside the field, so a pasted whole prefix
+  // drops its leading copy rather than leaving fragments of it behind.
+  let lead = meta.bech32 ? text.toLowerCase() : text;
+  if (lead.startsWith(meta.prefix)) text = text.slice(meta.prefix.length);
   if (meta.bech32) {
-    let allowed = new Set((meta.prefix + "bc1qpzry9x8gf2tvdw0s3jn54khce6mua7l").split(""));
+    let allowed = new Set("qpzry9x8gf2tvdw0s3jn54khce6mua7l".split(""));
     return [...text.toLowerCase()].filter((character) => !/\s/.test(character) && allowed.has(character)).join("");
   }
   return [...text].filter((character) => !/\s/.test(character) && "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".includes(character)).join("");
+}
+// The address type fixes the leading characters; the input holds only the
+// free ones, so every consumer asks for the two joined.
+function hodlVanityPrefixValue() {
+  let meta = hodlVanityScript(), typed = document.getElementById("vanity-prefix")?.value ?? "";
+  return meta.prefix + typed;
+}
+// The row reads as a formula, so the result end of it follows every keystroke
+// and every address-type change.
+function hodlVanitySyncPrefixResult() {
+  let result = document.getElementById("vanity-prefix-result");
+  if (result) result.textContent = hodlVanityPrefixValue();
 }
 function hodlVanitySyncScriptNote() {
   let meta = hodlVanityScript(), help = document.getElementById("vanity-prefix-help"), input = document.getElementById("vanity-prefix");
   if (help) {
     help.textContent = meta.firstFree
-      ? `${meta.label} code, starts with “${meta.prefix}”; the next character is one of ${[...meta.firstFree].join(" ")} (the scan key's parity). Live-filtered to lowercase bech32 characters; each further free character multiplies the work by ~32.`
+      ? `The first character encodes the scan key's parity, so it is one of ${[...meta.firstFree].join(" ")}. Live-filtered to lowercase bech32 characters; each further free character multiplies the work by ~32.`
       : meta.bech32
-        ? `${meta.label} prefix, starts with “${meta.prefix}”. Live-filtered to lowercase bech32 characters; each free character multiplies the work by ~32.`
-        : `${meta.label} prefix, starts with “${meta.prefix}”. Live-filtered to base58 characters; each free character multiplies the work by ~58.`;
+        ? "Live-filtered to lowercase bech32 characters; each free character multiplies the work by ~32."
+        : "Live-filtered to base58 characters; each free character multiplies the work by ~58.";
   }
-  if (input) input.placeholder = `${meta.prefix}…`;
+  let fixed = document.getElementById("vanity-prefix-fixed");
+  if (fixed) fixed.textContent = meta.prefix;
+  hodlVanitySyncPrefixResult();
+  if (input) {
+    input.placeholder = meta.firstFree
+      ? `First character ${[...meta.firstFree].join(" ")}, then your vanity characters`
+      : "Enter your vanity characters here";
+  }
 }
 // The source panel names the selected key and shows its passphrase exactly as
 // entered on the Keys tab: the passphrase grind extends that text, the
@@ -14058,7 +14117,7 @@ function hodlVanitySyncScriptNote() {
 // key. A root-xprv key has no words to stretch, so only the derivation grind
 // is offered for it.
 function hodlVanitySyncSource() {
-  let panel = document.getElementById("vanity-source"), note = document.getElementById("vanity-session-note");
+  let panel = document.getElementById("vanity-source-block"), note = document.getElementById("vanity-session-note");
   if (!panel) return;
   let state = hodlVanitySourceState();
   if (!state) hodlVanitySource = "";
@@ -14068,18 +14127,17 @@ function hodlVanitySyncSource() {
       : "Derive a key on the Keys tab first — the grinder searches that key's passphrase or account index. A key with seed words supports both methods; a root-xprv key supports the derivation grind only.";
   }
   panel.hidden = !state;
-  let methodSelect = document.getElementById("vanity-method"), passphraseOption = methodSelect?.querySelector('option[value="passphrase"]');
+  let passphraseOption = document.querySelector('#vanity-method-tabs [data-vanity-method-option="passphrase"]');
   if (state) {
     let label = hodlVanityKeyLabel(state), pass = String(state.fields?.pass ?? ""), hasMnemonic = Boolean(state.result?.mnemonic);
-    let name = document.getElementById("vanity-source-name"), kind = document.getElementById("vanity-source-kind"), image = document.getElementById("vanity-source-lifehash"), from = document.getElementById("vanity-pass-from"), field = document.getElementById("vanity-pass"), passNote = document.getElementById("vanity-pass-note");
+    let name = document.getElementById("vanity-source-name"), kind = document.getElementById("vanity-source-kind"), image = document.getElementById("vanity-source-lifehash"), field = document.getElementById("vanity-pass"), passNote = document.getElementById("vanity-pass-note");
     if (name) name.textContent = label;
     if (kind) kind.textContent = `${hasMnemonic ? "BIP39 seed words" : "Root xprv"}${state.name && state.name !== label ? ` · ${state.name}` : ""} · ${hodlDisplayDerivationPath(state.fields?.derivationPath || "")}`;
     if (image) {
       image.hidden = true;
       hodlFillKeyTabLifehash(image, state.result?.masterFingerprint || "");
     }
-    if (from) from.textContent = `· from key ${label}`;
-    if (field) field.value = pass;
+    if (field) field.textContent = pass || "No passphrase — the key uses its seed words alone";
     if (passNote) {
       passNote.textContent = !hasMnemonic
         ? `Key ${label} was imported as a root xprv: it has no seed words, so its passphrase cannot be extended — only the derivation grind is available.`
@@ -14088,7 +14146,11 @@ function hodlVanitySyncSource() {
           : `Key ${label} has no passphrase. Passphrase grind: candidates are the counter characters alone. Derivation grind: no passphrase, with the account index changing.`;
     }
     if (passphraseOption) passphraseOption.disabled = !hasMnemonic;
-    if (!hasMnemonic && methodSelect && methodSelect.value === "passphrase") methodSelect.value = "derivation";
+    if (!hasMnemonic && hodlVanityMethod() === "passphrase") {
+      hodlVanityMethodSelection = "derivation";
+      hodlSyncVanityMethodTabs();
+      hodlVanitySyncMethod();
+    }
   } else if (passphraseOption) passphraseOption.disabled = false;
   hodlVanitySyncMethod();
   hodlVanitySyncControls();
@@ -14148,7 +14210,7 @@ function hodlVanityEstimate() {
   let estimateEl = document.getElementById("vanity-estimate"), input = document.getElementById("vanity-prefix"), scriptId = hodlVanityScriptId(), method = hodlVanityMethod();
   if (!estimateEl || !input) return;
   try {
-    let prefix = validateVanityPrefix(input.value, scriptId), work = estimateVanityWork(prefix, scriptId), rate = hodlVanityExpectedRate();
+    let prefix = validateVanityPrefix(hodlVanityPrefixValue(), scriptId), work = estimateVanityWork(prefix, scriptId), rate = hodlVanityExpectedRate();
     let timing = rate > 0
       ? `At about ${hodlVanityFormatCount(Math.round(rate))} candidates/s${hodlVanityRunning ? "" : ` on ${Math.max(1, Math.min(64, Number(document.getElementById("vanity-workers")?.value) || 1))} worker${Number(document.getElementById("vanity-workers")?.value) === 1 ? "" : "s"}`}, expect a match roughly every ${hodlVanityFormatDuration(Number(work) / rate)}.`
       : hodlVanityBenchPending ? "Measuring this device…" : method === "derivation" ? "Derivation grind: each candidate is a few BIP32 child steps." : "Passphrase grind: each candidate is a full BIP39 seed stretch.";
@@ -14213,7 +14275,7 @@ function hodlVanityPlan(state, method, scriptId) {
 }
 function hodlVanityParseInputs() {
   let method = hodlVanityMethod(), scriptId = hodlVanityScriptId();
-  let prefix = validateVanityPrefix(document.getElementById("vanity-prefix").value, scriptId);
+  let prefix = validateVanityPrefix(hodlVanityPrefixValue(), scriptId);
   let parseCounter = (id, label) => {
     let raw = document.getElementById(id).value.trim();
     if (!/^\d+$/.test(raw)) throw new Error(`${label} is a whole number (digits only).`);
@@ -14556,10 +14618,17 @@ function hodlInitVanity() {
   let prefix = document.getElementById("vanity-prefix");
   prefix.addEventListener("input", () => {
     hodlApplyFilteredInput(prefix, (value) => hodlFilterVanityPrefix(value));
+    hodlVanitySyncPrefixResult();
     hodlVanityEstimate();
   });
-  document.getElementById("vanity-script")?.addEventListener("change", hodlVanityScriptChanged);
-  document.getElementById("vanity-method")?.addEventListener("change", hodlVanityMethodChanged);
+  document.getElementById("vanity-script-tabs")?.querySelectorAll("[data-vanity-script]").forEach((button) => {
+    button.addEventListener("click", () => hodlSelectVanityScript(button.dataset.vanityScript));
+  });
+  hodlSyncVanityScriptTabs();
+  document.getElementById("vanity-method-tabs")?.querySelectorAll("[data-vanity-method-option]").forEach((button) => {
+    button.addEventListener("click", () => hodlSelectVanityMethod(button.dataset.vanityMethodOption));
+  });
+  hodlSyncVanityMethodTabs();
   for (let id of ["vanity-length", "vanity-start", "vanity-count", "vanity-account-start", "vanity-account-count", "vanity-workers"]) {
     let input = document.getElementById(id);
     input?.addEventListener("input", () => hodlApplyFilteredInput(input, (value) => String(value ?? "").replace(/\D/g, "")));
@@ -14990,7 +15059,7 @@ function hodlInitSecretFieldAutoClear() {
     hodlVanitySource = "";
     hodlVanityApplying = false;
     let vanityPass = document.getElementById("vanity-pass"), vanityOut = document.getElementById("vanity-out"), vanityError = document.getElementById("vanity-error"), vanityStatus = document.getElementById("vanity-status");
-    if (vanityPass) vanityPass.value = "";
+    if (vanityPass) vanityPass.textContent = "";
     if (vanityOut) vanityOut.innerHTML = "";
     if (vanityError) vanityError.textContent = "";
     if (vanityStatus) vanityStatus.textContent = "Idle. No range has been ground this session.";

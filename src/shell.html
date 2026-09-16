@@ -56,11 +56,11 @@
       <button type="button" class="workspace-more" id="workspace-more" aria-controls="workspace-tabs" aria-label="Scroll the tool list to see more tools" hidden>More tools<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
       <div class="workspace-tabs" id="workspace-tabs" role="tablist" aria-label="Tool">
         <button type="button" class="workspace-tab active" role="tab" aria-selected="true" aria-label="Keys"><span class="workspace-tab-full">Keys</span><span class="workspace-tab-short">Keys</span></button>
-        <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="Vanity"><span class="workspace-tab-full">Vanity</span><span class="workspace-tab-short">Vanity</span></button>
         <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="BIP-85"><span class="workspace-tab-full">BIP-85</span><span class="workspace-tab-short">BIP85</span></button>
         <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="Multi Signature"><span class="workspace-tab-full">Multi Signature</span><span class="workspace-tab-short">MultiSig</span></button>
-        <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="Silent Payments"><span class="workspace-tab-full">Silent Payments</span><span class="workspace-tab-short">SP</span></button>
         <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="PSBT"><span class="workspace-tab-full">PSBT</span><span class="workspace-tab-short">PSBT</span></button>
+        <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="Silent Payments"><span class="workspace-tab-full">Silent Payments</span><span class="workspace-tab-short">SP</span></button>
+        <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="Vanity"><span class="workspace-tab-full">Vanity</span><span class="workspace-tab-short">Vanity</span></button>
         <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="Lightning"><span class="workspace-tab-full">Lightning</span><span class="workspace-tab-short">LN</span></button>
         <button type="button" class="workspace-tab" role="tab" aria-selected="false" aria-label="Journal"><span class="workspace-tab-full">Journal</span><span class="workspace-tab-short">Journal</span></button>
       </div>
@@ -215,7 +215,8 @@ words, pick one of the checksum words.</span></span>
         <p class="muted tool-intro-note">Pick a Key Station key and turn one of its dials. Passphrase grind extends the key's BIP39 passphrase with counter characters (base-62 over a-zA-Z0-9 in odometer order: "aaa…", "aab…"); derivation grind keeps the passphrase and steps through account indexes. Every candidate is derived the standard way — PBKDF2 seed, BIP32 path — in a dedicated WebAssembly module, one Web Worker per CPU core, and its address of the selected type (including BIP-352 Silent Payment codes) is checked against your prefix. This invents no entropy: same key and counter always reproduce the same address, so every result replays by hand, and Update key writes the winning passphrase or account back to the key it came from.</p>
       </div>
       <section class="card no-print tool-card" id="vanity-card" role="tabpanel" hidden>
-        <div class="wallet-result-messages" role="note">
+        <div class="edge-note is-private" id="vanity-grind-warning" role="note">
+          <h3>Before you grind</h3>
           <ul>
             <li class="is-warning">A vanity passphrase is a BIP39 passphrase: the seed words alone no longer recover the wallet. After Update key, record the passphrase with the same care as the words.</li>
             <li>Matching is Bitcoin mainnet, at the key's first receive address (its own purpose, account, branch, and address index). Update key re-derives the key, so the Keys tab, its exports, and the Journal show the vanity wallet.</li>
@@ -226,37 +227,59 @@ words, pick one of the checksum words.</span></span>
           <div class="session-key-picker" id="vanity-session-keys" role="group" aria-label="Key Station keys" hidden></div>
           <p class="field-note" id="vanity-session-note">Derive a key on the Keys tab first — the grinder searches that key's passphrase or account index. A key with seed words supports both methods; a root-xprv key supports the derivation grind only.</p>
         </div>
-        <div class="vanity-source tool-section" id="vanity-source" hidden>
+        <div class="vanity-source-block tool-section" id="vanity-source-block" hidden>
+        <p class="label">Selected key</p>
+        <div class="vanity-source" id="vanity-source">
           <div class="vanity-source-head">
-            <span class="vanity-source-kicker">Selected key</span>
             <span class="vanity-source-key"><img class="key-tab-lifehash" id="vanity-source-lifehash" width="22" height="22" alt="" hidden><code id="vanity-source-name"></code></span>
             <span class="muted" id="vanity-source-kind"></span>
           </div>
-          <label class="field" for="vanity-pass">Starting passphrase <span class="vanity-source-from" id="vanity-pass-from"></span></label>
-          <input id="vanity-pass" readonly autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="No passphrase — the key uses its seed words alone" aria-describedby="vanity-pass-note">
+          <p class="label">Starting passphrase</p>
+          <p class="mono" id="vanity-pass" aria-describedby="vanity-pass-note"></p>
           <span class="field-note" id="vanity-pass-note"></span>
         </div>
+        </div>
+        <p class="label" id="vanity-method-label">Method</p>
+        <div class="row segmented-control is-wide is-half" id="vanity-method-tabs" role="group" aria-labelledby="vanity-method-label">
+          <button type="button" class="tab active" data-vanity-method-option="passphrase" aria-pressed="true">Passphrase grind</button>
+          <button type="button" class="tab" data-vanity-method-option="derivation" aria-pressed="false">Derivation grind</button>
+        </div>
+        <p class="field-note" id="vanity-method-help">Each candidate is the starting passphrase followed by the counter characters, stretched into a seed (2,048 PBKDF2 rounds) and derived at the key's path. A match is a new passphrase for the same seed words.</p>
+        <p class="label" id="vanity-script-label">Address type</p>
+        <div class="row segmented-control is-wide" id="vanity-script-tabs" role="group" aria-labelledby="vanity-script-label">
+          <button type="button" class="tab" data-vanity-script="p2pkh" aria-pressed="false">Legacy</button>
+          <button type="button" class="tab" data-vanity-script="p2sh-p2wpkh" aria-pressed="false"><span class="script-label-full">Nested SegWit</span><span class="script-label-short">Nested SW</span></button>
+          <button type="button" class="tab active" data-vanity-script="p2wpkh" aria-pressed="true"><span class="script-label-full">Native SegWit</span><span class="script-label-short">Native SW</span></button>
+          <button type="button" class="tab" data-vanity-script="p2tr" aria-pressed="false">Taproot</button>
+          <button type="button" class="tab" data-vanity-script="sp" aria-pressed="false"><span class="script-label-full">Silent Payments</span><span class="script-label-short">Silent Pay.</span></button>
+        </div>
         <div class="vanity-grid">
-          <label class="field">Method
-            <select id="vanity-method">
-              <option value="passphrase" selected="selected">Passphrase grind</option>
-              <option value="derivation">Derivation grind</option>
-            </select>
-            <span class="field-note" id="vanity-method-help">Each candidate is the starting passphrase followed by the counter characters, stretched into a seed (2,048 PBKDF2 rounds) and derived at the key's path. A match is a new passphrase for this key.</span>
-          </label>
-          <label class="field">Address type
-            <select id="vanity-script">
-              <option value="p2pkh">Legacy P2PKH · 1…</option>
-              <option value="p2sh-p2wpkh">Nested SegWit P2SH-P2WPKH · 3…</option>
-              <option value="p2wpkh" selected="selected">Native SegWit P2WPKH · bc1q…</option>
-              <option value="p2tr">Taproot P2TR · bc1p…</option>
-              <option value="sp">Silent Payments BIP-352 · sp1qq…</option>
-            </select>
-          </label>
-          <label class="field">Address prefix
-            <input id="vanity-prefix" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="bc1q…" aria-describedby="vanity-prefix-help">
-            <span class="field-note" id="vanity-prefix-help">Native SegWit P2WPKH prefix, starts with “bc1q”. Live-filtered to lowercase bech32 characters; each free character multiplies the work by ~32.</span>
-          </label>
+          <div class="field">
+            <p class="label" id="vanity-prefix-label">Vanity Formula</p>
+            <span class="field-note label-description" id="vanity-prefix-help">Live-filtered to lowercase bech32 characters; each free character multiplies the work by ~32.</span>
+            <div class="vanity-prefix-row">
+              <span class="vanity-formula-col">
+                <span class="label vanity-formula-title">Prefix</span>
+                <span class="vanity-prefix-fixed" id="vanity-prefix-fixed">bc1q</span>
+              </span>
+              <span class="vanity-formula-col vanity-formula-op" aria-hidden="true">
+                <span class="label vanity-formula-title"></span>
+                <span class="vanity-prefix-plus">+</span>
+              </span>
+              <span class="vanity-formula-col vanity-formula-input">
+                <span class="label vanity-formula-title">Custom characters</span>
+                <input id="vanity-prefix" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Enter your vanity characters here" aria-labelledby="vanity-prefix-label" aria-describedby="vanity-prefix-help">
+              </span>
+              <span class="vanity-formula-col vanity-formula-op" aria-hidden="true">
+                <span class="label vanity-formula-title"></span>
+                <span class="vanity-prefix-plus">=</span>
+              </span>
+              <span class="vanity-formula-col">
+                <span class="label vanity-formula-title">Vanity Prefix</span>
+                <span class="vanity-prefix-result" id="vanity-prefix-result" aria-live="polite">bc1q</span>
+              </span>
+            </div>
+          </div>
         </div>
         <div class="vanity-grid">
           <label class="field" data-vanity-method="passphrase">Passphrase length
@@ -284,7 +307,7 @@ words, pick one of the checksum words.</span></span>
             <span class="field-note" id="vanity-workers-help">One per CPU core is fastest; defaults to this device's core count.</span>
           </label>
         </div>
-        <p class="muted" id="vanity-estimate" aria-live="polite"></p>
+        <p class="field-note" id="vanity-estimate" aria-live="polite"></p>
         <div class="switch-row vanity-first-row">
           <label class="switch-toggle vanity-first-toggle"><input id="vanity-first" type="checkbox"><span>Stop on first find</span></label>
         </div>
@@ -293,10 +316,10 @@ words, pick one of the checksum words.</span></span>
           <div class="derive-progress" id="vanity-progress" role="progressbar" aria-label="Vanity grinding progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete" hidden><span class="derive-progress-track"><span class="derive-progress-bar"></span></span><span class="derive-progress-label">0%</span></div>
           <button class="btn red clear-current-action" id="vanity-wipe" type="button" disabled aria-disabled="true">Clear results</button>
         </div>
-        <p class="muted" id="vanity-status" aria-live="polite">Idle. No range has been ground this session.</p>
+        <p class="field-note" id="vanity-status" aria-live="polite">Idle. No range has been ground this session.</p>
         <p class="err" id="vanity-error" role="alert"></p>
         <div id="vanity-out" aria-live="polite"></div>
-        <p class="muted">Found passphrases remain in this page only and are never intentionally stored or sent. Memory clearing is best-effort because browsers may retain internal copies; close the page before reconnecting the computer.</p>
+        <p class="edge-note is-public">Found passphrases remain in this page only and are never intentionally stored or sent. Memory clearing is best-effort because browsers may retain internal copies; close the page before reconnecting the computer.</p>
       </section>
       <div class="tool-intro edge-note is-info" id="bip85-tool-intro" hidden>
         <h2>Derive BIP-85 child entropy</h2>

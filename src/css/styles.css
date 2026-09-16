@@ -1306,8 +1306,14 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .segmented-control:not(.is-stacked) > .tab:first-child { border-radius: 8px 0 0 8px; }
 .segmented-control:not(.is-stacked) > .tab:last-child { border-radius: 0 8px 8px 0; }
 .segmented-control > .tab:only-child { border-radius: 8px; }
+/* The pressed segment wears the hover grammar one step down: the accent muted
+   toward the border on the edge and kept as the lettering, over a warm tint of
+   the card surface — filled enough to read as chosen, short of solid orange. */
 .segmented-control > .tab:is(.active, [aria-pressed="true"]) {
-  z-index: 1; background: var(--selection-accent); border-color: var(--selection-accent); color: var(--selection-fg);
+  z-index: 1;
+  background: color-mix(in oklab, var(--accent) 8%, var(--surface));
+  border-color: color-mix(in oklab, var(--accent) 70%, var(--border));
+  color: var(--accent);
 }
 .segmented-control > .tab:hover { z-index: 1; }
 .segmented-control > .tab:focus-visible { z-index: 2; }
@@ -1518,29 +1524,52 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   .vanity-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 }
 .vanity-grid > [hidden] { display: none; }
+/* The required characters read as the first term of a formula, with the free
+   ones typed after it. */
+.vanity-prefix-row { display: flex; flex-wrap: nowrap; align-items: stretch; gap: 8px; width: 100%; margin: var(--space-component) 0 var(--space-section); }
+/* Every column carries a title, the operators an empty one, so the symbols sit
+   on the same line as the values without a hand-tuned offset. */
+.vanity-formula-col { display: flex; flex: 1 1 0; min-width: 0; flex-direction: column; justify-content: flex-start; align-items: center; gap: 4px; }
+.vanity-formula-col.vanity-formula-op { flex: 0 0 auto; }
+/* The shared label, with its block margins dropped so the columns stay level.
+   The operators carry an empty one, which still needs a line box to hold the
+   row open. */
+.vanity-formula-title { margin: 0; white-space: nowrap; }
+.vanity-formula-title:empty::before { content: "\00a0"; }
+/* Values share one band, so they sit level whatever their own height. */
+.vanity-prefix-fixed, .vanity-prefix-plus, .vanity-prefix-result { display: flex; align-items: center; justify-content: center; min-height: 44px; }
+.vanity-prefix-fixed { max-width: 100%; white-space: nowrap; font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--muted); }
+.vanity-prefix-result {
+  max-width: 100%; overflow-x: auto; white-space: nowrap;
+  font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--accent);
+}
+.vanity-prefix-plus { flex: 0 0 auto; color: var(--muted); font-size: 14px; }
+.vanity-prefix-row input:not([type="radio"]):not([type="checkbox"]) { width: 100%; min-width: 0; margin-top: 0; text-align: center; }
 .vanity-secret { display: inline-flex; align-items: center; gap: 6px; }
 .vanity-secret .copy-button { flex: 0 0 auto; }
 /* The selected key, restated where the grind reads from it: which key, what
    kind, and its starting passphrase verbatim. */
+/* The selected key reads, it does not take input: square and edgeless on the
+   same ground the key view's summary bar uses. The border stays unpainted so
+   nothing shifts by a pixel. */
 .vanity-source {
   padding: 14px 16px 16px;
-  border: 1px solid color-mix(in oklab, var(--selection-accent) 45%, var(--border)); border-radius: 12px;
-  background: color-mix(in oklab, var(--selection-accent) 6%, var(--surface));
+  border: 1px solid transparent;
+  background: color-mix(in oklab, var(--surface-2) 28%, var(--bg));
 }
-.vanity-source[hidden] { display: none; }
+.vanity-source-block[hidden] { display: none; }
+.vanity-source-block > .label { margin-top: 0; }
 .vanity-source-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
-.vanity-source-kicker { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--selection-accent); font-weight: 600; }
 .vanity-source-key { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 14px; font-weight: 600; }
 .vanity-source-key code { font-family: var(--mono); }
-.vanity-source-head .muted { font-size: 13px; }
-.vanity-source label.field { margin-top: var(--space-control); }
-.vanity-source-from { color: var(--muted); font-weight: 400; }
-.vanity-source #vanity-pass { color: var(--fg); background: var(--bg); cursor: text; }
+.vanity-source-head .muted { font-size: 12px; }
+.vanity-source > .label { margin-top: var(--space-section); }
+.vanity-source #vanity-pass { margin: 0; color: var(--fg); overflow-wrap: anywhere; }
 .vanity-apply-cell { white-space: nowrap; }
-.vanity-key { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+.vanity-key { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; white-space: nowrap; }
 .vanity-key code { font-family: var(--mono); }
-.vanity-apply { min-height: 36px; padding: 4px 12px; font-size: 13px; }
-.vanity-saved { display: inline-flex; align-items: center; gap: 6px; color: var(--ok-bright); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.vanity-apply { min-height: 36px; padding: 4px 12px; font-size: 12px; }
+.vanity-saved { display: inline-flex; align-items: center; gap: 6px; color: var(--ok-bright); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .vanity-saved svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 .psbt-kv { font-family: var(--mono); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
 .psbt-ok { color: var(--ok); }
@@ -1773,14 +1802,15 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-form { margin-top: var(--space-section); }
 .key-form > :first-child { margin-top: 0; }
 .key-form > .muted { margin: var(--space-control) 0 0; }
-/* Inside this card a title owns the space beneath it: the gap is set once, by
-   the label's margin-bottom, and whatever follows adds nothing of its own.
+/* Inside this card a title owns the space beneath it: the gap comes from the
+   label's own margin-bottom and whatever follows adds nothing of its own.
    The card used to spell this out one pairing at a time (.label + .muted,
    .label + textarea), so anything without its own pairing kept whatever
    margin-top it happened to carry — 8px under some titles, 16px under the
    word grid. Scoped to this card: the rest of the page still mixes the two
-   conventions, and unpicking that belongs in its own pass. */
-#calc-card .label { margin-bottom: var(--space-control); }
+   conventions, and unpicking that belongs in its own pass. The gap itself is
+   not restated here: an id outranks the pairing rules that tighten a label
+   above its own description, which would then lose inside this card alone. */
 #calc-card .label + * { margin-top: 0; }
 /* Text starts lower under a title than a box does: .muted carries a 1.5 line
    height, so roughly 3.5px of half-leading sits above its first line and a
@@ -1788,33 +1818,36 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    hands that back, keeping it the one thing that owns the gap. Optical, not
    layout: the text lands where a control would, not the box around it. Text
    written to sit directly under a label carries .label-description. */
-#calc-card .label:has(+ .label-description) { margin-bottom: 4px; }
+.label:has(+ .label-description) { margin-bottom: 4px; }
+.label + .label-description { margin-top: 0; }
 /* The exception: a checkbox's own text is not a heading over content. It sits
    inside the control, on one line with the box, so it owns no gap either side.
    The components above already say margin: 0; this repeats it only to outrank
    the convention, which an id lets win over their plain class selectors. */
-#calc-card .switch-toggle .label { margin: 0; color: var(--muted); }
+.tool-card .switch-toggle .label { margin: 0; color: var(--muted); }
 /* Grey at rest across the card, like the Harden qualifiers and the accordion
    toggles: a checkbox offers an option rather than naming a field, so it sits
    a step back until the pointer arrives. Set on the control as well as on the
    label class, because some of these title themselves with a bare <strong>
    that inherits and others with a .label that sets its own colour. */
-#calc-card .switch-toggle { color: var(--muted); }
-#calc-card .switch-toggle:hover,
-#calc-card .switch-toggle:hover .label { color: var(--fg); }
+.tool-card .switch-toggle { color: var(--muted); }
+.tool-card .switch-toggle:hover,
+.tool-card .switch-toggle:hover .label { color: var(--fg); }
 /* The fields rest on the page ground already, so the fill half of the shared
    hover has nowhere to go: the edge is what answers the pointer, as it does on
-   the method cards. A field flagged invalid keeps its red — that rule carries
-   !important — and a disabled one says nothing. */
-#calc-card textarea:not(:disabled):hover,
-#calc-card input:not([type="radio"]):not([type="checkbox"]):not(:disabled):hover {
+   the method cards. Scoped to the tool cards rather than to one of them, so a
+   field answers the pointer the same way whichever tool it sits in. A field
+   flagged invalid keeps its red — that rule carries !important — and one that
+   is disabled or readonly says nothing, having nothing to offer. */
+.tool-card textarea:not(:disabled):not([readonly]):hover,
+.tool-card input:not([type="radio"]):not([type="checkbox"]):not(:disabled):not([readonly]):hover {
   border-color: var(--selection-accent);
 }
-#calc-card textarea, #calc-card input:not([type="radio"]):not([type="checkbox"]) {
+.tool-card textarea, .tool-card input:not([type="radio"]):not([type="checkbox"]) {
   transition: border-color .14s ease;
 }
 @media (prefers-reduced-motion: reduce) {
-  #calc-card textarea, #calc-card input:not([type="radio"]):not([type="checkbox"]) { transition: none; }
+  .tool-card textarea, .tool-card input:not([type="radio"]):not([type="checkbox"]) { transition: none; }
 }
 /* The other exception: this heading sits in a flex row whose 12px gap already
    spaces the cards under it, so it pulls back rather than adding a gap of its
@@ -2272,6 +2305,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   box-shadow: 9px 0 10px -11px rgb(0 0 0 / .9);
 }
 .key-tabs > .key-tab.station-tab.active { background: var(--surface); }
+/* Its opaque ground also hides the panel's top border, which every other
+   inactive tab lets show through. Repaint that 1px in the tab's own bottom
+   border so the strip reads as one continuous edge. */
+.key-tabs > .key-tab.station-tab:not(.active) { border-bottom-color: var(--border); }
 .key-tabs > .key-tab.station-tab:not(.active):hover {
   background: color-mix(in oklab, var(--surface-2) 60%, var(--bg));
 }
@@ -2320,9 +2357,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* A warning that guards funds rather than informs: square, edged and titled
    in the alert red. The notice supplies only these three values. */
 .wallet-result-messages.is-danger { --notice-edge: var(--danger-bright); --notice-title: var(--danger-bright); }
-.wallet-result-messages ul { display: grid; gap: var(--space-control); margin: 0; padding-left: 20px; }
-.wallet-result-messages li { color: var(--fg); font-size: 13px; line-height: 1.5; }
-.wallet-result-messages li::marker { color: var(--muted); }
 .address-match-field input { display: block; font-family: var(--mono); }
 .address-match-note { margin: 0; }
 .address-match-field .hint { display: block; margin-top: var(--space-control); }
@@ -2347,8 +2381,13 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .edge-note.is-info { --edge-note-color: var(--accent); }
 /* A note with a title, like the Safety notes list, sets the title the way the
    other notes set their bold lead: body text, not a display heading. */
+/* A tool intro titles the page rather than raising an alarm, so it keeps the
+   plain lettering while warning notes take their edge colour. */
+.tool-intro.edge-note > :is(h2, h3) { color: var(--fg); }
 .edge-note > :is(h2, h3) { margin: 0 0 var(--space-control); font: inherit; font-size: 16px; font-weight: 600; letter-spacing: normal; color: var(--edge-note-color, inherit); }
+.edge-note ul { display: grid; gap: var(--space-control); margin: 0; padding-left: 20px; }
 .edge-note li { font-size: inherit; }
+.edge-note li::marker { color: var(--muted); }
 .account-watch-section, .account-address-section { padding-top: 22px; border-top: 1px solid var(--border); }
 .account-address-lead { display: grid; gap: 10px; justify-items: start; margin-bottom: 22px; }
 .account-address-lead p { margin: 0; }
@@ -2412,16 +2451,19 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* The script type stays one horizontal strip at every width: it never wraps,
    so the shared stacking never engages, and on phones the two SegWit labels
    shorten to fit instead. */
-.key-view-toolbar .segmented-control { flex-wrap: nowrap; width: 100%; }
-.key-view-toolbar .segmented-control > .tab {
-  flex: 1 1 0; min-height: 0; padding: var(--toolbar-row-padding); font-size: var(--toolbar-row-font); font-weight: var(--toolbar-row-weight);
+.key-view-toolbar .segmented-control, .segmented-control.is-wide { flex-wrap: nowrap; width: 100%; }
+/* Two buttons do not need the whole card; phones take the full row back. */
+.segmented-control.is-wide.is-half { max-width: 50%; }
+.key-view-toolbar .segmented-control > .tab, .segmented-control.is-wide > .tab {
+  flex: 1 1 0; min-height: 0; padding: var(--toolbar-row-padding, 10px 14px); font-size: var(--toolbar-row-font, 14px); font-weight: var(--toolbar-row-weight, 600);
 }
 .script-label-short { display: none; }
 @media (max-width: 520px) {
   .script-label-full { display: none; }
   .script-label-short { display: inline; }
-  .key-view-toolbar .segmented-control { width: 100%; }
-  .key-view-toolbar .segmented-control > .tab { flex: 1 1 auto; padding-inline: 4px; }
+  .key-view-toolbar .segmented-control, .segmented-control.is-wide { width: 100%; }
+  .segmented-control.is-wide.is-half { max-width: none; }
+  .key-view-toolbar .segmented-control > .tab, .segmented-control.is-wide > .tab { flex: 1 1 auto; padding-inline: 4px; }
   /* The hint wraps to several lines here; the state label says enough. */
   .privacy-bar-hint { display: none; }
 }

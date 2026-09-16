@@ -117,7 +117,9 @@ test("the Lightning card ships in the shell with its controls", () => {
 });
 
 test("the tab registry and workspace switcher carry the Lightning tool", () => {
-  assert.match(appSource, /\["psbt", "PSBT", "PSBT"\], \["ln", "Lightning", "LN"\], \["journal", "Journal", "Journal"\]/);
+  for (const entry of [/\["psbt", "PSBT", "PSBT"\]/, /\["ln", "Lightning", "LN"\]/, /\["journal", "Journal", "Journal"\]/]) {
+    assert.match(appSource, entry);
+  }
   assert.match(appSource, /getElementById\("ln-card"\)\.hidden = id !== "ln"/);
   assert.match(appSource, /\["bip85", "sp", "msig", "calc", "vanity", "ln"\]\.forEach/);
   assert.match(appSource, /import \{ hodlInitLn, hodlLnWipeMem \} from "\.\/lightning\.js"/);

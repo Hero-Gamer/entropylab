@@ -87,7 +87,7 @@ Guidelines for AI coding agents.
   there.
 - **Copy is content, not contract, until v1.** Safety-critical wording may be
   pinned by a short stable substring ("cannot spend", "offline",
-  "unencrypted") so it cannot quietly vanish. All other copy is asserted only
+  "unencrypted") so it cannot vanish. All other copy is asserted only
   for presence and for a valid translation key, never verbatim. While the app
   is in beta, user-facing copy, layout values and class names are outside
   regression coverage entirely: tests guard derivation, parsing, state,
@@ -100,9 +100,9 @@ Guidelines for AI coding agents.
   by the assertions it would otherwise have to update.
 - **Commit attribution:** all commits must be co-authored with the LLM used
   to generate the code, via a `Co-authored-by:` trailer carrying the model
-  name and a stable noreply email — GitHub credits a co-author only when both
-  are present (`Co-authored-by: Model Name <model-noreply@host>`). Do not
-  spoof this or strip attribution to your clanker — the data is used to
+  name and a stable noreply email — GitHub credits a co-author only when
+  both are present (`Co-authored-by: Model Name <model-noreply@host>`). Do
+  not spoof this or strip attribution to your clanker — the data is used to
   evaluate model performance. If multiple models contributed code, add a
   trailer for each. Commit messages and reviews may be written by humans,
   but any LLM-assisted review must include attribution in the comment
@@ -113,7 +113,7 @@ Guidelines for AI coding agents.
 
 For changes to derivation, parsing, validation, verification, cryptography,
 consensus-sensitive behaviour, scripts, transaction/PSBT handling,
-network-silence, or “we do not invent entropy”:
+network-silence, or "we do not invent entropy":
 
 - State the security contract in one sentence: what must be accepted and what
   must be refused.
@@ -129,9 +129,9 @@ network-silence, or “we do not invent entropy”:
 - Expected results must be established independently of the implementation
   under test. Prefer published BIP / Bitcoin Core vectors, protocol
   specifications, stated rejection conditions, or behaviour already pinned by
-  existing tests in this repository that independently pin the same contract.
-  Never compute the expected answer by running the code under test and copying
-  its output. Do not add a second implementation in the test and compare the two.
+  existing repository tests for the same contract. Never compute the expected
+  answer by running the code under test and copying its output. Do not add a
+  second implementation in the test and compare the two.
 - Include meaningful accepted and rejected inputs where both apply. Cover
   negative cases named in the issue or review; if one is intentionally out of
   scope, explain why in the PR.
@@ -141,5 +141,5 @@ network-silence, or “we do not invent entropy”:
   test/command after the implementation is green.
 
 Documentation-only and presentation-only changes do not need test vectors solely
-to satisfy this section. “When practicable” is not an exemption for the
+to satisfy this section. "When practicable" is not an exemption for the
 security-sensitive changes covered above.

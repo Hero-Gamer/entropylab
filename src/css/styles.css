@@ -147,7 +147,7 @@ button:not(:disabled):active * { color: inherit !important; }
 /* The pitch is a set of discrete claims rather than prose, so it reads as a
    list. The top margin stands in for the paragraph's, and dropping the
    bottom one lets the card's own padding close it out. */
-.pitch-list { display: grid; gap: 7px; margin: var(--space-component) 0 0; padding-left: 20px; }
+.pitch-list { display: grid; gap: var(--space-control); margin: var(--space-control) 0 0; padding-left: 20px; }
 .sources-heading { color: var(--fg); font-size: 1.17rem; }
 /* One step dimmer than the .muted it carries for its size and leading, so
    the closing line sits behind the sources it follows. The emoji row is the
@@ -268,14 +268,6 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 /* On the 18-word coin turn the eight D8 keys become one Tails and one Heads. */
 .dice-input-pad.dplus button.dice-key-wide { grid-column: span 4; }
 .dice-input-pad button[hidden] { display: none; }
-.seed-autocomplete-toggle {
-  display: inline-flex; align-items: center; gap: 9px; min-height: 44px;
-  margin-top: var(--space-component); padding: 9px 12px;
-  border: 1px solid var(--border); border-radius: 10px;
-  background: var(--surface-2); color: var(--fg); font-size: 14px; font-weight: 600; cursor: pointer;
-}
-.seed-autocomplete-toggle input { margin: 0; }
-.seed-autocomplete-note { color: var(--muted); font-weight: 400; }
 /* The card's switch, written once: a checkbox and its title on one row, an
    explanation under both. Borderless, because these read as part of the card
    rather than as chips on it. A component adds only how it sits in its own
@@ -287,8 +279,12 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
    above one zeroes it through the card's own convention, so only these need
    saying. */
 .global-sync-host .switch-row, .passphrase-bip39-options .switch-row, .passphrase-keyboard-tools > .switch-row { margin-top: 0; }
-.switch-toggle { width: 100%; min-height: 24px; margin-top: 0; padding: 0; border: 0; background: none; }
-.switch-note { display: block; margin: 0; font-size: 13px; line-height: 1.45; }
+.switch-toggle {
+  display: inline-flex; align-items: center; gap: 9px; width: 100%; min-height: 24px; margin-top: 0;
+  color: var(--fg); font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.switch-toggle input { margin: 0; }
+.switch-note { display: block; margin: 0; color: var(--muted); font-size: 12px; font-weight: 400; line-height: 1.4; }
 /* Tighter to the dropdown above than to the section below: the control reads
    as part of the method it qualifies. The rule belongs to this section, not to
    the length band under it: Method closes with the line rather than Seed
@@ -501,7 +497,7 @@ label.field { display: block; margin-top: var(--space-component); font-size: 14p
   transition: border-color .14s ease;
 }
 .choice strong { display: block; color: var(--fg); font-weight: 600; }
-.choice .desc { display: block; margin-top: 4px; color: var(--muted); font-size: 13px; line-height: 1.45; font-weight: 400; }
+.choice .desc { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.4; font-weight: 400; }
 .choice:has(input:checked) { border-color: color-mix(in oklab, var(--accent) 55%, var(--border)); }
 .choice:has(input:disabled) { cursor: not-allowed; opacity: 0.52; }
 /* The whole card is the target, so the edge is what answers the pointer. It
@@ -613,7 +609,7 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
 .dice-fairness[data-tone="danger"] .dice-fairness-head strong,
 .dice-fairness-test[data-tone="danger"] .dice-fairness-head strong { color: var(--danger); }
 .dice-fairness-head span { color: var(--muted); font-family: var(--mono); font-size: 12px; }
-.dice-fairness-note, .dice-fairness-caveat { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.dice-fairness-note, .dice-fairness-caveat { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
 .dice-fairness-caveat { margin-top: 12px; }
 /* The empty state is the whole panel: with nothing above it to separate from,
    its 6px lead only unbalances the padding, leaving 18px over 12px. Populated
@@ -741,26 +737,26 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
 .meta-cue.is-error { --meta-cue-ink: var(--danger-bright); }
 .seed-word-copy-row {
   display: flex; align-items: center; justify-content: flex-end; gap: 8px;
-  margin-top: var(--space-component);
+  margin-top: var(--space-component); margin-bottom: var(--space-control);
 }
 /* The seed phrase title owns its row and the copy button trails it, so the
    label hands its own vertical margins to the row and pushes the rest right. */
 .seed-word-copy-row .label { margin: 0; margin-right: auto; }
-.seed-phrase-copied {
-  flex: 0 0 auto; color: var(--ok); font-size: 13px; line-height: 21px; white-space: nowrap;
+.copy-status {
+  flex: 0 0 auto; color: var(--ok); font-size: 12px; line-height: 21px; white-space: nowrap;
 }
-.seed-phrase-copied:empty { display: none; }
-.seed-phrase-copy {
+.copy-status:empty { display: none; }
+.copy-button {
   flex: 0 0 auto; display: grid; place-items: center;
   width: 21px; height: 21px; padding: 0; border: 0; background: transparent; color: var(--faint);
 }
-.seed-phrase-copy svg { display: block; width: 16px; height: 16px; }
+.copy-button svg { display: block; width: 16px; height: 16px; }
 .seed-copy-icon-clip, .seed-copy-icon-board { fill: none; stroke: currentColor; stroke-width: 2; }
-.seed-phrase-copy:disabled { color: var(--faint); cursor: not-allowed; }
-.seed-phrase-copy:not(:disabled) { color: var(--selection-accent); }
-.seed-phrase-copy:not(:disabled):hover { color: var(--accent); }
-.seed-phrase-copy.is-copied, .seed-phrase-copy.is-copied:not(:disabled),
-.seed-phrase-copy.is-copied:not(:disabled):hover { color: var(--ok); }
+.copy-button:disabled { color: var(--faint); cursor: not-allowed; }
+.copy-button:not(:disabled) { color: var(--selection-accent); }
+.copy-button:not(:disabled):hover { color: var(--accent); }
+.copy-button.is-copied, .copy-button.is-copied:not(:disabled),
+.copy-button.is-copied:not(:disabled):hover { color: var(--ok-bright); }
 .dice-word-grid {
   --dice-word-rows: var(--dice-word-rows-wide);
   display: grid; grid-auto-flow: column; grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1129,7 +1125,7 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
 }
 
 input.bad, textarea.bad { border-color: var(--danger) !important; }
-.hint { font-size: 13px; margin: var(--space-control) 0 0; }
+.hint { font-size: 12px; margin: var(--space-control) 0 0; }
 .hint.bad { color: var(--danger); }
 .hint.ok { color: var(--ok); }
 .hint.neutral { color: var(--muted); }
@@ -1202,16 +1198,19 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* The tool's context sits on the panel's own ground above the card, so the
    grey surface starts at the controls rather than at the explanation. */
 .tool-intro { margin: 0 0 var(--space-intro); }
+/* A tool intro that is also a note keeps the seam below it. */
+.tool-intro.edge-note { margin: 0 0 var(--space-intro); }
 .tool-intro[hidden] { display: none; }
-.tool-intro h2 { margin: 5px 0 8px; }
+.tool-intro h2 { margin: var(--space-control) 0; }
 .tool-intro > .muted { max-width: 760px; margin: 0; }
 /* Tools with fixed inner tabs stack their introductions in one grid cell so
    the tab strip starts below the longest copy at the current width. Hidden
    introductions stay invisible, but still set that shared row height. */
-.tool-intro-stack { display: grid; }
+/* Two intros share this slot; only the active one is in the document, so the
+   block is as tall as the text it shows. */
 .tool-intro-stack[hidden] { display: none !important; }
-.tool-intro-stack > .tool-intro { grid-area: 1 / 1; visibility: hidden; }
-.tool-intro-stack > .tool-intro.active { visibility: visible; }
+.tool-intro-stack > .tool-intro { display: none; }
+.tool-intro-stack > .tool-intro.active { display: block; }
 /* A direct intro's 24px bottom margin collapses with .key-manager's 14px top
    and .key-tab-strip's 12px top margins. The grid wrapper prevents that
    collapse, so remove both trailing margins here and keep the same 24px
@@ -1235,15 +1234,13 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-summary-lifehash[hidden] { display: none; }
 .key-summary-text { flex: 1 1 auto; min-width: 0; }
 .key-summary-fingerprint { display: block; font-family: var(--mono); font-weight: 700; letter-spacing: 0.04em; color: var(--fg); }
-.key-summary-meta { margin: 2px 0 0; color: var(--muted); font-size: 13px; line-height: 1.35; }
+.key-summary-meta { margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
 .key-summary-path { font-family: var(--mono); word-break: break-all; }
 .key-tab-lifehash { width: 22px; height: 22px; border-radius: 4px; image-rendering: pixelated; background: #fff; }
 .key-tab.is-lab { font-weight: 700; }
 .key-tab-lab-icon { width: 16px; height: 16px; padding: 0; color: var(--muted); }
 .key-tab-lab-icon svg { display: block; width: 100%; height: 100%; }
-.key-result { margin-top: 16px; }
-.key-result .wallet-result-messages { margin: 0 0 16px; }
-.account-receive-section { margin-top: 0; }
+.key-view { margin-top: var(--space-component); }
 .station-key-source > .label { margin: 0 0 8px; }
 .station-key-source > .field-note { display: block; margin: var(--space-control) 0 0; }
 .msig-key-reuse-toggle { margin-top: var(--space-section); }
@@ -1309,8 +1306,14 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .segmented-control:not(.is-stacked) > .tab:first-child { border-radius: 8px 0 0 8px; }
 .segmented-control:not(.is-stacked) > .tab:last-child { border-radius: 0 8px 8px 0; }
 .segmented-control > .tab:only-child { border-radius: 8px; }
+/* The pressed segment wears the hover grammar one step down: the accent muted
+   toward the border on the edge and kept as the lettering, over a warm tint of
+   the card surface — filled enough to read as chosen, short of solid orange. */
 .segmented-control > .tab:is(.active, [aria-pressed="true"]) {
-  z-index: 1; background: var(--selection-accent); border-color: var(--selection-accent); color: var(--selection-fg);
+  z-index: 1;
+  background: color-mix(in oklab, var(--accent) 8%, var(--surface));
+  border-color: color-mix(in oklab, var(--accent) 70%, var(--border));
+  color: var(--accent);
 }
 .segmented-control > .tab:hover { z-index: 1; }
 .segmented-control > .tab:focus-visible { z-index: 2; }
@@ -1349,7 +1352,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 #journal-card[hidden], #journal-notes-card[hidden], #journal-keymanager-card[hidden], #journal-state-card[hidden], #journal-log-card[hidden] { display: none !important; }
 #journal-card:not([hidden]), #journal-notes-card:not([hidden]), #journal-keymanager-card:not([hidden]), #journal-state-card:not([hidden]), #journal-log-card:not([hidden]) { margin-top: 0; border-radius: 0 0 20px 20px; position: relative; z-index: 1; }
 #journal-locked-panel[hidden], #journal-work-panel[hidden], #journal-create-panel[hidden], #journal-open-panel[hidden], #journal-editor[hidden], #journal-view[hidden] { display: none; }
-.journal-intro { margin: var(--space-control) 0 0; }
 .journal-global-actions { align-items: center; }
 .journal-global-actions .journal-download-action { display: inline-flex; align-items: center; gap: 6px; }
 .journal-status { display: flex; align-items: center; gap: 14px; margin-bottom: var(--space-component); }
@@ -1382,9 +1384,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .journal-create-ready { display: inline-flex; align-items: center; gap: 7px; color: var(--ok); font-size: 13px; font-weight: 700; }
 .journal-create-ready[hidden] { display: none; }
 .journal-create-ready-arrow { display: inline-block; font-size: 18px; line-height: 1; }
-.journal-section-intro { margin: 0 0 var(--space-intro); }
-.journal-section-intro h2 { margin: 5px 0 8px; }
-.journal-section-intro > .muted { max-width: 760px; margin: 0; }
 #journal-tool-tabs .key-tab:disabled,
 #journal-tool-tabs .key-tab:disabled:hover {
   background: transparent; color: var(--faint); opacity: .52; cursor: not-allowed;
@@ -1525,29 +1524,52 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   .vanity-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 }
 .vanity-grid > [hidden] { display: none; }
+/* The required characters read as the first term of a formula, with the free
+   ones typed after it. */
+.vanity-prefix-row { display: flex; flex-wrap: nowrap; align-items: stretch; gap: 8px; width: 100%; margin: var(--space-component) 0 var(--space-section); }
+/* Every column carries a title, the operators an empty one, so the symbols sit
+   on the same line as the values without a hand-tuned offset. */
+.vanity-formula-col { display: flex; flex: 1 1 0; min-width: 0; flex-direction: column; justify-content: flex-start; align-items: center; gap: 4px; }
+.vanity-formula-col.vanity-formula-op { flex: 0 0 auto; }
+/* The shared label, with its block margins dropped so the columns stay level.
+   The operators carry an empty one, which still needs a line box to hold the
+   row open. */
+.vanity-formula-title { margin: 0; white-space: nowrap; }
+.vanity-formula-title:empty::before { content: "\00a0"; }
+/* Values share one band, so they sit level whatever their own height. */
+.vanity-prefix-fixed, .vanity-prefix-plus, .vanity-prefix-result { display: flex; align-items: center; justify-content: center; min-height: 44px; }
+.vanity-prefix-fixed { max-width: 100%; white-space: nowrap; font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--muted); }
+.vanity-prefix-result {
+  max-width: 100%; overflow-x: auto; white-space: nowrap;
+  font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--accent);
+}
+.vanity-prefix-plus { flex: 0 0 auto; color: var(--muted); font-size: 14px; }
+.vanity-prefix-row input:not([type="radio"]):not([type="checkbox"]) { width: 100%; min-width: 0; margin-top: 0; text-align: center; }
 .vanity-secret { display: inline-flex; align-items: center; gap: 6px; }
-.vanity-secret .seed-phrase-copy { flex: 0 0 auto; }
+.vanity-secret .copy-button { flex: 0 0 auto; }
 /* The selected key, restated where the grind reads from it: which key, what
    kind, and its starting passphrase verbatim. */
+/* The selected key reads, it does not take input: square and edgeless on the
+   same ground the key view's summary bar uses. The border stays unpainted so
+   nothing shifts by a pixel. */
 .vanity-source {
   padding: 14px 16px 16px;
-  border: 1px solid color-mix(in oklab, var(--selection-accent) 45%, var(--border)); border-radius: 12px;
-  background: color-mix(in oklab, var(--selection-accent) 6%, var(--surface));
+  border: 1px solid transparent;
+  background: color-mix(in oklab, var(--surface-2) 28%, var(--bg));
 }
-.vanity-source[hidden] { display: none; }
+.vanity-source-block[hidden] { display: none; }
+.vanity-source-block > .label { margin-top: 0; }
 .vanity-source-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
-.vanity-source-kicker { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--selection-accent); font-weight: 600; }
 .vanity-source-key { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 14px; font-weight: 600; }
 .vanity-source-key code { font-family: var(--mono); }
-.vanity-source-head .muted { font-size: 13px; }
-.vanity-source label.field { margin-top: var(--space-control); }
-.vanity-source-from { color: var(--muted); font-weight: 400; }
-.vanity-source #vanity-pass { color: var(--fg); background: var(--bg); cursor: text; }
+.vanity-source-head .muted { font-size: 12px; }
+.vanity-source > .label { margin-top: var(--space-section); }
+.vanity-source #vanity-pass { margin: 0; color: var(--fg); overflow-wrap: anywhere; }
 .vanity-apply-cell { white-space: nowrap; }
-.vanity-key { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+.vanity-key { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; white-space: nowrap; }
 .vanity-key code { font-family: var(--mono); }
-.vanity-apply { min-height: 36px; padding: 4px 12px; font-size: 13px; }
-.vanity-saved { display: inline-flex; align-items: center; gap: 6px; color: var(--ok-bright); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.vanity-apply { min-height: 36px; padding: 4px 12px; font-size: 12px; }
+.vanity-saved { display: inline-flex; align-items: center; gap: 6px; color: var(--ok-bright); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .vanity-saved svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 .psbt-kv { font-family: var(--mono); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
 .psbt-ok { color: var(--ok); }
@@ -1755,6 +1777,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   box-shadow: 0 16px 36px rgb(0 0 0 / 55%);
 }
 .addr-qr-title { margin: 0 0 var(--space-control); font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
+.addr-qr-image { cursor: pointer; }
 .addr-qr-image svg { width: 220px; height: 220px; }
 /* The address copies on a click, on the text or the icon trailing it; the
    icon is the shared copy button, and the text lights with it on hover. */
@@ -1779,47 +1802,52 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-form { margin-top: var(--space-section); }
 .key-form > :first-child { margin-top: 0; }
 .key-form > .muted { margin: var(--space-control) 0 0; }
-/* Inside this card a title owns the space beneath it: the gap is set once, by
-   the label's margin-bottom, and whatever follows adds nothing of its own.
+/* Inside this card a title owns the space beneath it: the gap comes from the
+   label's own margin-bottom and whatever follows adds nothing of its own.
    The card used to spell this out one pairing at a time (.label + .muted,
    .label + textarea), so anything without its own pairing kept whatever
    margin-top it happened to carry — 8px under some titles, 16px under the
    word grid. Scoped to this card: the rest of the page still mixes the two
-   conventions, and unpicking that belongs in its own pass. */
-#calc-card .label { margin-bottom: var(--space-control); }
+   conventions, and unpicking that belongs in its own pass. The gap itself is
+   not restated here: an id outranks the pairing rules that tighten a label
+   above its own description, which would then lose inside this card alone. */
 #calc-card .label + * { margin-top: 0; }
 /* Text starts lower under a title than a box does: .muted carries a 1.5 line
    height, so roughly 3.5px of half-leading sits above its first line and a
    full 8px reads wider than the same 8px above a bordered control. The label
    hands that back, keeping it the one thing that owns the gap. Optical, not
-   layout: the text lands where a control would, not the box around it. */
-#calc-card .label:has(+ :is(.seed-word-meta, .address-match-note, .wallet-dat-birthday-help, .script-type-description)) { margin-bottom: 4px; }
+   layout: the text lands where a control would, not the box around it. Text
+   written to sit directly under a label carries .label-description. */
+.label:has(+ .label-description) { margin-bottom: 4px; }
+.label + .label-description { margin-top: 0; }
 /* The exception: a checkbox's own text is not a heading over content. It sits
    inside the control, on one line with the box, so it owns no gap either side.
    The components above already say margin: 0; this repeats it only to outrank
    the convention, which an id lets win over their plain class selectors. */
-#calc-card .seed-autocomplete-toggle .label { margin: 0; color: var(--muted); }
+.tool-card .switch-toggle .label { margin: 0; color: var(--muted); }
 /* Grey at rest across the card, like the Harden qualifiers and the accordion
    toggles: a checkbox offers an option rather than naming a field, so it sits
    a step back until the pointer arrives. Set on the control as well as on the
    label class, because some of these title themselves with a bare <strong>
    that inherits and others with a .label that sets its own colour. */
-#calc-card .seed-autocomplete-toggle { color: var(--muted); }
-#calc-card .seed-autocomplete-toggle:hover,
-#calc-card .seed-autocomplete-toggle:hover .label { color: var(--fg); }
+.tool-card .switch-toggle { color: var(--muted); }
+.tool-card .switch-toggle:hover,
+.tool-card .switch-toggle:hover .label { color: var(--fg); }
 /* The fields rest on the page ground already, so the fill half of the shared
    hover has nowhere to go: the edge is what answers the pointer, as it does on
-   the method cards. A field flagged invalid keeps its red — that rule carries
-   !important — and a disabled one says nothing. */
-#calc-card textarea:not(:disabled):hover,
-#calc-card input:not([type="radio"]):not([type="checkbox"]):not(:disabled):hover {
+   the method cards. Scoped to the tool cards rather than to one of them, so a
+   field answers the pointer the same way whichever tool it sits in. A field
+   flagged invalid keeps its red — that rule carries !important — and one that
+   is disabled or readonly says nothing, having nothing to offer. */
+.tool-card textarea:not(:disabled):not([readonly]):hover,
+.tool-card input:not([type="radio"]):not([type="checkbox"]):not(:disabled):not([readonly]):hover {
   border-color: var(--selection-accent);
 }
-#calc-card textarea, #calc-card input:not([type="radio"]):not([type="checkbox"]) {
+.tool-card textarea, .tool-card input:not([type="radio"]):not([type="checkbox"]) {
   transition: border-color .14s ease;
 }
 @media (prefers-reduced-motion: reduce) {
-  #calc-card textarea, #calc-card input:not([type="radio"]):not([type="checkbox"]) { transition: none; }
+  .tool-card textarea, .tool-card input:not([type="radio"]):not([type="checkbox"]) { transition: none; }
 }
 /* The other exception: this heading sits in a flex row whose 12px gap already
    spaces the cards under it, so it pulls back rather than adding a gap of its
@@ -1916,6 +1944,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    the same either way — set on the summary itself — so opening the section
    moves the fields in without shifting the toggle. */
 :is(.derivation-advanced, .key-group, .wallet-advanced)[open] > summary { color: var(--fg); }
+/* A key view group is a row, not a word: the whole line answers the pointer,
+   so there is no dead space beside the title. */
+.key-group > summary { display: flex; width: auto; min-height: 36px; }
 .derivation-advanced-fields { display: grid; gap: var(--space-component); margin-bottom: var(--space-control); }
 /* These title their inputs the way the rest of the card does. The control
    below each already carries the 8px, so the title takes only the size, weight
@@ -1970,7 +2001,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .derivation-harden {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   padding: 0; border: 0; background: none;
-  color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer;
+  color: var(--muted); font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer;
 }
 /* Grey at rest, like the accordion toggles: it qualifies the field rather than
    naming one, and at the title's own weight and colour the two competed for
@@ -2056,7 +2087,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .msig-import[open] summary { margin-bottom: var(--space-component); color: var(--fg); }
 .msig-import textarea { min-height: 72px; }
 .msig-import .btn { margin-top: var(--space-control); }
-.msig-intro { margin: var(--space-control) 0 0; }
 .msig-threshold-control {
   --msig-slider-inset: 14px;
   min-width: 0; margin: var(--space-control) 0 0; padding: 16px 18px 14px;
@@ -2182,17 +2212,14 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   .msig-threshold-number { flex: 0 0 auto; width: 56px !important; min-width: 56px; height: 40px; min-height: 40px !important; font-size: 16px; }
   .msig-threshold-ticks { font-size: 9px; }
 }
-.tool-intro-note { margin: var(--space-control) 0 0; }
 .psbt-grid { margin-top: var(--space-component); }
 .psbt-grid > .field, .psbt-grid > div > .field:first-child { margin-top: 0; }
-.bip85-intro { margin: var(--space-control) 0 0; }
 .bip85-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 14px; margin-top: var(--space-component); }
 .bip85-grid .field[hidden] { display: none !important; }
 @media (min-width: 720px) {
   .bip85-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .bip85-grid > .field { margin-top: 0; }
 }
-.ln-intro { margin: var(--space-control) 0 0; }
 .ln-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 14px; margin-top: var(--space-component); }
 .ln-grid .field[hidden] { display: none !important; }
 @media (min-width: 720px) {
@@ -2278,14 +2305,15 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   box-shadow: 9px 0 10px -11px rgb(0 0 0 / .9);
 }
 .key-tabs > .key-tab.station-tab.active { background: var(--surface); }
+/* Its opaque ground also hides the panel's top border, which every other
+   inactive tab lets show through. Repaint that 1px in the tab's own bottom
+   border so the strip reads as one continuous edge. */
+.key-tabs > .key-tab.station-tab:not(.active) { border-bottom-color: var(--border); }
 .key-tabs > .key-tab.station-tab:not(.active):hover {
   background: color-mix(in oklab, var(--surface-2) 60%, var(--bg));
 }
 .key-tab.is-lab { font-weight: 700; }
 .key-tab:focus-visible { outline-offset: -3px; }
-#acct .account-result-card {
-  margin-top: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
-}
 .wallet-data-section { margin-top: 20px; }
 .wallet-data-section-head h3 { margin: 0 0 5px; }
 .wallet-data-section-head .muted { margin: 0; }
@@ -2293,7 +2321,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   padding: 16px; border: 1px solid color-mix(in oklab, var(--warn) 38%, var(--border));
   border-radius: 14px; background: color-mix(in oklab, var(--warn) 5%, var(--bg));
 }
-.wallet-public-section { padding-top: 18px; border-top: 1px solid var(--border); }
 .wallet-data-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: var(--space-section); }
 .reveal-private-toggle {
   display: inline-flex; align-items: center; gap: 9px; min-height: 44px; padding: 9px 12px;
@@ -2324,43 +2351,43 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .wallet-birthday-field > .label { margin-top: 0; }
 .wallet-result-messages {
   margin-top: 18px; padding: 14px 16px; border: 1px solid var(--notice-edge, color-mix(in oklab, var(--warn) 42%, var(--border)));
-  border-radius: var(--notice-radius, 12px); background: color-mix(in oklab, var(--warn) 6%, var(--bg));
+  background: color-mix(in oklab, var(--warn) 6%, var(--bg));
 }
 .wallet-result-messages h3 { margin: 0 0 8px; color: var(--notice-title, inherit); }
 /* A warning that guards funds rather than informs: square, edged and titled
    in the alert red. The notice supplies only these three values. */
-.wallet-result-messages.is-danger { --notice-edge: var(--danger-bright); --notice-radius: 0; --notice-title: var(--danger-bright); }
-.wallet-result-messages ul { display: grid; gap: 7px; margin: 0; padding-left: 20px; }
-.wallet-result-messages li { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.wallet-result-messages.is-danger { --notice-edge: var(--danger-bright); --notice-title: var(--danger-bright); }
 .address-match-field input { display: block; font-family: var(--mono); }
 .address-match-note { margin: 0; }
 .address-match-field .hint { display: block; margin-top: var(--space-control); }
-.wallet-result-messages li.is-warning { color: var(--fg); }
-.wallet-result-messages li.is-warning::marker { color: var(--warn); }
 .wallet-data-fields { margin-top: var(--space-component); }
 .wallet-data-fields > :first-child { margin-top: 0; }
 .wallet-data-fields > :last-child { margin-bottom: 0; }
 .wallet-data-subtitle { margin: 20px 0 6px; color: var(--fg); font-family: var(--sans); font-size: 14px; font-weight: 700; }
 .account-result-section { margin-top: 24px; }
 .account-result-section > .wallet-data-section-head { margin-bottom: 16px; }
-.account-private-section {
-  padding: 18px; border: 1px solid color-mix(in oklab, var(--blue) 38%, var(--border));
-  border-radius: 14px; background: color-mix(in oklab, var(--blue) 5%, var(--bg));
-}
 /* A note in the flow with a coloured left edge: red in a group holding data
    the privacy bar can hide (the groups with the eye), green everywhere else.
    Each note supplies only its colour. */
 .edge-note {
   margin: var(--space-component) 0 0; padding: 12px 14px; border: 0; border-left: 3px solid var(--edge-note-color, var(--border));
   font-size: 14px; line-height: 1.5;
-  border-radius: 0 8px 8px 0; background: color-mix(in oklab, var(--blue) 8%, var(--bg));
+  /* Lift the ground a little before tinting it: on pure black a mix this
+     faint is invisible, and on pure white it has nowhere to go. */
+  background: color-mix(in oklab, var(--edge-note-color, var(--border)) 8%, color-mix(in oklab, var(--fg) 7%, var(--bg)));
 }
 .edge-note.is-private { --edge-note-color: var(--danger-bright); }
 .edge-note.is-public { --edge-note-color: var(--ok-bright); }
+.edge-note.is-info { --edge-note-color: var(--accent); }
 /* A note with a title, like the Safety notes list, sets the title the way the
    other notes set their bold lead: body text, not a display heading. */
-.edge-note > h3 { margin: 0 0 4px; font: inherit; font-weight: 700; letter-spacing: normal; color: inherit; }
+/* A tool intro titles the page rather than raising an alarm, so it keeps the
+   plain lettering while warning notes take their edge colour. */
+.tool-intro.edge-note > :is(h2, h3) { color: var(--fg); }
+.edge-note > :is(h2, h3) { margin: 0 0 var(--space-control); font: inherit; font-size: 16px; font-weight: 600; letter-spacing: normal; color: var(--edge-note-color, inherit); }
+.edge-note ul { display: grid; gap: var(--space-control); margin: 0; padding-left: 20px; }
 .edge-note li { font-size: inherit; }
+.edge-note li::marker { color: var(--muted); }
 .account-watch-section, .account-address-section { padding-top: 22px; border-top: 1px solid var(--border); }
 .account-address-lead { display: grid; gap: 10px; justify-items: start; margin-bottom: 22px; }
 .account-address-lead p { margin: 0; }
@@ -2380,7 +2407,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .wallet-table tbody tr:not(.address-virtual-spacer) { height: 34px; }
 .wallet-table tbody tr:not(.address-virtual-spacer) > * { white-space: nowrap; }
 .wallet-table .address-virtual-spacer, .wallet-table .address-virtual-spacer td { padding: 0; border: 0; line-height: 0; }
-.wallet-address-table + .wallet-data-subtitle { margin-top: var(--space-section); }
 @media (max-width: 520px) {
   .derive-progress { order: 3; flex-basis: 100%; }
 }
@@ -2425,16 +2451,19 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* The script type stays one horizontal strip at every width: it never wraps,
    so the shared stacking never engages, and on phones the two SegWit labels
    shorten to fit instead. */
-.key-view-toolbar .segmented-control { flex-wrap: nowrap; }
-.key-view-toolbar .segmented-control > .tab {
-  min-height: 0; padding: var(--toolbar-row-padding); font-size: var(--toolbar-row-font); font-weight: var(--toolbar-row-weight);
+.key-view-toolbar .segmented-control, .segmented-control.is-wide { flex-wrap: nowrap; width: 100%; }
+/* Two buttons do not need the whole card; phones take the full row back. */
+.segmented-control.is-wide.is-half { max-width: 50%; }
+.key-view-toolbar .segmented-control > .tab, .segmented-control.is-wide > .tab {
+  flex: 1 1 0; min-height: 0; padding: var(--toolbar-row-padding, 10px 14px); font-size: var(--toolbar-row-font, 14px); font-weight: var(--toolbar-row-weight, 600);
 }
 .script-label-short { display: none; }
 @media (max-width: 520px) {
   .script-label-full { display: none; }
   .script-label-short { display: inline; }
-  .key-view-toolbar .segmented-control { width: 100%; }
-  .key-view-toolbar .segmented-control > .tab { flex: 1 1 auto; padding-inline: 4px; }
+  .key-view-toolbar .segmented-control, .segmented-control.is-wide { width: 100%; }
+  .segmented-control.is-wide.is-half { max-width: none; }
+  .key-view-toolbar .segmented-control > .tab, .segmented-control.is-wide > .tab { flex: 1 1 auto; padding-inline: 4px; }
   /* The hint wraps to several lines here; the state label says enough. */
   .privacy-bar-hint { display: none; }
 }
@@ -2462,10 +2491,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .key-group.is-revealed > summary { color: var(--danger-bright); }
 .privacy-bar-state { color: var(--fg); font-weight: var(--toolbar-row-weight); }
-.privacy-bar-hint { font-size: 13px; }
+.privacy-bar-hint { font-size: 12px; }
 .privacy-bar.is-revealed {
   border-color: var(--danger-bright);
-  background: color-mix(in oklab, var(--danger-bright) 18%, var(--surface));
+  background: color-mix(in oklab, var(--danger-bright) 10%, var(--surface));
   color: var(--danger-bright);
 }
 .privacy-bar.is-revealed .privacy-bar-state { color: var(--danger-bright); }
@@ -2527,7 +2556,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   .key-panel-head > div:first-child { grid-column: 1 / -1; grid-row: 2; width: 100%; }
   .key-panel-head > .delete-key { grid-column: 2; grid-row: 1; justify-self: end; }
   .wallet-private-section { padding: 13px; }
-  .account-private-section { padding: 14px; }
   .wallet-data-actions { align-items: stretch; }
   .wallet-data-actions > * { width: 100%; justify-content: center; }
   /* The tools' closing button groups wrap into ragged lines here, each control

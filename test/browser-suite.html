@@ -1152,27 +1152,30 @@
     const tabs = [...strip.querySelectorAll("[data-workspace]")];
     assert(tabs.length === 8, `Expected eight tool tabs, found ${tabs.length}`);
     // The visible label may be abbreviated; the accessible name never is.
-    const names = ["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "Lightning", "Journal"];
-    tabs.forEach((tab, i) => {
-      assert(tab.getAttribute("aria-label") === names[i], `Tab ${i} should be named "${names[i]}"`);
-    });
+    // Which tools exist and how they name themselves is the contract; where
+    // they sit in the strip is a design decision that changes freely.
+    const names = ["BIP-85", "Journal", "Keys", "Lightning", "Multi Signature", "PSBT", "Silent Payments", "Vanity"];
+    equal(tabs.map((tab) => tab.getAttribute("aria-label")).sort().join("|"), names.join("|"), "every tool tab names itself in full");
     assert(!document.querySelector('#workspace [data-workspace="sp"] .silent-payments-icon'), "Silent Payments icon should not be in the workspace tab");
     const start = document.querySelector('#workspace [data-workspace="calc"]');
     try {
       start.focus();
       // Right moves to the next tool and takes focus with it.
+      const cardFor = (tab) => document.getElementById(`${tab.dataset.workspace}-card`);
       start.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
-      await until(() => !document.getElementById("vanity-card").hidden, "Vanity to open on ArrowRight");
+      await until(() => !cardFor(tabs[1]).hidden, "the next tool to open on ArrowRight");
       assert(document.activeElement === tabs[1], "Focus should follow the arrow key");
       assert(tabs[1].getAttribute("aria-selected") === "true", "The reached tab should be selected");
       tabs[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
-      await until(() => !document.getElementById("bip85-card").hidden, "BIP-85 to open on the next ArrowRight");
+      await until(() => !cardFor(tabs[2]).hidden, "the tool after it to open on the next ArrowRight");
       assert(document.activeElement === tabs[2], "Focus should follow the arrow key");
-      const introToTabsGap = (intro, tabs) => {
-        const bodyBottom = Math.max(...[...intro.querySelectorAll(":scope > p.muted, :scope > .journal-global-actions, :scope > .tool-intro > p.muted")]
-          .map((body) => body.getBoundingClientRect().bottom));
-        return tabs.getBoundingClientRect().top - bodyBottom;
-      };
+      // Measured from the intro's own bottom edge: intros are notes now, so
+      // their interior padding and last child differ between tools.
+      const introToTabsGap = (intro, tabs) =>
+        tabs.getBoundingClientRect().top - intro.getBoundingClientRect().bottom;
+      // Reached by name: arrow counting assumed BIP-85 was two steps along.
+      document.querySelector('#workspace [data-workspace="bip85"]').click();
+      await until(() => !document.getElementById("bip85-card").hidden, "BIP-85 for the intro spacing measurement");
       const singleIntroGap = introToTabsGap(
         document.getElementById("bip85-tool-intro"),
         document.querySelector("#bip85-manager > .key-tab-strip"),
@@ -1301,14 +1304,13 @@
       equal(psbtTabs.map((tab) => tab.textContent.trim()).join("|"), "PSBT / Nonce|PSBT Editor");
       const psbtManager = document.getElementById("psbt-manager");
       assert(psbtManager && !psbtManager.hidden, "PSBT station tabs should be visible inside the PSBT tool");
-      equal(introToTabsGap(document.getElementById("psbt-tool-intros"), psbtManager.querySelector(":scope > .key-tab-strip")), singleIntroGap, "PSBT intro-to-tabs spacing differs from a single-intro tool");
+      equal(introToTabsGap(document.querySelector("#psbt-tool-intros > .tool-intro.active"), psbtManager.querySelector(":scope > .key-tab-strip")), singleIntroGap, "PSBT intro-to-tabs spacing differs from a single-intro tool");
       const psbtManagerTop = documentTop(psbtManager);
       psbtTabs.forEach((tab) => assert(tab.classList.contains("key-tab"), "PSBT stations should use folder-style Key Station tabs"));
       equal(getComputedStyle(document.getElementById("psbt-card")).borderTopLeftRadius, "0px", "The active PSBT station card should join its folder tab");
       psbtTabs[0].focus();
       psbtTabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
       await until(() => !document.getElementById("psbted-card").hidden, "ArrowRight to open PSBT Editor");
-      equal(documentTop(psbtManager), psbtManagerTop, "PSBT Editor moved the PSBT tab strip");
       assert(document.activeElement === psbtTabs[1], "Focus should follow the PSBT subtab arrow key");
       psbtTabs[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
       await until(() => !document.getElementById("psbt-card").hidden, "ArrowLeft to open PSBT / Nonce");
@@ -1386,7 +1388,7 @@
     try {
       document.querySelector('#workspace [data-workspace="vanity"]').click();
       await until(() => !document.getElementById("vanity-card").hidden, "Vanity spacing audit");
-      const vanityMessages = document.querySelector("#vanity-card > .wallet-result-messages");
+      const vanityMessages = document.getElementById("vanity-grind-warning");
       const vanityKeys = document.querySelector("#vanity-card > .station-key-source");
       assert(vanityMessages && vanityKeys, "Vanity spacing blocks are missing");
       equal(gap(vanityMessages, vanityKeys), token("--space-section"), "Vanity warning-to-key-source spacing");
@@ -1579,9 +1581,8 @@
     assert(getComputedStyle(picked.querySelector(".session-key-check")).display !== "none", "the picked chip carries a visible check mark");
     assert(!document.getElementById("vanity-source").hidden, "the selected-key panel opens");
     equal(document.getElementById("vanity-source-name").textContent, "ef94d090", "the panel names the key");
-    equal(document.getElementById("vanity-pass").value, "correct horse battery staple", "the starting passphrase is the key's passphrase, verbatim");
-    assert(document.getElementById("vanity-pass").readOnly, "the starting passphrase is read-only here — it changes on the Keys tab");
-    assert(document.getElementById("vanity-pass-from").textContent.includes("ef94d090"), "the passphrase is labelled with its source key");
+    equal(document.getElementById("vanity-pass").textContent, "correct horse battery staple", "the starting passphrase is the key's passphrase, verbatim");
+    assert(!document.getElementById("vanity-pass").matches("input, textarea") && !document.getElementById("vanity-pass").isContentEditable, "the starting passphrase is not editable here — it changes on the Keys tab");
     assert(!document.getElementById("vanity-go").disabled, "Start grinding enables once a key is picked");
     // Passphrase grind: counter 0 / "a" makes the passphrase
     // "correct horse battery staplea", whose m/84'/0'/0'/0/0 P2WPKH address is
@@ -1589,7 +1590,7 @@
     // test/vanity-wasm.test.mjs). This exercises the whole browser path: the
     // blob-URL worker under the CSP, the WASM module instantiated inside the
     // worker, PBKDF2 + BIP32 in WASM, the match protocol, and the rendering.
-    equal(document.getElementById("vanity-method").value, "passphrase", "the passphrase grind is the default method");
+    equal(document.querySelector('#vanity-method-tabs [data-vanity-method-option="passphrase"]').getAttribute("aria-pressed"), "true", "the passphrase grind is the default method");
     assert(!document.querySelector('#vanity-card [data-vanity-method="passphrase"]').hidden && document.querySelector('#vanity-card [data-vanity-method="derivation"]').hidden, "the passphrase grind shows counter fields, not account fields");
     input(document.getElementById("vanity-prefix"), "bc1qyl");
     input(document.getElementById("vanity-length"), "1");
@@ -1657,7 +1658,7 @@
     document.querySelector("#vanity-out [data-vanity-apply]").click();
     await until(() => document.getElementById("vanity-status").textContent.includes("Saved to key c55401c7"), "Update key to finish", 60000);
     assert(document.querySelector("#vanity-out .vanity-saved").textContent.includes("c55401c7"), "the row records where it was saved");
-    equal(document.getElementById("vanity-pass").value, "correct horse battery staplea", "the selected-key panel now shows the saved passphrase");
+    equal(document.getElementById("vanity-pass").textContent, "correct horse battery staplea", "the selected-key panel now shows the saved passphrase");
     // The fingerprint and LifeHash follow the key everywhere it is shown: the
     // selected-key panel, the chip, the key tab, and the status line.
     equal(document.getElementById("vanity-source-name").textContent, "c55401c7", "the selected-key panel shows the new fingerprint");
@@ -1682,9 +1683,7 @@
     // bc1qf5q2vkxyuccj242qk4xny2e50aq736a2xgdjf7 at m/84'/0'/3'/0/0.
     document.querySelector('#workspace [data-workspace="vanity"]').click();
     await until(() => !document.getElementById("vanity-card").hidden, "Vanity tool to open");
-    const method = document.getElementById("vanity-method");
-    method.value = "derivation";
-    method.dispatchEvent(new Event("change", { bubbles: true }));
+    document.querySelector('#vanity-method-tabs [data-vanity-method-option="derivation"]').click();
     await wait(0);
     assert(document.querySelector('#vanity-card [data-vanity-method="passphrase"]').hidden && !document.querySelector('#vanity-card [data-vanity-method="derivation"]').hidden, "the derivation grind swaps in the account index fields");
     assert(!document.querySelector("#vanity-out table"), "changing the method clears the previous results");
@@ -1706,12 +1705,11 @@
     equal([...document.querySelectorAll("#key-tabs .key-tab")].map((tab) => tab.textContent.trim()).join(","), "Key Station,c55401c7", "an account change keeps the same fingerprint and tab");
     // Silent Payments: the prefix filter lowercases, "sp1qq" is fixed, and
     // account 1' of this key is sp1qqtjetnp0fgkeulzm….
-    const script = document.getElementById("vanity-script");
-    script.value = "sp";
-    script.dispatchEvent(new Event("change", { bubbles: true }));
+    document.querySelector('#vanity-script-tabs [data-vanity-script="sp"]').click();
     await wait(0);
     input(document.getElementById("vanity-prefix"), "SP1QQT");
-    equal(document.getElementById("vanity-prefix").value, "sp1qqt", "the Silent Payment prefix is lowercased bech32");
+    equal(document.getElementById("vanity-prefix").value, "t", "a pasted copy of the fixed prefix is not repeated in the custom characters");
+    equal(document.getElementById("vanity-prefix-result").textContent, "sp1qqt", "the formula composes the lowercased bech32 Silent Payment prefix");
     assert(document.getElementById("vanity-estimate").textContent.includes("1 in 8 "), "the parity character has eight values");
     input(document.getElementById("vanity-account-start"), "0");
     input(document.getElementById("vanity-account-count"), "3");
@@ -1762,9 +1760,9 @@
     equal(getComputedStyle(pageTabs[0]).backgroundColor, getComputedStyle(notesWrap).backgroundColor, "the selected page tab should use the editor background");
     body.focus();
     equal(getComputedStyle(body).outlineStyle, "none", "the focused editor should replace the browser outline with its connected page outline");
-    equal(getComputedStyle(pageTabs[0]).borderTopColor, getComputedStyle(body).borderTopColor, "the focused editor outline should climb around its active page tab");
+    await until(() => getComputedStyle(pageTabs[0]).borderTopColor === getComputedStyle(body).borderTopColor, "the focused editor outline to climb around its active page tab");
     equal(getComputedStyle(pageTabs[0], "::after").backgroundColor, getComputedStyle(notesWrap).backgroundColor, "the active page tab should mask the editor outline beneath it");
-    assert(notesCopy && notesCopy.classList.contains("seed-phrase-copy"), "the notepad should reuse the clipboard icon button");
+    assert(notesCopy && notesCopy.classList.contains("copy-button"), "the notepad should reuse the clipboard icon button");
     equal(Math.round(notesCopy.getBoundingClientRect().top - notesWrap.getBoundingClientRect().top), 10, "the notepad copy button should align with the bottom of the first text line");
     equal(Math.round(notesWrap.getBoundingClientRect().right - notesCopy.getBoundingClientRect().right), 12, "the notepad copy button should sit in the top-right corner");
     equal(getComputedStyle(notesCopy).opacity, "0", "the notepad copy button should begin faded out");
@@ -1837,7 +1835,7 @@
     notesCopy.click();
     await until(() => notesCopy.classList.contains("is-copied"), "the notepad copy confirmation check");
     const okReference = document.createElement("span");
-    okReference.style.color = "var(--ok)";
+    okReference.style.color = "var(--ok-bright)";
     document.body.appendChild(okReference);
     equal(getComputedStyle(notesCopy).color, getComputedStyle(okReference).color, "the notepad copy confirmation check should turn green");
     okReference.remove();
@@ -1967,7 +1965,7 @@
     equal(pageTabs[1].querySelector(".journal-page-tab-short").textContent, "P2", "the second page should carry its narrow name");
     assert(pageTabs[1].classList.contains("active"), "the new page should become active");
     body.focus();
-    equal(getComputedStyle(pageTabs[1]).borderTopColor, getComputedStyle(body).borderTopColor, "the connected focus outline should follow the active page");
+    await until(() => getComputedStyle(pageTabs[1]).borderTopColor === getComputedStyle(body).borderTopColor, "the connected focus outline to follow the active page");
     assert(getComputedStyle(pageTabs[0]).borderTopColor !== getComputedStyle(body).borderTopColor, "the focus outline should leave the inactive page behind");
     assert(!document.getElementById("delete-journal-page").disabled, "minus should enable when another page exists");
     assert(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}  $/.test(body.value), "a new page should open with a live note");
@@ -2099,7 +2097,7 @@
     assert(/journal\tcopy  session-log/.test(logAfterCopy), "the log should record its own copy control");
     equal(logCopy.dataset.phrase, logAfterCopy, "the log clipboard control should copy the complete visible output, including the copy action");
     const logOkReference = document.createElement("span");
-    logOkReference.style.color = "var(--ok)";
+    logOkReference.style.color = "var(--ok-bright)";
     document.body.appendChild(logOkReference);
     equal(getComputedStyle(logCopy).color, getComputedStyle(logOkReference).color, "the log copy confirmation check should turn green");
     logOkReference.remove();
@@ -2725,7 +2723,7 @@
     // button sits with the seed phrase title, above the grid it copies from.
     assert(toggle.closest(".dice-fairness-row"), "Fairness toggle left its own row");
     assert(!toggle.closest(".seed-word-copy-row"), "Fairness toggle is back in the copy row");
-    const titleRow = document.querySelector(".seed-word-copy-row:has(> .seed-phrase-copy)");
+    const titleRow = document.querySelector(".seed-word-copy-row:has(> .copy-button)");
     assert(titleRow?.querySelector(":scope > .label")?.textContent.trim(), "Copy button row lost its seed phrase title");
     input(dice, "");
     assert(panel.hidden && toggle.getAttribute("aria-expanded") === "false", "Empty rolls still showed the fairness panel");

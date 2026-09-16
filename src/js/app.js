@@ -641,15 +641,11 @@ function hodlRenderKeyResult() {
   }
   if (hodlWalletResult.kind === "single") {
     let t = hodlWalletResult;
-    hodlOutEl.innerHTML = `<div class="key-result">${hodlSingleWalletData(t)}</div>`;
+    hodlOutEl.innerHTML = hodlSingleWalletData(t);
     hodlWatchKeyGroups();
   } else {
     let t = hodlWalletResult, r = t.accounts.find((o) => o.def.id === hodlAccountId) ?? t.accounts.find((o) => o.def.id === "bip84") ?? t.accounts[0];
-    hodlOutEl.innerHTML = `
-      <div class="key-result">
-        ${hodlHdWalletData(t, '<div id="acct" class="key-groups-slot"></div>')}
-      </div>
-    `;
+    hodlOutEl.innerHTML = hodlHdWalletData(t, '<div id="acct" class="key-groups-slot"></div>');
     let n = hodlElement("#acct-tabs");
     t.accounts.forEach((o) => {
       let i = document.createElement("button");
@@ -784,7 +780,7 @@ function hodlWatchOnlyMultipathDescriptor(receiveDescriptor, branches = [0, 1]) 
 function hodlDescriptorQrSvg(payload) {
   return hodlUqrRenderSvg(payload, { ecc: "M", border: 4, pixelSize: 4, blackColor: "#111111", whiteColor: "#ffffff" });
 }
-function hodlWatchOnlyDescriptorExport(receiveDescriptor, changeDescriptor, addressBranches = null, labelClass = "muted", collapsible = true) {
+function hodlWatchOnlyDescriptorExport(receiveDescriptor, changeDescriptor, addressBranches = null, { labelClass = "label", collapsible = true } = {}) {
   let branches = (addressBranches?.length ? addressBranches : [
     { branch: 0, label: "Receive", publicDescriptor: receiveDescriptor },
     { branch: 1, label: "Change", publicDescriptor: changeDescriptor }
@@ -1018,7 +1014,7 @@ function hodlAccountAddressBranches(account) {
     { branch: 1, role: "change", label: "Change", rows: account?.change || [], publicDescriptor: account?.changeDescriptor, privateDescriptor: account?.changeDescriptorPriv }
   ].filter((entry) => entry.rows.length || entry.publicDescriptor || entry.privateDescriptor);
 }
-function hodlAddressBranchDescriptorFields(branches, isPrivate = false, labelClass = "muted") {
+function hodlAddressBranchDescriptorFields(branches, isPrivate = false, labelClass = "label") {
   return branches.map((branch) => {
     let descriptor = isPrivate ? branch.privateDescriptor : branch.publicDescriptor;
     if (!descriptor) return "";
@@ -1038,7 +1034,7 @@ function hodlAddressBranchTables(branches, includeWif, prefix) {
 function hodlAddressBranchVirtualConfigs(branches, includeWif, prefix) {
   return branches.map((branch) => ({ key: hodlAddressBranchKey(prefix, branch.branch), rows: branch.rows, includeWif }));
 }
-function hodlAccountAdvancedExports(account, includePrivate = false, labelClass = "muted") {
+function hodlAccountAdvancedExports(account, includePrivate = false, labelClass = "label") {
   if (!account.hasAlternateExport) return "";
   let privateExport = includePrivate && account.genericPrivate ? hodlPrivateFieldHtml("Generic {name} for descriptor compatibility", account.genericPrivate, { name: account.genericPrivateLabel }, labelClass) : "";
   let publicExport = !includePrivate && account.genericPublic ? hodlPublicFieldHtml("Generic {name} for descriptor compatibility", account.genericPublic, { name: account.genericPublicLabel }, labelClass) : "";
@@ -1060,11 +1056,11 @@ function hodlImportedCoreRecoveryData(wallet, account) {
 function hodlImportedCoreRecoveryExport(wallet, account) {
   let data = hodlImportedCoreRecoveryData(wallet, account);
   if (!data) return "";
-  return `<div class="wallet-data-fields imported-core-recovery"><p class="label">Bitcoin Core recovery export</p><p class="muted">The SLIP-132 prefix records the script type. The Core key above is the same payload with generic version bytes; this descriptor keeps the script type explicit and stays on the conventional receive/change branches for Bitcoin Core.</p>${hodlPublicFieldHtml(data.descriptorLabel, data.descriptor, void 0, "label")}</div>`;
+  return `<div class="wallet-data-fields imported-core-recovery"><p class="label">Bitcoin Core recovery export</p><p class="muted">The SLIP-132 prefix records the script type. The Core key above is the same payload with generic version bytes; this descriptor keeps the script type explicit and stays on the conventional receive/change branches for Bitcoin Core.</p>${hodlPublicFieldHtml(data.descriptorLabel, data.descriptor)}</div>`;
 }
 function hodlRenderMultisigCosignerExport(exports, accountId) {
   let items = Array.isArray(exports) ? exports.filter((candidate) => candidate.accountId === accountId) : [];
-  return items.map((item) => hodlPublicFieldHtml("Multisig co-signer {prefix} · {label}", item.value, { prefix: item.prefix, label: item.label }, "label")).join("");
+  return items.map((item) => hodlPublicFieldHtml("Multisig co-signer {prefix} · {label}", item.value, { prefix: item.prefix, label: item.label })).join("");
 }
 function hodlNormalizeAddressCheck(value){
   let text=String(value??"").trim();
@@ -1106,7 +1102,7 @@ function hodlAddressCheckRows(){
 }
 function hodlAddressMatchMarkup(){
   return `<div class="address-match-field"><p class="label" id="address-match-label">Check an address</p>
-    <p class="muted address-match-note" id="address-match-note">Paste an address shown by another wallet. A match means that wallet computed the same selected branch and derivation, even if the index is beyond the table above.</p>
+    <p class="muted label-description address-match-note" id="address-match-note">Paste an address shown by another wallet. A match means that wallet computed the same selected branch and derivation, even if the index is beyond the table above.</p>
     <input id="address-match" aria-labelledby="address-match-label" aria-describedby="address-match-note" autocomplete="off" spellcheck="false" placeholder="Paste bc1\u2026 or a 1\u2026 / 3\u2026 address">
     <span class="hint" id="address-match-status" role="status"></span>
   </div>`
@@ -1268,7 +1264,7 @@ function hodlBindAddressVirtualization(configs = []) {
     render();
   });
 }
-function hodlSlip132Fields(account, wallet, isPrivate = false, labelClass = "muted") {
+function hodlSlip132Fields(account, wallet, isPrivate = false, labelClass = "label") {
   let pasted = isPrivate ? (wallet?.importedPrivateKey || "") : (wallet?.importedPublicKey || "");
   let core = (isPrivate ? account.genericPrivate : account.genericPublic) || "";
   let coreLabel = isPrivate ? account.genericPrivateLabel : account.genericPublicLabel;
@@ -1283,7 +1279,7 @@ function hodlSlip132Fields(account, wallet, isPrivate = false, labelClass = "mut
   return parts.join("");
 }
 function hodlSlip132WatchFields(account, wallet) {
-  return hodlSlip132Fields(account, wallet, false, "label");
+  return hodlSlip132Fields(account, wallet, false);
 }
 function hodlShowAccount(id) {
   if (!hodlWalletResult || hodlWalletResult.kind !== "hd") return;
@@ -1297,18 +1293,18 @@ function hodlShowAccount(id) {
   // carry each address, its path and its QR code, so no separate receive group
   // repeats the first one. The pressed script type button names the account.
   let privateGroup = hasPrivate ? hodlKeyGroupMarkup("account-private", `${hodlT("Account private key exports")}${hodlPrivacyEyeMarkup()}`, `<p class="edge-note is-private account-private-warning"><strong>${hodlT("These exports can spend from this account.")}</strong> ${hodlT("They are shown only for a seed or extended private-key source.")} ${hodlT("Keep these exports together only in secure offline backups. An account extended public key combined with any non-hardened descendant private key, including a WIF shown in the address tables, can reconstruct that account's extended private key.")}</p>
-      ${hodlSlip132Fields(account, hodlWalletResult, true, "label")}
-      ${hodlAddressBranchDescriptorFields(branches, true, "label")}
-      ${hodlAccountAdvancedExports(account, true, "label")}`, hodlRevealPrivate ? "is-private is-revealed" : "is-private") : "";
+      ${hodlSlip132Fields(account, hodlWalletResult, true)}
+      ${hodlAddressBranchDescriptorFields(branches, true)}
+      ${hodlAccountAdvancedExports(account, true)}`, hodlRevealPrivate ? "is-private is-revealed" : "is-private") : "";
   hodlElement("#acct").innerHTML = `
-        ${hodlKeyGroupMarkup("hd-addresses", hasPrivate ? `${hodlT("Addresses")}${hodlPrivacyEyeMarkup()}` : hodlT("Addresses"), `<p class="edge-note is-public">${hodlT("Verify the first selected address on another trusted wallet or signing device before accepting bitcoin.")}</p>${hasPrivate ? `<p class="edge-note is-private"><strong>${hodlT("When private data is visible, these tables also show the WIF private key for each address.")}</strong> ${hodlT("Anyone who sees or copies a WIF can spend what that address holds.")}</p>` : ""}${hodlScriptBeginnerTexts[account.def.id] ? `<p class="label">${hodlT("Script type:")} <span class="label-value">${hodlScriptUiLabel(account.def)}</span></p><p class="muted script-type-description">${hodlScriptBeginner(account.def)}</p>` : ""}${hodlAddressBranchTables(branches, hasPrivate, "hd")}${hodlAddressMatchMarkup()}`, hasPrivate ? hodlRevealPrivate ? "is-private is-revealed" : "is-private" : "")}
+        ${hodlKeyGroupMarkup("hd-addresses", hasPrivate ? `${hodlT("Addresses")}${hodlPrivacyEyeMarkup()}` : hodlT("Addresses"), `<p class="edge-note is-public">${hodlT("Verify the first selected address on another trusted wallet or signing device before accepting bitcoin.")}</p>${hasPrivate ? `<p class="edge-note is-private"><strong>${hodlT("When private data is visible, these tables also show the WIF private key for each address.")}</strong> ${hodlT("Anyone who sees or copies a WIF can spend what that address holds.")}</p>` : ""}${hodlScriptBeginnerTexts[account.def.id] ? `<p class="label">${hodlT("Script type:")} <span class="label-value">${hodlScriptUiLabel(account.def)}</span></p><p class="muted label-description script-type-description">${hodlScriptBeginner(account.def)}</p>` : ""}${hodlAddressBranchTables(branches, hasPrivate, "hd")}${hodlAddressMatchMarkup()}`, hasPrivate ? hodlRevealPrivate ? "is-private is-revealed" : "is-private" : "")}
         ${privateGroup}
         ${hodlKeyGroupMarkup("watch", hodlT("Watch-only exports"), `<p class="edge-note is-public watch-only-note">${hodlT("<strong>Cannot spend:</strong> these exports can monitor every address and reveal this account's transaction history and balance. Treat them as privacy-sensitive.")}</p>
         ${hodlSlip132WatchFields(account, hodlWalletResult)}
         ${hodlImportedCoreRecoveryExport(hodlWalletResult, account)}
         ${hodlRenderMultisigCosignerExport(hodlWalletResult.multisigCosignerExports, account.def.id)}
-        ${hodlWatchOnlyDescriptorExport(account.receiveDescriptor, account.changeDescriptor, branches, "label", false)}
-        ${hodlAccountAdvancedExports(account, false, "label")}`, "account-watch-section")}`;
+        ${hodlWatchOnlyDescriptorExport(account.receiveDescriptor, account.changeDescriptor, branches, { collapsible: false })}
+        ${hodlAccountAdvancedExports(account, false)}`, "account-watch-section")}`;
   hodlBindAddressVirtualization(hodlAddressBranchVirtualConfigs(branches, hasPrivate, "hd"));
   hodlBindAddressMatch();
   hodlBindWalletResultActions();
@@ -1317,7 +1313,7 @@ function hodlShowAccount(id) {
 // optional placeholder values); the helper translates with the text view and
 // escapes for its HTML slot. That keeps raw translation calls out of template
 // interpolations and keeps the literals extractable by scripts/i18n-sync.mjs.
-function hodlPublicFieldHtml(label, value, vars, labelClass = "muted") {
+function hodlPublicFieldHtml(label, value, vars, labelClass = "label") {
   let labelHtml = hodlEscapeHtml(hodlTText(label, vars));
   return `<p><span class="${labelClass}">${labelHtml}</span><br><span class="mono">${hodlEscapeHtml(value ?? "\u2014")}</span></p>`;
 }
@@ -1327,7 +1323,7 @@ function hodlPrivateValue(value, className = "secret private-field-value") {
   let bullets = "\u2022".repeat(Math.max(Array.from(text).length, mask.length));
   return `<span class="${className} secret-placeholder"><span class="secret-placeholder-mask" aria-hidden="true">${bullets}</span><span class="secret-placeholder-message" aria-hidden="true">${mask}</span><span class="secret-placeholder-label">${hodlT("Private value hidden")}</span></span>`;
 }
-function hodlPrivateFieldHtml(label, value, vars, labelClass = "muted") {
+function hodlPrivateFieldHtml(label, value, vars, labelClass = "label") {
   let labelHtml = hodlEscapeHtml(hodlTText(label, vars));
   return `<p class="private-field"><span class="${labelClass}">${labelHtml}</span>${hodlPrivateValue(value)}</p>`;
 }
@@ -1366,7 +1362,7 @@ function hodlWalletDatBirthdayField() {
   // keys created at this moment and skips past history (faster, and reveals
   // no older activity to anyone who later sees the file). If a loaded wallet
   // looks empty, repair it in Bitcoin Core with `rescanblockchain 0`.
-  return `<div class="wallet-birthday-field"><p class="label" id="wallet-dat-birthday-label">${hodlT("Wallet birthday")}</p><p class="muted wallet-dat-birthday-help" id="wallet-dat-birthday-help">${hodlT("Bitcoin Core only auto-scans history back to the birthday. Choose “New keys” only for entropy created right now; recovering older keys with today's birthday can look empty until you run <code>rescanblockchain 0</code> in Bitcoin Core.")}</p><select data-wallet-dat-birthday aria-labelledby="wallet-dat-birthday-label" aria-describedby="wallet-dat-birthday-help"><option value="genesis"${hodlWalletDatBirthday === "genesis" ? " selected" : ""}>${hodlT("Recovering keys · scan from genesis")}</option><option value="now"${hodlWalletDatBirthday === "now" ? " selected" : ""}>${hodlT("New keys · created today")}</option></select></div>`;
+  return `<div class="wallet-birthday-field"><p class="label" id="wallet-dat-birthday-label">${hodlT("Wallet birthday")}</p><p class="muted label-description wallet-dat-birthday-help" id="wallet-dat-birthday-help">${hodlT("Bitcoin Core only auto-scans history back to the birthday. Choose “New keys” only for entropy created right now; recovering older keys with today's birthday can look empty until you run <code>rescanblockchain 0</code> in Bitcoin Core.")}</p><select data-wallet-dat-birthday aria-labelledby="wallet-dat-birthday-label" aria-describedby="wallet-dat-birthday-help"><option value="genesis"${hodlWalletDatBirthday === "genesis" ? " selected" : ""}>${hodlT("Recovering keys · scan from genesis")}</option><option value="now"${hodlWalletDatBirthday === "now" ? " selected" : ""}>${hodlT("New keys · created today")}</option></select></div>`;
 }
 function hodlSaveRecoveryControl() {
   return `<div class="wallet-data-actions no-print">${hodlWalletDatBirthdayField()}<button class="btn secondary green save-recovery-sheet" id="save" type="button">${hodlT("Save watch-only sheet")}</button>${hodlWalletDatControl(false)}</div>`;
@@ -1438,14 +1434,14 @@ function hodlSingleLeadAddress(wallet) {
 // reach a format another wallet needs. Only receiving starts open. The
 // recovery sheet is an action rather than data, so it is never folded away.
 function hodlSingleWalletData(wallet) {
-  let miniKey = wallet.minikey ? hodlPrivateFieldHtml("Mini private key", wallet.minikey) : "", lead = hodlSingleLeadAddress(wallet);
+  let miniKey = wallet.minikey ? hodlPrivateFieldHtml("Mini private key", wallet.minikey, void 0, "muted") : "", lead = hodlSingleLeadAddress(wallet);
   // Canonical order for the list; the lead is lifted out of it into Receive.
   let addressFields = {
-    p2pkhUncompressed: hodlPublicFieldHtml("Legacy uncompressed", wallet.p2pkhUncompressed),
-    p2pkhCompressed: hodlPublicFieldHtml("Legacy compressed", wallet.p2pkhCompressed),
-    p2shP2wpkh: hodlPublicFieldHtml("Nested SegWit", wallet.p2shP2wpkh),
-    p2wpkh: hodlPublicFieldHtml("Native SegWit", wallet.p2wpkh),
-    p2tr: hodlPublicFieldHtml("Taproot", wallet.p2tr),
+    p2pkhUncompressed: hodlPublicFieldHtml("Legacy uncompressed", wallet.p2pkhUncompressed, void 0, "muted"),
+    p2pkhCompressed: hodlPublicFieldHtml("Legacy compressed", wallet.p2pkhCompressed, void 0, "muted"),
+    p2shP2wpkh: hodlPublicFieldHtml("Nested SegWit", wallet.p2shP2wpkh, void 0, "muted"),
+    p2wpkh: hodlPublicFieldHtml("Native SegWit", wallet.p2wpkh, void 0, "muted"),
+    p2tr: hodlPublicFieldHtml("Taproot", wallet.p2tr, void 0, "muted"),
   };
   return `<div class="key-view single-key-view">
     ${hodlWalletMessages(wallet, "single")}
@@ -1453,8 +1449,8 @@ function hodlSingleWalletData(wallet) {
     <div class="key-groups">
       ${hodlKeyGroupMarkup("receive", hodlT("Receive address"), `${addressFields[lead]}<div class="qr" aria-label="${hodlTAttr("Receive address QR code")}">${hodlQrSvg(wallet[lead])}</div>`)}
       ${hodlKeyGroupMarkup("addresses", hodlT("Other address formats"), Object.keys(addressFields).filter((key) => key !== lead).map((key) => addressFields[key]).join(""))}
-      ${hodlKeyGroupMarkup("private", `${hodlT("Private key")}${hodlPrivacyEyeMarkup()}`, `${hodlPrivateFieldHtml("WIF compressed", wallet.wifCompressed)}${hodlPrivateFieldHtml("WIF uncompressed", wallet.wifUncompressed)}${hodlPrivateFieldHtml("Hex private key", wallet.privHex)}${miniKey}`, hodlRevealPrivate ? "is-private is-revealed" : "is-private")}
-      ${hodlKeyGroupMarkup("public", hodlT("Public keys"), `${hodlPublicFieldHtml("Compressed public key", wallet.pubkeyCompressed)}${hodlPublicFieldHtml("Uncompressed public key", wallet.pubkeyUncompressed)}`)}
+      ${hodlKeyGroupMarkup("private", `${hodlT("Private key")}${hodlPrivacyEyeMarkup()}`, `${hodlPrivateFieldHtml("WIF compressed", wallet.wifCompressed, void 0, "muted")}${hodlPrivateFieldHtml("WIF uncompressed", wallet.wifUncompressed, void 0, "muted")}${hodlPrivateFieldHtml("Hex private key", wallet.privHex, void 0, "muted")}${miniKey}`, hodlRevealPrivate ? "is-private is-revealed" : "is-private")}
+      ${hodlKeyGroupMarkup("public", hodlT("Public keys"), `${hodlPublicFieldHtml("Compressed public key", wallet.pubkeyCompressed, void 0, "muted")}${hodlPublicFieldHtml("Uncompressed public key", wallet.pubkeyUncompressed, void 0, "muted")}`)}
     </div>
     ${hodlPrivateDataControls("single-private-description", "single")}
   </div>`;
@@ -1464,18 +1460,18 @@ function hodlHdWalletData(wallet, accountMarkup = "") {
   if (wallet.mnemonic) privateFields.push(hodlSeedPhraseField(`Your seed phrase \xB7 ${wallet.mnemonic.trim().split(/\s+/).length} words`, wallet.mnemonic), hodlSeedQrExport(wallet.mnemonic, { passphraseUsed: wallet.passphraseUsed, entropyHex: wallet.entropyHex }));
   // The passphrase sits right under the words it belongs to: without it the
   // words recover a different wallet, so it is recovery material too.
-  if (wallet.mnemonic && wallet.passphraseUsed && wallet.passphrase) privateFields.push(hodlPrivateFieldHtml("BIP39 passphrase", wallet.passphrase, void 0, "label"));
-  if (wallet.entropyHex) privateFields.push(hodlPrivateFieldHtml("BIP39 entropy hex", wallet.entropyHex, void 0, "label"));
-  if (wallet.seedHex) privateFields.push(hodlPrivateFieldHtml("Master seed hex", wallet.seedHex, void 0, "label"));
-  if (wallet.rootXprv) privateFields.push(hodlPrivateFieldHtml(`Root ${wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName}`, wallet.rootXprv, void 0, "label"));
-  if (wallet.importedPrivateKey) privateFields.push(hodlPrivateFieldHtml(`Imported ${wallet.importedPrivateLabel || "extended private key"}`, wallet.importedPrivateKey, void 0, "label"));
+  if (wallet.mnemonic && wallet.passphraseUsed && wallet.passphrase) privateFields.push(hodlPrivateFieldHtml("BIP39 passphrase", wallet.passphrase));
+  if (wallet.entropyHex) privateFields.push(hodlPrivateFieldHtml("BIP39 entropy hex", wallet.entropyHex));
+  if (wallet.seedHex) privateFields.push(hodlPrivateFieldHtml("Master seed hex", wallet.seedHex));
+  if (wallet.rootXprv) privateFields.push(hodlPrivateFieldHtml(`Root ${wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName}`, wallet.rootXprv));
+  if (wallet.importedPrivateKey) privateFields.push(hodlPrivateFieldHtml(`Imported ${wallet.importedPrivateLabel || "extended private key"}`, wallet.importedPrivateKey));
   let hasAccountPrivate = wallet.accounts.some(hodlAccountHasPrivate), hasPrivate = privateFields.length > 0 || hasAccountPrivate;
   let source = wallet.mnemonic ? "" : `<p><span class="label">Source</span><br><span>Imported extended ${hasPrivate ? "private" : "public"} key; no seed phrase was entered.</span></p>`;
-  let fingerprint = wallet.masterFingerprint ? hodlPublicFieldHtml("Master fingerprint", wallet.masterFingerprint, void 0, "label") : "";
-  let parentFingerprint = !wallet.masterFingerprint && wallet.parentFingerprint ? hodlPublicFieldHtml("Encoded parent fingerprint (not a master fingerprint)", wallet.parentFingerprint, void 0, "label") : "";
-  let nodeFingerprint = !wallet.masterFingerprint && wallet.nodeFingerprint ? hodlPublicFieldHtml("Imported key fingerprint (not a master fingerprint)", wallet.nodeFingerprint, void 0, "label") : "";
-  let rootPublic = wallet.rootXpub ? hodlPublicFieldHtml("Root {name}", wallet.rootXpub, { name: wallet.rootPublicLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.pubName }, "label") : "";
-  let importedPublic = wallet.importedPublicKey ? hodlPublicFieldHtml("Imported {name}", wallet.importedPublicKey, { name: wallet.importedPublicLabel || hodlTText("extended public key") }, "label") : "";
+  let fingerprint = wallet.masterFingerprint ? hodlPublicFieldHtml("Master fingerprint", wallet.masterFingerprint) : "";
+  let parentFingerprint = !wallet.masterFingerprint && wallet.parentFingerprint ? hodlPublicFieldHtml("Encoded parent fingerprint (not a master fingerprint)", wallet.parentFingerprint) : "";
+  let nodeFingerprint = !wallet.masterFingerprint && wallet.nodeFingerprint ? hodlPublicFieldHtml("Imported key fingerprint (not a master fingerprint)", wallet.nodeFingerprint) : "";
+  let rootPublic = wallet.rootXpub ? hodlPublicFieldHtml("Root {name}", wallet.rootXpub, { name: wallet.rootPublicLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.pubName }) : "";
+  let importedPublic = wallet.importedPublicKey ? hodlPublicFieldHtml("Imported {name}", wallet.importedPublicKey, { name: wallet.importedPublicLabel || hodlTText("extended public key") }) : "";
   // The toolbar holds the script type and the privacy bar, and sticks under the
   // header as one piece. Below it: what recovers the wallet, what identifies it,
   // the selected script type, and the wallet-wide exports closing the card.
@@ -3759,19 +3755,19 @@ function hodlRenderPassphraseInputState(input, enabled = hodlPassphraseBip39Enab
     if (enabled) {
       if (invalid) {
         status.textContent = hodlTText(analysis.invalidRanges.length === 1 ? "{n} passphrase inconsistency highlighted · use complete lowercase English BIP39 words separated by single spaces" : "{n} passphrase inconsistencies highlighted · use complete lowercase English BIP39 words separated by single spaces", { n: analysis.invalidRanges.length });
-        status.className = "muted passphrase-bip39-status err";
+        status.className = "field-note passphrase-bip39-status err";
       } else if (analysis.incomplete) {
         status.textContent = hodlTText(analysis.completeWords === 1 ? "{n} complete BIP39 word · finish the current word" : "{n} complete BIP39 words · finish the current word", { n: analysis.completeWords });
-        status.className = "muted passphrase-bip39-status";
+        status.className = "field-note passphrase-bip39-status";
       } else if (analysis.trailingSeparator) {
         status.textContent = hodlTText(analysis.completeWords === 1 ? "{n} complete BIP39 word · start the next word or remove the final space" : "{n} complete BIP39 words · start the next word or remove the final space", { n: analysis.completeWords });
-        status.className = "muted passphrase-bip39-status";
+        status.className = "field-note passphrase-bip39-status";
       } else if (input.value) {
         status.textContent = hodlTText(analysis.completeWords === 1 ? "{n} lowercase BIP39 passphrase word entered" : "{n} lowercase BIP39 passphrase words entered", { n: analysis.completeWords });
-        status.className = "muted passphrase-bip39-status ok";
+        status.className = "field-note passphrase-bip39-status ok";
       } else {
         status.textContent = hodlTText("Use complete lowercase English BIP39 words separated by single spaces.");
-        status.className = "muted passphrase-bip39-status";
+        status.className = "field-note passphrase-bip39-status";
       }
     }
   }
@@ -3822,7 +3818,7 @@ function hodlPassphraseKeyboardToggleMarkup() {
 }
 function hodlPassphraseBip39ToggleMarkup(checked = hodlPassphraseBip39Enabled()) {
   let autocomplete = hodlPassphraseAutocompleteEnabled();
-  return `<div class="passphrase-bip39-options"><div class="switch-row"><label class="seed-autocomplete-toggle switch-toggle passphrase-bip39-toggle"><input type="checkbox" id="passphrase-bip39-words" aria-describedby="passphrase-bip39-note" ${checked ? "checked" : ""} /><span class="label">Build passphrase from BIP39 words</span></label><p class="seed-autocomplete-note switch-note" id="passphrase-bip39-note">lowercase words separated by single spaces</p></div><label class="seed-autocomplete-toggle switch-toggle passphrase-autocomplete-toggle" id="passphrase-autocomplete-control"${checked ? "" : " hidden"}><input type="checkbox" id="passphrase-autocomplete" ${autocomplete ? "checked" : ""} /><span class="label">Autocomplete BIP39 words</span></label></div>`;
+  return `<div class="passphrase-bip39-options"><div class="switch-row"><label class="switch-toggle passphrase-bip39-toggle"><input type="checkbox" id="passphrase-bip39-words" aria-describedby="passphrase-bip39-note" ${checked ? "checked" : ""} /><span class="label">Build passphrase from BIP39 words</span></label><p class="switch-note" id="passphrase-bip39-note">lowercase words separated by single spaces</p></div><label class="switch-toggle passphrase-autocomplete-toggle" id="passphrase-autocomplete-control"${checked ? "" : " hidden"}><input type="checkbox" id="passphrase-autocomplete" ${autocomplete ? "checked" : ""} /><span class="label">Autocomplete BIP39 words</span></label></div>`;
 }
 function hodlBrainWalletTrimEnabled() {
   return Boolean(document.getElementById("brain-wallet-trim")?.checked);
@@ -4083,7 +4079,7 @@ function hodlBrainOutputMarkup(output = "scalar", acked = hodlBrainAcked(output)
       <label class="choice"><input type="radio" name="bo" value="scalar" ${hd ? "" : "checked"} /><span><strong>Single key pair</strong><span class="desc">The digest is the private key. One address, the original brain-wallet behaviour.</span></span></label>
       <label class="choice"><input type="radio" name="bo" value="hd" ${hd ? "checked" : ""} /><span><strong>HD wallet with seed phrase</strong><span class="desc">The digest is 256-bit BIP39 entropy for a 24-word seed. Not the same wallet as the single key pair.</span></span></label>
     </div>
-    <div class="wallet-result-messages is-danger" id="brain-warning" role="alert">
+    <div class="edge-note is-private" id="brain-warning" role="alert">
       <h3>Brain wallet warning — read before use</h3>
       <ul>
         <li class="is-warning">SHA-256(text) is unsalted and fast. Guessable phrases are stolen coins.</li>
@@ -4096,8 +4092,8 @@ function hodlBrainOutputMarkup(output = "scalar", acked = hodlBrainAcked(output)
     </div>
     ${hodlSwitchRowMarkup("brain-lab-ack", hodlT("I understand"), { note: hodlT("Required once this session, in page memory only."), checked: acked })}
     <div id="brain-lab-zone" ${hd ? "" : "hidden"}>
-      <p class="muted" id="brain-lab-help">UTF-8 text is hashed with SHA-256. The 32-byte digest is BIP39 entropy for a 24-word seed. Nothing is derived until you press Derive Key.</p>
-      <p class="muted" id="brain-lab-hex" aria-live="polite">SHA-256 hex appears here. 24 words appear only after Derive Key.</p>
+      <p class="field-note" id="brain-lab-help">UTF-8 text is hashed with SHA-256. The 32-byte digest is BIP39 entropy for a 24-word seed. Nothing is derived until you press Derive Key.</p>
+      <p class="field-note" id="brain-lab-hex" aria-live="polite">SHA-256 hex appears here. 24 words appear only after Derive Key.</p>
     </div>
   </div>`;
 }
@@ -4696,7 +4692,7 @@ function hodlManualCalculationMarkup(method, value, targetWords = hodlTargetWord
 // component supplies only its id, its words, and how the row sits: a class
 // for its container, and whether it starts hidden.
 function hodlSwitchRowMarkup(id, label, { note = "", checked = false, rowClass = "", hidden = false } = {}) {
-  return `<div class="switch-row${rowClass ? ` ${rowClass}` : ""}"${hidden ? " hidden" : ""}><label class="seed-autocomplete-toggle switch-toggle"><input type="checkbox" id="${id}"${note ? ` aria-describedby="${id}-note"` : ""}${checked ? " checked" : ""} /><span class="label">${label}</span></label>${note ? `<p class="seed-autocomplete-note switch-note" id="${id}-note">${note}</p>` : ""}</div>`;
+  return `<div class="switch-row${rowClass ? ` ${rowClass}` : ""}"${hidden ? " hidden" : ""}><label class="switch-toggle"><input type="checkbox" id="${id}"${note ? ` aria-describedby="${id}-note"` : ""}${checked ? " checked" : ""} /><span class="label">${label}</span></label>${note ? `<p class="switch-note" id="${id}-note">${note}</p>` : ""}</div>`;
 }
 // The "Show calculations" switch and the panel it opens, shared by every
 // method that can show its working. The row ships hidden, because a fresh
@@ -5054,7 +5050,7 @@ function hodlGlobalSyncControlMarkup(state) {
     syncUnknown = Boolean(syncBits) && reported === hodlGlobalSyncUnknownBits,
     syncShort = Boolean(syncBits) && !syncUnknown && effectiveBits < hodlGlobalSyncMinimumBits(),
     caution = syncUnknown ? hodlT("entropy unknown · only as strong as the text") : hodlT("{n} bits of entropy · under {min}", { n: effectiveBits, min: hodlGlobalSyncMinimumBits() });
-  return `<div class="switch-row"><div class="global-sync-head"><label class="seed-autocomplete-toggle switch-toggle global-sync-toggle"><input type="checkbox" id="global-entropy-sync" aria-describedby="global-sync-note" ${state?.globalSync ? "checked" : ""} /><span class="label">${hodlT("Sync entropy across methods")}</span></label><span class="global-sync-status" id="global-sync-status" aria-live="polite" ${state?.globalSync && syncBits ? "" : "hidden"}>${hodlCopiedIconMarkup()}<span>${hodlT("Key synced")}</span>${syncShort || syncUnknown ? `<span class="global-sync-shortfall">${hodlSyncWarningIconMarkup()}<span>${caution}</span></span>` : ""}</span></div><p class="seed-autocomplete-note switch-note" id="global-sync-note">${hodlT("Keeps non-hashed methods synchronized. Hashed inputs update them one way and are never overwritten.")}</p></div>`;
+  return `<div class="switch-row"><div class="global-sync-head"><label class="switch-toggle global-sync-toggle"><input type="checkbox" id="global-entropy-sync" aria-describedby="global-sync-note" ${state?.globalSync ? "checked" : ""} /><span class="label">${hodlT("Sync entropy across methods")}</span></label><span class="global-sync-status" id="global-sync-status" aria-live="polite" ${state?.globalSync && syncBits ? "" : "hidden"}>${hodlCopiedIconMarkup()}<span>${hodlT("Key synced")}</span>${syncShort || syncUnknown ? `<span class="global-sync-shortfall">${hodlSyncWarningIconMarkup()}<span>${caution}</span></span>` : ""}</span></div><p class="switch-note" id="global-sync-note">${hodlT("Keeps non-hashed methods synchronized. Hashed inputs update them one way and are never overwritten.")}</p></div>`;
 }
 function hodlRenderGlobalSyncControl() {
   let host = document.getElementById("global-sync-host"), state = hodlKeys[hodlActiveKey];
@@ -5095,7 +5091,7 @@ function hodlCopiedIconMarkup() {
 // The progress line, with room at its right for a control that belongs to the
 // field below it, the way the passphrase keyboard toggle sits above its input.
 function hodlSeedMetaRowMarkup(metaId, live = false, trailing = "") {
-  return `<div class="seed-word-meta"><p class="muted" id="${metaId}"${live ? ' aria-live="polite"' : ""}></p>${trailing}</div>`;
+  return `<div class="seed-word-meta label-description"><p class="muted" id="${metaId}"${live ? ' aria-live="polite"' : ""}></p>${trailing}</div>`;
 }
 // A dice progress line is a stack of short sentences, each carrying at most one
 // live number. The number takes colour and weight from whether the target is
@@ -5162,11 +5158,11 @@ function hodlDerivedSeedRowMarkup() {
   return hodlSeedPhraseRowMarkup(hodlT("Derived seed phrase"));
 }
 function hodlSeedCopyRowMarkup(leading = "") {
-  return `<div class="seed-word-copy-row">${leading}<span class="seed-phrase-copied" aria-live="polite"></span><button type="button" class="seed-phrase-copy" data-copy-seed-phrase disabled aria-label="${hodlT("Copy seed phrase")}" title="${hodlT("Copy seed phrase")}">${hodlClipboardIconMarkup()}</button></div>`;
+  return `<div class="seed-word-copy-row">${leading}<span class="copy-status" aria-live="polite"></span><button type="button" class="copy-button" data-copy-seed-phrase disabled aria-label="${hodlT("Copy seed phrase")}" title="${hodlT("Copy seed phrase")}">${hodlClipboardIconMarkup()}</button></div>`;
 }
 function hodlShowSeedPhraseCopied(button) {
   if (!button) return;
-  let note = button.closest(".seed-word-copy-row")?.querySelector(".seed-phrase-copied");
+  let note = button.closest(".seed-word-copy-row")?.querySelector(".copy-status");
   if (note) note.textContent = hodlTText("Copied");
   button.classList.add("is-copied");
   button.innerHTML = hodlCopiedIconMarkup();
@@ -5492,13 +5488,13 @@ function hodlRenderKeyForm() {
         <label class="choice"><input type="radio" name="card-method" value="direct" ${direct ? "checked" : ""} /><span><strong>${hodlT("Direct word selection")}</strong><span class="desc">${hodlT("Ignore suits. Reshuffle and draw A–8, A–8, A–8, then A–4 for each full word. Finish with the shorter rank sequence shown for the checksum-valid final word.")}</span></span></label>
       </div>
       <p class="muted" id="cards-help">${inputHelp}</p>
-      ${direct ? "" : `<div class="switch-row"><label class="seed-autocomplete-toggle switch-toggle"><input type="checkbox" id="cards-ian-coleman" aria-describedby="cards-ian-coleman-note" ${hodlCardColemanSymbols ? "checked" : ""} /><span class="label">Match Ian Coleman method</span></label><p class="seed-autocomplete-note switch-note" id="cards-ian-coleman-note">show and hash A\u2660 2\u2663 instead of As 2c</p></div>`}
+      ${direct ? "" : `<div class="switch-row"><label class="switch-toggle"><input type="checkbox" id="cards-ian-coleman" aria-describedby="cards-ian-coleman-note" ${hodlCardColemanSymbols ? "checked" : ""} /><span class="label">Match Ian Coleman method</span></label><p class="switch-note" id="cards-ian-coleman-note">show and hash A\u2660 2\u2663 instead of As 2c</p></div>`}
       <p class="label" id="cards-input-label">${inputLabel}</p>
       ${hodlSeedMetaRowMarkup("cards-meta")}
       <div class="dice-input-shell cards-input-shell"><pre class="dice-input-highlight" id="cards-highlight" aria-hidden="true"></pre><textarea id="${inputId}" placeholder="${placeholder}" autocomplete="off" spellcheck="false" autocapitalize="off" aria-labelledby="cards-input-label" aria-describedby="cards-help cards-meta"></textarea></div>
       ${direct ? "" : `<div class="card-suit-pad" role="group" aria-label="${hodlT("Suit")}">${suitPad}</div>`}
       <div class="card-rank-pad dice-input-pad${direct ? " direct-card-rank-pad" : ""}" role="group" aria-label="${hodlT(direct ? "Rank-only draw" : "Rank")}">${rankPad}</div>
-      <div class="card-controls-row"><label class="seed-autocomplete-toggle switch-toggle card-visibility-toggle"><input type="checkbox" id="show-cards" aria-controls="dealt-cards" ${showCards ? "checked" : ""} /><span class="label">${hodlT("Show cards")}</span></label><button class="card-undo-button seed-keyboard-delete" id="card-undo" type="button" aria-label="${hodlT("Undo last card")}" title="${hodlT("Undo last card")}" disabled><svg viewBox="0 0 24 18" aria-hidden="true" focusable="false"><path d="M9 2h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9L2 9l7-7Z"/><path d="m12 6 6 6m0-6-6 6"/></svg><span>${hodlT("Undo")}</span></button></div>
+      <div class="card-controls-row"><label class="switch-toggle card-visibility-toggle"><input type="checkbox" id="show-cards" aria-controls="dealt-cards" ${showCards ? "checked" : ""} /><span class="label">${hodlT("Show cards")}</span></label><button class="card-undo-button seed-keyboard-delete" id="card-undo" type="button" aria-label="${hodlT("Undo last card")}" title="${hodlT("Undo last card")}" disabled><svg viewBox="0 0 24 18" aria-hidden="true" focusable="false"><path d="M9 2h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9L2 9l7-7Z"/><path d="m12 6 6 6m0-6-6 6"/></svg><span>${hodlT("Undo")}</span></button></div>
       <aside class="cards-reshuffle" id="cards-reshuffle" hidden></aside>
       <div class="dealt-cards" id="dealt-cards" aria-live="polite"${showCards ? "" : " hidden"}></div>
       ${direct ? hodlCalculationsSwitchMarkup("manual", "cards-manual-calculations", hodlT("show how direct card selection produces each BIP39 index"), hodlManualCalculationsOpen) : ""}
@@ -5759,7 +5755,7 @@ function hodlRenderKeyForm() {
     input.onscroll = () => hodlSyncDiceHighlight(input);
     input.onfocus = update;
     input.onblur = (event) => {
-      if (!event.relatedTarget?.closest?.("#seed-keyboard,.seed-autocomplete-toggle")) update();
+      if (!event.relatedTarget?.closest?.("#seed-keyboard,.switch-toggle")) update();
     };
     bindMethodChoices(input);
     hodlBindSeedKeyboard(input, config.words);
@@ -8311,7 +8307,7 @@ function hodlShowMsig() {
           <h3 id="multisig-watch-heading">Watch-only wallet data</h3>
           <p class="muted">These descriptors reveal every address in the selected branches for this multisig, but cannot authorize spending.</p>
         </div>
-        ${hodlWatchOnlyDescriptorExport(hodlWalletResult.receiveDescriptor, hodlWalletResult.changeDescriptor, branches)}
+        ${hodlWatchOnlyDescriptorExport(hodlWalletResult.receiveDescriptor, hodlWalletResult.changeDescriptor, branches, { labelClass: "muted" })}
         ${hodlMsigCoreImportDescriptorsMarkup()}
       </section>
       <section class="account-result-section account-address-section" aria-labelledby="multisig-address-heading">
@@ -9412,8 +9408,8 @@ function hodlRenderBip85Out() {
         <button class="btn secondary" id="bip85-copy" type="button">Copy derived child</button>
       </div>
       <div class="wallet-data-fields">
-        ${hodlPublicFieldHtml("Path", derived.path)}
-        ${hodlPublicFieldHtml(fingerprintLabel, state.fingerprint)}
+        ${hodlPublicFieldHtml("Path", derived.path, void 0, "muted")}
+        ${hodlPublicFieldHtml(fingerprintLabel, state.fingerprint, void 0, "muted")}
         ${hodlBip85SecretField(derived.secretLabel, derived.secret)}
         ${hodlBip85SecretField("Derived entropy", derived.entropyHex)}
       </div>
@@ -12330,7 +12326,7 @@ async function hodlLoadTestKeys() {
 }
 // Each tool carries a full name and a short one. Narrow screens show the
 // short form so more tools stay on screen instead of off the right edge.
-var hodlWorkspaceTabs = [["calc", "Keys", "Keys"], ["vanity", "Vanity", "Vanity"], ["bip85", "BIP-85", "BIP85"], ["msig", "Multi Signature", "MultiSig"], ["sp", "Silent Payments", "SP"], ["psbt", "PSBT", "PSBT"], ["ln", "Lightning", "LN"], ["journal", "Journal", "Journal"]];
+var hodlWorkspaceTabs = [["calc", "Keys", "Keys"], ["bip85", "BIP-85", "BIP85"], ["msig", "Multi Signature", "MultiSig"], ["psbt", "PSBT", "PSBT"], ["sp", "Silent Payments", "SP"], ["vanity", "Vanity", "Vanity"], ["ln", "Lightning", "LN"], ["journal", "Journal", "Journal"]];
 var hodlPsbtTool = "nonce";
 function hodlSyncPsbtTool() {
   let visible = hodlWorkspace === "psbt",
@@ -13739,13 +13735,13 @@ function hodlJournalOpenView(id) {
         <button class="btn secondary" id="journal-back" type="button">Back</button>
       </div>
       <div class="wallet-data-fields">
-        ${hodlPublicFieldHtml("Method", hodlJournalEntryMethodLabel(entry))}
-        ${hodlPublicFieldHtml("Recorded", entry.created)}
-        ${wallet ? hodlPublicFieldHtml("Session wallet", wallet) : ""}
-        ${entry.fingerprint ? hodlPublicFieldHtml("Master fingerprint", entry.fingerprint) : ""}
-        ${hodlPublicFieldHtml("Raw input", entry.input || "\u2014")}
+        ${hodlPublicFieldHtml("Method", hodlJournalEntryMethodLabel(entry), void 0, "muted")}
+        ${hodlPublicFieldHtml("Recorded", entry.created, void 0, "muted")}
+        ${wallet ? hodlPublicFieldHtml("Session wallet", wallet, void 0, "muted") : ""}
+        ${entry.fingerprint ? hodlPublicFieldHtml("Master fingerprint", entry.fingerprint, void 0, "muted") : ""}
+        ${hodlPublicFieldHtml("Raw input", entry.input || "\u2014", void 0, "muted")}
         <p class="private-field"><span class="muted">BIP39 seed or passphrase</span>${hodlJournalPrivateValue(entry.phrase)}</p>
-        ${entry.notes ? hodlPublicFieldHtml("Notes", entry.notes) : ""}
+        ${entry.notes ? hodlPublicFieldHtml("Notes", entry.notes, void 0, "muted") : ""}
       </div>
     </section>`;
   document.getElementById("journal-reveal")?.addEventListener("change", (event) => {
@@ -14023,13 +14019,49 @@ function hodlPickVanitySessionKey(state) {
   hodlVanitySyncSource();
   hodlRefreshStationKeyPickers();
 }
+var hodlVanityMethodSelection = "passphrase";
 function hodlVanityMethod() {
-  let value = document.getElementById("vanity-method")?.value;
-  return VANITY_METHODS[value] ? value : "passphrase";
+  return VANITY_METHODS[hodlVanityMethodSelection] ? hodlVanityMethodSelection : "passphrase";
 }
+// The pressed button is the method, reported the way every other button group
+// in the app reports its selection.
+function hodlSyncVanityMethodTabs() {
+  let box = document.getElementById("vanity-method-tabs");
+  if (!box) return;
+  box.querySelectorAll("[data-vanity-method-option]").forEach((button) => {
+    let active = button.dataset.vanityMethodOption === hodlVanityMethod();
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+function hodlSelectVanityMethod(id) {
+  if (!VANITY_METHODS[id] || id === hodlVanityMethodSelection) return;
+  let button = document.querySelector(`#vanity-method-tabs [data-vanity-method-option="${id}"]`);
+  if (button?.disabled) return;
+  hodlVanityMethodSelection = id;
+  hodlSyncVanityMethodTabs();
+  hodlVanityMethodChanged();
+}
+var hodlVanityScriptSelection = "p2wpkh";
 function hodlVanityScriptId() {
-  let value = document.getElementById("vanity-script")?.value;
-  return VANITY_SCRIPTS[value] ? value : "p2wpkh";
+  return VANITY_SCRIPTS[hodlVanityScriptSelection] ? hodlVanityScriptSelection : "p2wpkh";
+}
+// The pressed button is the address type, reported the way the key view's
+// script buttons report theirs.
+function hodlSyncVanityScriptTabs() {
+  let box = document.getElementById("vanity-script-tabs");
+  if (!box) return;
+  box.querySelectorAll("[data-vanity-script]").forEach((button) => {
+    let active = button.dataset.vanityScript === hodlVanityScriptId();
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+function hodlSelectVanityScript(id) {
+  if (!VANITY_SCRIPTS[id] || id === hodlVanityScriptSelection) return;
+  hodlVanityScriptSelection = id;
+  hodlSyncVanityScriptTabs();
+  hodlVanityScriptChanged();
 }
 function hodlVanityScript() {
   return VANITY_SCRIPTS[hodlVanityScriptId()];
@@ -14039,22 +14071,45 @@ function hodlVanityFormatCount(value) {
 }
 function hodlFilterVanityPrefix(value, meta = hodlVanityScript()) {
   let text = String(value ?? "");
+  // The fixed characters are shown beside the field, so a pasted whole prefix
+  // drops its leading copy rather than leaving fragments of it behind.
+  let lead = meta.bech32 ? text.toLowerCase() : text;
+  if (lead.startsWith(meta.prefix)) text = text.slice(meta.prefix.length);
   if (meta.bech32) {
-    let allowed = new Set((meta.prefix + "bc1qpzry9x8gf2tvdw0s3jn54khce6mua7l").split(""));
+    let allowed = new Set("qpzry9x8gf2tvdw0s3jn54khce6mua7l".split(""));
     return [...text.toLowerCase()].filter((character) => !/\s/.test(character) && allowed.has(character)).join("");
   }
   return [...text].filter((character) => !/\s/.test(character) && "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".includes(character)).join("");
+}
+// The address type fixes the leading characters; the input holds only the
+// free ones, so every consumer asks for the two joined.
+function hodlVanityPrefixValue() {
+  let meta = hodlVanityScript(), typed = document.getElementById("vanity-prefix")?.value ?? "";
+  return meta.prefix + typed;
+}
+// The row reads as a formula, so the result end of it follows every keystroke
+// and every address-type change.
+function hodlVanitySyncPrefixResult() {
+  let result = document.getElementById("vanity-prefix-result");
+  if (result) result.textContent = hodlVanityPrefixValue();
 }
 function hodlVanitySyncScriptNote() {
   let meta = hodlVanityScript(), help = document.getElementById("vanity-prefix-help"), input = document.getElementById("vanity-prefix");
   if (help) {
     help.textContent = meta.firstFree
-      ? `${meta.label} code, starts with “${meta.prefix}”; the next character is one of ${[...meta.firstFree].join(" ")} (the scan key's parity). Live-filtered to lowercase bech32 characters; each further free character multiplies the work by ~32.`
+      ? `The first character encodes the scan key's parity, so it is one of ${[...meta.firstFree].join(" ")}. Live-filtered to lowercase bech32 characters; each further free character multiplies the work by ~32.`
       : meta.bech32
-        ? `${meta.label} prefix, starts with “${meta.prefix}”. Live-filtered to lowercase bech32 characters; each free character multiplies the work by ~32.`
-        : `${meta.label} prefix, starts with “${meta.prefix}”. Live-filtered to base58 characters; each free character multiplies the work by ~58.`;
+        ? "Live-filtered to lowercase bech32 characters; each free character multiplies the work by ~32."
+        : "Live-filtered to base58 characters; each free character multiplies the work by ~58.";
   }
-  if (input) input.placeholder = `${meta.prefix}…`;
+  let fixed = document.getElementById("vanity-prefix-fixed");
+  if (fixed) fixed.textContent = meta.prefix;
+  hodlVanitySyncPrefixResult();
+  if (input) {
+    input.placeholder = meta.firstFree
+      ? `First character ${[...meta.firstFree].join(" ")}, then your vanity characters`
+      : "Enter your vanity characters here";
+  }
 }
 // The source panel names the selected key and shows its passphrase exactly as
 // entered on the Keys tab: the passphrase grind extends that text, the
@@ -14062,7 +14117,7 @@ function hodlVanitySyncScriptNote() {
 // key. A root-xprv key has no words to stretch, so only the derivation grind
 // is offered for it.
 function hodlVanitySyncSource() {
-  let panel = document.getElementById("vanity-source"), note = document.getElementById("vanity-session-note");
+  let panel = document.getElementById("vanity-source-block"), note = document.getElementById("vanity-session-note");
   if (!panel) return;
   let state = hodlVanitySourceState();
   if (!state) hodlVanitySource = "";
@@ -14072,18 +14127,17 @@ function hodlVanitySyncSource() {
       : "Derive a key on the Keys tab first — the grinder searches that key's passphrase or account index. A key with seed words supports both methods; a root-xprv key supports the derivation grind only.";
   }
   panel.hidden = !state;
-  let methodSelect = document.getElementById("vanity-method"), passphraseOption = methodSelect?.querySelector('option[value="passphrase"]');
+  let passphraseOption = document.querySelector('#vanity-method-tabs [data-vanity-method-option="passphrase"]');
   if (state) {
     let label = hodlVanityKeyLabel(state), pass = String(state.fields?.pass ?? ""), hasMnemonic = Boolean(state.result?.mnemonic);
-    let name = document.getElementById("vanity-source-name"), kind = document.getElementById("vanity-source-kind"), image = document.getElementById("vanity-source-lifehash"), from = document.getElementById("vanity-pass-from"), field = document.getElementById("vanity-pass"), passNote = document.getElementById("vanity-pass-note");
+    let name = document.getElementById("vanity-source-name"), kind = document.getElementById("vanity-source-kind"), image = document.getElementById("vanity-source-lifehash"), field = document.getElementById("vanity-pass"), passNote = document.getElementById("vanity-pass-note");
     if (name) name.textContent = label;
     if (kind) kind.textContent = `${hasMnemonic ? "BIP39 seed words" : "Root xprv"}${state.name && state.name !== label ? ` · ${state.name}` : ""} · ${hodlDisplayDerivationPath(state.fields?.derivationPath || "")}`;
     if (image) {
       image.hidden = true;
       hodlFillKeyTabLifehash(image, state.result?.masterFingerprint || "");
     }
-    if (from) from.textContent = `· from key ${label}`;
-    if (field) field.value = pass;
+    if (field) field.textContent = pass || "No passphrase — the key uses its seed words alone";
     if (passNote) {
       passNote.textContent = !hasMnemonic
         ? `Key ${label} was imported as a root xprv: it has no seed words, so its passphrase cannot be extended — only the derivation grind is available.`
@@ -14092,7 +14146,11 @@ function hodlVanitySyncSource() {
           : `Key ${label} has no passphrase. Passphrase grind: candidates are the counter characters alone. Derivation grind: no passphrase, with the account index changing.`;
     }
     if (passphraseOption) passphraseOption.disabled = !hasMnemonic;
-    if (!hasMnemonic && methodSelect && methodSelect.value === "passphrase") methodSelect.value = "derivation";
+    if (!hasMnemonic && hodlVanityMethod() === "passphrase") {
+      hodlVanityMethodSelection = "derivation";
+      hodlSyncVanityMethodTabs();
+      hodlVanitySyncMethod();
+    }
   } else if (passphraseOption) passphraseOption.disabled = false;
   hodlVanitySyncMethod();
   hodlVanitySyncControls();
@@ -14152,7 +14210,7 @@ function hodlVanityEstimate() {
   let estimateEl = document.getElementById("vanity-estimate"), input = document.getElementById("vanity-prefix"), scriptId = hodlVanityScriptId(), method = hodlVanityMethod();
   if (!estimateEl || !input) return;
   try {
-    let prefix = validateVanityPrefix(input.value, scriptId), work = estimateVanityWork(prefix, scriptId), rate = hodlVanityExpectedRate();
+    let prefix = validateVanityPrefix(hodlVanityPrefixValue(), scriptId), work = estimateVanityWork(prefix, scriptId), rate = hodlVanityExpectedRate();
     let timing = rate > 0
       ? `At about ${hodlVanityFormatCount(Math.round(rate))} candidates/s${hodlVanityRunning ? "" : ` on ${Math.max(1, Math.min(64, Number(document.getElementById("vanity-workers")?.value) || 1))} worker${Number(document.getElementById("vanity-workers")?.value) === 1 ? "" : "s"}`}, expect a match roughly every ${hodlVanityFormatDuration(Number(work) / rate)}.`
       : hodlVanityBenchPending ? "Measuring this device…" : method === "derivation" ? "Derivation grind: each candidate is a few BIP32 child steps." : "Passphrase grind: each candidate is a full BIP39 seed stretch.";
@@ -14217,7 +14275,7 @@ function hodlVanityPlan(state, method, scriptId) {
 }
 function hodlVanityParseInputs() {
   let method = hodlVanityMethod(), scriptId = hodlVanityScriptId();
-  let prefix = validateVanityPrefix(document.getElementById("vanity-prefix").value, scriptId);
+  let prefix = validateVanityPrefix(hodlVanityPrefixValue(), scriptId);
   let parseCounter = (id, label) => {
     let raw = document.getElementById(id).value.trim();
     if (!/^\d+$/.test(raw)) throw new Error(`${label} is a whole number (digits only).`);
@@ -14300,7 +14358,7 @@ function hodlRenderVanityOut() {
     return;
   }
   let run = hodlVanityRun, derivation = run.method === "derivation", meta = VANITY_SCRIPTS[run.script] ?? VANITY_SCRIPTS.p2wpkh, label = hodlEscapeHtml(run.sourceLabel);
-  let copyMarkup = (attribute, index, title) => `<button type="button" class="seed-phrase-copy" ${attribute}="${index}" aria-label="${title}" title="${title}">${hodlClipboardIconMarkup()}</button><span class="vanity-copied muted" aria-live="polite"></span>`;
+  let copyMarkup = (attribute, index, title) => `<button type="button" class="copy-button" ${attribute}="${index}" aria-label="${title}" title="${title}">${hodlClipboardIconMarkup()}</button><span class="vanity-copied muted" aria-live="polite"></span>`;
   let keyCell = (match) => `<td class="vanity-key-cell">${hodlVanityKeyMarkup(hodlVanityMatchFingerprint(match, run))}</td>`;
   let applyMarkup = (match, index) => match.savedTo
     ? `<span class="vanity-saved" role="status">${hodlCopiedIconMarkup()}Saved to key ${hodlEscapeHtml(match.savedTo)}</span>`
@@ -14560,10 +14618,17 @@ function hodlInitVanity() {
   let prefix = document.getElementById("vanity-prefix");
   prefix.addEventListener("input", () => {
     hodlApplyFilteredInput(prefix, (value) => hodlFilterVanityPrefix(value));
+    hodlVanitySyncPrefixResult();
     hodlVanityEstimate();
   });
-  document.getElementById("vanity-script")?.addEventListener("change", hodlVanityScriptChanged);
-  document.getElementById("vanity-method")?.addEventListener("change", hodlVanityMethodChanged);
+  document.getElementById("vanity-script-tabs")?.querySelectorAll("[data-vanity-script]").forEach((button) => {
+    button.addEventListener("click", () => hodlSelectVanityScript(button.dataset.vanityScript));
+  });
+  hodlSyncVanityScriptTabs();
+  document.getElementById("vanity-method-tabs")?.querySelectorAll("[data-vanity-method-option]").forEach((button) => {
+    button.addEventListener("click", () => hodlSelectVanityMethod(button.dataset.vanityMethodOption));
+  });
+  hodlSyncVanityMethodTabs();
   for (let id of ["vanity-length", "vanity-start", "vanity-count", "vanity-account-start", "vanity-account-count", "vanity-workers"]) {
     let input = document.getElementById(id);
     input?.addEventListener("input", () => hodlApplyFilteredInput(input, (value) => String(value ?? "").replace(/\D/g, "")));
@@ -14994,7 +15059,7 @@ function hodlInitSecretFieldAutoClear() {
     hodlVanitySource = "";
     hodlVanityApplying = false;
     let vanityPass = document.getElementById("vanity-pass"), vanityOut = document.getElementById("vanity-out"), vanityError = document.getElementById("vanity-error"), vanityStatus = document.getElementById("vanity-status");
-    if (vanityPass) vanityPass.value = "";
+    if (vanityPass) vanityPass.textContent = "";
     if (vanityOut) vanityOut.innerHTML = "";
     if (vanityError) vanityError.textContent = "";
     if (vanityStatus) vanityStatus.textContent = "Idle. No range has been ground this session.";

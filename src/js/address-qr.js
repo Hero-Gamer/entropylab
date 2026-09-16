@@ -46,7 +46,7 @@ export const initAddressQr = (renderQr, icons = {}) => {
       <div class="qr addr-qr-image" id="addr-qr-image"></div>
       <p class="addr-qr-address-row">
         <button type="button" class="mono addr-qr-address" id="addr-qr-address" tabindex="-1"></button>
-        <button type="button" class="seed-phrase-copy addr-qr-copy" id="addr-qr-copy"></button>
+        <button type="button" class="copy-button addr-qr-copy" id="addr-qr-copy"></button>
         <span class="sr-only" id="addr-qr-copied" aria-live="polite"></span>
       </p>
       <div class="row addr-qr-actions">
@@ -65,6 +65,7 @@ export const initAddressQr = (renderQr, icons = {}) => {
     copyIcon = icons.copy?.() ?? "",
     copiedIcon = icons.copied?.() ?? "";
   text.title = copyLabel;
+  image.title = copyLabel;
   let button = null,
     copiedTimer = 0;
 
@@ -142,4 +143,5 @@ export const initAddressQr = (renderQr, icons = {}) => {
   closeButton.addEventListener("click", close);
   text.addEventListener("click", copy);
   copyButton.addEventListener("click", copy);
+  image.addEventListener("click", copy);
 };

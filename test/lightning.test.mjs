@@ -113,11 +113,13 @@ test("the Lightning card ships in the shell with its controls", () => {
     assert.ok(shell.includes(`id="${id}"`), `${id} is missing from the shell`);
   }
   assert.match(shell, /id="ln-tool-intro"/);
-  assert.match(shell, /This does not invent entropy/);
+  assert.match(shell, /This does not create entropy for you/);
 });
 
 test("the tab registry and workspace switcher carry the Lightning tool", () => {
-  assert.match(appSource, /\["psbt", "PSBT", "PSBT"\], \["ln", "Lightning", "LN"\], \["journal", "Journal", "Journal"\]/);
+  for (const entry of [/\["psbt", "PSBT", "PSBT"\]/, /\["ln", "Lightning", "LN"\]/, /\["journal", "Journal", "Journal"\]/]) {
+    assert.match(appSource, entry);
+  }
   assert.match(appSource, /getElementById\("ln-card"\)\.hidden = id !== "ln"/);
   assert.match(appSource, /\["bip85", "sp", "msig", "calc", "vanity", "ln"\]\.forEach/);
   assert.match(appSource, /import \{ hodlInitLn, hodlLnWipeMem \} from "\.\/lightning\.js"/);

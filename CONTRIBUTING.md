@@ -65,8 +65,8 @@ browser test that asserts this must stay green.
   (`src/js/entropylab-wasm-b64.js`) is also generated (from `entropylab-wasm/`);
   regenerate it with `npm run build:wasm`, never edit it by hand.
 - CI rebuilds from `src/`, proves the output is byte-for-byte reproducible, and
-  publishes it to the `pages` branch and GitHub Pages. CI likewise rebuilds
-  the WASM artifact from the pinned Rust crate (`Cargo.lock`,
+  publishes it to the `pages` branch and GitHub Pages. CI likewise rebuilds the
+  WASM artifact from the pinned Rust crate (`Cargo.lock`,
   `rust-toolchain.toml`), runs its test suite against the fresh build, and
   commits the artifact back to `rock` after each merge (same flow as
   `entropylab.html`).
@@ -136,10 +136,16 @@ for UI testing only and must never receive funds. The loader and its
 - **Tests:** new or changed behaviour needs a test; published vectors (BIP39,
   BIP32, Bitcoin Core) are preferred. Changes to security-sensitive validation,
   cryptography, scripts, or transaction/PSBT parsing must cover both accepted
-  and rejected inputs. For bug fixes, add a regression case that fails before
-  the fix when practicable, and explain any identified negative case that is
-  intentionally out of scope. Never weaken, skip, or delete an existing test
-  to make CI pass — if it is wrong, say why.
+  and rejected inputs. For security-sensitive changes, write or extend the
+  test first and run it against the current sources before production edits;
+  bug-fix reds must fail for the claimed reason, while new-capability reds may
+  be a missing export/API but must already contain an independently determined
+  expected result or rejection condition. Expected values must not come from
+  the new implementation; list the failing and passing command in the PR. See
+  `AGENTS.md` for the full rule. For bug fixes, add a regression case and
+  explain any identified negative case that is intentionally out of scope.
+  Never weaken, skip, or delete an existing test to make CI pass — if it is
+  wrong, say why.
 - **Translations:** user-facing text is written in English and translated
   content-keyed — the English string at the call site is the catalog key
   (`t("Save watch-only sheet")`), and a content sweep translates static markup
@@ -157,9 +163,9 @@ for UI testing only and must never receive funds. The loader and its
   <model-noreply@host>` (GitHub credits a co-author only when both are
   present). Do not spoof this or strip attribution to your clanker; the
   data is used to evaluate model performance. If multiple models
-  contributed code, attribute all of them. Commit messages and reviews may
-  be written by humans, but any LLM-assisted review must include
-  attribution in the comment itself.
+  contributed code, attribute all of them. Commit messages and reviews may be
+  written by humans, but any LLM-assisted review must include attribution in
+  the comment itself.
 - **Not accepted:** anything violating sections 1 or 3; license/authorship
   changes (the software is public domain); changes that obscure what the
   compiled `entropylab.html` does.
@@ -198,7 +204,7 @@ New tool markup should reuse the shared layout classes:
 </section>
 ```
 
-`tool-card` normalizes its first and last edges, `tool-section` separates a
+tool-card normalizes its first and last edges, `tool-section` separates a
 meaningful group, and `tool-actions` separates actions from the content they
 operate on. Compact tables, grids, and visualizations may use tighter local
 spacing internally, but their outer boundary should still follow this rhythm.

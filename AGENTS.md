@@ -111,14 +111,35 @@ Guidelines for AI coding agents.
 
 ### Security-sensitive test coverage
 
-For changes to verification, cryptography, consensus-sensitive behaviour,
-scripts, or transaction/PSBT parsing:
+For changes to derivation, parsing, validation, verification, cryptography,
+consensus-sensitive behaviour, scripts, transaction/PSBT handling,
+network-silence, or “we do not invent entropy”:
 
-- Include tests for both accepted and rejected inputs.
-- For bug fixes, add a regression case that fails before the fix and passes
-  afterward when practicable.
-- Cover applicable negative cases identified in the issue or review. Explain
-  in the pull request when a listed case is intentionally out of scope.
+- State the security contract in one sentence: what must be accepted and what
+  must be refused.
+- Write or extend the test before changing production code.
+- Run that test against the current sources before the implementation change.
+  For a bug fix or tighter validation, it must fail for the claimed reason.
+  A failure caused only by a missing import/export or unrelated setup does not
+  establish the claimed defect. If it is already green, the test has not
+  pinned a new contract — tighten it.
+- For a new capability, a missing export/API is an acceptable first red, but
+  the test must already contain an independently determined expected result or
+  rejection condition.
+- Expected results must be established independently of the implementation
+  under test. Prefer published BIP / Bitcoin Core vectors, protocol
+  specifications, independently implemented reference behaviour, or a stated
+  rejection condition. Never compute the expected answer by running the code
+  under test and copying its output.
+- Include meaningful accepted and rejected inputs where both apply. Cover
+  negative cases named in the issue or review; if one is intentionally out of
+  scope, explain why in the PR.
+- Only then make the smallest production change that makes the test pass.
+- Do not delete, skip, weaken, or soften a test to make it pass.
+- In the PR, record the command/test used for the initial red and the same
+  test/command after the implementation is green, with a brief explanation
+  where necessary.
 
-Documentation-only and presentation-only changes do not need test vectors
-solely to satisfy this section.
+Documentation-only and presentation-only changes do not need test vectors solely
+to satisfy this section. “When practicable” is not an exemption for the
+security-sensitive changes covered above.

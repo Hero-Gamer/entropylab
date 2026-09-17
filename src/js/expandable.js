@@ -59,12 +59,12 @@ export const expandableHtml = (text, { label = "Full value", editAttrs = "" } = 
 export const initExpandable = () => {
   if (document.getElementById("exp-overlay")) return;
   const overlay = document.createElement("div");
-  overlay.className = "exp-overlay no-print";
+  overlay.className = "modal-overlay exp-overlay no-print";
   overlay.id = "exp-overlay";
   overlay.hidden = true;
   overlay.innerHTML = `
-    <div class="exp-card" role="dialog" aria-modal="true" aria-labelledby="exp-title">
-      <p class="exp-title" id="exp-title"></p>
+    <div class="modal-card exp-card" role="dialog" aria-modal="true" aria-labelledby="exp-title">
+      <p class="modal-title exp-title" id="exp-title"></p>
       <p class="exp-meta muted" id="exp-meta"></p>
       <textarea id="exp-text" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
       <div class="row exp-actions">

@@ -2133,12 +2133,12 @@ function hodlHandleDerivationButton(kind, derive) {
     return;
   }
   // Single-sig fresh-entropy sources that can derive below the recommended
-  // amount confirm first (#416). A "Don't show again this session" dismissal
-  // bypasses the step for the rest of the page session; the multisig station
+  // amount confirm first (#416). A "Don't show again" acknowledgement is
+  // remembered across sessions and bypasses the step; the multisig station
   // derives from co-signer xpubs, not user entropy, so it never gates.
   if (kind === "key" && hodlLowEntropyConfirm) {
     let warning = hodlLowEntropyWarning();
-    if (warning && !hodlLowEntropyConfirm.isDismissed()) {
+    if (warning && !hodlLowEntropyConfirm.isAcknowledged()) {
       hodlLowEntropyConfirm.open(warning, () => hodlDeriveWithProgress(kind, derive));
       return;
     }

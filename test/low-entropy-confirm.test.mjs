@@ -1,7 +1,7 @@
 // Low-entropy confirmation (issue #416): the below-recommendation predicate,
-// the overlay card structure, the session-scoped dismissal store, and the
+// the overlay card structure, the persisted acknowledgement store, and the
 // focus-trap cycling. The interactive flow (appear / cancel / proceed /
-// session-dismiss / bypass / focus containment) is covered by the browser
+// dismiss / bypass / focus containment) is covered by the browser
 // suite (test/browser-suite.html), which drives the Derive Key button through
 // the overlay.
 // Run with `npm test` (part of the default and CI suites).
@@ -11,13 +11,19 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  createLowEntropyDismissal,
+  createLowEntropyAcknowledgement,
+  LOW_ENTROPY_ACKNOWLEDGED_KEY,
   lowEntropyConfirmCardHtml,
   nextDialogFocus,
 } from "../src/js/low-entropy-confirm.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const app = readFileSync(join(root, "..", "src/js/app.js"), "utf8");
+
+function fakeStore() {
+  const items = new Map();
+  return { items, getItem: (k) => (items.has(k) ? items.get(k) : null), setItem: (k, v) => items.set(k, String(v)) };
+}
 
 function loadSlice(name) {
   const start = app.indexOf(`function ${name}(`);
@@ -135,7 +141,7 @@ test("empty inputs never warn — Derive is disabled for those anyway", () => {
 test("the Derive Key handler consults the warning before deriving", () => {
   const handler = loadSlice("hodlHandleDerivationButton");
   assert.ok(handler.includes("hodlLowEntropyWarning()"), "the key-station handler never asks for the warning");
-  assert.ok(handler.includes("isDismissed"), "the handler never checks the session dismissal");
+  assert.ok(handler.includes("isAcknowledged"), "the handler never checks the acknowledgement");
   assert.ok(handler.includes('kind === "key"'), "the gate must not cover the multisig station");
 });
 
@@ -146,24 +152,41 @@ test("the card markup is an accessible dialog with both actions and the checkbox
   assert.ok(html.includes('aria-labelledby="low-entropy-title"'), "the dialog is not labelled");
   assert.ok(html.includes('id="low-entropy-more"'), "the Add More Entropy button is missing");
   assert.ok(html.includes('id="low-entropy-proceed"'), "the I Understand, Proceed button is missing");
-  assert.ok(html.includes('type="checkbox" id="low-entropy-dismiss"'), "the Don't-show-again checkbox is missing");
+  assert.ok(html.includes('type="checkbox" id="low-entropy-ack"'), "the Don't-show-again checkbox is missing");
   // Translated strings land in text content only, never in template
   // attributes (test/i18n-attribute-guard.test.mjs enforces the same).
   assert.ok(!/hodlT\w*\(/.test(html), "markup carries call-site translations");
 });
 
-test("the session dismissal defaults to showing the warning", () => {
-  const dismissal = createLowEntropyDismissal();
-  assert.equal(dismissal.isDismissed(), false, "a fresh session reads as dismissed");
-  dismissal.dismiss();
-  assert.equal(dismissal.isDismissed(), true, "the dismissal did not stick for the session");
+test("the acknowledgement defaults to showing the warning", () => {
+  const store = fakeStore();
+  const ack = createLowEntropyAcknowledgement(store);
+  assert.equal(ack.isAcknowledged(), false, "a fresh store reads as acknowledged");
+  ack.acknowledge();
+  assert.equal(ack.isAcknowledged(), true, "the acknowledgement did not take");
+  assert.equal(store.items.get(LOW_ENTROPY_ACKNOWLEDGED_KEY), "1", "the acknowledgement was not written to storage");
 });
 
-test("the dismissal is session-scoped: a new session shows the warning again", () => {
-  const first = createLowEntropyDismissal();
-  first.dismiss();
-  const next = createLowEntropyDismissal();
-  assert.equal(next.isDismissed(), false, "the dismissal leaked into the next session");
+test("the acknowledgement outlives the session: a later load stays bypassed", () => {
+  const store = fakeStore();
+  createLowEntropyAcknowledgement(store).acknowledge();
+  assert.equal(createLowEntropyAcknowledgement(store).isAcknowledged(), true, "the acknowledgement did not persist");
+});
+
+// Storage the browser refuses must leave the warning showing: the safe
+// direction for a security prompt is always to ask again.
+test("unavailable or corrupt storage keeps showing the warning", () => {
+  const throwing = { getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); } };
+  const ack = createLowEntropyAcknowledgement(throwing);
+  assert.equal(ack.isAcknowledged(), false, "a blocked read must not read as acknowledged");
+  ack.acknowledge();
+  assert.equal(createLowEntropyAcknowledgement(throwing).isAcknowledged(), false, "a blocked write must not bypass the warning");
+
+  const corrupt = fakeStore();
+  corrupt.items.set(LOW_ENTROPY_ACKNOWLEDGED_KEY, "yes");
+  assert.equal(createLowEntropyAcknowledgement(corrupt).isAcknowledged(), false, "only the exact marker counts as acknowledged");
+
+  assert.equal(createLowEntropyAcknowledgement(undefined).isAcknowledged(), false, "no store at all must not bypass the warning");
 });
 
 test("the focus trap cycles forward and backward through the dialog", () => {

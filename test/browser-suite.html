@@ -734,24 +734,23 @@
     equal(dialog.getAttribute("aria-labelledby"), "low-entropy-title", "The confirmation is not labelled");
     const message = dialog.querySelector("#low-entropy-message").textContent;
     assert(message.trim(), "The confirmation message is empty");
-    assert(dialog.querySelector("#low-entropy-detail").textContent.trim(), "The confirmation detail is empty");
-    const dismiss = dialog.querySelector("#low-entropy-dismiss");
+    const dismiss = dialog.querySelector("#low-entropy-ack");
     assert(dismiss && dismiss.type === "checkbox" && !dismiss.checked, "The Don't-show-again checkbox did not start unchecked");
-    assert(dialog.querySelector("#low-entropy-dismiss-label").textContent.trim(), "The dismissal label is empty");
+    assert(dialog.querySelector("#low-entropy-ack-label").textContent.trim(), "The dismissal label is empty");
     const more = dialog.querySelector("#low-entropy-more"), proceed = dialog.querySelector("#low-entropy-proceed");
     equal(document.activeElement, more, "The safe choice did not take the initial focus");
     // Focus containment: Tab and Shift+Tab cycle within the dialog and never
     // reach the background behind it.
     tab();
-    equal(document.activeElement, proceed, "Tab did not move focus to I Understand, Proceed");
+    equal(document.activeElement, dismiss, "Tab did not move focus to the acknowledgement checkbox");
     tab();
-    equal(document.activeElement, dismiss, "Tab did not move focus to the session checkbox");
+    equal(document.activeElement, proceed, "Tab did not move focus to Derive Key Anyway");
     tab();
     equal(document.activeElement, more, "Tab did not wrap back to Add More Entropy");
     tab(true);
-    equal(document.activeElement, dismiss, "Shift+Tab did not move focus back to the checkbox");
+    equal(document.activeElement, proceed, "Shift+Tab did not move back to Derive Key Anyway");
     tab(true);
-    equal(document.activeElement, proceed, "Shift+Tab did not wrap to the last control");
+    equal(document.activeElement, dismiss, "Shift+Tab did not wrap to the checkbox");
     // Add More Entropy cancels: the overlay closes, nothing derives, and the
     // entered rolls stay put so the user can keep going.
     more.click();

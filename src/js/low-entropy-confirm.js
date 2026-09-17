@@ -7,10 +7,11 @@
 // modal states the estimate, and the user either goes back to add more or
 // explicitly proceeds.
 //
-// "Don't show again this session" is kept in memory only — deliberately no
-// Web Storage: the bypass for a security warning never outlives the page
-// session, and the default direction is always to show the warning. The
-// dismissal store is injectable so it stays unit-testable under Node.
+// "Don't show again" is remembered in localStorage, the same site-settings
+// store the beta gate's acceptance uses. When storage is unavailable
+// (file:// origins, private modes) the acknowledgement simply does not stick
+// the warning shows again, which is the safe direction. The store is
+// injectable so it stays unit-testable under Node.
 //
 // The pattern mirrors address-qr.js: the card markup is a pure function
 // unit-tested under Node, and initLowEntropyConfirm is the only DOM entry
@@ -18,19 +19,28 @@
 // informational QR overlays, this dialog gates key creation, so it also
 // contains keyboard focus: Tab and Shift+Tab cycle through the dialog's
 // controls and the background is unreachable by keyboard while it is open
-// (the backdrop click and Escape remain the pointer/keyboard dismissal).
+// (the backdrop click and Escape remain the pointer/keyboard dismissal of
+// the dialog itself, which acknowledges nothing).
 
 import { t } from "./i18n.js";
 
-// Session-scoped dismissal: in-memory only, defaulting to "always show".
-// A fresh page session starts un-dismissed; nothing can persist or corrupt
-// the choice, so there is no failure direction to defend against beyond that.
-export const createLowEntropyDismissal = () => {
-  let dismissed = false;
+// The acknowledgement, remembered across sessions. Reads and writes are guarded:
+// a browser that refuses storage simply keeps showing the warning, and only
+// the exact stored marker counts as dismissed, so a corrupt or partial value
+// fails towards showing it rather than towards silence.
+export const LOW_ENTROPY_ACKNOWLEDGED_KEY = "entropylab-low-entropy-acknowledged";
+export const createLowEntropyAcknowledgement = (store = globalThis.localStorage) => {
+  let acknowledged = false;
+  try {
+    acknowledged = store?.getItem(LOW_ENTROPY_ACKNOWLEDGED_KEY) === "1";
+  } catch (e) {}
   return {
-    isDismissed: () => dismissed,
-    dismiss: () => {
-      dismissed = true;
+    isAcknowledged: () => acknowledged,
+    acknowledge: () => {
+      acknowledged = true;
+      try {
+        store?.setItem(LOW_ENTROPY_ACKNOWLEDGED_KEY, "1");
+      } catch (e) {}
     },
   };
 };
@@ -49,15 +59,17 @@ export const nextDialogFocus = (focusables, active, shiftKey) => {
 // at init/open time, so no translated text ever lands in a template attribute
 // (see test/i18n-attribute-guard.test.mjs).
 export const lowEntropyConfirmCardHtml = () => `
-  <div class="low-entropy-card" id="low-entropy-dialog" role="dialog" aria-modal="true" aria-labelledby="low-entropy-title">
-    <p class="low-entropy-title" id="low-entropy-title"></p>
-    <p class="low-entropy-message" id="low-entropy-message"></p>
-    <p class="low-entropy-detail muted" id="low-entropy-detail"></p>
-    <p class="low-entropy-advice muted" id="low-entropy-advice"></p>
-    <label class="choice low-entropy-dismiss-row"><input type="checkbox" id="low-entropy-dismiss" /><span id="low-entropy-dismiss-label"></span></label>
-    <div class="row low-entropy-actions">
-      <button class="btn secondary" id="low-entropy-more" type="button"></button>
+  <div class="modal-card is-warning low-entropy-card" id="low-entropy-dialog" role="dialog" aria-modal="true" aria-labelledby="low-entropy-title">
+    <svg class="modal-warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2.5 20h19L12 3z"/><path d="M12 10v4M12 17.5h.01"/></svg>
+    <p class="modal-warning-title" id="low-entropy-title"></p>
+    <p class="low-entropy-message" id="low-entropy-message"><span id="low-entropy-shortfall"></span><span class="low-entropy-recommended" id="low-entropy-recommended"></span></p>
+    <p class="edge-note is-private" id="low-entropy-advice"></p>
+    <div class="switch-row">
+      <label class="switch-toggle"><input type="checkbox" id="low-entropy-ack" /><span class="label" id="low-entropy-ack-label"></span></label>
+    </div>
+    <div class="row low-entropy-actions tool-actions">
       <button class="btn primary" id="low-entropy-proceed" type="button"></button>
+      <button class="btn secondary" id="low-entropy-more" type="button"></button>
     </div>
   </div>`;
 
@@ -65,30 +77,30 @@ export const lowEntropyConfirmCardHtml = () => `
 // onProceed)` shows the modal for a warning shaped { bits, recommended, words,
 // detail }; "Add More Entropy" (or Escape / a backdrop click) cancels and
 // returns focus to the Derive Key button, "I Understand, Proceed" optionally
-// remembers the dismissal for the session and then runs onProceed.
+// records the acknowledgement and then runs onProceed.
 export const initLowEntropyConfirm = () => {
   if (document.getElementById("low-entropy-overlay")) return null;
   const overlay = document.createElement("div");
-  overlay.className = "low-entropy-overlay no-print";
+  overlay.className = "modal-overlay low-entropy-overlay no-print";
   overlay.id = "low-entropy-overlay";
   overlay.hidden = true;
   overlay.innerHTML = lowEntropyConfirmCardHtml();
   document.body.append(overlay);
   const title = overlay.querySelector("#low-entropy-title"),
-    message = overlay.querySelector("#low-entropy-message"),
-    detail = overlay.querySelector("#low-entropy-detail"),
+    shortfall = overlay.querySelector("#low-entropy-shortfall"),
+    recommended = overlay.querySelector("#low-entropy-recommended"),
     advice = overlay.querySelector("#low-entropy-advice"),
-    dismiss = overlay.querySelector("#low-entropy-dismiss"),
-    dismissLabel = overlay.querySelector("#low-entropy-dismiss-label"),
+    ack = overlay.querySelector("#low-entropy-ack"),
+    ackLabel = overlay.querySelector("#low-entropy-ack-label"),
     moreButton = overlay.querySelector("#low-entropy-more"),
     proceedButton = overlay.querySelector("#low-entropy-proceed");
   title.textContent = t("Low entropy");
-  advice.textContent = t("A key derived from less entropy than recommended can be guessed. Add more entropy unless you are only testing.");
-  dismissLabel.textContent = t("Don't show again this session");
+  advice.textContent = t("A key derived from less entropy than recommended is not secure and can be guessed. Add more entropy unless you are only testing with this key.");
+  ackLabel.textContent = t("Don't show again");
   moreButton.textContent = t("Add More Entropy");
-  proceedButton.textContent = t("I Understand, Proceed");
-  const dismissal = createLowEntropyDismissal();
-  const focusables = [dismiss, moreButton, proceedButton];
+  proceedButton.textContent = t("Derive Key Anyway");
+  const acknowledgement = createLowEntropyAcknowledgement();
+  const focusables = [ack, proceedButton, moreButton];
   let lastFocused = null;
   let proceed = null;
 
@@ -100,14 +112,12 @@ export const initLowEntropyConfirm = () => {
   };
   const open = (warning, onProceed) => {
     if (typeof onProceed !== "function") return;
-    message.textContent = t("You have provided only about {bits} bits of entropy (recommended: {recommended} bits for a {words}-word seed).", {
-      bits: warning?.bits ?? "",
+    shortfall.textContent = t("You have provided only about {bits} bits of entropy.", { bits: warning?.bits ?? "" });
+    recommended.textContent = t("Recommended: {recommended} bits for a {words}-word seed", {
       recommended: warning?.recommended ?? "",
       words: warning?.words ?? "",
     });
-    detail.textContent = warning?.detail ? t(warning.detail.key, warning.detail.vars) : "";
-    detail.hidden = !warning?.detail;
-    dismiss.checked = false;
+    ack.checked = false;
     proceed = onProceed;
     lastFocused = document.activeElement;
     overlay.hidden = false;
@@ -117,7 +127,7 @@ export const initLowEntropyConfirm = () => {
   };
   moreButton.addEventListener("click", close);
   proceedButton.addEventListener("click", () => {
-    if (dismiss.checked) dismissal.dismiss();
+    if (ack.checked) acknowledgement.acknowledge();
     const run = proceed;
     close();
     run?.();
@@ -137,5 +147,5 @@ export const initLowEntropyConfirm = () => {
       nextDialogFocus(focusables, document.activeElement, event.shiftKey)?.focus();
     }
   });
-  return { open, close, isOpen: () => !overlay.hidden, isDismissed: dismissal.isDismissed };
+  return { open, close, isOpen: () => !overlay.hidden, isAcknowledged: acknowledgement.isAcknowledged };
 };

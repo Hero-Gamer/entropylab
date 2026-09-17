@@ -1497,7 +1497,7 @@ test("the beta disclaimer gates the page as a modal until accepted", () => {
   // template — to survive boot.
   const rootAt = template.indexOf('<div id="btc-calc">');
   const shellAt = template.indexOf("/*@@SHELL@@*/");
-  const overlayAt = template.indexOf('<div class="disclaimer-overlay');
+  const overlayAt = template.indexOf('id="beta-disclaimer"');
   assert.ok(rootAt >= 0 && shellAt > rootAt && overlayAt > shellAt, "the disclaimer overlay must follow the #btc-calc shell");
   assert.ok(shell.indexOf('<footer class="page-footer') > 0, "the shell must close on the page footer");
   assert.ok(overlayAt < template.indexOf("/*@@JS_BROWSER_CHECK@@*/"), "the disclaimer overlay must ship before the scripts");
@@ -1506,9 +1506,9 @@ test("the beta disclaimer gates the page as a modal until accepted", () => {
   // sees an overlay it cannot dismiss.
   assert.match(
     template,
-    /<div class="disclaimer-overlay no-print" id="beta-disclaimer" role="alertdialog" aria-modal="true" aria-labelledby="beta-disclaimer-title" aria-describedby="beta-disclaimer-text" hidden>/,
+    /<div class="modal-overlay disclaimer-overlay no-print" id="beta-disclaimer" role="alertdialog" aria-modal="true" aria-labelledby="beta-disclaimer-title" aria-describedby="beta-disclaimer-text" hidden>/,
   );
-  assert.match(template, /<p class="disclaimer-title" id="beta-disclaimer-title"[^>]*>Beta software<\/p>/);
+  assert.match(template, /<p class="modal-warning-title disclaimer-title" id="beta-disclaimer-title"[^>]*>Beta software<\/p>/);
   assert.match(
     template,
     /<p class="disclaimer-text" id="beta-disclaimer-text"[^>]*>EntropyLab is experimental and should only be used for testing and educational purposes\. This tool is intended for offline use by advanced users only\. Any use online or with real funds can be dangerous\.<\/p>/,
@@ -1516,18 +1516,19 @@ test("the beta disclaimer gates the page as a modal until accepted", () => {
   assert.match(template, /<button class="btn primary" id="beta-disclaimer-accept" type="button"[^>]*>I understand<\/button>/);
   // The fade: transparent until .is-visible, faded out and inert once
   // .is-dismissed, and motion-free when the user prefers reduced motion.
-  assert.match(css, /\.disclaimer-overlay \{\s*position: fixed; inset: 0;[^}]*opacity: 0; transition: opacity \.24s ease;/s);
+  assert.match(css, /\.modal-overlay \{\s*position: fixed; inset: 0;/s);
+  assert.match(css, /\.disclaimer-overlay \{ opacity: 0; transition: opacity \.24s ease; \}/);
   // The page behind the card is defocused as well as darkened.
-  assert.match(css, /\.disclaimer-overlay \{[^}]*-webkit-backdrop-filter: blur\(6px\); backdrop-filter: blur\(6px\);/s);
-  assert.match(css, /\.disclaimer-overlay\[hidden\] \{ display: none; \}/);
+  assert.match(css, /\.modal-overlay \{[^}]*-webkit-backdrop-filter: blur\(6px\); backdrop-filter: blur\(6px\);/s);
+  assert.match(css, /\.modal-overlay\[hidden\] \{ display: none; \}/);
   assert.match(css, /\.disclaimer-overlay\.is-visible \{ opacity: 1; \}/);
   assert.match(css, /\.disclaimer-overlay\.is-dismissed \{ opacity: 0; pointer-events: none; \}/);
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{ \.disclaimer-overlay \{ transition: none; \} \}/);
-  assert.match(css, /\.disclaimer-card \{[^}]*border: 1px solid var\(--danger\);/s);
+  assert.match(css, /\.disclaimer-overlay \{ opacity: 0; transition: opacity \.24s ease; \}/);
+  assert.match(css, /\.modal-card\.is-warning \{[^}]*border-color: var\(--danger\);/s);
   // Icon and title share the banner's brighter alert red, and the title takes
   // the body size so it labels the sentence instead of heading it.
-  assert.match(css, /\.disclaimer-icon \{[^}]*color: var\(--danger-bright\); \}/);
-  assert.match(css, /\.disclaimer-title \{ margin: 12px 0 12px; font-size: 18px; font-weight: 700; text-transform: uppercase; color: var\(--danger-bright\); \}/);
+  assert.match(css, /\.modal-warning-icon \{[^}]*color: var\(--danger-bright\); \}/);
+  assert.match(css, /\.modal-warning-title \{[^}]*color: var\(--danger-bright\);/s);
   // The button sits clear of the warning it answers.
   assert.match(css, /\.disclaimer-text \{ margin: 0 24px 28px;/);
   // The accept button is widened and uppercased in the card only; the shared

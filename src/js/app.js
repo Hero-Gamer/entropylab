@@ -14923,6 +14923,50 @@ function hodlApplyTheme(mode) {
 // script, which runs before first paint; boot is far too late to avoid a
 // flash, so this only has to handle the click.
 var hodlBetaBannerStorageKey = "entropylab-beta-banner-dismissed";
+// The introduction is put away for good, remembered the same way the banner
+// is and keyed to this build, so a new release introduces itself once more.
+// Storage the browser refuses simply means it returns. Re-hiding it on a
+// later visit is likewise the head script's job, not boot's.
+var hodlIntroStorageKey = "entropylab-intro-dismissed";
+function hodlInitIntroDismiss() {
+  let intro = document.getElementById("site-intro");
+  let dismiss = document.getElementById("site-intro-dismiss");
+  if (!intro || !dismiss) return;
+  dismiss.onclick = () => {
+    try {
+      localStorage.setItem(hodlIntroStorageKey, "{{VERSION}}");
+    } catch (e) {
+    }
+    // The same flag the head script sets on a later visit, so whatever keys
+    // off a dismissed introduction — the tab strip's top margin — reacts now
+    // as well as on the next load, from one piece of state.
+    document.documentElement.dataset.introDismissed = "";
+    intro.hidden = true;
+  };
+}
+// The sources list opens by default and remembers being shut, keyed to no
+// particular build: it is reference material, not an announcement, so a new
+// release has no reason to reopen it. Restoring a closed list happens at boot
+// rather than in the head script, because CSS cannot un-open a <details> the
+// markup ships open; the list is the last thing on a long page, so the moment
+// before it closes is below the fold.
+var hodlSourcesStorageKey = "entropylab-sources-open";
+function hodlInitSourcesToggle() {
+  let sources = document.getElementById("sources");
+  if (!sources) return;
+  let stored = "";
+  try {
+    stored = localStorage.getItem(hodlSourcesStorageKey) || "";
+  } catch (e) {
+  }
+  if (stored === "0") sources.open = false;
+  sources.addEventListener("toggle", () => {
+    try {
+      localStorage.setItem(hodlSourcesStorageKey, sources.open ? "1" : "0");
+    } catch (e) {
+    }
+  });
+}
 function hodlInitBetaWarningDismiss() {
   let banner = document.getElementById("beta-warning");
   let dismiss = document.getElementById("beta-warning-dismiss");
@@ -15249,6 +15293,8 @@ async function hodlBoot() {
   hodlInitNetworkPicker();
   hodlInitTheme();
   hodlInitBetaWarningDismiss();
+  hodlInitIntroDismiss();
+  hodlInitSourcesToggle();
   hodlInitMasterFingerprintPreview();
   hodlInitDerivationControls();
   hodlInitAddressBenchmark();

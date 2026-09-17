@@ -2484,6 +2484,12 @@
       // Each theme is named rather than assumed: which one the page opens in
       // now follows the operating system, so neither is the ambient default.
       const theme = document.documentElement.dataset.theme;
+      // The control shares the app's hover vocabulary, which transitions
+      // colour. Reading it straight after a theme switch would catch the
+      // transition mid-flight and report the outgoing colour, so the
+      // measurement suppresses it and restores it afterwards.
+      const transition = dismiss.style.transition;
+      dismiss.style.transition = "none";
       try {
         delete document.documentElement.dataset.theme;
         assert(getComputedStyle(dismiss).color === "rgb(255, 255, 255)", "Dismiss icon is not white in the dark theme");
@@ -2494,6 +2500,7 @@
         const [r, g, b] = light.match(/\d+/g).map(Number);
         assert(r < 60 && g < 60 && b < 60, `Dismiss icon is not near-black in the light theme (${light})`);
       } finally {
+        dismiss.style.transition = transition;
         if (theme) document.documentElement.dataset.theme = theme;
         else delete document.documentElement.dataset.theme;
       }

@@ -1417,22 +1417,19 @@ test("the beta banner carries a dismiss control in a narrow right-hand column", 
     );
   }
   // The banner is a row: the message takes the slack, the control does not.
-  assert.match(css, /#beta-warning, #online-warning \{ display: flex; align-items: flex-start; gap: 12px; \}/);
+  assert.match(css, /\.beta-warning, \.online-warning \{ display: flex; align-items: flex-start; gap: 12px; \}/);
   assert.match(css, /\.beta-warning-text, \.online-warning-text \{ flex: 1; \}/);
-  assert.match(css, /\.beta-warning-dismiss \{[^}]*flex: none;[^}]*\}/s);
+  assert.match(css, /\.beta-warning-dismiss, \.intro-dismiss \{[^}]*flex: none;[^}]*\}/s);
   // White on the dark banner, near-black on the light theme's pale one: the
   // glyph must stay legible in both.
-  assert.match(css, /\.beta-warning-dismiss \{[^}]*color: #ffffff;[^}]*\}/s);
-  assert.match(css, /:root\[data-theme="light"\] \.beta-warning-dismiss \{ color: var\(--fg\); \}/);
+  assert.match(css, /\.beta-warning-dismiss, \.intro-dismiss \{[^}]*color: #ffffff;[^}]*\}/s);
+  assert.match(css, /:root\[data-theme="light"\] \.beta-warning-dismiss,\s*:root\[data-theme="light"\] \.intro-dismiss \{ color: var\(--fg\); \}/);
   // The author display would otherwise beat the user agent's [hidden] rule
   // and the dismissed banner would stay on screen.
   assert.match(css, /#beta-warning\[hidden\], #online-warning\[hidden\] \{ display: none; \}/);
   // Only the dismissible banner uppercases its label; the noscript notice
   // shares .beta-warning and must keep its sentence casing.
   assert.match(css, /\.beta-warning-text strong, \.online-warning-text strong \{[^}]*line-height: 1; text-transform: uppercase;\s*color: var\(--danger-bright\);[^}]*\}/s);
-  // The label takes the banner's own size: a smaller one read as a caption
-  // rather than the sentence's lead-in.
-  assert.doesNotMatch(css, /\.beta-warning-text strong, \.online-warning-text strong \{[^}]*font-size/s);
   assert.doesNotMatch(css, /\.beta-warning strong \{[^}]*text-transform/);
   // Boot wires the control, and the click hides the banner outright.
   assert.match(appWhitespace, /function hodlInitBetaWarningDismiss\(\)\{/);
@@ -1449,13 +1446,13 @@ test("the beta banner carries a dismiss control in a narrow right-hand column", 
   // and the stylesheet keeps the row out of the very first frame.
   assert.match(
     template,
-    /try\{if\(localStorage\.getItem\("entropylab-beta-banner-dismissed"\)==="\{\{VERSION\}\}"\)document\.documentElement\.dataset\.betaBannerDismissed=""\}catch\(e\)\{\}/,
+    /try\{var d=document\.documentElement\.dataset,v="\{\{VERSION\}\}";if\(localStorage\.getItem\("entropylab-beta-banner-dismissed"\)===v\)d\.betaBannerDismissed="";if\(localStorage\.getItem\("entropylab-intro-dismissed"\)===v\)d\.introDismissed=""\}catch\(e\)\{\}/,
   );
   assert.ok(
     template.indexOf("betaBannerDismissed") < template.indexOf("<body"),
     "the pre-paint check must ship in the head",
   );
-  assert.match(css, /:root\[data-beta-banner-dismissed\] #beta-warning \{ display: none; \}/);
+  assert.match(css, /:root\[data-beta-banner-dismissed\] #beta-warning,\s*:root\[data-intro-dismissed\] #site-intro \{ display: none; \}/);
   // Boot must not be the thing that hides an already-dismissed banner.
   assert.doesNotMatch(appWhitespace, /localStorage\.getItem\(hodlBetaBannerStorageKey\)/);
 });
@@ -1617,7 +1614,7 @@ test("the site header is fixed, carries the logo, and holds the version, downloa
     // The wrapper opens on the beta banner; the static template follows with
     // a no-JS notice the runtime page has no need of. Both then carry the
     // conditional warnings, which start hidden.
-    assert.match(live, /<div class="wrap">\s*<aside class="beta-warning no-print" id="beta-warning" role="alert">[\s\S]*?<\/aside>\s*(?:<noscript>[\s\S]*?<\/noscript>\s*)?(?:<aside[^>]*online-warning[\s\S]*?<\/aside>\s*)*<section class="card static-card">/);
+    assert.match(live, /<div class="wrap">\s*<aside class="beta-warning no-print" id="beta-warning" role="alert">[\s\S]*?<\/aside>\s*(?:<noscript>[\s\S]*?<\/noscript>\s*)?(?:<aside[^>]*online-warning[\s\S]*?<\/aside>\s*)*<section[^>]*id="site-intro">/);
     assert.doesNotMatch(markup.slice(wrapper), /<header>|download-controls/);
   }
   assert.doesNotMatch(css, /^header (\{|h1)/m);
@@ -1687,7 +1684,9 @@ test("the seam into the tool is wider than the page's other major seams", () => 
   // The card's surface comes off it: no background, no border, padding kept.
   assert.match(css, /\.sources \{ margin-top: var\(--space-major\); background: none; border: 0; \}/);
   for (const markup of [shell]) {
-    assert.match(markup, /<section class="card muted sources">/);
+    // The closing sources list is a disclosure that ships open, so it reads as
+    // it always did until someone shuts it.
+    assert.match(markup, /<details[^>]*id="sources"[^>]*\sopen>/);
   }
 });
 

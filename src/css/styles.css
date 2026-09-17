@@ -1071,11 +1071,12 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
 }
 .modal-overlay[hidden] { display: none; }
 .modal-card {
-  width: min(var(--modal-width, 440px), 100%); padding: 20px;
+  width: min(var(--modal-width, 440px), 100%); padding: 24px;
   border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
   box-shadow: 0 16px 36px rgb(0 0 0 / 55%);
 }
-.modal-title { margin: 0 0 var(--space-control); font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
+.modal-title { margin: 0 0 var(--space-section); font-weight: 600; font-size: 18px; overflow-wrap: anywhere; }
+@media (max-width: 520px) { .modal-card { padding: 20px; } }
 /* The gate alone fades in, and wears the danger frame its warning calls for. */
 .disclaimer-overlay { opacity: 0; transition: opacity .24s ease; }
 .disclaimer-overlay.is-visible { opacity: 1; }
@@ -1092,19 +1093,31 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
   margin: 12px 0 var(--space-section); font-size: 18px; font-weight: 700; text-transform: uppercase;
   text-align: center; color: var(--danger-bright);
 }
-.disclaimer-card { --modal-width: 520px; padding: 28px 24px; text-align: center; }
+.disclaimer-card { --modal-width: 520px; text-align: center; }
 .exp-card { --modal-width: 760px; }
-.qr-ref-card { padding: 24px; text-align: center; }
+.qr-ref-card { text-align: center; }
 .addr-qr-card { --modal-width: 400px; text-align: center; }
 /* The gap below carries the weight of the decision: the button wants clear
    air between it and the warning it is answering. The side inset matches the
    card's own padding, so the sentence sits a clear step inside the frame and
    breaks into shorter lines. */
-.disclaimer-text { margin: 0 24px 28px; color: var(--fg); line-height: 1.5; }
+.disclaimer-text { margin: 0 0 28px; color: var(--fg); line-height: 1.5; }
+.disclaimer-text p { max-width: 400px; margin: 0 auto var(--space-component); }
+.disclaimer-text p:last-child { margin-bottom: 0; }
+/* The network words carry the header status colours, and nothing else of it:
+   that tag is a positioned pill anchored to the bar. */
+.status-word {
+  padding: 1px 4px; background: var(--bg);
+  font-size: 11px; font-weight: 700; line-height: 1; letter-spacing: 0.1em; text-transform: uppercase;
+  /* The trailing letter-space is offset, as the header tag does, so the word
+     sits centred in its ground rather than shunted left. */
+  text-indent: 0.1em; white-space: nowrap;
+}
+.status-word.is-offline { color: var(--ok-bright); }
+.status-word.is-online { color: var(--danger-bright); }
 /* Scoped to the card: the shared .btn base is every button in the app. The
    answer to a blocking warning should carry more weight than a toolbar
    control, so it takes a wider block and the title's size and casing. */
-.disclaimer-card .btn { padding: 0 32px; font-size: 18px; text-transform: uppercase; }
 @media (prefers-reduced-motion: reduce) { .disclaimer-overlay { transition: none; } }
 .sanity-failure {
   min-height: 100dvh; display: grid; place-items: center; padding: 24px; box-sizing: border-box;
@@ -1755,7 +1768,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .exp-cell:hover { background: var(--surface-2); border-color: var(--muted); }
 .exp-len { color: var(--muted); font-size: 11px; white-space: nowrap; }
 /* The overlay mirrors the disclaimer gate: dimmed page, one centered card. */
-.exp-title { margin: 0; }
 .exp-meta { margin: 4px 0 0; }
 .exp-card textarea {
   min-height: 240px; max-height: 55vh; margin-top: var(--space-control);
@@ -1767,7 +1779,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    a dimmed backdrop with one centered card, dismissed by clicking outside
    or pressing Escape. Shown when an external link is clicked while the
    page is offline, so the user can scan the QR with an online phone. */
-.qr-ref-title { margin: 0 0 16px; }
 .qr-ref-qr { display: inline-block; padding: 12px; background: #fff; border-radius: 8px; }
 .qr-ref-qr svg { display: block; width: 200px; height: 200px; }
 .qr-ref-url { margin: 16px 0 0; font-size: 12px; overflow-wrap: anywhere; word-break: break-all; }
@@ -2074,7 +2085,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* A card's closing actions are the things to press, so their labels carry the
    weight. On the row rather than on .btn, which the tabs share: a tab reads as
    a place you are, not an action you take. */
-.disclaimer-card .btn { font-weight: 700; }
 .current-item-actions { align-items: center; width: 100%; }
 .current-item-actions .clear-current-action { margin-inline-start: auto; }
 .btn.primary[data-derivation-state="running"],

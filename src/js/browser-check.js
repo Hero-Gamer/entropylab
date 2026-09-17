@@ -181,6 +181,12 @@
     overlay.classList.add("is-visible");
     accept.focus();
   }));
+  // The gate cannot import the shared helper (it is inlined through its own
+  // build token), so the same cycle is repeated here. It stays unescapable:
+  // no Escape, no backdrop click, only the acknowledgement.
+  overlay.addEventListener?.("keydown", (event) => {
+    if (event.key === "Tab") event.preventDefault();
+  });
   accept.addEventListener("click", () => {
     try {
       localStorage.setItem(KEY, VERSION);

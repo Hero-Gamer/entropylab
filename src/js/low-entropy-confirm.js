@@ -23,6 +23,10 @@
 // the dialog itself, which acknowledges nothing).
 
 import { t } from "./i18n.js";
+import { nextDialogFocus, trapModalFocus } from "./modal-focus.js";
+
+// Re-exported: the confirmation's own suite drives the step directly.
+export { nextDialogFocus };
 
 // The acknowledgement, remembered across sessions. Reads and writes are guarded:
 // a browser that refuses storage simply keeps showing the warning, and only
@@ -43,16 +47,6 @@ export const createLowEntropyAcknowledgement = (store = globalThis.localStorage)
       } catch (e) {}
     },
   };
-};
-
-// Focus containment for the modal: the next control to focus when Tab (or
-// Shift+Tab) is pressed, cycling through the dialog's focusable elements.
-// Pure and unit-tested under Node; the DOM handler supplies the live list.
-export const nextDialogFocus = (focusables, active, shiftKey) => {
-  if (!focusables.length) return null;
-  const index = focusables.indexOf(active);
-  if (index === -1) return focusables[0];
-  return focusables[(index + (shiftKey ? -1 : 1) + focusables.length) % focusables.length];
 };
 
 // Static card skeleton. Every user-facing string is set through textContent
@@ -136,16 +130,8 @@ export const initLowEntropyConfirm = () => {
     if (event.target === overlay) close();
   });
   overlay.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      close();
-      return;
-    }
-    // Focus trap: the modal gates key creation, so keyboard focus cycles
-    // within the dialog instead of escaping to the background behind it.
-    if (event.key === "Tab") {
-      event.preventDefault();
-      nextDialogFocus(focusables, document.activeElement, event.shiftKey)?.focus();
-    }
+    if (event.key === "Escape") close();
   });
+  trapModalFocus(overlay, () => focusables);
   return { open, close, isOpen: () => !overlay.hidden, isAcknowledged: acknowledgement.isAcknowledged };
 };

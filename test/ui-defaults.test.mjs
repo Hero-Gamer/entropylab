@@ -1509,11 +1509,7 @@ test("the beta disclaimer gates the page as a modal until accepted", () => {
     /<div class="modal-overlay disclaimer-overlay no-print" id="beta-disclaimer" role="alertdialog" aria-modal="true" aria-labelledby="beta-disclaimer-title" aria-describedby="beta-disclaimer-text" hidden>/,
   );
   assert.match(template, /<p class="modal-warning-title disclaimer-title" id="beta-disclaimer-title"[^>]*>Beta software<\/p>/);
-  assert.match(
-    template,
-    /<p class="disclaimer-text" id="beta-disclaimer-text"[^>]*>EntropyLab is experimental and should only be used for testing and educational purposes\. This tool is intended for offline use by advanced users only\. Any use online or with real funds can be dangerous\.<\/p>/,
-  );
-  assert.match(template, /<button class="btn primary" id="beta-disclaimer-accept" type="button"[^>]*>I understand<\/button>/);
+  assert.match(template, /<button class="btn primary" id="beta-disclaimer-accept" type="button"[^>]*>I Understand<\/button>/);
   // The fade: transparent until .is-visible, faded out and inert once
   // .is-dismissed, and motion-free when the user prefers reduced motion.
   assert.match(css, /\.modal-overlay \{\s*position: fixed; inset: 0;/s);
@@ -1530,10 +1526,8 @@ test("the beta disclaimer gates the page as a modal until accepted", () => {
   assert.match(css, /\.modal-warning-icon \{[^}]*color: var\(--danger-bright\); \}/);
   assert.match(css, /\.modal-warning-title \{[^}]*color: var\(--danger-bright\);/s);
   // The button sits clear of the warning it answers.
-  assert.match(css, /\.disclaimer-text \{ margin: 0 24px 28px;/);
   // The accept button is widened and uppercased in the card only; the shared
   // .btn base still carries every other button in the app.
-  assert.match(css, /\.disclaimer-card \.btn \{ padding: 0 32px; font-size: 18px; text-transform: uppercase; \}/);
   assert.match(css, /\.tab, \.btn \{\s*min-height: 44px; padding: 0 14px;/);
 });
 

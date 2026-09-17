@@ -22,6 +22,7 @@
 // referenceQrSvg are pure and unit-tested under Node.
 
 import { renderSVG as uqrRenderSvg } from "uqr";
+import { trapModalFocus } from "./modal-focus.js";
 
 const NETWORK_TAG_ID = "network-status";
 
@@ -94,6 +95,7 @@ export const initQrReferences = () => {
   overlayEl.innerHTML = `<div class="modal-card qr-ref-card"></div>`;
   document.body.append(overlayEl);
 
+  trapModalFocus(overlayEl, () => [...overlayEl.querySelectorAll("button")]);
   overlayEl.addEventListener("click", (event) => {
     if (event.target === overlayEl) closeOverlay();
   });

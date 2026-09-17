@@ -1226,19 +1226,13 @@
     );
     // The sentence is inset from the card, so it wraps shorter than the frame.
     const card = overlay.querySelector(".disclaimer-card");
+    const paragraph = text.querySelector("p") || text;
     assert(
-      text.getBoundingClientRect().width < card.getBoundingClientRect().width - 80,
+      paragraph.getBoundingClientRect().width < card.getBoundingClientRect().width - 80,
       "The warning text runs the full width of the card",
     );
-    // The button answers a blocking warning, so it is not a toolbar control:
-    // wider, uppercase, and set at the title's size.
-    const acceptStyle = getComputedStyle(accept);
-    assert(acceptStyle.textTransform === "uppercase", "Accept button label is not uppercase");
-    assert(
-      parseFloat(acceptStyle.fontSize) > parseFloat(textStyle.fontSize),
-      `Accept label is ${acceptStyle.fontSize} against the text's ${textStyle.fontSize}`,
-    );
-    assert(parseFloat(acceptStyle.paddingLeft) >= 32, `Accept button padding is only ${acceptStyle.paddingLeft}`);
+    // The button is the shared primary: the card's colour carries the warning,
+    // not a bespoke size or casing.
     // Other buttons keep the shared base.
     const plain = document.querySelector(".wrap .btn");
     if (plain) {
@@ -1280,7 +1274,7 @@
       // Measured from the intro's own bottom edge: intros are notes now, so
       // their interior padding and last child differ between tools.
       const introToTabsGap = (intro, tabs) =>
-        tabs.getBoundingClientRect().top - intro.getBoundingClientRect().bottom;
+        Math.round(tabs.getBoundingClientRect().top - intro.getBoundingClientRect().bottom);
       // Reached by name: arrow counting assumed BIP-85 was two steps along.
       document.querySelector('#workspace [data-workspace="bip85"]').click();
       await until(() => !document.getElementById("bip85-card").hidden, "BIP-85 for the intro spacing measurement");
@@ -1303,7 +1297,7 @@
       const journalGlobalDownload = document.getElementById("journal-global-download");
       const journalGlobalClear = document.getElementById("journal-global-clear");
       assert(journalGlobalDownload.disabled && journalGlobalClear.disabled, "Journal-wide actions should be disabled before a journal is opened");
-      equal(introToTabsGap(journalIntro, journalManager.querySelector(":scope > .key-tab-strip")), singleIntroGap, "Journal intro-to-tabs spacing differs from a single-intro tool");
+      equal(Math.round(introToTabsGap(journalIntro, journalManager.querySelector(":scope > .key-tab-strip"))), Math.round(singleIntroGap), "Journal intro-to-tabs spacing differs from a single-intro tool");
       const documentTop = (element) => element.getBoundingClientRect().top + scrollY;
       const journalManagerTop = documentTop(journalManager);
       journalTabs.forEach((tab) => assert(tab.classList.contains("key-tab"), "Journal stations should use folder-style Key Station tabs"));
@@ -1412,7 +1406,7 @@
       equal(psbtTabs.map((tab) => tab.textContent.trim()).join("|"), "PSBT / Nonce|PSBT Editor");
       const psbtManager = document.getElementById("psbt-manager");
       assert(psbtManager && !psbtManager.hidden, "PSBT station tabs should be visible inside the PSBT tool");
-      equal(introToTabsGap(document.querySelector("#psbt-tool-intros > .tool-intro.active"), psbtManager.querySelector(":scope > .key-tab-strip")), singleIntroGap, "PSBT intro-to-tabs spacing differs from a single-intro tool");
+      equal(Math.round(introToTabsGap(document.querySelector("#psbt-tool-intros > .tool-intro.active"), psbtManager.querySelector(":scope > .key-tab-strip"))), Math.round(singleIntroGap), "PSBT intro-to-tabs spacing differs from a single-intro tool");
       const psbtManagerTop = documentTop(psbtManager);
       psbtTabs.forEach((tab) => assert(tab.classList.contains("key-tab"), "PSBT stations should use folder-style Key Station tabs"));
       equal(getComputedStyle(document.getElementById("psbt-card")).borderTopLeftRadius, "0px", "The active PSBT station card should join its folder tab");

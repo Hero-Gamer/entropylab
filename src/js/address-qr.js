@@ -10,6 +10,7 @@
 // registry entries behind.
 
 import { t } from "./i18n.js";
+import { trapModalFocus } from "./modal-focus.js";
 
 const escapeHtml = (text) =>
   String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -130,6 +131,7 @@ export const initAddressQr = (renderQr, icons = {}) => {
     closeButton.focus();
   };
 
+  trapModalFocus(overlay, () => [text, copyButton, closeButton]);
   document.addEventListener("click", (event) => {
     const target = event.target.closest?.("[data-address-qr]");
     if (target) open(target);

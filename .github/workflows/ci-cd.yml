@@ -34,9 +34,12 @@ concurrency:
   group: pages-${{ github.ref }}
   cancel-in-progress: false
 
-# One version for every job so setup stays in a single place.
+# One version for every job so setup stays in a single place. Pinned exactly
+# (not "22") so the CI toolchain is a fixed input to the reproducible build;
+# must equal ARG NODE_VERSION in the Dockerfile (test/toolchain-pin.test.mjs
+# enforces the pair).
 env:
-  NODE_VERSION: "22"
+  NODE_VERSION: "22.23.2"
 
 jobs:
   # ── Build: compile src/ once — every gate and every publication path ─────

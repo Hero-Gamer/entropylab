@@ -49,7 +49,7 @@ export const nextDialogFocus = (focusables, active, shiftKey) => {
 // at init/open time, so no translated text ever lands in a template attribute
 // (see test/i18n-attribute-guard.test.mjs).
 export const lowEntropyConfirmCardHtml = () => `
-  <div class="low-entropy-card" role="dialog" aria-modal="true" aria-labelledby="low-entropy-title">
+  <div class="low-entropy-card" id="low-entropy-dialog" role="dialog" aria-modal="true" aria-labelledby="low-entropy-title">
     <p class="low-entropy-title" id="low-entropy-title"></p>
     <p class="low-entropy-message" id="low-entropy-message"></p>
     <p class="low-entropy-detail muted" id="low-entropy-detail"></p>

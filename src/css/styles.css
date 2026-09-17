@@ -1029,7 +1029,7 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
   background: color-mix(in oklab, var(--danger) 14%, var(--surface));
   color: var(--fg); font-size: 14px; line-height: 1.5;
 }
-.online-warning a { font-weight: 700; white-space: nowrap; }
+.online-warning a { white-space: nowrap; }
 /* The banners are rows: the message takes the slack, a control column (only
    the beta banner carries one) does not. The noscript notice carries no
    control and stays a plain block, but its label is wrapped like the others
@@ -1188,6 +1188,14 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    introduction dismissed the strip is the first thing on the page, and that
    gap reads as dead space instead of separation, so it drops to a section. */
 :root[data-intro-dismissed] .workspace { margin-top: var(--space-section); }
+/* On a narrow viewport the strip overflows and the MORE TOOLS label takes the
+   seam above it, which the online warning then has to share. The seam carries
+   both only when that warning is up, so it keys off the warning and the
+   viewport — not off the label, which hides again when the strip is scrolled
+   to its end and would collapse the seam mid-swipe. */
+@media (max-width: 720px) {
+  :root[data-intro-dismissed] #online-warning:not([hidden]) ~ .workspace { margin-top: 40px; }
+}
 /* Sits in the seam above the strip's right edge, where it reads as a label on
    the tabs rather than another control. Uppercase and accent-coloured like the
    page's other small labels; it never takes a click, the strip does. */

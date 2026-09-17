@@ -60,6 +60,9 @@ const disclaimerDom = () => {
     remove: () => {
       calls.removed += 1;
     },
+    addEventListener: (type, fn) => {
+      if (type === "keydown") calls.onKeydown = fn;
+    },
   };
   const accept = {
     focus: () => {

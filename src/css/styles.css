@@ -126,7 +126,10 @@ button:not(:disabled):active * { color: inherit !important; }
 /* A card that only reads, never takes input: no edge and no rounded corner,
    the way the readouts inside the tools now sit. The border stays in place
    unpainted, so nothing shifts. */
-.card.static-card { border-color: transparent; border-radius: 0; }
+.card.static-card { position: relative; border-color: transparent; border-radius: 0; }
+/* The introduction can be put away for good: the control sits in the card's
+   own corner, with the card as its positioning context. */
+.intro-dismiss { position: absolute; top: 12px; right: 12px; margin: 0; }
 /* Shared tool shell. Cards own their edge padding; children own only the space
    between components, so adding a new first or last block cannot double it. */
 .tool-card > :first-child { margin-top: 0; }
@@ -148,7 +151,9 @@ button:not(:disabled):active * { color: inherit !important; }
    list. The top margin stands in for the paragraph's, and dropping the
    bottom one lets the card's own padding close it out. */
 .pitch-list { display: grid; gap: var(--space-control); margin: var(--space-control) 0 0; padding-left: 20px; }
-.sources-heading { color: var(--fg); font-size: 1.17rem; }
+/* The heading is the disclosure toggle now, so it takes its colour and size
+   from the shared summary grammar the card accordions use — including the
+   grey-until-hovered-or-open feedback that marks it as a control. */
 /* One step dimmer than the .muted it carries for its size and leading, so
    the closing line sits behind the sources it follows. The emoji row is the
    one thing in it worth reading, so it keeps its own size and spaces itself
@@ -198,7 +203,8 @@ button:not(:disabled):active * { color: inherit !important; }
    own ring is the one mark that can never be mistaken for a meaning colour. */
 .btn, .segmented-control > .tab, .dice-input-pad button, .card-suit-pad button, .card-undo-button,
 .seed-keyboard-key, .seed-keyboard-space, .seed-keyboard-mode,
-.theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button, .addr-qr {
+.theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button, .addr-qr,
+.beta-warning-dismiss, .intro-dismiss {
   --hover-edge: var(--selection-accent); --hover-ink: var(--selection-accent-ink);
   cursor: pointer; transition: background-color .14s ease, border-color .14s ease, color .14s ease;
 }
@@ -208,7 +214,7 @@ button:not(:disabled):active * { color: inherit !important; }
 .btn:not(:disabled):hover,
 .segmented-control > .tab:not(:disabled):not(.active):not([aria-pressed="true"]):hover,
 :is(.dice-input-pad button, .card-suit-pad button, .card-undo-button, .seed-keyboard-key, .seed-keyboard-space, .seed-keyboard-mode):not(:disabled):not(.active):hover,
-:is(.theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button, .addr-qr):hover {
+:is(.theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button, .addr-qr, .beta-warning-dismiss, .intro-dismiss):hover {
   border-color: var(--hover-edge); background: var(--bg); color: var(--hover-ink);
 }
 /* A suit keeps its own colour through the inversion, since that is what names
@@ -219,7 +225,8 @@ button:not(:disabled):active * { color: inherit !important; }
 @media (prefers-reduced-motion: reduce) {
   .btn, .segmented-control > .tab, .dice-input-pad button, .card-suit-pad button, .card-undo-button,
   .seed-keyboard-key, .seed-keyboard-space, .seed-keyboard-mode,
-  .theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button, .addr-qr { transition: none; }
+  .theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button, .addr-qr,
+  .beta-warning-dismiss, .intro-dismiss { transition: none; }
 }
 /* The colour variants carry their rest colours and their three tokens, and
    nothing else: green saves to disk, red destroys, blue leaves the page. Each
@@ -1018,76 +1025,105 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
 .custom-select-option[aria-selected="true"] { background: color-mix(in oklab, var(--accent) 20%, var(--surface-2)); color: var(--accent); }
 .custom-select-option:disabled { background: transparent; color: var(--faint); cursor: not-allowed; opacity: .48; }
 .beta-warning, .online-warning {
-  margin: 0 0 12px; padding: 14px 16px; border: 1px solid; border-radius: 10px;
-  color: var(--fg); line-height: 1.5;
-}
-.beta-warning, .online-warning {
-  border-color: var(--danger); background: color-mix(in oklab, var(--danger) 14%, var(--surface));
+  margin: 0 0 12px; padding: 14px 16px; border: 0;
+  background: color-mix(in oklab, var(--danger) 14%, var(--surface));
+  color: var(--fg); font-size: 14px; line-height: 1.5;
 }
 .online-warning a { font-weight: 700; white-space: nowrap; }
 /* The banners are rows: the message takes the slack, a control column (only
    the beta banner carries one) does not. The noscript notice carries no
    control and stays a plain block, but its label is wrapped like the others
    so it takes the same treatment. */
-#beta-warning, #online-warning { display: flex; align-items: flex-start; gap: 12px; }
+.beta-warning, .online-warning { display: flex; align-items: flex-start; gap: 12px; }
 /* The author display wins over the UA [hidden] rule, so restate it. */
 #beta-warning[hidden], #online-warning[hidden] { display: none; }
-/* A banner dismissed on an earlier visit must never paint. The inline head
-   script sets this attribute before first paint, so the row is gone from the
-   first frame instead of flashing until the application boots. */
-:root[data-beta-banner-dismissed] #beta-warning { display: none; }
+/* Anything dismissed on an earlier visit must never paint. The inline head
+   script sets these attributes before first paint, so the block is gone from
+   the first frame instead of flashing until the application boots. */
+:root[data-beta-banner-dismissed] #beta-warning,
+:root[data-intro-dismissed] #site-intro { display: none; }
 .beta-warning-text, .online-warning-text { flex: 1; }
 /* line-height 1 so the label sits where the padding puts it: the banner's 1.5
    would add half its leading above the caps as invisible space. The gap down
    to the sentence is then an explicit margin. */
 .beta-warning-text strong, .online-warning-text strong {
-  display: block; margin-bottom: 4px; line-height: 1; text-transform: uppercase;
+  display: block; margin-bottom: 6px; font-size: 14px; line-height: 1; text-transform: uppercase;
   color: var(--danger-bright);
 }
-.beta-warning-dismiss {
+.beta-warning-dismiss, .intro-dismiss {
   /* Negative margins pull the control out of the banner padding so it sits
      up in the corner rather than level with the first line of text. */
   flex: none; display: grid; place-items: center; width: 32px; height: 32px;
-  margin: -6px -8px 0 0; padding: 0; border: 0; border-radius: 6px;
+  margin: -10px -12px; padding: 0; border: 1px solid transparent; border-radius: 6px;
   background: none; color: #ffffff; cursor: pointer;
 }
 /* White reads against the dark banner, but the light theme tints the same
    banner pale, so the glyph takes the theme's near-black foreground there.
    Both explicit light and system-light land on this attribute. */
-:root[data-theme="light"] .beta-warning-dismiss { color: var(--fg); }
-.beta-warning-dismiss:hover { background: color-mix(in oklab, var(--danger) 20%, transparent); }
-.disclaimer-overlay {
-  position: fixed; inset: 0; z-index: 200; display: grid; place-items: center;
-  padding: 24px; box-sizing: border-box; background: rgb(0 0 0 / 55%);
-  /* The blur puts the page out of focus behind the card, so the warning is
-     the only thing that reads. The prefix is for WebKit, which shipped the
-     property unprefixed only recently. */
-  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-  opacity: 0; transition: opacity .24s ease;
-}
-.disclaimer-overlay[hidden] { display: none; }
-.disclaimer-overlay.is-visible { opacity: 1; }
-.disclaimer-overlay.is-dismissed { opacity: 0; pointer-events: none; }
-.disclaimer-card {
-  max-width: 520px; padding: 28px 24px; text-align: center;
-  border: 1px solid var(--danger); border-radius: 12px;
-  background: color-mix(in oklab, var(--danger) 10%, var(--surface));
-  box-shadow: 0 16px 36px rgb(0 0 0 / 55%);
-}
+:root[data-theme="light"] .beta-warning-dismiss,
+:root[data-theme="light"] .intro-dismiss { color: var(--fg); }
 /* The icon and the title take the brighter alert red, the same pairing the
    beta banner uses at the top of the page. A step above the body size, well
    short of the heading it used to be. */
-.disclaimer-icon { width: 48px; height: 48px; color: var(--danger-bright); }
-.disclaimer-title { margin: 12px 0 12px; font-size: 18px; font-weight: 700; text-transform: uppercase; color: var(--danger-bright); }
+/* One modal grammar. Every overlay is the same dimmed, blurred backdrop with a
+   single centred card: the blur puts the page out of focus so the card is the
+   only thing that reads. A modal states only what is its own - its width
+   through --modal-width, and any colour its warning carries. The -webkit
+   prefix is for Safari, which shipped the property unprefixed only recently. */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 200; display: grid; place-items: center;
+  padding: 24px; box-sizing: border-box; background: rgb(0 0 0 / 55%);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.modal-overlay[hidden] { display: none; }
+.modal-card {
+  width: min(var(--modal-width, 440px), 100%); padding: 24px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+  box-shadow: 0 16px 36px rgb(0 0 0 / 55%);
+}
+.modal-title { margin: 0 0 var(--space-section); font-weight: 600; font-size: 18px; overflow-wrap: anywhere; }
+@media (max-width: 520px) { .modal-card { padding: 20px; } }
+/* The gate alone fades in, and wears the danger frame its warning calls for. */
+.disclaimer-overlay { opacity: 0; transition: opacity .24s ease; }
+.disclaimer-overlay.is-visible { opacity: 1; }
+.disclaimer-overlay.is-dismissed { opacity: 0; pointer-events: none; }
+/* The warning variant. A modal that reports danger says so in colour: a red
+   frame over a red-tinted ground, the alert triangle above, and the title in
+   the alert red. The beta gate and the low-entropy confirmation are the same
+   thing wearing it, rather than two cards that resemble each other. */
+.modal-card.is-warning {
+  border-color: var(--danger); background: color-mix(in oklab, var(--danger) 10%, var(--surface));
+}
+.modal-warning-icon { display: block; width: 48px; height: 48px; margin: 0 auto; color: var(--danger-bright); }
+.modal-warning-title {
+  margin: 12px 0 var(--space-section); font-size: 18px; font-weight: 700; text-transform: uppercase;
+  text-align: center; color: var(--danger-bright);
+}
+.disclaimer-card { --modal-width: 520px; text-align: center; }
+.exp-card { --modal-width: 760px; }
+.qr-ref-card { text-align: center; }
+.addr-qr-card { --modal-width: 400px; text-align: center; }
 /* The gap below carries the weight of the decision: the button wants clear
    air between it and the warning it is answering. The side inset matches the
    card's own padding, so the sentence sits a clear step inside the frame and
    breaks into shorter lines. */
-.disclaimer-text { margin: 0 24px 28px; color: var(--fg); line-height: 1.5; }
+.disclaimer-text { margin: 0 0 28px; color: var(--fg); line-height: 1.5; }
+.disclaimer-text p { max-width: 400px; margin: 0 auto var(--space-component); }
+.disclaimer-text p:last-child { margin-bottom: 0; }
+/* The network words carry the header status colours, and nothing else of it:
+   that tag is a positioned pill anchored to the bar. */
+.status-word {
+  padding: 1px 4px; background: var(--bg);
+  font-size: 11px; font-weight: 700; line-height: 1; letter-spacing: 0.1em; text-transform: uppercase;
+  /* The trailing letter-space is offset, as the header tag does, so the word
+     sits centred in its ground rather than shunted left. */
+  text-indent: 0.1em; white-space: nowrap;
+}
+.status-word.is-offline { color: var(--ok-bright); }
+.status-word.is-online { color: var(--danger-bright); }
 /* Scoped to the card: the shared .btn base is every button in the app. The
    answer to a blocking warning should carry more weight than a toolbar
    control, so it takes a wider block and the title's size and casing. */
-.disclaimer-card .btn { padding: 0 32px; font-size: 18px; text-transform: uppercase; }
 @media (prefers-reduced-motion: reduce) { .disclaimer-overlay { transition: none; } }
 .sanity-failure {
   min-height: 100dvh; display: grid; place-items: center; padding: 24px; box-sizing: border-box;
@@ -1148,6 +1184,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    than merging into the panel below, because for two of the tools what
    follows is a manager with its own tab strip. */
 .workspace { position: relative; margin: var(--space-lede) 0 0; }
+/* The lede gap is measured against the introduction above it. With the
+   introduction dismissed the strip is the first thing on the page, and that
+   gap reads as dead space instead of separation, so it drops to a section. */
+:root[data-intro-dismissed] .workspace { margin-top: var(--space-section); }
 /* Sits in the seam above the strip's right edge, where it reads as a label on
    the tabs rather than another control. Uppercase and accent-coloured like the
    page's other small labels; it never takes a click, the strip does. */
@@ -1738,17 +1778,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .exp-cell:hover { background: var(--surface-2); border-color: var(--muted); }
 .exp-len { color: var(--muted); font-size: 11px; white-space: nowrap; }
 /* The overlay mirrors the disclaimer gate: dimmed page, one centered card. */
-.exp-overlay {
-  position: fixed; inset: 0; z-index: 200; display: grid; place-items: center;
-  padding: 24px; box-sizing: border-box; background: rgb(0 0 0 / 55%);
-}
-.exp-overlay[hidden] { display: none; }
-.exp-card {
-  width: min(760px, 100%); padding: 20px; border: 1px solid var(--border);
-  border-radius: 12px; background: var(--surface);
-  box-shadow: 0 16px 36px rgb(0 0 0 / 55%);
-}
-.exp-title { margin: 0; font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
 .exp-meta { margin: 4px 0 0; }
 .exp-card textarea {
   min-height: 240px; max-height: 55vh; margin-top: var(--space-control);
@@ -1760,17 +1789,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    a dimmed backdrop with one centered card, dismissed by clicking outside
    or pressing Escape. Shown when an external link is clicked while the
    page is offline, so the user can scan the QR with an online phone. */
-.qr-ref-overlay {
-  position: fixed; inset: 0; z-index: 200; display: grid; place-items: center;
-  padding: 24px; box-sizing: border-box; background: rgb(0 0 0 / 55%);
-}
-.qr-ref-overlay[hidden] { display: none; }
-.qr-ref-card {
-  width: min(440px, 100%); padding: 24px; border: 1px solid var(--border);
-  border-radius: 12px; background: var(--surface);
-  box-shadow: 0 16px 36px rgb(0 0 0 / 55%); text-align: center;
-}
-.qr-ref-title { margin: 0 0 16px; font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
 .qr-ref-qr { display: inline-block; padding: 12px; background: #fff; border-radius: 8px; }
 .qr-ref-qr svg { display: block; width: 200px; height: 200px; }
 .qr-ref-url { margin: 16px 0 0; font-size: 12px; overflow-wrap: anywhere; word-break: break-all; }
@@ -1783,17 +1801,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   background: transparent; color: var(--muted); font: inherit; font-size: 10px;
   letter-spacing: 0.05em; cursor: pointer; vertical-align: middle;
 }
-.addr-qr-overlay {
-  position: fixed; inset: 0; z-index: 200; display: grid; place-items: center;
-  padding: 24px; box-sizing: border-box; background: rgb(0 0 0 / 55%);
-}
-.addr-qr-overlay[hidden] { display: none; }
-.addr-qr-card {
-  width: min(400px, 100%); padding: 20px; border: 1px solid var(--border);
-  border-radius: 12px; background: var(--surface); text-align: center;
-  box-shadow: 0 16px 36px rgb(0 0 0 / 55%);
-}
-.addr-qr-title { margin: 0 0 var(--space-control); font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
 .addr-qr-image { cursor: pointer; }
 .addr-qr-image svg { width: 220px; height: 220px; }
 /* The address copies on a click, on the text or the icon trailing it; the
@@ -1805,26 +1812,21 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .addr-qr-address:hover { color: var(--selection-accent-ink); }
 .addr-qr-actions { margin-top: var(--space-component); justify-content: center; }
-/* The low-entropy confirmation mirrors the address-QR overlay: a dimmed
-   backdrop with one centered card, dismissed by Add More Entropy, Escape, or
-   a click outside. Shown when Derive Key is pressed with less entropy than
-   recommended. */
-.low-entropy-overlay {
-  position: fixed; inset: 0; z-index: 200; display: grid; place-items: center;
-  padding: 24px; box-sizing: border-box; background: rgb(0 0 0 / 55%);
-}
-.low-entropy-overlay[hidden] { display: none; }
-.low-entropy-card {
-  width: min(440px, 100%); padding: 20px; border: 1px solid var(--border);
-  border-radius: 12px; background: var(--surface);
-  box-shadow: 0 16px 36px rgb(0 0 0 / 55%);
-}
-.low-entropy-title { margin: 0 0 var(--space-control); font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
-.low-entropy-message { margin: 0; }
-.low-entropy-detail { margin: var(--space-control) 0 0; }
-.low-entropy-advice { margin: var(--space-control) 0 0; }
-.low-entropy-dismiss-row { margin-top: var(--space-component); }
-.low-entropy-actions { margin-top: var(--space-component); justify-content: flex-end; }
+/* Shown when Derive Key is pressed with less entropy than recommended. The
+   card carries the station vocabulary: a label titles it, the shortfall is a
+   private note, the counts are help text, and the actions close it as a split
+   row. Only the title's top margin is the card's own, since a .label opens
+   the card rather than following a block. */
+.low-entropy-card .edge-note { margin-bottom: var(--space-section); }
+.low-entropy-card .switch-row { display: flex; justify-content: center; margin-bottom: var(--space-section); }
+.low-entropy-card .switch-toggle { width: auto; }
+/* The two answers carry equal weight in the row, the way the key view's own
+   pair of download actions splits its footer. */
+.low-entropy-actions > .btn { flex: 1 1 0; }
+.low-entropy-recommended { display: block; }
+/* The shortfall states the numbers plainly; the warning beside it is what
+   carries the note treatment. */
+.low-entropy-message { margin: 0 0 var(--space-section); color: var(--fg); font-size: 14px; line-height: 1.5; text-align: center; }
 .sp-result, .sp-output { margin-top: var(--space-component); }
 .sp-qr { width: min(220px, 100%); margin: var(--space-control) 0; }
 .sp-qr svg { width: 100%; height: auto; display: block; background: #fff; border-radius: 8px; }
@@ -1861,15 +1863,16 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    inside the control, on one line with the box, so it owns no gap either side.
    The components above already say margin: 0; this repeats it only to outrank
    the convention, which an id lets win over their plain class selectors. */
-.tool-card .switch-toggle .label { margin: 0; color: var(--muted); }
+.switch-toggle .label { margin: 0; }
+.switch-toggle .label { color: var(--muted); }
 /* Grey at rest across the card, like the Harden qualifiers and the accordion
    toggles: a checkbox offers an option rather than naming a field, so it sits
    a step back until the pointer arrives. Set on the control as well as on the
    label class, because some of these title themselves with a bare <strong>
    that inherits and others with a .label that sets its own colour. */
-.tool-card .switch-toggle { color: var(--muted); }
-.tool-card .switch-toggle:hover,
-.tool-card .switch-toggle:hover .label { color: var(--fg); }
+.switch-toggle { color: var(--muted); }
+.switch-toggle:hover,
+.switch-toggle:hover .label { color: var(--fg); }
 /* The fields rest on the page ground already, so the fill half of the shared
    hover has nowhere to go: the edge is what answers the pointer, as it does on
    the method cards. Scoped to the tool cards rather than to one of them, so a
@@ -1964,23 +1967,23 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    open or shut. That means the row spans the card rather than hugging its
    text — a line only as wide as the words would read as an underline. The
    glyph and label still sit left; only the hit area grows with it. */
-:is(.derivation-advanced, .key-group, .wallet-advanced) > summary {
+:is(.derivation-advanced, .key-group, .sources, .wallet-advanced) > summary {
   display: inline-flex; align-items: center; gap: 4px; width: fit-content; min-height: 32px;
   margin-bottom: var(--space-control);
   color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; list-style: none;
 }
-:is(.derivation-advanced, .key-group, .wallet-advanced) > summary::-webkit-details-marker { display: none; }
-:is(.derivation-advanced, .key-group, .wallet-advanced) > summary::before {
+:is(.derivation-advanced, .key-group, .sources, .wallet-advanced) > summary::-webkit-details-marker { display: none; }
+:is(.derivation-advanced, .key-group, .sources, .wallet-advanced) > summary::before {
   content: "\25B8"; display: inline-block; width: 0.7em; font-size: 22px; line-height: 1; transform: translateY(-2px);
 }
-:is(.derivation-advanced, .key-group, .wallet-advanced)[open] > summary::before { content: "\25BE"; }
-:is(.derivation-advanced, .key-group, .wallet-advanced) > summary:hover { color: var(--fg); }
-:is(.derivation-advanced, .key-group, .wallet-advanced) > summary:focus-visible { outline-offset: 4px; border-radius: 3px; }
+:is(.derivation-advanced, .key-group, .sources, .wallet-advanced)[open] > summary::before { content: "\25BE"; }
+:is(.derivation-advanced, .key-group, .sources, .wallet-advanced) > summary:hover { color: var(--fg); }
+:is(.derivation-advanced, .key-group, .sources, .wallet-advanced) > summary:focus-visible { outline-offset: 4px; border-radius: 3px; }
 /* Open, the toggle titles the block rather than standing off from it, and the
    block carries the space beneath itself instead. The gap under the toggle is
    the same either way — set on the summary itself — so opening the section
    moves the fields in without shifting the toggle. */
-:is(.derivation-advanced, .key-group, .wallet-advanced)[open] > summary { color: var(--fg); }
+:is(.derivation-advanced, .key-group, .sources, .wallet-advanced)[open] > summary { color: var(--fg); }
 /* A key view group is a row, not a word: the whole line answers the pointer,
    so there is no dead space beside the title. */
 .key-group > summary { display: flex; width: auto; min-height: 36px; }
@@ -2092,7 +2095,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* A card's closing actions are the things to press, so their labels carry the
    weight. On the row rather than on .btn, which the tabs share: a tab reads as
    a place you are, not an action you take. */
-.disclaimer-card .btn { font-weight: 700; }
 .current-item-actions { align-items: center; width: 100%; }
 .current-item-actions .clear-current-action { margin-inline-start: auto; }
 .btn.primary[data-derivation-state="running"],

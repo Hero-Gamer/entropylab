@@ -22,6 +22,7 @@
 // referenceQrSvg are pure and unit-tested under Node.
 
 import { renderSVG as uqrRenderSvg } from "uqr";
+import { trapModalFocus } from "./modal-focus.js";
 
 const NETWORK_TAG_ID = "network-status";
 
@@ -63,7 +64,7 @@ const openOverlay = (url, label) => {
   const qrSvg = referenceQrSvg(url);
   const card = overlayEl.querySelector(".qr-ref-card");
   card.innerHTML = `
-    <p class="qr-ref-title">${escapeHtml(label)}</p>
+    <p class="modal-title qr-ref-title">${escapeHtml(label)}</p>
     <div class="qr-ref-qr" aria-label="QR code for ${escapeHtml(url)}">${qrSvg}</div>
     <p class="qr-ref-url mono">${escapeHtml(url)}</p>
     <p class="qr-ref-hint muted">Scan with a phone camera to open this reference on an online device.</p>
@@ -86,14 +87,15 @@ const openOverlay = (url, label) => {
 export const initQrReferences = () => {
   if (document.getElementById("qr-ref-overlay")) return;
   overlayEl = document.createElement("div");
-  overlayEl.className = "qr-ref-overlay no-print";
+  overlayEl.className = "modal-overlay qr-ref-overlay no-print";
   overlayEl.id = "qr-ref-overlay";
   overlayEl.hidden = true;
   overlayEl.setAttribute("role", "dialog");
   overlayEl.setAttribute("aria-modal", "true");
-  overlayEl.innerHTML = `<div class="qr-ref-card"></div>`;
+  overlayEl.innerHTML = `<div class="modal-card qr-ref-card"></div>`;
   document.body.append(overlayEl);
 
+  trapModalFocus(overlayEl, () => [...overlayEl.querySelectorAll("button")]);
   overlayEl.addEventListener("click", (event) => {
     if (event.target === overlayEl) closeOverlay();
   });

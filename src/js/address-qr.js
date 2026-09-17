@@ -10,6 +10,7 @@
 // registry entries behind.
 
 import { t } from "./i18n.js";
+import { trapModalFocus } from "./modal-focus.js";
 
 const escapeHtml = (text) =>
   String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -33,7 +34,7 @@ export const addressQrButtonHtml = (address, label) => {
 export const initAddressQr = (renderQr, icons = {}) => {
   if (typeof renderQr !== "function" || document.getElementById("addr-qr-overlay")) return;
   const overlay = document.createElement("div");
-  overlay.className = "addr-qr-overlay no-print";
+  overlay.className = "modal-overlay addr-qr-overlay no-print";
   overlay.id = "addr-qr-overlay";
   overlay.hidden = true;
   // The address text and the icon after it both copy. Only the icon takes a
@@ -41,8 +42,8 @@ export const initAddressQr = (renderQr, icons = {}) => {
   // to a check is the visible confirmation; the note speaks it, unseen, so the
   // centred address never shifts.
   overlay.innerHTML = `
-    <div class="addr-qr-card" role="dialog" aria-modal="true" aria-labelledby="addr-qr-title">
-      <p class="addr-qr-title" id="addr-qr-title"></p>
+    <div class="modal-card addr-qr-card" role="dialog" aria-modal="true" aria-labelledby="addr-qr-title">
+      <p class="modal-title addr-qr-title" id="addr-qr-title"></p>
       <div class="qr addr-qr-image" id="addr-qr-image"></div>
       <p class="addr-qr-address-row">
         <button type="button" class="mono addr-qr-address" id="addr-qr-address" tabindex="-1"></button>
@@ -130,6 +131,7 @@ export const initAddressQr = (renderQr, icons = {}) => {
     closeButton.focus();
   };
 
+  trapModalFocus(overlay, () => [text, copyButton, closeButton]);
   document.addEventListener("click", (event) => {
     const target = event.target.closest?.("[data-address-qr]");
     if (target) open(target);

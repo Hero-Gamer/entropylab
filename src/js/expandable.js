@@ -1,3 +1,4 @@
+import { trapModalFocus } from "./modal-focus.js";
 // Expandable cells: one standard truncation for long text in dense UI tables,
 // with a click-to-expand overlay window for viewing (and, when the cell is
 // editable, editing) the full value.
@@ -59,12 +60,12 @@ export const expandableHtml = (text, { label = "Full value", editAttrs = "" } = 
 export const initExpandable = () => {
   if (document.getElementById("exp-overlay")) return;
   const overlay = document.createElement("div");
-  overlay.className = "exp-overlay no-print";
+  overlay.className = "modal-overlay exp-overlay no-print";
   overlay.id = "exp-overlay";
   overlay.hidden = true;
   overlay.innerHTML = `
-    <div class="exp-card" role="dialog" aria-modal="true" aria-labelledby="exp-title">
-      <p class="exp-title" id="exp-title"></p>
+    <div class="modal-card exp-card" role="dialog" aria-modal="true" aria-labelledby="exp-title">
+      <p class="modal-title exp-title" id="exp-title"></p>
       <p class="exp-meta muted" id="exp-meta"></p>
       <textarea id="exp-text" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
       <div class="row exp-actions">
@@ -95,6 +96,7 @@ export const initExpandable = () => {
     text.focus();
   };
 
+  trapModalFocus(overlay, () => [...overlay.querySelectorAll("textarea, button")]);
   document.addEventListener("click", (event) => {
     const target = event.target.closest?.(".exp-cell");
     if (target) open(target);

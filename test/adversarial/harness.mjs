@@ -93,6 +93,7 @@ const TAP_SNAPSHOT = `
     return JSON.stringify({
       net: t.net, errors: t.errors, rejections: t.rejections,
       alive: !!document.body, title: document.title || "",
+      delivery: window.__DELIVERY || [],
     });
   })()
 `;
@@ -209,6 +210,7 @@ const runScenario = async (cdp, scenario, onEvent) => {
     rejections: [],
     network: [],
     invariantFailures: [],
+    delivery: [],
     alive: null,
     title: "",
   };
@@ -276,6 +278,18 @@ const runScenario = async (cdp, scenario, onEvent) => {
       log.alive = !!snap.alive;
       log.title = snap.title || "";
       if (snap.net?.length) log.invariantFailures.push(`network attempts: ${snap.net.length}`);
+      // A scenario that never delivered its payload proved nothing about the
+      // app: a stale selector reads as a clean run otherwise. Partial
+      // filtering is the app's prerogative (the dice field keeps digits);
+      // only a payload that landed nowhere is a failure.
+      log.delivery = snap.delivery || [];
+      for (const d of log.delivery) {
+        if (d.sent > 0 && d.landed === 0) {
+          log.invariantFailures.push(
+            `payload never landed in ${d.label} (sent ${d.sent} chars, field holds 0) — scenario did not exercise its target`,
+          );
+        }
+      }
     } catch (e) {
       log.invariantFailures.push("tap snapshot failed: " + String(e.message || e).slice(0, 120));
     }
@@ -349,6 +363,7 @@ for (const log of logs) {
     hangq: hangNoul,
     actions: log.actions,
     failures: log.invariantFailures,
+    answers,
   });
 }
 
@@ -368,6 +383,19 @@ for (const r of rows) {
   }
   console.log(`\n${r.name} action log:`);
   for (const a of r.actions) console.log("  · " + a);
+}
+
+// The rubric asks Jev to cite the specific log line behind a suspect or
+// broken verdict, but the table only carries the bare label — a column of
+// "suspect" with no stated reason is not actionable. Dump the whole answer
+// object for every non-ok verdict rather than reaching for a named field,
+// so whatever justification the API returns is visible verbatim.
+for (const r of rows) {
+  if (!r.answers || r.choice === "ok") continue;
+  let detail;
+  try { detail = JSON.stringify(r.answers, null, 2); } catch { detail = String(r.answers); }
+  console.log(`\n${r.name} Jev detail (verdict=${r.choice}):`);
+  console.log(detail.length > 2000 ? detail.slice(0, 2000) + "\n  …truncated" : detail);
 }
 
 // Local verdict if Jev unavailable

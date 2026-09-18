@@ -13,12 +13,25 @@ export const HELPER = `
   const $ = (sel) => document.querySelector(sel);
   const $all = (sel) => [...document.querySelectorAll(sel)];
   const first = (sels) => { for (const s of sels) { const el = $(s); if (el) return el; } return null; };
-  const put = (el, v) => {
+  const put = (el, v, label) => {
     el.focus();
     const proto = el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     Object.getOwnPropertyDescriptor(proto, "value").set.call(el, v);
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
+    // Record every delivery so a payload that never lands cannot pass as a
+    // clean run: a stale selector or a field that swallows the input whole
+    // means the scenario tested nothing, which is a broken scenario rather
+    // than a well-behaved app. The harness turns a zero-length landing into
+    // an invariant failure (see readDelivery in harness.mjs). Partial
+    // filtering is legitimate (the dice field keeps digits only), so only a
+    // complete non-delivery is treated as a failure.
+    if (!window.__DELIVERY) window.__DELIVERY = [];
+    window.__DELIVERY.push({
+      label: label || (el.id ? "#" + el.id : el.tagName.toLowerCase()),
+      sent: String(v).length,
+      landed: el.value.length,
+    });
   };
   const click = (sel) => { const el = first(Array.isArray(sel) ? sel : [sel]); if (!el) return false; el.click(); return true; };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -74,17 +87,28 @@ export const SCENARIOS = [
   {
     name: "mnemonic-malformed",
     description:
-      "Feed malformed and oversized mnemonic words into the first words/seed entry field found on the Keys workspace.",
+      "Feed malformed and oversized mnemonic words into the Keys workspace's seed-phrase entry field.",
     actions: [
       `(() => { click('[aria-label="Keys"]'); return "workspace=keys"; })()`,
-      `(() => { const el = first(['textarea[data-copy-seed-phrase]', 'textarea', 'input[type="text"]']); if (!el) return "no-seed-field-" + el; put(el, "abandon abandon " + "zzz ".repeat(600) + "abandon"); return "malformed-seed-pasted len=" + el.value.length + " tag=" + el.tagName; })()`,
-      `(() => { const el = first(['textarea', 'input[type="text"]']); if (!el) return "no-field"; const weird = "aBanNDon " + "۱۲۳۴ " + "\\u200B\\u200B " + "abandon".repeat(40); put(el, weird); return "tricky-encoding-pasted len=" + el.value.length; })()`,
-      `(async () => { await sleep(500); const err = first(['#error', '[id$="-error"]']); return "error-ui=" + (err ? (err.textContent || "").slice(0, 120) : "(none found)"); })()`,
+      // The seed textarea only exists once the "Seed phrase" derivation
+      // method is selected; under the default (dice) method the only
+      // textarea on the page is #dice, which keeps digits and silently drops
+      // words — so the previous 'textarea' fallback tested the dice field.
+      `(async () => { const sel = $('#key-mode-select'); if (!sel) return "no-mode-select"; sel.value = "seed"; sel.dispatchEvent(new Event("change", { bubbles: true })); await sleep(600); return "method=" + sel.value; })()`,
+      `(() => { const el = $('#seed'); if (!el) return "no-seed-field"; put(el, "abandon abandon " + "zzz ".repeat(600) + "abandon", "#seed"); return "malformed-seed-pasted len=" + el.value.length; })()`,
+      `(() => { const el = $('#seed'); if (!el) return "no-seed-field"; const weird = "aBanNDon " + "۱۲۳۴ " + "\\u200B\\u200B " + "abandon".repeat(40); put(el, weird, "#seed"); return "tricky-encoding-pasted len=" + el.value.length; })()`,
+      `(async () => { await sleep(600); const meta = $('#seed-meta'); return "seed-meta=" + (meta ? (meta.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 120) : "(none found)"); })()`,
     ],
     assert: `
       (() => {
         const failures = [];
         if (!document.body) failures.push("document lost");
+        // The app must say something about input it cannot use. Presence
+        // only — the wording is content, not contract.
+        const meta = document.querySelector("#seed-meta");
+        if (!meta || !(meta.textContent || "").trim()) {
+          failures.push("malformed seed phrase produced no status text in #seed-meta");
+        }
         return { failures, info: {} };
       })()
     `,
@@ -161,14 +185,26 @@ export const SCENARIOS = [
   {
     name: "seed-encoding-tricks",
     description:
-      "Mixed-case, zero-width, RTL and homoglyph tricks on whichever text field the current workspace exposes; the field must not accept them silently and the page must stay alive.",
+      "Mixed-case, zero-width, RTL and homoglyph tricks in the seed-phrase entry field; the app must not accept them silently and the page must stay alive.",
     actions: [
       `(() => { click('[aria-label="Keys"]'); return "workspace=keys"; })()`,
-      `(() => { const el = first(['textarea', 'input[type="text"]', 'input:not([type="checkbox"]):not([type="file"]):not([type="hidden"])']); if (!el) return "no-text-field"; const tricky = "Abandon abandon ANDERSON " + "‏‎‌" + "zoo zoo"; put(el, tricky); return "tricky-pasted len=" + el.value.length; })()`,
-      `(async () => { await sleep(400); return "settled"; })()`,
+      // Same as mnemonic-malformed: without selecting the seed method this
+      // used to land on #dice, so the encoding tricks were never applied to
+      // a field that parses words.
+      `(async () => { const sel = $('#key-mode-select'); if (!sel) return "no-mode-select"; sel.value = "seed"; sel.dispatchEvent(new Event("change", { bubbles: true })); await sleep(600); return "method=" + sel.value; })()`,
+      `(() => { const el = $('#seed'); if (!el) return "no-seed-field"; const tricky = "Abandon abandon ANDERSON " + "‏‎‌" + "zoo zoo"; put(el, tricky, "#seed"); return "tricky-pasted len=" + el.value.length; })()`,
+      `(async () => { await sleep(600); const meta = $('#seed-meta'); return "seed-meta=" + (meta ? (meta.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 120) : "(none found)"); })()`,
     ],
     assert: `
-      (() => { const failures = []; if (!document.body) failures.push("document lost"); return { failures, info: {} }; })()
+      (() => {
+        const failures = [];
+        if (!document.body) failures.push("document lost");
+        const meta = document.querySelector("#seed-meta");
+        if (!meta || !(meta.textContent || "").trim()) {
+          failures.push("encoding-trick seed phrase produced no status text in #seed-meta");
+        }
+        return { failures, info: {} };
+      })()
     `,
   },
 ];

@@ -792,26 +792,59 @@ function hodlWatchOnlyMultipathDescriptor(receiveDescriptor, branches = [0, 1]) 
 function hodlDescriptorQrSvg(payload) {
   return hodlUqrRenderSvg(payload, { ecc: "M", border: 4, pixelSize: 4, blackColor: "#111111", whiteColor: "#ffffff" });
 }
+// A descriptor copies by clicking its text, confirming beside its QR button
+// rather than replacing anything: the value stays readable while it confirms.
+function hodlInitDescriptorCopy() {
+  document.addEventListener("click", (event) => {
+    let button = event.target.closest?.("[data-copy-field]");
+    if (!button) return;
+    let value = button.textContent.trim(), note = button.previousElementSibling?.querySelector(".copy-field-status");
+    if (!value || value === "\u2014") return;
+    let done = () => {
+      if (!note) return;
+      note.innerHTML = `${hodlCopiedIconMarkup()}${hodlT("Copied")}`;
+      clearTimeout(note.hodlCopiedTimer);
+      note.hodlCopiedTimer = setTimeout(() => {
+        if (note.isConnected) note.textContent = "";
+      }, 1600);
+    };
+    let fallback = () => {
+      let field = document.createElement("textarea");
+      field.value = value;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.left = "-9999px";
+      document.body.append(field);
+      field.select();
+      try {
+        if (document.execCommand("copy")) done();
+      } finally {
+        field.remove();
+      }
+    };
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(value).then(done).catch(fallback);
+    else fallback();
+  });
+}
+// A long value the user is meant to move somewhere else — a descriptor, an
+// extended key — reads as one row: the label carries its QR button and the
+// copy confirmation, and the value itself is the copy target.
+function hodlCopyFieldHtml(labelText, value, labelClass = "label") {
+  let qr = value && value.length <= 1e3 ? hodlAddressQrButton(value, labelText) : "";
+  return `<p class="${labelClass} copy-field-label">${hodlEscapeHtml(labelText)}${qr}<span class="copy-status copy-field-status" aria-live="polite"></span></p>` +
+    `<button type="button" class="mono copy-field-value" data-copy-field title="${hodlTAttr("Copy")}">${hodlEscapeHtml(value ?? "\u2014")}</button>`;
+}
 function hodlWatchOnlyDescriptorExport(receiveDescriptor, changeDescriptor, addressBranches = null, { labelClass = "label", collapsible = true } = {}) {
   let branches = (addressBranches?.length ? addressBranches : [
     { branch: 0, label: "Receive", publicDescriptor: receiveDescriptor },
     { branch: 1, label: "Change", publicDescriptor: changeDescriptor }
-  ]).filter((entry) => entry.publicDescriptor), first = branches[0], multipath = first ? branches.length === 1 ? first.publicDescriptor : hodlWatchOnlyMultipathDescriptor(first.publicDescriptor, branches.map((entry) => entry.branch)) : "", qr = "";
-  if (multipath) {
-    try {
-      if (multipath.length > 1e3) throw new Error("Descriptor too long for a static QR.");
-      qr = `<div class="qr qr-descriptor" aria-label="${hodlTAttr("Watch-only wallet descriptor QR code")}">${hodlDescriptorQrSvg(multipath)}</div>`;
-    } catch (error) {
-      qr = `<p class="muted">${hodlEscapeHtml(error.message || "Descriptor too long for a static QR.")} Copy the text instead, or import the selected branch descriptors separately.</p>`;
-    }
-  }
-  let details = branches.map((entry) => hodlPublicFieldHtml(`Watch-only ${hodlAddressBranchLabel(entry.branch).toLowerCase()} descriptor`, entry.publicDescriptor, void 0, labelClass)).join("");
-  // The descriptor reads beside its QR rather than above it, and the line that
-  // says what to do with it sits under the label, where a field's description
-  // goes. Below 640px the pair stacks, the QR keeping its own width.
-  let head = `<p class="label">${hodlT("Watch-only wallet descriptor")}</p>${qr ? `<p class="muted label-description">${hodlT("Import this output descriptor into Sparrow or another wallet.")}</p>` : ""}`;
-  let body = `<div class="descriptor-pair"><span class="mono descriptor-pair-text">${hodlEscapeHtml(multipath || "\u2014")}</span>${qr}</div>`;
-  return `${head}${body}${collapsible ? `<details class="wallet-advanced"><summary>Address branch descriptors</summary>${details}</details>` : details}`;
+  ]).filter((entry) => entry.publicDescriptor), first = branches[0], multipath = first ? branches.length === 1 ? first.publicDescriptor : hodlWatchOnlyMultipathDescriptor(first.publicDescriptor, branches.map((entry) => entry.branch)) : "";
+  // Each descriptor is titled with a QR button beside it, the same control an
+  // address row carries: the code opens in the shared overlay instead of one
+  // being drawn inline. A payload too long to encode simply offers no button.
+  let field = (label, value) => hodlCopyFieldHtml(hodlTText(label), value, labelClass);
+  let details = branches.map((entry) => field(`Watch-only ${hodlAddressBranchLabel(entry.branch).toLowerCase()} descriptor`, entry.publicDescriptor)).join("");
+  return `${field("Watch-only wallet descriptor", multipath || "\u2014")}${collapsible ? `<details class="wallet-advanced"><summary>Address branch descriptors</summary>${details}</details>` : details}`;
 }
 function hodlAccountResult(node, definition, network, count, options = {}) {
   let rawPublic = node.publicExtendedKey, rawPrivate = node.privateKey ? node.privateExtendedKey : null, family = hodlAccountExportFamily(definition, options), keyVersions = hodlExtendedKeyVersions[hodlNetworkFamily(network)], primaryConfig = keyVersions[family] || keyVersions.x, genericConfig = keyVersions.x;
@@ -1054,7 +1087,7 @@ function hodlAddressBranchVirtualConfigs(branches, includeWif, prefix) {
 function hodlAccountAdvancedExports(account, includePrivate = false, labelClass = "label") {
   if (!account.hasAlternateExport) return "";
   let privateExport = includePrivate && account.genericPrivate ? hodlPrivateFieldHtml("Generic {name} for descriptor compatibility", account.genericPrivate, { name: account.genericPrivateLabel }, labelClass) : "";
-  let publicExport = !includePrivate && account.genericPublic ? hodlPublicFieldHtml("Generic {name} for descriptor compatibility", account.genericPublic, { name: account.genericPublicLabel }, labelClass) : "";
+  let publicExport = !includePrivate && account.genericPublic ? hodlPublicFieldHtml("Generic {name} for descriptor compatibility", account.genericPublic, { name: account.genericPublicLabel }, labelClass, true) : "";
   if (!privateExport && !publicExport) return "";
   // One more field among the account exports, not a disclosure of its own.
   return privateExport || publicExport;
@@ -1077,7 +1110,7 @@ function hodlImportedCoreRecoveryExport(wallet, account) {
 }
 function hodlRenderMultisigCosignerExport(exports, accountId) {
   let items = Array.isArray(exports) ? exports.filter((candidate) => candidate.accountId === accountId) : [];
-  return items.map((item) => hodlPublicFieldHtml("Multisig co-signer {prefix} · {label}", item.value, { prefix: item.prefix, label: item.label })).join("");
+  return items.map((item) => hodlPublicFieldHtml("Multisig co-signer {prefix} · {label}", item.value, { prefix: item.prefix, label: item.label }, "label", true)).join("");
 }
 function hodlNormalizeAddressCheck(value){
   let text=String(value??"").trim();
@@ -1287,7 +1320,7 @@ function hodlSlip132Fields(account, wallet, isPrivate = false, labelClass = "lab
   let coreLabel = isPrivate ? account.genericPrivateLabel : account.genericPublicLabel;
   let slip = account.hasAlternateExport ? (isPrivate ? account.primaryPrivate : account.primaryPublic) : "";
   let slipLabel = isPrivate ? account.primaryPrivateLabel : account.primaryPublicLabel;
-  let field = isPrivate ? hodlPrivateFieldHtml : hodlPublicFieldHtml, parts = [];
+  let field = isPrivate ? hodlPrivateFieldHtml : (name, value, vars, cls) => hodlPublicFieldHtml(name, value, vars, cls, true), parts = [];
   if (pasted) parts.push(field("As pasted", pasted, void 0, labelClass));
   if (core && core !== pasted) parts.push(field(`Bitcoin Core ${coreLabel}`, core, void 0, labelClass));
   if (slip && slip !== pasted && slip !== core) parts.push(field(`SLIP-132 ${slipLabel}`, slip, void 0, labelClass));
@@ -1330,9 +1363,10 @@ function hodlShowAccount(id) {
 // optional placeholder values); the helper translates with the text view and
 // escapes for its HTML slot. That keeps raw translation calls out of template
 // interpolations and keeps the literals extractable by scripts/i18n-sync.mjs.
-function hodlPublicFieldHtml(label, value, vars, labelClass = "label") {
-  let labelHtml = hodlEscapeHtml(hodlTText(label, vars));
-  return `<p><span class="${labelClass}">${labelHtml}</span><br><span class="mono">${hodlEscapeHtml(value ?? "\u2014")}</span></p>`;
+function hodlPublicFieldHtml(label, value, vars, labelClass = "label", copyable = false) {
+  let text = hodlTText(label, vars);
+  if (copyable) return hodlCopyFieldHtml(text, value, labelClass);
+  return `<p><span class="${labelClass}">${hodlEscapeHtml(text)}</span><br><span class="mono">${hodlEscapeHtml(value ?? "\u2014")}</span></p>`;
 }
 function hodlPrivateValue(value, className = "secret private-field-value") {
   let mask = "************", text = String(value ?? "\u2014");
@@ -1524,7 +1558,7 @@ function hodlHdWalletData(wallet, accountMarkup = "") {
   let fingerprint = wallet.masterFingerprint ? hodlPublicFieldHtml("Master fingerprint", wallet.masterFingerprint) : "";
   let parentFingerprint = !wallet.masterFingerprint && wallet.parentFingerprint ? hodlPublicFieldHtml("Encoded parent fingerprint (not a master fingerprint)", wallet.parentFingerprint) : "";
   let nodeFingerprint = !wallet.masterFingerprint && wallet.nodeFingerprint ? hodlPublicFieldHtml("Imported key fingerprint (not a master fingerprint)", wallet.nodeFingerprint) : "";
-  let rootPublic = wallet.rootXpub ? hodlPublicFieldHtml("Root {name}", wallet.rootXpub, { name: wallet.rootPublicLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.pubName }) : "";
+  let rootPublic = wallet.rootXpub ? hodlPublicFieldHtml("Root {name}", wallet.rootXpub, { name: wallet.rootPublicLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.pubName }, "label", true) : "";
   let importedPublic = wallet.importedPublicKey ? hodlPublicFieldHtml("Imported {name}", wallet.importedPublicKey, { name: wallet.importedPublicLabel || hodlTText("extended public key") }) : "";
   // The toolbar holds the script type and the privacy bar, and sticks under the
   // header as one piece. Below it: what recovers the wallet, what identifies it,
@@ -7667,22 +7701,20 @@ function hodlReindexMsigKeys() {
     let ta = row.querySelector("textarea"),
       pos = row.querySelector(".msig-key-position"),
       lab = row.querySelector("label.field"),
-      railLabel = row.querySelector(".msig-key-rail-label"),
+      title = row.querySelector(".msig-key-title"),
       fingerprint = row.querySelector(".msig-master-fingerprint");
     if (ta) ta.id = "msig-x-" + index;
     if (pos) pos.textContent = hodlTText("Position {n}", { n: index + 1 });
-    if (railLabel) {
-      railLabel.id = "msig-cosigner-" + index + "-label";
-      railLabel.textContent = hodlTText("Co-signer {n}", { n: index + 1 });
-      row.setAttribute("aria-labelledby", railLabel.id)
+    if (title) {
+      title.id = "msig-cosigner-" + index + "-label";
+      title.textContent = hodlTText("Co-signer {n}", { n: index + 1 });
+      row.setAttribute("aria-labelledby", title.id)
     }
+    let advancedSummary = row.querySelector(".msig-cosigner-advanced > summary");
+    if (advancedSummary) advancedSummary.textContent = hodlTText("Advanced entry for Co-signer {n}", { n: index + 1 });
     row.querySelector(".msig-session-keys")?.setAttribute("aria-label", hodlTText("Key Station keys for co-signer {n}", { n: index + 1 }));
     row.querySelector(".msig-full-path")?.setAttribute("aria-label", hodlTText("Full derivation path for co-signer {n}", { n: index + 1 }));
     fingerprint?.setAttribute("aria-label", hodlTText("Master fingerprint for co-signer {n}", { n: index + 1 }));
-    if (lab) {
-      let title = lab.childNodes[0];
-      if (title && title.nodeType === 3) title.textContent = hodlTText("Co-signer {n} multisig extended public key", { n: index + 1 })
-    }
   });
   hodlSyncMsigKeyMoveButtons();
   hodlUpdateMsigKeyPlaceholders();
@@ -8045,23 +8077,16 @@ function hodlFillKeys(values) {
     let row = document.createElement("div");
     row.className = "msig-key-row";
     row.setAttribute("role", "group");
-    let rail = document.createElement("div");
-    rail.className = "msig-key-rail";
-    let railTop = document.createElement("span");
-    railTop.className = "msig-key-rail-line msig-key-rail-line-top";
-    railTop.setAttribute("aria-hidden", "true");
-    let railLabel = document.createElement("span");
-    railLabel.className = "msig-key-rail-label";
-    railLabel.id = "msig-cosigner-" + i + "-label";
-    railLabel.textContent = hodlTText("Co-signer {n}", { n: i + 1 });
-    row.setAttribute("aria-labelledby", railLabel.id);
-    let railBottom = document.createElement("span");
-    railBottom.className = "msig-key-rail-line msig-key-rail-line-bottom";
-    railBottom.setAttribute("aria-hidden", "true");
-    rail.append(railTop, railLabel, railBottom);
+    // The co-signer is named by a title above its fields rather than a bracket
+    // beside them: the same separation, and the full width for the key.
+    let title = document.createElement("p");
+    title.className = "label msig-key-title";
+    title.id = "msig-cosigner-" + i + "-label";
+    title.textContent = hodlTText("Co-signer {n}", { n: i + 1 });
+    row.setAttribute("aria-labelledby", title.id);
     let content = document.createElement("div");
     content.className = "msig-key-content";
-    row.append(rail, content);
+    row.append(title, content);
     if (listed) {
       let head = document.createElement("div");
       head.className = "msig-key-row-head";
@@ -8086,7 +8111,7 @@ function hodlFillKeys(values) {
     }
     let lab = document.createElement("label");
     lab.className = "field";
-    lab.textContent = hodlTText("Co-signer {n} multisig extended public key", { n: i + 1 });
+    lab.textContent = hodlTText("Extended public key");
     let ta = document.createElement("textarea");
     ta.id = "msig-x-" + i;
     ta.autocomplete = "off";
@@ -8133,7 +8158,7 @@ function hodlFillKeys(values) {
     let advanced = document.createElement("details");
     advanced.className = "derivation-advanced msig-cosigner-advanced";
     let advancedSummary = document.createElement("summary");
-    advancedSummary.textContent = hodlTText("Advanced entry");
+    advancedSummary.textContent = hodlTText("Advanced entry for Co-signer {n}", { n: i + 1 });
     let pathComponents = document.createElement("div");
     pathComponents.className = "derivation-advanced-fields msig-path-components";
     advanced.append(advancedSummary, pathComponents);
@@ -8298,7 +8323,9 @@ function hodlResetMsigForm() {
     descriptorStatus.textContent = "";
     descriptorStatus.hidden = true;
   }
-  if (descriptorPanel) descriptorPanel.open = false;
+  // MS Station starts on the import panel: a fresh station and a cleared one
+  // both open it, since pasting a descriptor is the usual way in.
+  if (descriptorPanel) descriptorPanel.open = true;
   hodlSyncMsigDescriptorImport();
 }
 function hodlInitMsig() {
@@ -8592,7 +8619,7 @@ function hodlShowMsig() {
       ${hodlWalletMessages(hodlWalletResult,"multisig")}
       ${hodlWalletResult.sorted===!1&&hodlWalletResult.scriptOrder?.length?`<section class="account-result-section" aria-labelledby="multisig-order-heading"><div class="wallet-data-section-head"><h3 id="multisig-order-heading">${hodlT("Script key order")}</h3><p class="muted">${hodlT("{op} uses the co-signers in this order. Changing the order creates a different wallet.", { op: hodlMsigPolicyOp(hodlWalletResult.script,!1) })}</p></div><ol class="msig-script-order">${hodlWalletResult.scriptOrder.map(item=>`<li><span class="msig-script-order-position">${hodlT("Position {n}", { n: item.position })}</span><code>${hodlEscapeHtml(item.fingerprint?item.fingerprint+"/"+item.path:item.fingerprint||"")}</code></li>`).join("")}</ol></section>`:""}
       ${hodlMsigGroupMarkup("watch", hodlT("Watch-only wallet data"), `
-        <p class="edge-note is-public">${hodlT("These descriptors reveal every address in the selected branches for this multisig, but cannot authorize spending.")}</p>
+        <p class="edge-note is-public">${hodlT("These descriptors reveal every address in the selected branches for this multisig, but cannot authorize spending. Descriptors can be imported into Sparrow or another wallet.")}</p>
         ${hodlWatchOnlyDescriptorExport(hodlWalletResult.receiveDescriptor, hodlWalletResult.changeDescriptor, branches, { collapsible: false })}
       `, "account-watch-section")}
       ${hodlMsigGroupMarkup("addresses", hodlT("Addresses"), `
@@ -12111,7 +12138,10 @@ function hodlPaintMsigSummary() {
     // Each key the multisig needs, named by its master fingerprint and its
     // LifeHash: the same pair the pickers and the key tabs identify a key by.
     let entries = state?.createdCosigners || state?.result?.scriptOrder || [];
-    cosigners.replaceChildren(...entries.map((entry) => {
+    let heading = document.createElement("p");
+    heading.className = "label msig-summary-cosigners-label";
+    heading.textContent = hodlTText("Co-signers");
+    cosigners.replaceChildren(heading, ...entries.map((entry) => {
       let item = document.createElement("span"), image = document.createElement("img"), label = document.createElement("code");
       item.className = "msig-summary-cosigner";
       image.className = "key-tab-lifehash";
@@ -15594,6 +15624,7 @@ async function hodlBoot() {
   hodlInitAddressBenchmark();
   hodlInitSegmentedControls();
   initQrReferences();
+  hodlInitDescriptorCopy();
   hodlInitLocale(hodlApplyLocale);
 }
 // Curve operations need the WebAssembly module instantiated first (async in

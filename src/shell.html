@@ -84,7 +84,7 @@
           <p class="key-summary-meta" id="key-summary-script"></p>
           <p class="key-summary-meta key-summary-path" id="key-summary-path"></p>
         </div>
-        <button class="btn secondary" id="key-edit-inputs" type="button">Edit input</button>
+        <button class="btn secondary" id="key-edit-inputs" type="button">Edit Input</button>
       </div>
       <div class="key-lab" id="key-lab">
       <div class="global-sync-host" id="global-sync-host"></div>
@@ -93,7 +93,7 @@
         <div class="seed-length-select">
           <select id="seed-length-select" aria-labelledby="seed-length-label"><option value="12">12 words</option><option value="15">15 words</option><option value="18">18 words</option><option value="21">21 words</option><option value="24" selected="selected">24 words</option></select>
         </div>
-        <p class="field-note edge-note is-public" id="seed-length-help">24 words use 256 bits of BIP39 entropy.</p>
+        <p class="field-note edge-note is-muted" id="seed-length-help">24 words use 256 bits of BIP39 entropy.</p>
       </section>
       <div id="form" class="key-form">
       <p class="label">Dice roll options</p>
@@ -201,7 +201,7 @@ words, pick one of the checksum words.</span></span>
           </div>
         </details>
       </div>
-      <p class="field-note address-estimate derivation-estimate edge-note is-public" id="address-estimate" role="status">Measuring this device…</p>
+      <p class="field-note address-estimate derivation-estimate edge-note is-muted" id="address-estimate" role="status">Measuring this device…</p>
       <div class="derive-progress" id="derive-progress" role="progressbar" aria-label="Key derivation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete" hidden><span class="derive-progress-track"><span class="derive-progress-bar"></span></span><span class="derive-progress-label">0%</span></div>
       <div class="row key-action-row current-item-actions tool-actions">
         <button class="btn primary" id="go" disabled aria-disabled="true">Derive Key</button>
@@ -376,7 +376,7 @@ words, pick one of the checksum words.</span></span>
           <span class="field-note" id="bip85-pwdlen-help">Base64: 20–86. Base85: 10–80.</span>
         </label>
       </div>
-      <p class="edge-note is-public bip85-path-row">Path <code id="bip85-path">m/83696968'/39'/0'/24'/0'</code></p>
+      <p class="edge-note is-muted bip85-path-row">Path <code id="bip85-path">m/83696968'/39'/0'/24'/0'</code></p>
       <p class="err" id="bip85-error" role="alert"></p>
       <div class="row bip85-actions current-item-actions tool-actions">
         <button class="btn primary" id="bip85-go" type="button" disabled aria-disabled="true">Derive Child Key</button>
@@ -394,22 +394,22 @@ words, pick one of the checksum words.</span></span>
     </section>
     <section class="card no-print tool-card" id="msig-card" role="tabpanel" hidden>
       <div class="key-summary" id="msig-summary" hidden>
-        <div class="msig-summary-cosigners" id="msig-summary-cosigners" hidden></div>
         <div class="key-summary-text">
           <code class="key-summary-fingerprint" id="msig-summary-policy"></code>
           <p class="key-summary-meta" id="msig-summary-script"></p>
           <p class="key-summary-meta key-summary-path" id="msig-summary-path"></p>
+          <div class="msig-summary-cosigners" id="msig-summary-cosigners" hidden></div>
         </div>
-        <button class="btn secondary" id="msig-edit-inputs" type="button">Edit input</button>
+        <button class="btn secondary" id="msig-edit-inputs" type="button">Edit Input</button>
       </div>
       <div class="msig-lab" id="msig-lab">
-      <details class="msig-import" id="msig-import">
+      <details class="msig-import" id="msig-import" open>
         <summary>Import a multisig wallet descriptor</summary>
-        <label class="field"><span>Multisig output descriptor</span>
+                <p class="field-note edge-note is-public" id="msig-descriptor-help">Split a wallet-exported multisig descriptor into one co-signer field per key — the quorum, script type, and key order fill in too. Watch-only public keys only; a descriptor carrying private keys is refused.</p>
+        <label class="field"><span class="muted label-value">Paste an existing multisig wallet descriptor here</span>
           <textarea id="msig-descriptor" placeholder="wsh(sortedmulti(2,[fingerprint/48h/0h/0h/2h]Zpub…/0/*, …))" autocomplete="off" spellcheck="false" aria-describedby="msig-descriptor-help"></textarea>
-          <span class="field-note" id="msig-descriptor-help">Split a wallet-exported multisig descriptor into one co-signer field per key — the quorum, script type, and key order fill in too. Watch-only public keys only; a descriptor carrying private keys is refused.</span>
         </label>
-        <button class="btn secondary" id="msig-descriptor-import" type="button" disabled aria-disabled="true">Import descriptor</button>
+        <button class="btn secondary" id="msig-descriptor-import" type="button" disabled aria-disabled="true">Import Descriptor</button>
         <p class="hint" id="msig-descriptor-status" role="status" hidden></p>
       </details>
       <div class="msig-threshold-labels">
@@ -470,28 +470,33 @@ words, pick one of the checksum words.</span></span>
           <input id="msig-account" type="text" value="" disabled><input id="msig-account-harden" type="checkbox" checked>
           <span id="msig-purpose-help"></span><span id="msig-network-help"></span><span id="msig-account-help"></span>
         </div>
-        <div class="key-settings-row address-branch-settings">
-          <div class="field"><div class="field-head"><label for="msig-branch-start">Starting address branch index</label><label class="derivation-harden"><input id="msig-branch-start-harden" type="checkbox"><span>Harden</span></label></div>
-            <div class="derivation-index-control"><span class="derivation-index-value"><input id="msig-branch-start" type="number" min="0" max="2147483647" step="1" inputmode="numeric" value="0" aria-describedby="msig-branch-start-help"><span class="derivation-index-prime" aria-hidden="true">'</span></span></div>
-            <span class="field-note" id="msig-branch-start-help">First address branch to derive · 0 is Receive · 1 is Change · Unhardened · 0 to 2,147,483,647</span>
+        <details class="derivation-advanced msig-output-advanced" id="msig-output-advanced">
+          <summary>Advanced multisig entry</summary>
+          <div class="derivation-advanced-fields">
+    <div class="key-settings-row address-branch-settings">
+              <div class="field"><div class="field-head"><label for="msig-branch-start">Starting address branch index</label><label class="derivation-harden"><input id="msig-branch-start-harden" type="checkbox"><span>Harden</span></label></div>
+                <div class="derivation-index-control"><span class="derivation-index-value"><input id="msig-branch-start" type="number" min="0" max="2147483647" step="1" inputmode="numeric" value="0" aria-describedby="msig-branch-start-help"><span class="derivation-index-prime" aria-hidden="true">'</span></span></div>
+                <span class="field-note" id="msig-branch-start-help">First address branch to derive · 0 is Receive · 1 is Change · Unhardened · 0 to 2,147,483,647</span>
+              </div>
+              <label class="field">Address branch range
+                <input id="msig-branch-range" type="number" min="1" max="2" step="1" inputmode="numeric" value="2" aria-describedby="msig-branch-range-help">
+                <span class="field-note" id="msig-branch-range-help">Derives Receive and Change branches · Max 2</span>
+              </label>
+            </div>
+            <div class="key-settings-row address-range-settings">
+              <div class="field"><div class="field-head"><label for="msig-address-start">Starting address index</label><label class="derivation-harden"><input id="msig-address-start-harden" type="checkbox"><span>Harden</span></label></div>
+                <div class="derivation-index-control"><span class="derivation-index-value"><input id="msig-address-start" type="number" min="0" max="2147483647" step="1" inputmode="numeric" value="0" aria-describedby="msig-address-start-help"><span class="derivation-index-prime" aria-hidden="true">'</span></span></div>
+                <span class="field-note" id="msig-address-start-help">First receive and change index to derive · Unhardened · 0 to 2,147,483,647</span>
+              </div>
+              <label class="field">Address range
+                <input id="msig-address-range" type="number" min="1" max="10000" step="1" inputmode="numeric" value="10" aria-describedby="msig-address-range-help">
+                <span class="field-note" id="msig-address-range-help">Derives 10 receive and 10 change addresses · Max 10,000</span>
+              </label>
+            </div>
           </div>
-          <label class="field">Address branch range
-            <input id="msig-branch-range" type="number" min="1" max="2" step="1" inputmode="numeric" value="2" aria-describedby="msig-branch-range-help">
-            <span class="field-note" id="msig-branch-range-help">Derives Receive and Change branches · Max 2</span>
-          </label>
-        </div>
-        <div class="key-settings-row address-range-settings">
-          <div class="field"><div class="field-head"><label for="msig-address-start">Starting address index</label><label class="derivation-harden"><input id="msig-address-start-harden" type="checkbox"><span>Harden</span></label></div>
-            <div class="derivation-index-control"><span class="derivation-index-value"><input id="msig-address-start" type="number" min="0" max="2147483647" step="1" inputmode="numeric" value="0" aria-describedby="msig-address-start-help"><span class="derivation-index-prime" aria-hidden="true">'</span></span></div>
-            <span class="field-note" id="msig-address-start-help">First receive and change index to derive · Unhardened · 0 to 2,147,483,647</span>
-          </div>
-          <label class="field">Address range
-            <input id="msig-address-range" type="number" min="1" max="10000" step="1" inputmode="numeric" value="10" aria-describedby="msig-address-range-help">
-            <span class="field-note" id="msig-address-range-help">Derives 10 receive and 10 change addresses · Max 10,000</span>
-          </label>
-        </div>
+        </details>
       </div>
-      <p class="field-note address-estimate derivation-estimate edge-note is-public" id="msig-address-estimate" role="status">Measuring this device…</p>
+      <p class="field-note address-estimate derivation-estimate edge-note is-muted" id="msig-address-estimate" role="status">Measuring this device…</p>
       <div class="row current-item-actions tool-actions">
         <button class="btn primary" id="msig-go" type="button" aria-describedby="msig-script-warning" disabled aria-disabled="true">Derive Multisig</button>
         <div class="derive-progress" id="msig-derive-progress" role="progressbar" aria-label="Multisig derivation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete" hidden><span class="derive-progress-track"><span class="derive-progress-bar"></span></span><span class="derive-progress-label">0%</span></div>

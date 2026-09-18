@@ -769,8 +769,12 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
 .copy-status:empty { display: none; }
 /* The check carries the confirmation, so it takes the green and a little more
    size; the word beside it is a status line, not a signal, and stays grey. */
-.bip85-copy-status { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 14px; line-height: normal; }
-.bip85-copy-status svg { width: 20px; height: 20px; color: var(--ok-bright); fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.bip85-copy-status, .copy-field-status { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 14px; line-height: normal; }
+.bip85-copy-status svg, .copy-field-status svg { width: 20px; height: 20px; color: var(--ok-bright); fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+/* The copy confirmation sits in a 14px label row, so it is pinned to
+   that line box: appearing and clearing must not move the row. */
+.copy-field-status { height: 14px; font-size: 12px; gap: 4px; }
+.copy-field-status svg { width: 14px; height: 14px; }
 .copy-button {
   flex: 0 0 auto; display: grid; place-items: center;
   width: 21px; height: 21px; padding: 0; border: 0; background: transparent; color: var(--faint);
@@ -828,22 +832,21 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
 th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px; }
 td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; font-family: var(--mono); }
-.qr { max-width: 100%; background: var(--paper); padding: 8px; border: 1px solid var(--border); border-radius: 8px; display: inline-block; }
+.qr { max-width: 100%; background: var(--paper); border: 1px solid var(--border); border-radius: 8px; display: inline-block; }
 .qr svg { display: block; max-width: 100%; width: 140px; height: auto; aspect-ratio: 1; }
 .qr-descriptor { padding: 12px; }
 .qr-descriptor svg { width: 280px; height: auto; }
 .qr-seed { padding: 12px; }
 .qr-seed svg { width: 200px; height: auto; }
 .watch-only-qr { margin: var(--space-control) 0 var(--space-component); }
-/* The descriptor and the QR that encodes it read as one field: text takes the
-   slack, the QR takes only what it needs, and they stack on a narrow screen
-   rather than squeezing the descriptor to a column. */
-.descriptor-pair { display: flex; align-items: flex-start; gap: var(--space-component); margin-top: var(--space-control); }
-.descriptor-pair-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
-.descriptor-pair > .qr { flex: 0 0 auto; }
-@media (max-width: 639px) {
-  .descriptor-pair { flex-direction: column; }
+/* A copyable field's title carries its QR button on the same line; the value
+   sits under it and wraps as one block. */
+.copy-field-label { display: flex; align-items: center; gap: var(--space-control); }
+.copy-field-value {
+  display: block; width: 100%; min-width: 0; margin: var(--space-control) 0 0; padding: 0;
+  border: 0; background: none; color: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer;
 }
+.copy-field-value:hover { color: var(--selection-accent-ink); }
 .watch-only-qr > p { margin: var(--space-control) 0 0; }
 /* Inline-block sits on a text line, whose descender space would add to the 8px. */
 .watch-only-qr > .qr { vertical-align: top; }
@@ -1340,7 +1343,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* The keys the multisig was built from, in the order its script uses them.
    Readouts rather than controls: no edge and no corner of their own, the
    LifeHash carrying the only radius. */
-.msig-summary-cosigners { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-control); }
+.msig-summary-cosigners { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-control); margin-top: var(--space-section); }
+/* The title takes its own line above the marks, and the row's gap sets it
+   off them, so it adds no margin of its own. */
+.msig-summary-cosigners-label { flex: 1 1 100%; margin: 0; }
 .msig-summary-cosigners[hidden] { display: none; }
 .msig-summary-cosigner { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-family: var(--mono); font-size: 12px; }
 .key-summary-path { font-family: var(--mono); word-break: break-all; }
@@ -2117,7 +2123,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    steps back to the dim grey. The button follows the estimate in the markup,
    so the state is read from their shared parent rather than a sibling. */
 .key-lab:has(#go:disabled) #address-estimate,
-.msig-lab:has(#msig-go:disabled) #msig-address-estimate { color: var(--faint); }
+.msig-lab:has(#msig-go:disabled) #msig-address-estimate { color: var(--faint); --edge-note-color: var(--faint); }
 /* A deliberate asymmetry: the estimate belongs to the section above it, whose
    closing rule it answers to, and not to the Derive button under it. So it
    takes a wide seam above and sits close beneath. 16px is the floor below —
@@ -2184,6 +2190,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    the policy, while skipping it leaves the quorum controls editable. */
 .msig-import { margin: 0 0 var(--space-section); padding: 0 0 var(--space-component); border-bottom: 1px solid var(--border); }
 .msig-import textarea { min-height: 72px; }
+/* An edge note that opens a disclosure's revealed content takes no gap above
+   it — whether it sits straight under the summary or inside the first field. */
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary + .edge-note,
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary + * > .edge-note:first-child { margin-top: 0; }
 .msig-import .btn { margin-top: var(--space-control); }
 .msig-threshold-control {
   --msig-slider-inset: 14px;
@@ -2264,35 +2274,13 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .msig-threshold-labels:has(.msig-threshold-number:disabled) { opacity: .58; }
 .msig-threshold-control:disabled .msig-threshold-slider { pointer-events: none; cursor: not-allowed; }
 .msig-threshold-lock { text-align: center; }
- .msig-keys { display: grid; gap: var(--space-component); margin-top: var(--space-section); }
+ .msig-keys { display: grid; gap: var(--space-component); margin-top: var(--space-section); padding-top: var(--space-section); border-top: 1px solid var(--border); }
  .msig-keys .field { margin-top: 0; }
  .msig-key-order-status[hidden] { display: none; }
-.msig-key-row {
-  display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px;
-}
+.msig-key-row { display: grid; gap: var(--space-control); }
+.msig-key-title { margin-top: 0; color: var(--accent); font-size: 16px; }
 .msig-key-content { display: grid; min-width: 0; gap: 8px; }
 .msig-cosigner-advanced { padding-top: 8px; }
-.msig-cosigner-advanced[open] { padding-bottom: 2px; }
-.msig-cosigner-advanced .derivation-advanced-fields { margin-top: var(--space-component); }
-.msig-key-rail {
-  display: flex; min-height: 100%; align-items: center; flex-direction: column;
-  color: var(--muted); transform: translateX(-17px);
-}
-.msig-key-rail-line {
-  position: relative; flex: 1 1 0; width: 1px; min-height: 14px;
-  background: var(--border);
-}
-.msig-key-rail-line::before {
-  content: ""; position: absolute; left: 0; width: 10px; height: 1px;
-  background: var(--border);
-}
-.msig-key-rail-line-top::before { top: 0; }
-.msig-key-rail-line-bottom::before { bottom: 0; }
-.msig-key-rail-label {
-  margin: 9px 0; writing-mode: vertical-rl; transform: rotate(180deg);
-  color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
-  white-space: nowrap;
-}
 .msig-key-row-head {
   display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
 }
@@ -2494,6 +2482,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    no second edge inside the first. It keeps only the seam below the summary
    that the card it replaced used to supply. */
 .account-result-card { margin-top: var(--space-component); }
+/* The groups close on a rule the way the key view's do, where .key-groups
+   supplies it; here they are direct children, so the last one carries it. */
+.account-result-card > .key-group:last-of-type { border-bottom: 1px solid var(--border); }
 .account-result-section { margin-top: 24px; }
 .account-result-section > .wallet-data-section-head { margin-bottom: 16px; }
 /* A note in the flow with a coloured left edge: red in a group holding data
@@ -2509,6 +2500,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .edge-note.is-private { --edge-note-color: var(--danger-bright); }
 .edge-note.is-public { --edge-note-color: var(--ok-bright); }
 .edge-note.is-info { --edge-note-color: var(--accent); }
+.edge-note.is-muted { --edge-note-color: var(--muted); }
 /* Help text wearing the note pattern hands its colour to the edge, the way
    every other note does, rather than staying the muted grey of a bare note. */
 .field-note.edge-note { color: var(--fg); }
@@ -2521,6 +2513,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    plain lettering while warning notes take their edge colour. */
 .tool-intro.edge-note > :is(h2, h3) { color: var(--fg); }
 .edge-note > :is(h2, h3) { margin: 0 0 var(--space-control); font: inherit; font-size: 16px; font-weight: 600; letter-spacing: normal; color: var(--edge-note-color, inherit); }
+/* Paragraphs inside a note sit on the note's padding, not on their own
+   default margins; only the gap between them is stated. */
+.edge-note > p { margin: 0; }
+.edge-note > p + p { margin-top: var(--space-control); }
 .edge-note ul { display: grid; gap: var(--space-control); margin: 0; padding-left: 20px; }
 .edge-note li { font-size: inherit; }
 .edge-note li::marker { color: var(--muted); }

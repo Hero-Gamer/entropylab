@@ -16,10 +16,35 @@ import { verdict, jevAvailable } from "./jev.mjs";
 import { fileURLToPath } from "node:url";
 const REPO_ROOT = join(fileURLToPath(import.meta.url), "..", "..", "..");
 const PAGE_URL = "file:///" + join(REPO_ROOT, "entropylab.html").replace(/\\/g, "/");
-const CHROME_PATHS = [
-  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-];
+// Binary resolution mirrors test/browser.test.mjs's chrome engine entry:
+// CHROME/CHROME_BINARY/CHROMIUM_BINARY env vars first (the CI workflow sets
+// CHROME=google-chrome), then common names on PATH, then the usual platform
+// install locations. Windows-only paths here previously meant the scheduled
+// CI job — which runs on ubuntu-latest — could never find a browser at all.
+const CHROME_ENV_VARS = ["CHROME", "CHROME_BINARY", "CHROMIUM_BINARY"];
+const CHROME_PATH_NAMES = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome", "headless_shell"];
+const CHROME_EXTRA_PATHS = {
+  darwin: ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium"],
+  win32: [
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+  ],
+  linux: ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/local/bin/chromium", "/snap/bin/chromium"],
+};
+const resolveChromeBinary = () => {
+  for (const name of CHROME_ENV_VARS) {
+    if (process.env[name]) return process.env[name];
+  }
+  for (const bin of CHROME_PATH_NAMES) {
+    try {
+      if (spawnSync(bin, ["--version"], { stdio: "pipe" }).status === 0) return bin;
+    } catch {}
+  }
+  for (const p of CHROME_EXTRA_PATHS[process.platform] ?? []) {
+    if (existsSync(p)) return p;
+  }
+  return null;
+};
 const TAP_SCRIPT = `
   (() => {
     window.__TAP = { net: [], errors: [], rejections: [] };
@@ -122,8 +147,12 @@ class CDP {
 }
 
 const launchChrome = () => {
-  const binary = CHROME_PATHS.find((p) => existsSync(p));
-  if (!binary) throw new Error("Chrome not found at the usual Windows paths");
+  const binary = resolveChromeBinary();
+  if (!binary) {
+    throw new Error(
+      "No Chrome/Chromium binary found. Install one or set CHROME, CHROME_BINARY, or CHROMIUM_BINARY."
+    );
+  }
   const profile = mkdtempSync(join(tmpdir(), "jev-adversarial-"));
   // --remote-debugging-port=0: read the picked port from DevToolsActivePort.
   const proc = spawn(binary, [

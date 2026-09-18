@@ -92,13 +92,40 @@ export const SCENARIOS = [
     actions: [
       `(() => { click("#psbt-editor-tab") || click('[data-psbt-tool]'); return "switched"; })()`,
       `(() => { const el = first(["#psbt-text", "textarea"]); if (!el) return "no-psbt-textarea"; const junk = "cHNidH" .repeat(700000); put(el, junk); return "huge-pasted len=" + el.value.length; })()`,
-      `(() => { return click("#psbt-go") ? "go-clicked" : "no-go-button"; })()`,
-      `(async () => { const t0 = Date.now(); await sleep(4000); return "settle-ms=" + (Date.now() - t0); })()`,
+      // This used to be `t0 = now; await sleep(4000); report now - t0`, which
+      // reports ~4000 whatever the app does — it timed its own sleep and told
+      // Jev nothing. Measure the two things that actually describe
+      // responsiveness: how long the main thread was blocked at its worst,
+      // and how long until the app answered through its own error UI.
+      `(async () => {
+        if (!click("#psbt-go")) return "no-go-button";
+        const t0 = performance.now();
+        let last = t0, worst = 0, ticks = 0, responded = null;
+        while (performance.now() - t0 < 4000) {
+          await new Promise((r) => setTimeout(r, 0));
+          const now = performance.now();
+          if (now - last > worst) worst = now - last;
+          last = now;
+          ticks++;
+          if (responded === null) {
+            const err = first(["#psbt-error", "#psbted-error", "#error"]);
+            if (err && (err.textContent || "").trim()) responded = Math.round(now - t0);
+          }
+        }
+        return "go-clicked max-block-ms=" + Math.round(worst) + " responded-ms=" + (responded === null ? "never" : responded) + " ticks=" + ticks;
+      })()`,
     ],
     assert: `
       (() => {
         const failures = [];
         if (!document.body) failures.push("document lost");
+        // 4 MB of "cHNidH" is definitively not a PSBT: the app must say so
+        // rather than swallow it. Presence only — wording is content. Same
+        // selector set as psbt-garbage-paste.
+        const err = first(["#psbt-error", "#psbted-error", "#error"]);
+        if (!err || !(err.textContent || "").trim()) {
+          failures.push("4 MB junk paste produced no error text");
+        }
         return { failures, info: { title: document.title } };
       })()
     `,
@@ -169,13 +196,31 @@ export const SCENARIOS = [
   {
     name: "dice-oversized",
     description:
-      "Stuff 100k+ junk characters into the dice textarea; the page must stay alive.",
+      "Stuff 100k+ junk characters into the dice textarea; the page must stay alive and must not call a constant roll sequence fair.",
     actions: [
       `(() => { const el = first(["#dice"]); if (!el) return "no-dice-textarea"; put(el, "1".repeat(120000) + "\\u0000".repeat(50) + "9".repeat(20000)); return "dice-stuffed len=" + el.value.length; })()`,
       `(async () => { await sleep(700); const meta = $("#dice-meta"); return "dice-meta=" + (meta ? (meta.textContent || "").slice(0, 100) : "(none)"); })()`,
+      // #dice-meta alone reports "120000 rolls / 310195.5 bits estimated" for
+      // a field stuffed with identical 1s, which reads like a key tool blessing
+      // zero real entropy. The app does better than that — its Pearson χ² panel
+      // calls this "Looks biased" — but the panel starts collapsed, so the
+      // log showed the estimate and hid the verdict.
+      `(async () => { const t = $('#dice-fairness-toggle'); if (!t) return "no-fairness-toggle"; t.click(); await sleep(900); return "fairness-expanded=" + t.getAttribute("aria-expanded"); })()`,
+      `(() => { const v = $('#dice-fairness [data-tone]'); if (!v) return "no-fairness-verdict"; return "fairness tone=" + v.getAttribute("data-tone") + " verdict=" + (v.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 90); })()`,
     ],
     assert: `
-      (() => { const failures = []; if (!document.body) failures.push("document lost"); return { failures, info: {} }; })()
+      (() => {
+        const failures = [];
+        if (!document.body) failures.push("document lost");
+        // data-tone is the rename-safe handle; the label text is content.
+        const verdict = document.querySelector("#dice-fairness [data-tone]");
+        if (!verdict) {
+          failures.push("no fairness verdict rendered for 120,000 rolls");
+        } else if (verdict.getAttribute("data-tone") === "ok") {
+          failures.push("120,000 identical rolls were reported as fair");
+        }
+        return { failures, info: {} };
+      })()
     `,
   },
   {
@@ -200,21 +245,52 @@ export const SCENARIOS = [
   {
     name: "workspace-tab-hammer",
     description:
-      "Click through all seven workspace tabs 40 times and assert the page ends responsive with no accumulated exceptions.",
+      "Click every workspace tab 40 times over, then prove the tab strip still switches workspaces rather than merely that the page has a body.",
     actions: [
+      // role=tab / aria-selected are the interface here; the previous
+      // 'button.workspace-tab' selector hooked a class, which design work
+      // renames freely (AGENTS.md).
       `(async () => {
-        const labels = ["Keys", "BIP-85", "Multi Signature", "PSBT", "Silent Payments", "Vanity", "Journal"];
         let clicks = 0;
         for (let i = 0; i < 40; i++) {
-          $all('button.workspace-tab').forEach((tab) => { tab.click(); clicks++; });
+          $all('#workspace-tabs [role="tab"]').forEach((tab) => { tab.click(); clicks++; });
           await sleep(20);
         }
-        return "hammered " + clicks + " clicks";
+        return "hammered " + clicks + " clicks over " + $all('#workspace-tabs [role="tab"]').length + " tabs";
       })()`,
-      `(async () => { await sleep(500); return "settled title=" + document.title.slice(0, 60); })()`,
+      // "settled title=…" proved nothing: the title never changes. Show that
+      // the app still responds — pick a tab other than the selected one and
+      // confirm the selection actually moves to it. Stash the before/after
+      // on window so invariant-only CI fails a frozen strip, not just Jev.
+      `(async () => {
+        await sleep(500);
+        const tabs = $all('#workspace-tabs [role="tab"]');
+        const before = tabs.findIndex((t) => t.getAttribute("aria-selected") === "true");
+        const target = tabs[(before + 1) % tabs.length];
+        const label = target.getAttribute("aria-label") || "(unlabelled)";
+        target.click();
+        await sleep(400);
+        const after = $all('#workspace-tabs [role="tab"]').findIndex((t) => t.getAttribute("aria-selected") === "true");
+        window.__TAB_SWITCH = { before, after, moved: after !== before && after >= 0 };
+        return "selected-before=" + before + " clicked=" + label + " selected-after=" + after;
+      })()`,
     ],
     assert: `
-      (() => { const failures = []; if (!document.body) failures.push("document lost"); return { failures, info: {} }; })()
+      (() => {
+        const failures = [];
+        if (!document.body) failures.push("document lost");
+        const tabs = [...document.querySelectorAll('#workspace-tabs [role="tab"]')];
+        const selected = tabs.filter((t) => t.getAttribute("aria-selected") === "true");
+        if (!tabs.length) failures.push("no workspace tabs found after hammering");
+        else if (selected.length !== 1) {
+          failures.push("expected exactly one selected tab after hammering, found " + selected.length);
+        }
+        const moved = window.__TAB_SWITCH;
+        if (!moved || !moved.moved) {
+          failures.push("tab click did not move selection after hammering");
+        }
+        return { failures, info: { tabs: tabs.length } };
+      })()
     `,
   },
   {

@@ -1575,10 +1575,10 @@ function hodlMsigCoreImportDescriptorsMarkup() {
   if (!hodlWalletResult.receiveDescriptor && !hodlWalletResult.changeDescriptor) return "";
   return `<div class="wallet-data-actions no-print" id="msig-core-importdescriptors">
     <label class="wallet-dat-birthday">${hodlT("Wallet birthday")} <select data-wallet-dat-birthday aria-describedby="msig-core-importdescriptors-help"><option value="genesis"${hodlWalletDatBirthday === "genesis" ? " selected" : ""}>${hodlT("Recovering keys · scan from genesis")}</option><option value="now"${hodlWalletDatBirthday === "now" ? " selected" : ""}>${hodlT("New keys · created today")}</option></select></label>
-    <button class="btn secondary green save-wallet-dat" id="msig-download-wallet-dat" type="button">${hodlT("Download watch-only wallet.dat")}</button>
+    <button class="btn secondary green save-wallet-dat" id="msig-download-wallet-dat" type="button" aria-describedby="msig-core-importdescriptors-help">${hodlWalletExport.walletDatButtonLabel(false)}</button>
     <button class="btn secondary" id="msig-copy-importdescriptors" type="button">${hodlT("Copy Core importdescriptors")}</button>
     <button class="btn secondary green" id="msig-save-importdescriptors" type="button">${hodlT("Save Core watch-only JSON")}</button>
-    <p class="muted wallet-dat-birthday-help" id="msig-core-importdescriptors-help">${hodlT("Watch-only Bitcoin Core wallet.dat — put it in a wallets folder and loadwallet. No private keys. JSON is for bitcoin-cli importdescriptors. First getnewaddress must match receive index 0 here.")}</p>
+    <p class="muted wallet-dat-birthday-help" id="msig-core-importdescriptors-help">${hodlT("Bitcoin Core only auto-scans history back to the birthday. Choose “New keys” only for entropy created right now; recovering older keys with today's birthday can look empty until you run <code>rescanblockchain 0</code> in Bitcoin Core.")} ${hodlT("Put the wallet.dat in a wallets folder and loadwallet; the JSON is for bitcoin-cli importdescriptors. No private keys. First getnewaddress must match receive index 0 here.")}</p>
   </div>`;
 }
 function hodlCopyMsigCoreImportDescriptors() {

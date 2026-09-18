@@ -534,6 +534,40 @@ fn parse_raw(bytes: &[u8]) -> Result<RawPsbt, String> {
     if off != bytes.len() {
         return Err("PSBT contains trailing data or extra maps".into());
     }
+    // BIP-370: PSBT_GLOBAL_TX_VERSION, _FALLBACK_LOCKTIME, _INPUT_COUNT,
+    // _OUTPUT_COUNT, _TX_MODIFIABLE, and their per-input/per-output
+    // counterparts are exclusive to PSBTv2 and "must not be included" in a
+    // v0 PSBT (BIP-370's own invalid-vector test cases exercise exactly
+    // this). The v0 branch above only checked for the *presence* of the
+    // unsigned tx; nothing rejected a v0 file that also carries these v2
+    // fields, so it decoded — and rebuilt — as if it were valid.
+    if v0_tx.is_some() {
+        const V2_ONLY_GLOBAL: [u8; 5] = [0x02, 0x03, 0x04, 0x05, 0x06];
+        const V2_ONLY_INPUT: [u8; 5] = [0x0e, 0x0f, 0x10, 0x11, 0x12];
+        const V2_ONLY_OUTPUT: [u8; 2] = [0x03, 0x04];
+        let reject = |kind: &str, type_byte: u8| -> String {
+            format!("{} is a PSBT v2 field and must not appear in a PSBT v0", pair_type_name(kind, type_byte))
+        };
+        for pair in &globals {
+            if V2_ONLY_GLOBAL.contains(&pair.key[0]) {
+                return Err(reject("global", pair.key[0]));
+            }
+        }
+        for map in &inputs {
+            for pair in map {
+                if V2_ONLY_INPUT.contains(&pair.key[0]) {
+                    return Err(reject("input", pair.key[0]));
+                }
+            }
+        }
+        for map in &outputs {
+            for pair in map {
+                if V2_ONLY_OUTPUT.contains(&pair.key[0]) {
+                    return Err(reject("output", pair.key[0]));
+                }
+            }
+        }
+    }
     let unsigned_tx = match v0_tx {
         Some(tx) => tx,
         None => {
@@ -922,9 +956,23 @@ fn decode_pair(kind: &str, pair: &RawPair, tx: &Transaction, input_index: Option
     view.into()
 }
 
+// A Schnorr/Taproot signature is exactly 64 bytes, or 65 with a defined
+// Taproot sighash byte appended (BIP-341). SIGHASH_DEFAULT (0x00) exists only
+// as the 64-byte implicit form: an appended 0x00 suffix is not a valid
+// encoding, and neither is any other byte outside this set. This mirrors
+// TAPROOT_SIGHASH_BYTES / hodlLooksSchnorr in src/js/psbt-schnorr.js (issue
+// #333) — that fix closed the gap in the standalone inspector's hand-rolled
+// JS parser, but the PSBT editor's diagram reads its "decoded" signing status
+// from this WASM decoder, which accepted any 65th byte and so still let a
+// signature with an undefined sighash suffix read as genuinely signed.
+const TAPROOT_SIGHASH_BYTES: [u8; 6] = [0x01, 0x02, 0x03, 0x81, 0x82, 0x83];
+
 fn tap_sig_json(value: &[u8]) -> Result<Value, String> {
     if value.len() != 64 && value.len() != 65 {
         return Err("taproot signature must be 64 or 65 bytes".into());
+    }
+    if value.len() == 65 && !TAPROOT_SIGHASH_BYTES.contains(&value[64]) {
+        return Err("taproot signature's sighash byte is not a defined Taproot sighash type".into());
     }
     let sighash = if value.len() == 65 { value[64] } else { 0 };
     Ok(json!({

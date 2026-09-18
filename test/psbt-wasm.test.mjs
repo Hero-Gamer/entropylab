@@ -766,6 +766,67 @@ test("malformed signing fields keep their names but carry decode errors, never a
   assert.ok(!byName("PSBT_IN_FINAL_SCRIPTSIG").decodeError);
 });
 
+// A minimal one-input, one-output v0 transaction shared by the tests below.
+const minimalTx =
+  "02000000" + "01" + "00".repeat(32) + "00000000" + "00" + "ffffffff" +
+  "01" + "0000000000000000" + "00" + "00000000";
+const minimalGlobal = "0100" + (minimalTx.length / 2).toString(16).padStart(2, "0") + minimalTx;
+
+test("a taproot signature's sighash suffix must be a defined Taproot sighash byte (issue #333, diagram-side)", () => {
+  // psbt-schnorr.js's hodlLooksSchnorr (issue #333) rejects a 65-byte Schnorr
+  // signature unless its trailing byte is one of the six defined Taproot
+  // sighash bytes — SIGHASH_DEFAULT (0x00) is valid only as the implicit
+  // 64-byte form, and every other byte is undefined. That fix landed in the
+  // standalone inspector's hand-rolled JS parser only; the PSBT editor's
+  // typed decode goes through this WASM crate instead, and tap_sig_json()
+  // accepted any 65th byte at all, so an invalid or SIGHASH_DEFAULT suffix
+  // still decoded as a "real" signature there.
+  const psbtWith = (suffixByte) =>
+    "70736274ff" + minimalGlobal + "00" +
+    "01" + "13" + "41" + "5a".repeat(64) + suffixByte +
+    "00" + "00";
+  // Defined bytes: SIGHASH_ALL, NONE, SINGLE, and their ANYONECANPAY forms.
+  for (const good of ["01", "02", "03", "81", "82", "83"]) {
+    const doc = psbtInspectDoc(unhex(psbtWith(good)));
+    const pair = doc.inputs[0].find((p) => p.name === "PSBT_IN_TAP_KEY_SIG");
+    assert.ok(pair.decoded, `sighash byte 0x${good} should decode`);
+    assert.equal(pair.decodeError, undefined);
+  }
+  // Undefined bytes, and the explicit-DEFAULT-suffix case, must not decode.
+  for (const bad of ["00", "04", "80", "84", "ff"]) {
+    const doc = psbtInspectDoc(unhex(psbtWith(bad)));
+    const pair = doc.inputs[0].find((p) => p.name === "PSBT_IN_TAP_KEY_SIG");
+    assert.equal(pair.decoded, null, `sighash byte 0x${bad} must not decode`);
+    assert.match(pair.decodeError, /sighash byte is not a defined Taproot sighash type/);
+  }
+  // The 64-byte implicit-DEFAULT form is unaffected.
+  const implicit = psbtInspectDoc(
+    unhex("70736274ff" + minimalGlobal + "00" + "01" + "13" + "40" + "5a".repeat(64) + "00" + "00")
+  );
+  assert.ok(implicit.inputs[0].find((p) => p.name === "PSBT_IN_TAP_KEY_SIG").decoded);
+});
+
+test("a PSBT v0 must not carry PSBT v2-exclusive fields (BIP-370)", () => {
+  // BIP-370's own invalid-vector cases cover a v2 PSBT missing v2-required
+  // fields (see the "BIP-370's invalid cases are refused" test above), but
+  // the BIP is symmetric: a v2 field appearing in a v0 PSBT is equally
+  // invalid ("must not be included"). Nothing enforced that direction — a v0
+  // PSBT decoded fine no matter what v2-only global/input/output fields it
+  // also carried, because the v0 branch only checked for the unsigned tx's
+  // presence.
+  const withExtraGlobal = // PSBT_GLOBAL_INPUT_COUNT (0x04) beside the unsigned tx
+    "70736274ff" + minimalGlobal + "01" + "04" + "04" + "01000000" + "00" + "00" + "00";
+  assert.throws(() => psbtInspectDoc(unhex(withExtraGlobal)), /PSBT_GLOBAL_INPUT_COUNT is a PSBT v2 field/);
+  const withExtraInput = // PSBT_IN_SEQUENCE (0x10) in the input map
+    "70736274ff" + minimalGlobal + "00" + "01" + "10" + "04" + "ffffffff" + "00" + "00";
+  assert.throws(() => psbtInspectDoc(unhex(withExtraInput)), /PSBT_IN_SEQUENCE is a PSBT v2 field/);
+  const withExtraOutput = // PSBT_OUT_AMOUNT (0x03) in the output map
+    "70736274ff" + minimalGlobal + "00" + "00" + "01" + "03" + "08" + "0000000000000000" + "00";
+  assert.throws(() => psbtInspectDoc(unhex(withExtraOutput)), /PSBT_OUT_AMOUNT is a PSBT v2 field/);
+  // A clean v0 PSBT with none of these fields still decodes.
+  assert.equal(psbtInspectDoc(unhex("70736274ff" + minimalGlobal + "00" + "00" + "00")).psbtVersion, 0);
+});
+
 test("psbtBytesFromText accepts base64 and hex with whitespace", () => {
   assert.deepEqual(psbtBytesFromText(VALID_B64), VALID);
   assert.deepEqual(psbtBytesFromText(VALID_HEX.toUpperCase()), VALID);

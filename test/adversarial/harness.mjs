@@ -158,6 +158,10 @@ const launchChrome = () => {
   // --remote-debugging-port=0: read the picked port from DevToolsActivePort.
   const proc = spawn(binary, [
     "--headless=new",
+    // CI runners (and any containerized Linux) have no user namespaces and a
+    // tiny /dev/shm; Chrome refuses to start without these.
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
     "--remote-debugging-port=0",
     `--user-data-dir=${profile}`,
     "--no-first-run",

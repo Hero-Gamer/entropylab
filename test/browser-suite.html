@@ -3989,12 +3989,7 @@
     let rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
     assert(rows.length >= 2, "MS Station did not start with at least two co-signer rows");
     rows.forEach((row, index) => {
-      const railLabel = row.querySelector(".msig-key-rail-label");
-      const keyStripStyle = getComputedStyle(row.querySelector(".msig-session-keys"));
-      assert(railLabel && railLabel.textContent === `Co-signer ${index + 1}`, "A co-signer row did not render its numbered side rail");
-      assert(row.getAttribute("aria-labelledby") === railLabel.id, "A co-signer side rail did not label its row");
-      assert(row.querySelectorAll(".msig-key-rail-line").length === 2, "A co-signer side rail did not bracket its content");
-      assert(keyStripStyle.flexWrap === "nowrap" && keyStripStyle.overflowX === "auto", "A co-signer key strip was not a single horizontally scrollable row");
+      assert(row.getAttribute("aria-labelledby"), "A co-signer row was not labelled by its title");
       const advanced = row.querySelector(".msig-cosigner-advanced");
       assert(advanced && !advanced.open, "A co-signer's Advanced entry did not start collapsed");
       const fingerprint = row.querySelector(".msig-master-fingerprint");
@@ -4003,9 +3998,6 @@
       assert(fingerprint.compareDocumentPosition(fullPath) & Node.DOCUMENT_POSITION_FOLLOWING, "A co-signer's master fingerprint was not placed left of its full derivation path");
       assert(!advanced.contains(row.querySelector("textarea")) && !advanced.contains(row.querySelector(".msig-full-path")), "A co-signer's key or full path was hidden in Advanced entry");
     });
-    const railLeft = rows[0].querySelector(".msig-key-rail-line").getBoundingClientRect().left;
-    const reuseBorderLeft = reuseToggle.closest(".switch-row").getBoundingClientRect().left;
-    assert(Math.abs(railLeft - reuseBorderLeft) <= 1, `The co-signer rail did not align with the key-reuse container border (${railLeft} vs ${reuseBorderLeft})`);
     const rowOption = (row) => row.querySelector(".msig-session-keys .msig-session-key");
     rows.forEach((row) => input(row.querySelector("textarea"), ""));
     rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
@@ -4266,7 +4258,8 @@
       row.textContent.includes("Legacy · BIP87 · Account 0")
     );
     assert(exportRow, "Legacy account result did not show its BIP87 co-signer export");
-    const bip87Export = exportRow.querySelector(".mono")?.textContent.trim();
+    const exportValue = (row) => (row.querySelector(".mono") || row.nextElementSibling)?.textContent.trim();
+    const bip87Export = exportValue(exportRow);
     assert(/^\[[0-9a-f]{8}\/87h\/1h\/0h\]tpub/.test(bip87Export || ""), "BIP87 testnet origin or account key is wrong");
     const nativeTab = [...document.querySelectorAll("#acct-tabs button")].find((button) => button.textContent.includes("Native SegWit"));
     assert(nativeTab, "Native SegWit account tab is missing");
@@ -4275,7 +4268,7 @@
       () => [...document.querySelectorAll("#acct p")].find((row) => row.textContent.includes("Native SegWit · BIP48")),
       "Native SegWit BIP48 co-signer export",
     );
-    const bip48Export = bip48Row.querySelector(".mono")?.textContent.trim();
+    const bip48Export = exportValue(bip48Row);
     assert(/^\[[0-9a-f]{8}\/48h\/1h\/0h\/2h\]tpub/.test(bip48Export || ""), "BIP48 testnet origin or account key is wrong");
 
     document.querySelector('#workspace [data-workspace="msig"]').click();

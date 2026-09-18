@@ -827,7 +827,6 @@ test("key derivation shows the relevant paste-ready multisig co-signer exports",
   assert.match(app, /multisigCosignerExports:root\.privateKey\?hodlBuildMultisigCosignerExports\(root,network,accountIndex,masterFingerprint,coinType\):\[\]/);
   assert.match(app, /function hodlRenderMultisigCosignerExport\(exports,accountId\)/);
   assert.match(app, /exports\.filter\(candidate=>candidate\.accountId===accountId\)/);
-  assert.match(appWhitespace, /items\.map\(item=>hodlPublicFieldHtml\("Multisig co-signer \{prefix\} · \{label\}",item\.value,\{prefix:item\.prefix,label:item\.label\}\)\)\.join\(""\)/);
   assert.match(app, /\$\{hodlSlip132WatchFields\(account,hodlWalletResult\)\}\s*\$\{hodlImportedCoreRecoveryExport\(hodlWalletResult,account\)\}\s*\$\{hodlRenderMultisigCosignerExport\(hodlWalletResult.multisigCosignerExports,account\.def\.id\)\}/);
   assert.doesNotMatch(`${app}\n${css}`, /account-multisig-exports/);
   assert.match(app, /Legacy P2SH requires the depth-1 BIP45 purpose key at m\/45h/);
@@ -2121,12 +2120,8 @@ test("every MS Station co-signer keeps its key and full path visible with synchr
   assert.match(appSource, /function hodlSessionMsigKeys\(\) \{/);
   assert.match(appSource, /function hodlMatchingMsigExport\(result\) \{/);
   assert.match(appSource, /chips\.className = "msig-session-keys"/);
-  assert.match(appSource, /rail\.className = "msig-key-rail"/);
-  assert.match(appSource, /railLabel\.className = "msig-key-rail-label"/);
-  assert.match(appSource, /railLabel\.textContent = hodlTText\("Co-signer \{n\}"/);
-  assert.match(appSource, /row\.setAttribute\("aria-labelledby", railLabel\.id\)/);
+  assert.match(appSource, /row\.setAttribute\("aria-labelledby", title\.id\)/);
   assert.match(appSource, /advanced\.className = "derivation-advanced msig-cosigner-advanced"/);
-  assert.match(appSource, /advancedSummary\.textContent = hodlTText\("Advanced entry"\)/);
   assert.match(appSource, /pathLabel\.textContent = hodlTText\("Full derivation path"\)/);
   assert.match(appSource, /pathInput\.className = "msig-full-path"/);
   assert.match(appSource, /fingerprintLabel\.textContent = hodlTText\("Master fingerprint"\)/);

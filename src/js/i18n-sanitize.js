@@ -204,14 +204,21 @@ export function hodlEscapeAttribute(value) {
   })[character]);
 }
 
+// A JSON-parsed catalog can carry an own "__proto__" key. Assigning it would
+// invoke the Object.prototype setter — a string value is silently dropped,
+// an object value would retarget the clean catalog's prototype and let
+// unsanitized entries in through later lookups. No translation is ever keyed
+// "__proto__" (keys are English source text), so the key is skipped.
+const hodlCatalogKeySafe = (key) => key !== "__proto__";
+
 export function hodlSanitizeCatalog(catalog) {
   let clean = {};
-  for (let [key, value] of Object.entries(catalog ?? {})) clean[key] = typeof value === "string" ? hodlSanitizeCatalogHtml(value) : value;
+  for (let [key, value] of Object.entries(catalog ?? {})) if (hodlCatalogKeySafe(key)) clean[key] = typeof value === "string" ? hodlSanitizeCatalogHtml(value) : value;
   return clean;
 }
 
 export function hodlSanitizeTextCatalog(catalog) {
   let clean = {};
-  for (let [key, value] of Object.entries(catalog ?? {})) clean[key] = typeof value === "string" ? hodlSanitizeCatalogText(value) : value;
+  for (let [key, value] of Object.entries(catalog ?? {})) if (hodlCatalogKeySafe(key)) clean[key] = typeof value === "string" ? hodlSanitizeCatalogText(value) : value;
   return clean;
 }

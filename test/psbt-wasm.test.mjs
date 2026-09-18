@@ -772,6 +772,40 @@ const minimalTx =
   "01" + "0000000000000000" + "00" + "00000000";
 const minimalGlobal = "0100" + (minimalTx.length / 2).toString(16).padStart(2, "0") + minimalTx;
 
+test("a taproot signature's sighash suffix must be a defined Taproot sighash byte (issue #333, diagram-side)", () => {
+  // psbt-schnorr.js's hodlLooksSchnorr (issue #333) rejects a 65-byte Schnorr
+  // signature unless its trailing byte is one of the six defined Taproot
+  // sighash bytes — SIGHASH_DEFAULT (0x00) is valid only as the implicit
+  // 64-byte form, and every other byte is undefined. That fix landed in the
+  // standalone inspector's hand-rolled JS parser only; the PSBT editor's
+  // typed decode goes through this WASM crate instead, and tap_sig_json()
+  // accepted any 65th byte at all, so an invalid or SIGHASH_DEFAULT suffix
+  // still decoded as a "real" signature there.
+  const psbtWith = (suffixByte) =>
+    "70736274ff" + minimalGlobal + "00" +
+    "01" + "13" + "41" + "5a".repeat(64) + suffixByte +
+    "00" + "00";
+  // Defined bytes: SIGHASH_ALL, NONE, SINGLE, and their ANYONECANPAY forms.
+  for (const good of ["01", "02", "03", "81", "82", "83"]) {
+    const doc = psbtInspectDoc(unhex(psbtWith(good)));
+    const pair = doc.inputs[0].find((p) => p.name === "PSBT_IN_TAP_KEY_SIG");
+    assert.ok(pair.decoded, `sighash byte 0x${good} should decode`);
+    assert.equal(pair.decodeError, undefined);
+  }
+  // Undefined bytes, and the explicit-DEFAULT-suffix case, must not decode.
+  for (const bad of ["00", "04", "80", "84", "ff"]) {
+    const doc = psbtInspectDoc(unhex(psbtWith(bad)));
+    const pair = doc.inputs[0].find((p) => p.name === "PSBT_IN_TAP_KEY_SIG");
+    assert.equal(pair.decoded, null, `sighash byte 0x${bad} must not decode`);
+    assert.match(pair.decodeError, /sighash byte is not a defined Taproot sighash type/);
+  }
+  // The 64-byte implicit-DEFAULT form is unaffected.
+  const implicit = psbtInspectDoc(
+    unhex("70736274ff" + minimalGlobal + "00" + "01" + "13" + "40" + "5a".repeat(64) + "00" + "00")
+  );
+  assert.ok(implicit.inputs[0].find((p) => p.name === "PSBT_IN_TAP_KEY_SIG").decoded);
+});
+
 test("a PSBT v0 must not carry PSBT v2-exclusive fields (BIP-370)", () => {
   // BIP-370's own invalid-vector cases cover a v2 PSBT missing v2-required
   // fields (see the "BIP-370's invalid cases are refused" test above), but

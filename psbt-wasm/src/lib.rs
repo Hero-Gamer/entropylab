@@ -956,9 +956,23 @@ fn decode_pair(kind: &str, pair: &RawPair, tx: &Transaction, input_index: Option
     view.into()
 }
 
+// A Schnorr/Taproot signature is exactly 64 bytes, or 65 with a defined
+// Taproot sighash byte appended (BIP-341). SIGHASH_DEFAULT (0x00) exists only
+// as the 64-byte implicit form: an appended 0x00 suffix is not a valid
+// encoding, and neither is any other byte outside this set. This mirrors
+// TAPROOT_SIGHASH_BYTES / hodlLooksSchnorr in src/js/psbt-schnorr.js (issue
+// #333) — that fix closed the gap in the standalone inspector's hand-rolled
+// JS parser, but the PSBT editor's diagram reads its "decoded" signing status
+// from this WASM decoder, which accepted any 65th byte and so still let a
+// signature with an undefined sighash suffix read as genuinely signed.
+const TAPROOT_SIGHASH_BYTES: [u8; 6] = [0x01, 0x02, 0x03, 0x81, 0x82, 0x83];
+
 fn tap_sig_json(value: &[u8]) -> Result<Value, String> {
     if value.len() != 64 && value.len() != 65 {
         return Err("taproot signature must be 64 or 65 bytes".into());
+    }
+    if value.len() == 65 && !TAPROOT_SIGHASH_BYTES.contains(&value[64]) {
+        return Err("taproot signature's sighash byte is not a defined Taproot sighash type".into());
     }
     let sighash = if value.len() == 65 { value[64] } else { 0 };
     Ok(json!({

@@ -134,6 +134,30 @@ test("malformed signing fields read as malformed, never as signed or finalized (
   assert.ok(html.includes("1 signature"), "the one decodable signature should still count");
 });
 
+test("a taproot signature with an undefined sighash suffix does not read as signed (issue #333, diagram-side)", () => {
+  // The unit-level fix is in test/psbt-wasm.test.mjs (tap_sig_json now
+  // rejects a 65-byte Taproot signature whose trailing byte is not a defined
+  // Taproot sighash type). This is the end-to-end case the diagram actually
+  // cares about: the real WASM decode feeding real "decoded" pairs into
+  // signingStatus(), the same path issue #328 hardened for a failed decode
+  // in general. Before that decoder-level fix, an undefined sighash byte
+  // still produced a `decoded` value with no `decodeError`, so this read as
+  // "1 signature" here even though psbt-schnorr.js's own hodlLooksSchnorr
+  // would have refused the exact same bytes.
+  const unhex = (hex) => new Uint8Array(hex.match(/.{2}/g).map((b) => parseInt(b, 16)));
+  const tx =
+    "02000000" + "01" + "00".repeat(32) + "00000000" + "00" + "ffffffff" +
+    "01" + "0000000000000000" + "00" + "00000000";
+  const psbtBadSuffix =
+    "70736274ff" + "0100" + (tx.length / 2).toString(16).padStart(2, "0") + tx + "00" +
+    "01" + "13" + "41" + "5a".repeat(64) + "04" + // PSBT_IN_TAP_KEY_SIG, undefined 0x04 suffix
+    "00" + "00";
+  const doc = psbtInspectDoc(unhex(psbtBadSuffix));
+  const html = psbtVizHtml(doc, "mainnet");
+  assert.ok(!html.includes("1 signature"), "an undefined sighash suffix must not count as a signature");
+  assert.ok(html.includes("malformed signing field"), "it should read as malformed instead");
+});
+
 test("the selected box is marked open and expanded, the rest are not", () => {
   const doc = inspectValid();
   const html = psbtVizHtml(doc, "mainnet", { kind: "input", index: 1 });

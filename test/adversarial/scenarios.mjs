@@ -112,7 +112,24 @@ export const SCENARIOS = [
             if (err && (err.textContent || "").trim()) responded = Math.round(now - t0);
           }
         }
-        return "go-clicked max-block-ms=" + Math.round(worst) + " responded-ms=" + (responded === null ? "never" : responded) + " ticks=" + ticks;
+        // ticks is scheduler noise, not app behaviour — measured across five
+        // unchanged runs it swung 11/145/58/341/336 while max-block-ms held
+        // at 999-1004. It was the ONLY varying line in the whole log corpus,
+        // in the one scenario whose verdict flipped between runs, so it was
+        // handing the judge a number that looks like event-loop starvation
+        // and means nothing. max-block-ms already carries the signal: fewer
+        // samples can only make the worst gap larger, never hide it. Surface
+        // the count only when the loop barely ran, which is the single case
+        // where the measurement itself is untrustworthy.
+        const reliability = ticks < 3 ? " measurement-unreliable(ticks=" + ticks + ")" : "";
+        // Reported at the resolution the measurement actually has. Raw values
+        // jitter (1000-1005 ms, 0-3 ms across runs) which is false precision:
+        // identical behaviour should produce an identical line, so that a
+        // verdict that moves between runs cannot be blamed on the input. A
+        // real regression is still obvious — 100 ms buckets turn a 3x
+        // slowdown into 1000 -> 3000.
+        const bucket = (ms, step) => Math.round(ms / step) * step;
+        return "go-clicked max-block-ms=~" + bucket(worst, 100) + " responded-ms=" + (responded === null ? "never" : "~" + bucket(responded, 50)) + reliability;
       })()`,
     ],
     assert: `

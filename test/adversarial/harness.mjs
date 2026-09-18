@@ -215,6 +215,7 @@ const runScenario = async (cdp, scenario, onEvent) => {
     rejections: [],
     network: [],
     invariantFailures: [],
+    contractChecks: [],
     delivery: [],
     alive: null,
     title: "",
@@ -283,6 +284,9 @@ const runScenario = async (cdp, scenario, onEvent) => {
         );
       } else if (Array.isArray(out.failures)) {
         log.invariantFailures.push(...out.failures);
+        // Positive evidence: a scenario may report the contract checks it
+        // PASSED, so a clean run shows proof, not just the absence of smoke.
+        if (Array.isArray(out.passed)) log.contractChecks.push(...out.passed);
       } else {
         log.invariantFailures.push("assert hook returned no failures array (did it run?)");
       }

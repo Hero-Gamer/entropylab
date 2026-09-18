@@ -278,18 +278,23 @@ export const SCENARIOS = [
     assert: `
       (() => {
         const failures = [];
+        const passed = [];
         if (!document.body) failures.push("document lost");
         const tabs = [...document.querySelectorAll('#workspace-tabs [role="tab"]')];
         const selected = tabs.filter((t) => t.getAttribute("aria-selected") === "true");
         if (!tabs.length) failures.push("no workspace tabs found after hammering");
         else if (selected.length !== 1) {
           failures.push("expected exactly one selected tab after hammering, found " + selected.length);
+        } else {
+          passed.push("exactly one workspace tab selected after 320 clicks (" + (selected[0].getAttribute("aria-label") || "unlabelled") + ")");
         }
         const moved = window.__TAB_SWITCH;
         if (!moved || !moved.moved) {
           failures.push("tab click did not move selection after hammering");
+        } else {
+          passed.push("tab strip still switches workspaces after the hammer (selection moved " + moved.before + " → " + moved.after + ")");
         }
-        return { failures, info: { tabs: tabs.length } };
+        return { failures, passed, info: { tabs: tabs.length } };
       })()
     `,
   },

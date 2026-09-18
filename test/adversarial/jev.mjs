@@ -84,6 +84,7 @@ export const verdict = (runLog) => {
     `Unhandled rejections: ${runLog.rejections.length}`,
     `Network attempts (fetch/xhr/beacon/ws/es): ${runLog.network.length}`,
     `Invariant failures: ${runLog.invariantFailures.join("; ") || "none"}`,
+    `Contract checks passed (positive evidence the app behaved per its contract): ${(runLog.contractChecks || []).join("; ") || "none reported"}`,
     `Actions: ${safe(runLog.actions.join(" | "), 600)}`,
     `Console errors: ${safe(runLog.consoleErrors.join(" | "), 400)}`,
     `Exceptions: ${safe(runLog.exceptions.join(" | "), 400)}`,

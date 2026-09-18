@@ -261,9 +261,26 @@ const runScenario = async (cdp, scenario, onEvent) => {
 
     // In-page invariant assertions
     try {
-      const res = await evaluate(cdp, sessionId, `(() => {\n${HELPER}\nreturn ${scenario.assert};\n})()`);
+      // The parentheses are load-bearing: every assert in scenarios.mjs is a
+      // multi-line template literal that starts with a newline, so
+      // `return ${...}` put the newline straight after `return` and automatic
+      // semicolon insertion turned the whole hook into `return;` followed by
+      // dead code. Failures were silently discarded for every scenario.
+      const res = await evaluate(cdp, sessionId, `(() => {\n${HELPER}\nreturn (${scenario.assert});\n})()`);
       const out = res.result?.value ?? {};
-      if (Array.isArray(out.failures)) log.invariantFailures.push(...out.failures);
+      // A throw inside the page resolves the CDP call with exceptionDetails
+      // rather than rejecting it, and a hook that returns no failures array
+      // is not a passing hook — it is one that never ran. Both used to read
+      // as a clean scenario.
+      if (res.exceptionDetails) {
+        log.invariantFailures.push(
+          "assert hook threw: " + String(res.exceptionDetails.exception?.description || res.exceptionDetails.text).slice(0, 160),
+        );
+      } else if (Array.isArray(out.failures)) {
+        log.invariantFailures.push(...out.failures);
+      } else {
+        log.invariantFailures.push("assert hook returned no failures array (did it run?)");
+      }
     } catch (e) {
       log.invariantFailures.push("assert hook failed to run: " + String(e.message || e).slice(0, 120));
     }

@@ -534,6 +534,40 @@ fn parse_raw(bytes: &[u8]) -> Result<RawPsbt, String> {
     if off != bytes.len() {
         return Err("PSBT contains trailing data or extra maps".into());
     }
+    // BIP-370: PSBT_GLOBAL_TX_VERSION, _FALLBACK_LOCKTIME, _INPUT_COUNT,
+    // _OUTPUT_COUNT, _TX_MODIFIABLE, and their per-input/per-output
+    // counterparts are exclusive to PSBTv2 and "must not be included" in a
+    // v0 PSBT (BIP-370's own invalid-vector test cases exercise exactly
+    // this). The v0 branch above only checked for the *presence* of the
+    // unsigned tx; nothing rejected a v0 file that also carries these v2
+    // fields, so it decoded — and rebuilt — as if it were valid.
+    if v0_tx.is_some() {
+        const V2_ONLY_GLOBAL: [u8; 5] = [0x02, 0x03, 0x04, 0x05, 0x06];
+        const V2_ONLY_INPUT: [u8; 5] = [0x0e, 0x0f, 0x10, 0x11, 0x12];
+        const V2_ONLY_OUTPUT: [u8; 2] = [0x03, 0x04];
+        let reject = |kind: &str, type_byte: u8| -> String {
+            format!("{} is a PSBT v2 field and must not appear in a PSBT v0", pair_type_name(kind, type_byte))
+        };
+        for pair in &globals {
+            if V2_ONLY_GLOBAL.contains(&pair.key[0]) {
+                return Err(reject("global", pair.key[0]));
+            }
+        }
+        for map in &inputs {
+            for pair in map {
+                if V2_ONLY_INPUT.contains(&pair.key[0]) {
+                    return Err(reject("input", pair.key[0]));
+                }
+            }
+        }
+        for map in &outputs {
+            for pair in map {
+                if V2_ONLY_OUTPUT.contains(&pair.key[0]) {
+                    return Err(reject("output", pair.key[0]));
+                }
+            }
+        }
+    }
     let unsigned_tx = match v0_tx {
         Some(tx) => tx,
         None => {

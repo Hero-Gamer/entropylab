@@ -766,6 +766,33 @@ test("malformed signing fields keep their names but carry decode errors, never a
   assert.ok(!byName("PSBT_IN_FINAL_SCRIPTSIG").decodeError);
 });
 
+// A minimal one-input, one-output v0 transaction shared by the tests below.
+const minimalTx =
+  "02000000" + "01" + "00".repeat(32) + "00000000" + "00" + "ffffffff" +
+  "01" + "0000000000000000" + "00" + "00000000";
+const minimalGlobal = "0100" + (minimalTx.length / 2).toString(16).padStart(2, "0") + minimalTx;
+
+test("a PSBT v0 must not carry PSBT v2-exclusive fields (BIP-370)", () => {
+  // BIP-370's own invalid-vector cases cover a v2 PSBT missing v2-required
+  // fields (see the "BIP-370's invalid cases are refused" test above), but
+  // the BIP is symmetric: a v2 field appearing in a v0 PSBT is equally
+  // invalid ("must not be included"). Nothing enforced that direction — a v0
+  // PSBT decoded fine no matter what v2-only global/input/output fields it
+  // also carried, because the v0 branch only checked for the unsigned tx's
+  // presence.
+  const withExtraGlobal = // PSBT_GLOBAL_INPUT_COUNT (0x04) beside the unsigned tx
+    "70736274ff" + minimalGlobal + "01" + "04" + "04" + "01000000" + "00" + "00" + "00";
+  assert.throws(() => psbtInspectDoc(unhex(withExtraGlobal)), /PSBT_GLOBAL_INPUT_COUNT is a PSBT v2 field/);
+  const withExtraInput = // PSBT_IN_SEQUENCE (0x10) in the input map
+    "70736274ff" + minimalGlobal + "00" + "01" + "10" + "04" + "ffffffff" + "00" + "00";
+  assert.throws(() => psbtInspectDoc(unhex(withExtraInput)), /PSBT_IN_SEQUENCE is a PSBT v2 field/);
+  const withExtraOutput = // PSBT_OUT_AMOUNT (0x03) in the output map
+    "70736274ff" + minimalGlobal + "00" + "00" + "01" + "03" + "08" + "0000000000000000" + "00";
+  assert.throws(() => psbtInspectDoc(unhex(withExtraOutput)), /PSBT_OUT_AMOUNT is a PSBT v2 field/);
+  // A clean v0 PSBT with none of these fields still decodes.
+  assert.equal(psbtInspectDoc(unhex("70736274ff" + minimalGlobal + "00" + "00" + "00")).psbtVersion, 0);
+});
+
 test("psbtBytesFromText accepts base64 and hex with whitespace", () => {
   assert.deepEqual(psbtBytesFromText(VALID_B64), VALID);
   assert.deepEqual(psbtBytesFromText(VALID_HEX.toUpperCase()), VALID);

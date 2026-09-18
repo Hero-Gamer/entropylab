@@ -1,0 +1,38 @@
+# Jev adversarial browser testing — scheduled exploration of the built page
+# with hostile inputs, judged by TypeSafe System One when TYPESAFE_API_KEY is
+# set (the harness degrades to invariant-only without it).
+name: Jev adversarial
+
+on:
+  schedule:
+    - cron: "37 5 * * *"
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: "22.23.2"
+  TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+
+permissions: {}
+
+jobs:
+  adversarial:
+    name: Jev adversarial scenarios
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Build the page under test
+        run: npm run build
+      - name: Run the adversarial harness
+        env:
+          CHROME: "google-chrome"
+        run: node test/adversarial/harness.mjs 2>&1 | tee test/adversarial/jev-adversarial.log
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@6f51ac03b3d108e1500bade1b2eea8d9ec23ddcd # v4
+        with:
+          name: jev-adversarial-log
+          path: test/adversarial/jev-adversarial.log

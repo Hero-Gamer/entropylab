@@ -187,6 +187,19 @@ test("a hostile catalog value can only reach t() and tHtml() sanitized", () => {
   assert.equal(hodlSanitizeTextCatalog(dirty)["Greeting"], 'Hello <img src=x onerror="alert(1)">');
 });
 
+test("a __proto__ key in a JSON-parsed catalog cannot mutate the sanitized catalog's prototype", () => {
+  // JSON.parse creates an own "__proto__" property; assigning it onto a plain
+  // object would hit the Object.prototype setter instead of adding an entry.
+  const dirty = JSON.parse('{"__proto__": {"polluted": "yes"}, "Greeting": "Hello"}');
+  assert.equal(Object.hasOwn(dirty, "__proto__"), true);
+  for (const clean of [hodlSanitizeCatalog(dirty), hodlSanitizeTextCatalog(dirty)]) {
+    assert.equal(Object.getPrototypeOf(clean), Object.prototype);
+    assert.equal(Object.hasOwn(clean, "__proto__"), false);
+    assert.equal(clean.polluted, undefined);
+    assert.equal(clean.Greeting, "Hello");
+  }
+});
+
 test("i18n.js routes every catalog through the sanitizer before t() can read it", () => {
   const source = readFileSync(join(root, "src/js/i18n.js"), "utf8");
   assert.match(source, /const hodlLocaleHtmlCatalogs = \{ es: hodlSanitizeCatalog\(es\), pt: hodlSanitizeCatalog\(pt\), fr: hodlSanitizeCatalog\(fr\), de: hodlSanitizeCatalog\(de\) \}/);

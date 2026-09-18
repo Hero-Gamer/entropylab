@@ -82,6 +82,18 @@ test("P2PKH outputs are tagged with their script template", () => {
   assert.ok(html.includes("P2PKH"), "script template tag missing");
 });
 
+test("a malformed scriptPubKey falls back to the script display, never a zero-filled address", () => {
+  // The old lenient hex parser turned invalid digits into zero bytes, so
+  // "0014" + 20 garbage pairs decoded to the all-zero P2WPKH program and the
+  // box posed as a real (fabricated) address. Strict decoding throws, the
+  // address lookup returns null, and the box shows the raw script instead.
+  const doc = syntheticDoc();
+  doc.tx.outputs = [{ value: "1", scriptPubKey: "0014" + "zz".repeat(20), asm: "" }];
+  const html = psbtVizHtml(doc, "mainnet");
+  assert.ok(!html.includes("bc1q"), "malformed hex must not decode into an address");
+  assert.ok(html.includes("0014zzzz"), "the raw script hex is shown instead");
+});
+
 test("OP_RETURN outputs get the data-carrier tag instead of an address", () => {
   const html = psbtVizHtml(syntheticDoc(), "mainnet");
   assert.ok(html.includes("OP_RETURN"), "OP_RETURN tag missing");

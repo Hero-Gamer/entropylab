@@ -85,7 +85,10 @@ var hodlWalletExport = (() => {
   );
   const DER_PUBKEY_PREFIX = hex("a124" + "0322" + "00");
 
+  // Strict like coders.js' hex.decode (this IIFE predates the module graph):
+  // a malformed template must throw here, never zero-fill into a DER record.
   function hex(text) {
+    if (typeof text !== "string" || text.length % 2 || /[^0-9a-f]/i.test(text)) throw new Error("Invalid hexadecimal string");
     const bytes = new Uint8Array(text.length / 2);
     for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(text.slice(2 * i, 2 * i + 2), 16);
     return bytes;

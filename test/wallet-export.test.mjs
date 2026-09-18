@@ -24,6 +24,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createServer } from "node:net";
+import { HDKey } from "@scure/bip32";
+import { mnemonicToSeedSync } from "@scure/bip39";
+import { canonicalizeWatchDescriptor } from "../src/js/core-importdescriptors.js";
 import {
   REF_ACCOUNT_TPUB,
   REF_CREATION_TIME,
@@ -373,7 +376,7 @@ test("descriptor ranges cover displayed addresses plus a recovery gap", () => {
   assert.deepEqual(readRange(descriptorValues[1]), { nextIndex: 7001, rangeStart: 7000, rangeEnd: 8000 });
 });
 
-test("button gating: only HD wallets with descriptors", () => {
+test("button gating: HD wallets with descriptors, and msig watch-only", () => {
   const { hasDescriptors } = loadModule();
   assert.equal(hasDescriptors(null), false);
   assert.equal(hasDescriptors({}), false);
@@ -417,7 +420,7 @@ test("the app keys the secrets label and filename to actual material (issue #366
   const app = read("src/js/app.js");
   assert.match(app, /withSecrets = includePrivate && hodlWalletExport\.hasPrivateDescriptors\(hodlWalletResult\)/);
   assert.match(app, /walletDatButtonLabel\(withSecrets\)/);
-  assert.match(app, /withSecrets = hodlRevealPrivate && hodlWalletExport\.hasPrivateDescriptors\(hodlWalletResult\)/);
+  assert.match(app, /withSecrets = hodlWalletResult\.kind !== "msig" && hodlRevealPrivate && hodlWalletExport\.hasPrivateDescriptors\(hodlWalletResult\)/);
   assert.match(app, /walletDatFilename\(hodlWalletResult, withSecrets\)/);
 });
 
@@ -441,6 +444,201 @@ test("button label follows the reveal state", () => {
   assert.match(shown, /secrets/i);
   assert.match(shown, /xprv/i);
   assert.match(shown, /\.dat/);
+});
+
+// --- watch-only multisig ----------------------------------------------------
+
+const msigSeed = mnemonicToSeedSync(
+  "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+);
+const msigMaster = HDKey.fromMasterSeed(msigSeed);
+const msigFingerprint = msigMaster.fingerprint.toString(16).padStart(8, "0");
+const msigNode = (account) => msigMaster.derive(`m/48'/0'/${account}'/2'`);
+const msigKey = (account) => {
+  const node = msigNode(account);
+  return `[${msigFingerprint}/48h/0h/${account}h/2h]${node.publicExtendedKey}`;
+};
+const msigBody = (branch) => `wsh(sortedmulti(2,${msigKey(0)}/${branch}/*,${msigKey(1)}/${branch}/*,${msigKey(2)}/${branch}/*))`;
+const msigDesc = (branch) => `${msigBody(branch)}#${descriptorChecksum(msigBody(branch))}`;
+const MSIG_WALLET = {
+  kind: "msig",
+  network: "mainnet",
+  script: "p2wsh",
+  m: 2,
+  n: 3,
+  receiveDescriptor: msigDesc(0),
+  changeDescriptor: msigDesc(1),
+  receive: [{ index: 0 }, { index: 1 }],
+  change: [{ index: 0 }, { index: 1 }],
+};
+const msigDeps = {
+  ...deps,
+  canonicalizeDescriptor: (descriptor) => canonicalizeWatchDescriptor(descriptor, { decode: b58checkDecode, encode: b58checkEncode }),
+};
+
+test("msig watch-only export has descriptors, never private keys, names the policy", () => {
+  const { hasDescriptors, hasPrivateDescriptors, walletDatFilename, walletDescriptorUnits, buildWalletRecords } = loadModule();
+  assert.equal(hasDescriptors(MSIG_WALLET), true);
+  assert.equal(hasPrivateDescriptors(MSIG_WALLET), false);
+  assert.equal(walletDatFilename(MSIG_WALLET, true), "entropylab-msig-2of3-watch-only-wallet.dat");
+  assert.equal(walletDatFilename(MSIG_WALLET, false), "entropylab-msig-2of3-watch-only-wallet.dat");
+  const units = walletDescriptorUnits(MSIG_WALLET, true);
+  assert.equal(units.length, 2);
+  assert.ok(units.every((unit) => unit.privateDescriptor == null && unit.multiKey && unit.type === 2));
+  const records = buildWalletRecords(MSIG_WALLET, true, msigDeps, 0);
+  const names = records.map(([key]) => new TextDecoder().decode(key.slice(1, 1 + key[0])));
+  assert.equal(names.filter((name) => name === "walletdescriptor").length, 2);
+  assert.equal(names.filter((name) => name === "walletdescriptorcache").length, 6);
+  assert.equal(names.filter((name) => name === "walletdescriptorkey").length, 0);
+  assert.equal(names.filter((name) => name === "activeexternalspk").length, 1);
+  assert.equal(names.filter((name) => name === "activeinternalspk").length, 1);
+  const blob = records.map(([, value]) => Buffer.from(value).toString("latin1")).join("");
+  assert.doesNotMatch(blob, /[xyztuvYZUV]prv/);
+  assert.doesNotMatch(blob, /abandon/);
+});
+
+test("msig cache parents match independent CKD of each co-signer", () => {
+  const { buildWalletRecords } = loadModule();
+  const records = buildWalletRecords(MSIG_WALLET, false, msigDeps, 0);
+  const cachePrefix = "15" + "77616c6c657464657363726970746f726361636865";
+  const caches = records
+    .map(([key, value]) => [bytesToHex(key), bytesToHex(value)])
+    .filter(([key]) => key.startsWith(cachePrefix));
+  assert.equal(caches.length, 6);
+  const expected = [];
+  for (const branch of [0, 1]) {
+    for (const account of [0, 1, 2]) {
+      expected.push("4a" + bytesToHex(deriveBranchBody(msigNode(account).publicExtendedKey, branch)));
+    }
+  }
+  const got = caches.map(([, value]) => value).sort();
+  assert.deepEqual(got, [...expected].sort());
+});
+
+const cacheKeyIndex = (keyHex) => {
+  const bytes = hexToBytes(keyHex);
+  const offset = bytes.length - 4;
+  return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24);
+};
+
+const readDescriptorRange = (value) => {
+  const first = value[0];
+  const lengthBytes = first < 253 ? 1 : first === 253 ? 3 : first === 254 ? 5 : 9;
+  const descriptorLength = first < 253 ? first : first === 253 ? value.readUInt16LE(1) : first === 254 ? value.readUInt32LE(1) : Number(value.readBigUInt64LE(1));
+  const offset = lengthBytes + descriptorLength + 8;
+  return {
+    nextIndex: value.readUInt32LE(offset),
+    rangeStart: value.readUInt32LE(offset + 4),
+    rangeEnd: value.readUInt32LE(offset + 8),
+  };
+};
+
+test("msig watch-only nextIndex is 0 so first getnewaddress is receive 0", () => {
+  const { walletDescriptorUnits, buildWalletRecords } = loadModule();
+  const units = walletDescriptorUnits(MSIG_WALLET, false);
+  assert.ok(units.every((unit) => unit.nextIndex === 0 && unit.rangeStart === 0));
+  const records = buildWalletRecords(MSIG_WALLET, false, msigDeps, 0);
+  const descriptorValues = records
+    .filter(([key]) => key[0] === 16 && new TextDecoder().decode(key.slice(1, 17)) === "walletdescriptor")
+    .map(([, value]) => Buffer.from(value));
+  assert.equal(descriptorValues.length, 2);
+  for (const value of descriptorValues) {
+    const range = readDescriptorRange(value);
+    assert.equal(range.nextIndex, 0);
+    assert.equal(range.rangeStart, 0);
+  }
+});
+
+const NUMS = "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0";
+const msigTrNode = (account) => msigMaster.derive(`m/86'/0'/${account}'`);
+const msigTrKey = (account) => {
+  const node = msigTrNode(account);
+  return `[${msigFingerprint}/86h/0h/${account}h]${node.publicExtendedKey}`;
+};
+const msigTrBody = (branch) => `tr(${NUMS},sortedmulti_a(2,${msigTrKey(0)}/${branch}/*,${msigTrKey(1)}/${branch}/*,${msigTrKey(2)}/${branch}/*))`;
+const msigTrDesc = (branch) => `${msigTrBody(branch)}#${descriptorChecksum(msigTrBody(branch))}`;
+const MSIG_TR_WALLET = {
+  kind: "msig",
+  network: "mainnet",
+  script: "p2tr",
+  m: 2,
+  n: 3,
+  receiveDescriptor: msigTrDesc(0),
+  changeDescriptor: msigTrDesc(1),
+  receive: [{ index: 0 }, { index: 1 }],
+  change: [{ index: 0 }, { index: 1 }],
+};
+
+test("msig Taproot cache indexes skip the NUMS internal key", () => {
+  const { buildWalletRecords } = loadModule();
+  const cachePrefix = "15" + "77616c6c657464657363726970746f726361636865";
+  const nativeIndexes = buildWalletRecords(MSIG_WALLET, false, msigDeps, 0)
+    .map(([key]) => bytesToHex(key))
+    .filter((key) => key.startsWith(cachePrefix))
+    .map(cacheKeyIndex);
+  assert.deepEqual([...new Set(nativeIndexes)].sort((a, b) => a - b), [0, 1, 2]);
+
+  const tap = buildWalletRecords(MSIG_TR_WALLET, false, msigDeps, 0);
+  const tapCaches = tap
+    .map(([key, value]) => [bytesToHex(key), bytesToHex(value)])
+    .filter(([key]) => key.startsWith(cachePrefix));
+  assert.equal(tapCaches.length, 6);
+  const tapIndexes = tapCaches.map(([key]) => cacheKeyIndex(key));
+  assert.deepEqual([...new Set(tapIndexes)].sort((a, b) => a - b), [1, 2, 3]);
+  assert.equal(tapIndexes.includes(0), false);
+
+  const expected = [];
+  for (const branch of [0, 1]) {
+    for (const account of [0, 1, 2]) {
+      expected.push("4a" + bytesToHex(deriveBranchBody(msigTrNode(account).publicExtendedKey, branch)));
+    }
+  }
+  assert.deepEqual(tapCaches.map(([, value]) => value).sort(), [...expected].sort());
+});
+
+test("msig Zpub is rewritten to xpub before it is stored", () => {
+  const { buildWalletRecords } = loadModule();
+  const raw = b58checkDecode(msigNode(0).publicExtendedKey);
+  raw[0] = 0x02; raw[1] = 0xaa; raw[2] = 0x7e; raw[3] = 0xd3;
+  const zpub = b58checkEncode(raw);
+  assert.match(zpub, /^Zpub/);
+  const slipBody = `wsh(sortedmulti(1,[${msigFingerprint}/48h/0h/0h/2h]${zpub}/0/*))`;
+  const wallet = {
+    kind: "msig",
+    network: "mainnet",
+    script: "p2wsh",
+    receiveDescriptor: `${slipBody}#${descriptorChecksum(slipBody)}`,
+  };
+  assert.throws(() => loadModule().buildWalletRecords(wallet, false, deps, 0), /xpub\/tpub|Base58Check codec/);
+  const records = buildWalletRecords(wallet, false, msigDeps, 0);
+  const stored = records
+    .filter(([key]) => new TextDecoder().decode(key.slice(1, 1 + key[0])) === "walletdescriptor")
+    .map(([, value]) => new TextDecoder().decode(value));
+  assert.equal(stored.length, 1);
+  assert.match(stored[0], /xpub/);
+  assert.doesNotMatch(stored[0], /Zpub/);
+});
+
+test("msig refuses an extended private key", () => {
+  const { buildWalletRecords } = loadModule();
+  const body = `wsh(sortedmulti(1,${msigNode(0).privateExtendedKey}/0/*))`;
+  const wallet = {
+    kind: "msig",
+    network: "mainnet",
+    script: "p2wsh",
+    receiveDescriptor: `${body}#${descriptorChecksum(body)}`,
+  };
+  assert.throws(() => buildWalletRecords(wallet, false, msigDeps, 0), /private key/);
+});
+
+test("generated msig watch-only wallet.dat verifies with real SQLite", { skip: !PYTHON_SQLITE }, () => {
+  const { buildWalletDat } = loadModule();
+  const bytes = buildWalletDat(MSIG_WALLET, false, msigDeps, 0);
+  const back = sqliteReadBack(bytes);
+  assert.equal(back.integrity, "ok");
+  const joined = back.rows.map(([, value]) => Buffer.from(value, "hex").toString("latin1")).join("");
+  assert.doesNotMatch(joined, /[xyztuvYZUV]prv/);
+  assert.match(joined, /wsh\(sortedmulti\(2,/);
 });
 
 test("template, build script, and app wiring ship the export", () => {
@@ -518,7 +716,7 @@ ${sqliteSrc}
 ${walletSrc}
 const setResult = (value, flag) => { hodlWalletResult = value; hodlRevealPrivate = flag; };
 const setWalletDatBirthday = (value) => { hodlWalletDatBirthday = value; };
-export { captured, elements, hodlPrivateDataControls, hodlSaveRecoveryControl, hodlDownloadWalletDat, hodlBindWalletResultActions, setResult, setWalletDatBirthday };
+export { captured, elements, hodlPrivateDataControls, hodlSaveRecoveryControl, hodlDownloadWalletDat, hodlBindWalletResultActions, hodlMsigCoreImportDescriptorsMarkup, setResult, setWalletDatBirthday };
 `;
 
 // Keep the transient harness out of test/ so parallel suites that list the
@@ -615,6 +813,26 @@ test("the wallet.dat control offers the birthday choice with genesis as the safe
   // The app reset keeps a stale "new keys" choice out of later derivations.
   assert.match(app, /function hodlCalculateKey\(progress\) \{\s*hodlSetWorkspaceError\("key", null\);\s*\n?[^}]*hodlWalletDatBirthday = "genesis";/);
   assert.match(app, /hodlWalletDatBirthday === "now" \? Math\.floor\(Date\.now\(\) \/ 1000\) : 0/);
+});
+
+test("the msig wallet.dat control mirrors the single-sig export surface", () => {
+  ui.setResult(MSIG_WALLET, false);
+  const html = ui.hodlMsigCoreImportDescriptorsMarkup();
+  // Same green save-wallet-dat control with the shared watch-only label,
+  // wired to the same birthday select and scan-window help as the HD export.
+  assert.match(html, /class="btn secondary green save-wallet-dat" id="msig-download-wallet-dat"/);
+  assert.match(html, /id="msig-download-wallet-dat"[^>]*>Download watch-only wallet\.dat<\/button>/);
+  assert.match(html, /data-wallet-dat-birthday/);
+  assert.match(html, /<option value="genesis" selected>Recovering keys/);
+  assert.match(html, /aria-describedby="msig-core-importdescriptors-help"/);
+  assert.match(html, /wallet-dat-birthday-help/);
+  assert.match(html, /rescanblockchain 0/);
+  // Watch-only by construction: the label never advertises secrets, even if
+  // a reveal flag leaks in from a single-sig view.
+  ui.setResult(MSIG_WALLET, true);
+  const revealed = ui.hodlMsigCoreImportDescriptorsMarkup();
+  assert.match(revealed, /Download watch-only wallet\.dat/);
+  assert.doesNotMatch(revealed, /secrets/i);
 });
 
 test("binding attaches the download to #download-wallet-dat and tolerates missing elements", () => {
@@ -778,3 +996,55 @@ for (const network of Object.keys(CHAIN_FIXTURES)) {
     });
   });
 }
+
+test("bitcoind loads a generated msig watch-only wallet.dat", { skip: !BITCOIND, timeout: 120000 }, async () => {
+  const { buildWalletDat } = loadModule();
+  const wallet = {
+    ...MSIG_WALLET,
+    network: "regtest",
+    receiveDescriptor: reversionDescriptor(MSIG_WALLET.receiveDescriptor, 0x043587cf, 0x04358394),
+    changeDescriptor: reversionDescriptor(MSIG_WALLET.changeDescriptor, 0x043587cf, 0x04358394),
+  };
+  const bytes = buildWalletDat(wallet, true, msigDeps, 0);
+  await withChainNode("regtest", (cli, walletsDir) => {
+    mkdirSync(join(walletsDir, "elmsig"), { recursive: true });
+    writeFileSync(join(walletsDir, "elmsig", "wallet.dat"), bytes);
+    assert.equal(JSON.parse(cli(["loadwallet", "elmsig"]).stdout).name, "elmsig");
+    const info = JSON.parse(cli(["-rpcwallet=elmsig", "getwalletinfo"]).stdout);
+    assert.equal(info.format, "sqlite");
+    assert.equal(info.descriptors, true);
+    assert.equal(info.private_keys_enabled, false);
+    const address = cli(["-rpcwallet=elmsig", "getnewaddress"]).stdout.trim();
+    const expectedReceive = JSON.parse(cli(["deriveaddresses", wallet.receiveDescriptor, "[0,0]"]).stdout)[0];
+    assert.equal(address, expectedReceive);
+    const change = cli(["-rpcwallet=elmsig", "getrawchangeaddress"]).stdout.trim();
+    const expectedChange = JSON.parse(cli(["deriveaddresses", wallet.changeDescriptor, "[0,0]"]).stdout)[0];
+    assert.equal(change, expectedChange);
+  });
+});
+
+test("bitcoind loads a generated msig Taproot watch-only wallet.dat", { skip: !BITCOIND, timeout: 120000 }, async () => {
+  const { buildWalletDat } = loadModule();
+  const wallet = {
+    ...MSIG_TR_WALLET,
+    network: "regtest",
+    receiveDescriptor: reversionDescriptor(MSIG_TR_WALLET.receiveDescriptor, 0x043587cf, 0x04358394),
+    changeDescriptor: reversionDescriptor(MSIG_TR_WALLET.changeDescriptor, 0x043587cf, 0x04358394),
+  };
+  const bytes = buildWalletDat(wallet, true, msigDeps, 0);
+  await withChainNode("regtest", (cli, walletsDir) => {
+    mkdirSync(join(walletsDir, "elmsigtr"), { recursive: true });
+    writeFileSync(join(walletsDir, "elmsigtr", "wallet.dat"), bytes);
+    assert.equal(JSON.parse(cli(["loadwallet", "elmsigtr"]).stdout).name, "elmsigtr");
+    const info = JSON.parse(cli(["-rpcwallet=elmsigtr", "getwalletinfo"]).stdout);
+    assert.equal(info.format, "sqlite");
+    assert.equal(info.descriptors, true);
+    assert.equal(info.private_keys_enabled, false);
+    const address = cli(["-rpcwallet=elmsigtr", "getnewaddress"]).stdout.trim();
+    const expectedReceive = JSON.parse(cli(["deriveaddresses", wallet.receiveDescriptor, "[0,0]"]).stdout)[0];
+    assert.equal(address, expectedReceive);
+    const change = cli(["-rpcwallet=elmsigtr", "getrawchangeaddress"]).stdout.trim();
+    const expectedChange = JSON.parse(cli(["deriveaddresses", wallet.changeDescriptor, "[0,0]"]).stdout)[0];
+    assert.equal(change, expectedChange);
+  });
+});

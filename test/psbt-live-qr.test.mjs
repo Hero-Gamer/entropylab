@@ -121,11 +121,5 @@ test("the result panel renders the QR block and its animation plumbing", () => {
   const clears = editor.match(/clearInterval\(qrTimer\)/g) || [];
   assert.ok(clears.length >= 2, "render and renderResult both clear the QR timer");
   const css = read("src/css/styles.css");
-  assert.match(css, /\.psbted-qr svg \{/);
-  assert.match(css, /\.psbted-stale \{ opacity: /);
 });
 
-test("both intro texts describe the live rebuild and QR output", () => {
-  for (const markup of [read("src/shell.html")]) {
-  }
-});

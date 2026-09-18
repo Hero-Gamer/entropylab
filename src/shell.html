@@ -394,10 +394,11 @@ words, pick one of the checksum words.</span></span>
     </section>
     <section class="card no-print tool-card" id="msig-card" role="tabpanel" hidden>
       <div class="key-summary" id="msig-summary" hidden>
+        <div class="msig-summary-cosigners" id="msig-summary-cosigners" hidden></div>
         <div class="key-summary-text">
           <code class="key-summary-fingerprint" id="msig-summary-policy"></code>
           <p class="key-summary-meta" id="msig-summary-script"></p>
-          <p class="key-summary-meta" id="msig-summary-network"></p>
+          <p class="key-summary-meta key-summary-path" id="msig-summary-path"></p>
         </div>
         <button class="btn secondary" id="msig-edit-inputs" type="button">Edit input</button>
       </div>
@@ -429,25 +430,29 @@ words, pick one of the checksum words.</span></span>
       </fieldset>
       <p class="hint ok msig-threshold-lock" id="msig-threshold-lock" role="status" hidden></p>
       <div class="key-settings msig-policy-settings">
-        <div class="key-settings-row">
-          <label class="field msig-script-type-field"><span>Script type</span>
-            <select id="msig-script-type" aria-describedby="msig-script-warning"><option value="p2sh">Legacy</option><option value="p2sh-p2wsh">Nested SegWit</option><option value="p2wsh" selected>Native SegWit</option><option value="p2tr">Taproot</option><option value="mixed" disabled data-custom-select-placeholder="true">Mixed · incompatible keys</option></select>
-            <span class="field-note msig-script-warning" id="msig-script-warning" role="status" hidden></span>
-          </label>
-          <label class="field"><span>Key order</span>
-            <select id="msig-key-order" aria-describedby="msig-key-order-help">
-              <option value="sorted" selected>Sorted · sortedmulti</option>
-              <option value="listed">As listed · multi</option>
-            </select>
-            <span class="field-note" id="msig-key-order-help">Sorted is the default. Addresses stay the same no matter which co-signer you paste first. As listed uses multi: the order of the fields is part of the wallet. Taproot uses sortedmulti_a or multi_a.</span>
-          </label>
+        <div class="field msig-script-type-field">
+          <label id="msig-script-type-label">Script type</label>
+          <div class="row segmented-control is-wide" id="msig-script-tabs" role="group" aria-labelledby="msig-script-type-label" aria-describedby="msig-script-warning">
+            <button type="button" class="tab" data-msig-script="p2sh" aria-pressed="false">Legacy</button>
+            <button type="button" class="tab" data-msig-script="p2sh-p2wsh" aria-pressed="false"><span class="script-label-full">Nested SegWit</span><span class="script-label-short">Nested SW</span></button>
+            <button type="button" class="tab active" data-msig-script="p2wsh" aria-pressed="true"><span class="script-label-full">Native SegWit</span><span class="script-label-short">Native SW</span></button>
+            <button type="button" class="tab" data-msig-script="p2tr" aria-pressed="false">Taproot</button>
+          </div>
+          <span class="field-note msig-script-warning" id="msig-script-warning" role="status" hidden></span>
         </div>
+        <label class="field"><span>Key order</span>
+          <span class="field-note" id="msig-key-order-help">Sorted is the default. Addresses stay the same no matter which co-signer you paste first. As listed uses multi: the order of the fields is part of the wallet. Taproot uses sortedmulti_a or multi_a.</span>
+          <select id="msig-key-order" aria-describedby="msig-key-order-help">
+            <option value="sorted" selected>Sorted · sortedmulti</option>
+            <option value="listed">As listed · multi</option>
+          </select>
+        </label>
         <div class="switch-row msig-legacy-account-toggle" id="msig-legacy-account-toggle" hidden>
           <label class="switch-toggle"><input id="msig-legacy-bip87" type="checkbox" aria-describedby="msig-legacy-bip87-help"><span class="label">Use standardized BIP87 accounts</span></label>
           <p class="switch-note" id="msig-legacy-bip87-help" data-i18n-rich>Uses <span class="mono">m/87'/coin'/account'</span> with this Legacy P2SH descriptor. BIP87 account keys are script-agnostic. Leave unchecked for default BIP45 without accounts.</p>
         </div>
       </div>
-      <p class="hint" id="msig-key-order-status" hidden></p>
+      <p class="edge-note is-public" id="msig-key-order-status" hidden></p>
       <div class="switch-row msig-key-reuse-toggle">
         <label class="switch-toggle"><input id="msig-reuse-session-keys" type="checkbox" aria-describedby="msig-reuse-session-keys-note"><span class="label">Allow key reuse</span></label>
         <p class="switch-note" id="msig-reuse-session-keys-note">Keep selected Key Station keys available for more than one co-signer input. Reused keys need different derivation paths.</p>

@@ -190,8 +190,8 @@ test("MS Station result markup wires copy/save and wallet.dat; no new workspace 
   assert.match(app, /id="msig-save-importdescriptors"/);
   assert.match(app, /id="msig-download-wallet-dat"/);
   assert.match(app, /hodlT\("Copy Core importdescriptors"\)/);
-  assert.match(app, /hodlT\("Save Core watch-only JSON"\)/);
   assert.match(app, /id="msig-download-wallet-dat"[^>]*>\$\{hodlWalletExport\.walletDatButtonLabel\(false\)\}/);
+  assert.match(app, /hodlT\("Save Core Watch-only JSON"\)/);
   assert.match(app, /buildImportDescriptorsJson/);
   assert.match(app, /function hodlShowMsig\(/);
   assert.doesNotMatch(shell, /msig-copy-importdescriptors|msig-save-importdescriptors|msig-download-wallet-dat/);

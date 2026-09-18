@@ -242,8 +242,9 @@ test("legitimate numeric indexes render unchanged", () => {
   }
 });
 
-test("the multisig first-address lead routes the index through the index guard", () => {
-  const msig = loadSlice("hodlShowMsig");
-  assert.ok(msig.includes("address #${hodlAddressIndexHtml(firstIndex)}"), "multisig heading");
-  assert.ok(msig.includes('address ${hodlAddressIndexHtml(firstIndex)} QR code'), "multisig QR label");
+test("multisig address indexes route through the index guard", () => {
+  // The lead-address block is gone; the branch tables are where a multisig
+  // index still reaches markup, and they must keep using the guard.
+  const rows = loadSlice("hodlAddressTableRows");
+  assert.ok(rows.includes("hodlAddressIndexHtml("), "address rows use the index guard");
 });

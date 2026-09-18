@@ -835,6 +835,15 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
 .qr-seed { padding: 12px; }
 .qr-seed svg { width: 200px; height: auto; }
 .watch-only-qr { margin: var(--space-control) 0 var(--space-component); }
+/* The descriptor and the QR that encodes it read as one field: text takes the
+   slack, the QR takes only what it needs, and they stack on a narrow screen
+   rather than squeezing the descriptor to a column. */
+.descriptor-pair { display: flex; align-items: flex-start; gap: var(--space-component); margin-top: var(--space-control); }
+.descriptor-pair-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.descriptor-pair > .qr { flex: 0 0 auto; }
+@media (max-width: 639px) {
+  .descriptor-pair { flex-direction: column; }
+}
 .watch-only-qr > p { margin: var(--space-control) 0 0; }
 /* Inline-block sits on a text line, whose descender space would add to the 8px. */
 .watch-only-qr > .qr { vertical-align: top; }
@@ -1323,8 +1332,17 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-summary-lifehash { flex: 0 0 auto; width: 72px; height: 72px; border-radius: 8px; image-rendering: pixelated; background: #fff; }
 .key-summary-lifehash[hidden] { display: none; }
 .key-summary-text { flex: 1 1 auto; min-width: 0; }
+/* The co-signer column sets the block's height, so the summary beside it
+   starts at the top rather than floating against the middle of the stack. */
+#msig-summary .key-summary-text { align-self: flex-start; }
 .key-summary-fingerprint { display: block; font-family: var(--mono); font-weight: 700; letter-spacing: 0.04em; color: var(--fg); }
 .key-summary-meta { margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
+/* The keys the multisig was built from, in the order its script uses them.
+   Readouts rather than controls: no edge and no corner of their own, the
+   LifeHash carrying the only radius. */
+.msig-summary-cosigners { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-control); }
+.msig-summary-cosigners[hidden] { display: none; }
+.msig-summary-cosigner { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-family: var(--mono); font-size: 12px; }
 .key-summary-path { font-family: var(--mono); word-break: break-all; }
 /* The parent line sits apart from the child's own two lines, and carries the
    parent's LifeHash beside the fingerprint it names. */
@@ -1332,6 +1350,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .bip85-parent-lifehash { flex: 0 0 auto; }
 .bip85-parent-fingerprint { font-family: var(--mono); font-weight: 600; color: var(--fg); }
 .key-tab-lifehash { width: 22px; height: 22px; border-radius: 4px; image-rendering: pixelated; background: #fff; }
+/* A derived multisig tab carries one small LifeHash per co-signer, sized
+   down so a 2-of-3 still reads as a tab rather than a filmstrip. */
+.msig-tab-lifehashes { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 2px; }
+.msig-tab-lifehash { width: 14px; height: 14px; }
 .key-tab.is-lab { font-weight: 700; }
 .key-tab-lab-icon { width: 16px; height: 16px; padding: 0; color: var(--muted); }
 .key-tab-lab-icon svg { display: block; width: 100%; height: 100%; }
@@ -1352,14 +1374,16 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .session-key-option:not(.active):hover { border-color: var(--accent); }
 /* Selection is unmistakable: accent border and tint plus a check mark, so
    it does not rest on the border colour alone. */
-.session-key-option.active {
+.session-key-option.active,
+.msig-session-key.active {
   border-color: var(--selection-accent); color: var(--fg);
   background: color-mix(in oklab, var(--selection-accent) 16%, var(--surface-2));
   box-shadow: inset 0 0 0 1px var(--selection-accent);
 }
 .session-key-check { display: none; width: 16px; height: 16px; color: var(--selection-accent); }
 .session-key-check svg { display: block; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-.session-key-option.active .session-key-check { display: inline-flex; }
+.session-key-option.active .session-key-check,
+.msig-session-key.active .session-key-check { display: inline-flex; }
 .msig-session-keys {
   display: flex; flex-wrap: nowrap; gap: 8px; max-width: 100%; margin: 0 0 8px;
   overflow-x: auto; overflow-y: hidden; overscroll-behavior-inline: contain; scrollbar-width: thin;
@@ -1370,18 +1394,12 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   min-height: 44px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px;
   background: var(--surface-2); color: var(--fg); font-family: var(--mono); font-size: 13px; cursor: pointer;
 }
-.msig-session-key.active {
-  background: var(--selection-accent); color: var(--selection-fg); border-color: var(--selection-accent);
-  box-shadow: inset 0 2px 4px rgb(0 0 0 / 30%);
-}
-.msig-session-key.active * { color: inherit; }
-.msig-session-key.active .key-tab-lifehash {
-  box-shadow: 0 0 0 2px rgb(0 0 0 / 82%), 0 3px 8px rgb(0 0 0 / 70%);
-}
 .msig-session-key.unavailable { opacity: 0.45; filter: grayscale(0.55); cursor: not-allowed; }
 .msig-origin-fields { display: grid; grid-template-columns: minmax(150px, .7fr) minmax(0, 2fr); gap: var(--space-component); }
 .msig-origin-fields .field { min-width: 0; margin-top: 0; }
 .msig-master-fingerprint, .msig-full-path { font-family: var(--mono); }
+/* The group sits under its title exactly where the control it replaced did. */
+.msig-script-type-field .segmented-control { margin-top: var(--space-control); }
 .msig-path-components { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-component); }
 .msig-path-component { margin-top: 0; }
 .workspace-panel > :first-child { margin-top: 0; }
@@ -2430,8 +2448,16 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-view .wallet-data-actions { gap: var(--space-component) var(--space-control); }
 .key-view .wallet-data-actions > .edge-note { margin-top: 0; }
 @media (min-width: 521px) {
-  .key-view .wallet-data-actions > .btn { flex: 1 1 0; }
+  .key-view .wallet-data-actions > .btn,
+  .msig-data-actions > .btn { flex: 1 1 0; }
 }
+/* The multisig footer keeps the same rhythm as the key view's. */
+.msig-data-actions { gap: var(--space-component) var(--space-control); }
+.msig-data-actions > .edge-note { flex: 1 1 100%; margin-top: 0; }
+/* Title and its line share one item, so the pair keeps the 4px the label
+   convention gives it rather than the footer's row gap pushing them apart. */
+.msig-downloads-head { flex: 1 1 100%; }
+.msig-downloads-head > .label { margin-top: 0; }
 .wallet-dat-birthday { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; flex-wrap: wrap; }
 /* The birthday select's longest option is wider than a narrow phone layout;
    let it shrink and clip — the full wording is in the help line below. */
@@ -2450,6 +2476,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   background: color-mix(in oklab, var(--warn) 6%, var(--bg));
 }
 .wallet-result-messages h3 { margin: 0 0 8px; color: var(--notice-title, inherit); }
+/* The multisig note leads the groups below it, whose first rule would
+   otherwise sit tight against it. Scoped to that card so the key views'
+   notes keep their own spacing. */
+.account-result-card > .wallet-result-messages { margin-bottom: var(--space-component); }
 /* A warning that guards funds rather than informs: square, edged and titled
    in the alert red. The notice supplies only these three values. */
 .wallet-result-messages.is-danger { --notice-edge: var(--danger-bright); --notice-title: var(--danger-bright); }
@@ -2460,6 +2490,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .wallet-data-fields > :first-child { margin-top: 0; }
 .wallet-data-fields > :last-child { margin-bottom: 0; }
 .wallet-data-subtitle { margin: 20px 0 6px; color: var(--fg); font-family: var(--sans); font-size: 14px; font-weight: 700; }
+/* The result flows straight into the tool card, the way the key view does:
+   no second edge inside the first. It keeps only the seam below the summary
+   that the card it replaced used to supply. */
+.account-result-card { margin-top: var(--space-component); }
 .account-result-section { margin-top: 24px; }
 .account-result-section > .wallet-data-section-head { margin-bottom: 16px; }
 /* A note in the flow with a coloured left edge: red in a group holding data

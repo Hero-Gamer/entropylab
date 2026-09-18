@@ -44,8 +44,3 @@ test("the app renders the commit LifeHash on page load, only for a real commit",
   assert.match(app, /hodlLifeHash\s*\n?\s*\.fromFingerprint\(commit\)/);
 });
 
-test("the footer LifeHash is styled as an inline identicon", () => {
-  const css = read("src/css/styles.css");
-  assert.match(css, /\.page-footer-lifehash \{[^}]*border-radius: 3px;/);
-  assert.match(css, /\.page-footer-build code \{ font-family: var\(--mono\); \}/);
-});

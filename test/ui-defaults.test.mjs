@@ -221,7 +221,9 @@ test("advanced derivation fields use the shared responsive settings grid", () =>
   // already carries the 8px, so they take no margin of their own.
   // Titles sit inside a .field-head now, sharing the row with a Harden toggle
   // where the field has one, so the rule reaches both levels.
-  assert.match(css, /\.derivation-advanced-fields :is\(\.field, \.field-head\) > label:not\(\.derivation-harden\) \{\s*display: block; font-size: 14px; font-weight: 600; color: var\(--fg\);\s*\}/s);
+  // Two containers carry these fields — the advanced blocks and the settings
+  // grids — and the title says its size once for both.
+  assert.match(css, /\.derivation-advanced-fields :is\(\.field, \.field-head\) > label:not\(\.derivation-harden\),\s*\.key-settings :is\(\.field, \.field-head\) > label:not\(\.derivation-harden\) \{\s*display: block; font-size: 14px; font-weight: 600; color: var\(--fg\);\s*\}/s);
   // The Harden control is a label too, and a direct child of the title row: the
   // rule above would make it display:block and collapse its own flex layout,
   // taking the gap between box and word and its centring with it.

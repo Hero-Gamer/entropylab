@@ -442,18 +442,18 @@ words, pick one of the checksum words.</span></span>
             <span class="field-note" id="msig-key-order-help">Sorted is the default. Addresses stay the same no matter which co-signer you paste first. As listed uses multi: the order of the fields is part of the wallet. Taproot uses sortedmulti_a or multi_a.</span>
           </label>
         </div>
-        <label class="choice msig-legacy-account-toggle" id="msig-legacy-account-toggle" hidden>
-          <input id="msig-legacy-bip87" type="checkbox" aria-describedby="msig-legacy-bip87-help">
-          <span><strong>Use standardized BIP87 accounts</strong><span class="desc" id="msig-legacy-bip87-help" data-i18n-rich>Uses <span class="mono">m/87'/coin'/account'</span> with this Legacy P2SH descriptor. BIP87 account keys are script-agnostic. Leave unchecked for default BIP45 without accounts.</span></span>
-        </label>
+        <div class="switch-row msig-legacy-account-toggle" id="msig-legacy-account-toggle" hidden>
+          <label class="switch-toggle"><input id="msig-legacy-bip87" type="checkbox" aria-describedby="msig-legacy-bip87-help"><span class="label">Use standardized BIP87 accounts</span></label>
+          <p class="switch-note" id="msig-legacy-bip87-help" data-i18n-rich>Uses <span class="mono">m/87'/coin'/account'</span> with this Legacy P2SH descriptor. BIP87 account keys are script-agnostic. Leave unchecked for default BIP45 without accounts.</p>
+        </div>
       </div>
       <p class="hint" id="msig-key-order-status" hidden></p>
-      <label class="choice msig-key-reuse-toggle">
-        <input id="msig-reuse-session-keys" type="checkbox">
-        <span><strong>Allow key reuse</strong><span class="desc">Keep selected Key Station keys available for more than one co-signer input. Reused keys need different derivation paths.</span></span>
-      </label>
+      <div class="switch-row msig-key-reuse-toggle">
+        <label class="switch-toggle"><input id="msig-reuse-session-keys" type="checkbox" aria-describedby="msig-reuse-session-keys-note"><span class="label">Allow key reuse</span></label>
+        <p class="switch-note" id="msig-reuse-session-keys-note">Keep selected Key Station keys available for more than one co-signer input. Reused keys need different derivation paths.</p>
+      </div>
       <div id="msig-keys" class="msig-keys"><label class="field">Co-signer 1 multisig extended public key<textarea id="msig-x-0" placeholder="xpub…" autocomplete="off" spellcheck="false"></textarea></label><label class="field">Co-signer 2 multisig extended public key<textarea id="msig-x-1" placeholder="xpub…" autocomplete="off" spellcheck="false"></textarea></label><label class="field">Co-signer 3 multisig extended public key<textarea id="msig-x-2" placeholder="xpub…" autocomplete="off" spellcheck="false"></textarea></label></div>
-      <p class="hint" id="msig-hint"></p>
+      <p class="edge-note is-public" id="msig-hint"></p>
       <p class="hint msig-purpose-warning" id="msig-purpose-warning" role="status" hidden></p>
       <p class="hint msig-account-warning" id="msig-account-warning" role="status" hidden></p>
       <div class="key-settings msig-output-settings">
@@ -486,7 +486,7 @@ words, pick one of the checksum words.</span></span>
           </label>
         </div>
       </div>
-      <p class="field-note address-estimate derivation-estimate" id="msig-address-estimate" role="status">Measuring this device…</p>
+      <p class="field-note address-estimate derivation-estimate edge-note is-public" id="msig-address-estimate" role="status">Measuring this device…</p>
       <div class="row current-item-actions tool-actions">
         <button class="btn primary" id="msig-go" type="button" aria-describedby="msig-script-warning" disabled aria-disabled="true">Derive Multisig</button>
         <div class="derive-progress" id="msig-derive-progress" role="progressbar" aria-label="Multisig derivation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete" hidden><span class="derive-progress-track"><span class="derive-progress-bar"></span></span><span class="derive-progress-label">0%</span></div>

@@ -6477,11 +6477,13 @@ function hodlRenderMasterFingerprintPreview(revision = hodlMasterFingerprintRevi
     return;
   }
   preview.hidden = false;
-  arrow.hidden = false;
-  passphraseCard.hidden = false;
   let clear = () => {
     hodlSetMasterFingerprintCard(baseCard, base, "", baseImage);
     hodlSetMasterFingerprintCard(passphraseCard, passphraseValue, "", passphraseImage);
+    // Nothing to derive from, so the second card and the arrow that points at
+    // it say nothing rather than standing there greyed out.
+    passphraseCard.hidden = true;
+    arrow.hidden = true;
     arrow.classList.add("is-disabled");
   };
   let mnemonic = hodlFingerprintMnemonic();
@@ -6501,6 +6503,10 @@ function hodlRenderMasterFingerprintPreview(revision = hodlMasterFingerprintRevi
   } catch {
   }
   let available = hodlSetMasterFingerprintCard(passphraseCard, passphraseValue, value, passphraseImage);
+  // The passphrase card appears only once it has a fingerprint to show: until
+  // then the row is the base seed alone, not a pair with half of it empty.
+  passphraseCard.hidden = !available;
+  arrow.hidden = !available;
   arrow.classList.toggle("is-disabled", !available);
 }
 function hodlQueueMasterFingerprintPreview(delay = 90) {
@@ -7412,7 +7418,7 @@ function hodlUpdateMsigHint() {
   let n = Number(document.getElementById("msig-n").value || 3), m = document.getElementById("msig-m").value || "2", hint = document.getElementById("msig-hint");
   if (hint) {
     hint.textContent = n === 1 ? hodlTText("Spending will need this key. Receiving needs none of the private keys.") : hodlTText("Spending will need {m} of these {n} keys. Receiving needs none of the private keys.", { m, n });
-    hint.className = "hint ok";
+    hint.className = "edge-note is-public";
   }
 }
 var hodlMsigSliderBaseMax = 9, hodlMsigSliderLimit = 15;
@@ -7846,8 +7852,20 @@ function hodlRenderMsigPathComponents(row) {
       hodlUpdateMsigFullPathFromComponents(row);
     });
     harden.append(checkbox, hardenText);
-    control.append(value, harden);
-    field.append(title, control);
+    // Name left, qualifier right, both above the input — the shape every
+    // settings field in Key Station uses. A span rather than a div: the field
+    // itself is a <label>, which takes phrasing content only.
+    let head = document.createElement("span");
+    head.className = "field-head";
+    head.append(title, harden);
+    // The input sits in the same value wrapper Key Station uses: it is what
+    // cancels the base input's own top margin, so the gap under the head row
+    // is the control's alone rather than that margin stacked on top of it.
+    let valueWrap = document.createElement("span");
+    valueWrap.className = "derivation-index-value";
+    valueWrap.append(value);
+    control.append(valueWrap);
+    field.append(head, control);
     fields.appendChild(field);
   });
 }

@@ -4004,7 +4004,7 @@
       assert(!advanced.contains(row.querySelector("textarea")) && !advanced.contains(row.querySelector(".msig-full-path")), "A co-signer's key or full path was hidden in Advanced entry");
     });
     const railLeft = rows[0].querySelector(".msig-key-rail-line").getBoundingClientRect().left;
-    const reuseBorderLeft = reuseToggle.closest(".choice").getBoundingClientRect().left;
+    const reuseBorderLeft = reuseToggle.closest(".switch-row").getBoundingClientRect().left;
     assert(Math.abs(railLeft - reuseBorderLeft) <= 1, `The co-signer rail did not align with the key-reuse container border (${railLeft} vs ${reuseBorderLeft})`);
     const rowOption = (row) => row.querySelector(".msig-session-keys .msig-session-key");
     rows.forEach((row) => input(row.querySelector("textarea"), ""));

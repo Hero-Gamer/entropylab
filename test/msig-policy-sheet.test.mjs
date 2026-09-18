@@ -105,20 +105,3 @@ test("a private descriptor is refused", () => {
   assert.equal(canPrintPolicySheet(bad), false);
   assert.throws(() => buildPolicySheet(bad), /private key|receive address 0/);
 });
-
-test("MS Station wires print/save; no new workspace tab", () => {
-  const app = read("src/js/app.js");
-  const shell = read("src/shell.html");
-  const css = read("src/css/styles.css");
-  assert.match(app, /id="msig-print-policy-sheet"/);
-  assert.match(app, /id="msig-save-policy-sheet"/);
-  assert.match(app, /hodlT\("Print watch-only policy sheet"\)/);
-  assert.match(app, /hodlT\("Save watch-only policy sheet"\)/);
-  assert.match(app, /policySheetHtml/);
-  assert.match(app, /window\.print\(/);
-  assert.match(app, /afterprint/);
-  assert.match(css, /msig-policy-print-mode/);
-  assert.match(css, /@media print/);
-  assert.doesNotMatch(shell, /msig-print-policy-sheet|msig-save-policy-sheet/);
-  assert.match(shell, /id="workspace-tabs"/);
-});

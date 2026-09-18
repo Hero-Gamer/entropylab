@@ -1707,18 +1707,15 @@ function hodlMsigCoreImportDescriptorsMarkup() {
   if (!hodlWalletResult || hodlWalletResult.kind !== "msig") return "";
   if (!hodlWalletResult.receiveDescriptor && !hodlWalletResult.changeDescriptor) return "";
   // The footer the key view uses: the Downloads title, what the export is, the
-  // birthday titled the way a field is, then each export as a save/copy pair.
+  // birthday titled the way a field is, then the two saves splitting the row.
   // The ids stay msig’s own, so both views wear the same shape without two
   // elements answering to one label.
   return `<div class="wallet-data-actions msig-data-actions no-print" id="msig-core-importdescriptors">
     <div class="msig-downloads-head"><p class="label">${hodlT("Downloads")}</p><p class="muted label-description">${hodlT("Import the watch-only wallet descriptor into Sparrow or another wallet.")}</p></div>
-    <p class="edge-note is-public" id="msig-core-importdescriptors-help">${hodlT("Put the wallet.dat in a wallets folder and loadwallet; the JSON is for bitcoin-cli importdescriptors. BIP 388 is the wallet policy Ledger and Specter register. No private keys. First getnewaddress must match receive index 0 here.")}</p>
+    <p class="edge-note is-public" id="msig-core-importdescriptors-help">${hodlT("Watch-only JSON for bitcoin-cli importdescriptors. No private keys. Online node: createwallet disable_private_keys=true blank=true, then importdescriptors. First getnewaddress must match receive index 0 here.")}</p>
     <div class="wallet-birthday-field"><p class="label" id="msig-birthday-label">${hodlT("Wallet birthday")}</p><p class="muted label-description wallet-dat-birthday-help" id="msig-birthday-help">${hodlT("Bitcoin Core only auto-scans history back to the birthday. Choose “New keys” only for entropy created right now; recovering older keys with today's birthday can look empty until you run <code>rescanblockchain 0</code> in Bitcoin Core.")}</p><select data-wallet-dat-birthday aria-labelledby="msig-birthday-label" aria-describedby="msig-birthday-help msig-core-importdescriptors-help"><option value="genesis"${hodlWalletDatBirthday === "genesis" ? " selected" : ""}>${hodlT("Recovering keys · scan from genesis")}</option><option value="now"${hodlWalletDatBirthday === "now" ? " selected" : ""}>${hodlT("New keys · created today")}</option></select></div>
-    <button class="btn secondary green save-wallet-dat" id="msig-download-wallet-dat" type="button" aria-describedby="msig-core-importdescriptors-help">${hodlWalletExport.walletDatButtonLabel(false)}</button>
     <button class="btn secondary green" id="msig-save-importdescriptors" type="button">${hodlT("Save Core Watch-only JSON")}</button>
     <button class="btn secondary" id="msig-copy-importdescriptors" type="button">${hodlT("Copy Core importdescriptors")}</button>
-    <button class="btn secondary green" id="msig-save-bip388" type="button">${hodlT("Save BIP 388 policy")}</button>
-    <button class="btn secondary" id="msig-copy-bip388" type="button">${hodlT("Copy BIP 388 policy")}</button>
   </div>`;
 }
 function hodlCopyMsigCoreImportDescriptors() {
@@ -8628,7 +8625,6 @@ function hodlShowMsig() {
         ${hodlAddressMatchMarkup()}
       `, "account-address-section")}
       ${hodlMsigCoreImportDescriptorsMarkup()}
-      ${hodlMsigPolicySheetMarkup()}
     </section>`;
   hodlBindAddressVirtualization(hodlAddressBranchVirtualConfigs(branches, false, "msig"));
   hodlWatchMsigGroups();

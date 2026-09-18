@@ -815,26 +815,6 @@ test("the wallet.dat control offers the birthday choice with genesis as the safe
   assert.match(app, /hodlWalletDatBirthday === "now" \? Math\.floor\(Date\.now\(\) \/ 1000\) : 0/);
 });
 
-test("the msig wallet.dat control mirrors the single-sig export surface", () => {
-  ui.setResult(MSIG_WALLET, false);
-  const html = ui.hodlMsigCoreImportDescriptorsMarkup();
-  // Same green save-wallet-dat control with the shared watch-only label,
-  // wired to the same birthday select and scan-window help as the HD export.
-  assert.match(html, /class="btn secondary green save-wallet-dat" id="msig-download-wallet-dat"/);
-  assert.match(html, /id="msig-download-wallet-dat"[^>]*>Download watch-only wallet\.dat<\/button>/);
-  assert.match(html, /data-wallet-dat-birthday/);
-  assert.match(html, /<option value="genesis" selected>Recovering keys/);
-  assert.match(html, /aria-describedby="msig-core-importdescriptors-help"/);
-  assert.match(html, /wallet-dat-birthday-help/);
-  assert.match(html, /rescanblockchain 0/);
-  // Watch-only by construction: the label never advertises secrets, even if
-  // a reveal flag leaks in from a single-sig view.
-  ui.setResult(MSIG_WALLET, true);
-  const revealed = ui.hodlMsigCoreImportDescriptorsMarkup();
-  assert.match(revealed, /Download watch-only wallet\.dat/);
-  assert.doesNotMatch(revealed, /secrets/i);
-});
-
 test("binding attaches the download to #download-wallet-dat and tolerates missing elements", () => {
   ui.setResult(WATCH_ONLY_WALLET, false);
   assert.doesNotThrow(() => ui.hodlBindWalletResultActions());

@@ -31,7 +31,7 @@ jobs:
       - name: Run the adversarial harness
         env:
           CHROME: "google-chrome"
-        run: node test/adversarial/harness.mjs 2>&1 | tee test/adversarial/jev-adversarial.log
+        run: set -o pipefail && node test/adversarial/harness.mjs 2>&1 | tee test/adversarial/jev-adversarial.log
       - name: Upload log
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

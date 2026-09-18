@@ -35,13 +35,32 @@ export const HELPER = `
   };
   const click = (sel) => { const el = first(Array.isArray(sel) ? sel : [sel]); if (!el) return false; el.click(); return true; };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const upload = (inputSel, name, content) => {
+  const upload = (inputSel, name, content, label) => {
     const el = first(Array.isArray(inputSel) ? inputSel : [inputSel]);
-    if (!el) return "no-file-input";
+    const record = (landed) => {
+      if (!window.__DELIVERY) window.__DELIVERY = [];
+      window.__DELIVERY.push({
+        label: label || (Array.isArray(inputSel) ? inputSel[0] : inputSel),
+        sent: String(content).length,
+        landed,
+      });
+    };
+    if (!el) {
+      record(0); // no input found: the scenario delivered nothing
+      return "no-file-input";
+    }
     const dt = new DataTransfer();
     dt.items.add(new File([content], name, { type: "application/json" }));
     el.files = dt.files;
+    // Read the attachment BEFORE dispatching: a handler that consumes the
+    // file clears the input (hodlJournalUnlock and the nonce-history reader
+    // both do), so checking afterwards reports zero for a delivery that
+    // actually worked. Attaching the file is as far as a generic check can
+    // go — whether the app then parses it is scenario-specific, so each
+    // upload scenario still asserts on the app's own response.
+    const attached = el.files.length ? String(content).length : 0;
     el.dispatchEvent(new Event("change", { bubbles: true }));
+    record(attached);
     return "file-dispatched";
   };
 `;
@@ -116,16 +135,32 @@ export const SCENARIOS = [
   {
     name: "journal-hostile-import",
     description:
-      "Dispatches a hostile journal JSON file (script tags, wrong types, oversized body) through the journal file input.",
+      "Imports a hostile journal JSON file (script tags, wrong types, oversized body) through the journal open flow; the app must refuse it through its own error UI.",
     actions: [
-      `(() => { click('[aria-label="Journal"]'); return "workspace=journal-clicked"; })()`,
-      `(() => { const hostile = JSON.stringify({ pages: "<script>alert(1)</script>", entries: 12345, huge: "x".repeat(300000) }); return upload(["#journal-file", 'input[type="file"]'], "hostile.journal.json", hostile); })()`,
-      `(async () => { await sleep(800); const err = first(["#journal-error", '[id="error"]']); return "journal-error=" + (err ? (err.textContent || "").slice(0, 140) : "(none)"); })()`,
+      `(() => "workspace=journal-clicked=" + click('[aria-label="Journal"]'))()`,
+      // The open panel is behind the "Open file" gate; reveal it so the flow
+      // matches what a user actually does.
+      `(async () => { const btn = $all('#journal-gate-modes button').find((b) => /open/i.test(b.textContent || "")); if (!btn) return "no-open-gate"; btn.click(); await sleep(400); return "gate=open panel-hidden=" + $('#journal-open-panel')?.hidden; })()`,
+      `(() => { const hostile = JSON.stringify({ pages: "<script>alert(1)</script>", entries: 12345, huge: "x".repeat(300000) }); return "upload=" + upload(["#journal-file"], "hostile.journal.json", hostile, "#journal-file"); })()`,
+      // Selecting a file only stashes its text (app.js's #journal-file change
+      // handler); nothing parses it until #journal-unlock runs. Checking for
+      // an error before this click tested the file picker, not the import.
+      // The change handler reads the file asynchronously (await file.text());
+      // give it a beat before unlocking, or the import runs on an empty stash
+      // and the error is the timing artifact "Choose a journal file first."
+      `(async () => { await sleep(800); const b = $('#journal-unlock'); if (!b) return "no-unlock-button"; b.click(); await sleep(1200); return "unlock-clicked"; })()`,
+      `(() => { const err = $('#journal-error'); return "journal-error=" + (err ? (err.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 140) : "(none)"); })()`,
     ],
     assert: `
       (() => {
         const failures = [];
         if (!document.body) failures.push("document lost");
+        // A file that is not a journal must be refused visibly. Presence
+        // only — the wording is content, not contract.
+        const err = document.querySelector("#journal-error");
+        if (!err || !(err.textContent || "").trim()) {
+          failures.push("hostile journal file produced no error text in #journal-error");
+        }
         const html = document.body ? document.body.innerHTML.length : 0;
         return { failures, info: { bodyLength: html } };
       })()

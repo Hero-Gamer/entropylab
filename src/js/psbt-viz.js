@@ -19,25 +19,23 @@
 // UTXO pairs); like the rest of the editor they are not verified against the
 // chain, and the inputs column says so.
 import { addressFromScript } from "./addresses.js";
+import { hex as hexCoder } from "./coders.js";
 import { psbtCostFactsFromDoc } from "./psbt-cost.js";
 
 const escapeHtml = (text) =>
   String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-
-const hexToBytes = (hex) => {
-  const out = new Uint8Array(String(hex).length / 2);
-  for (let i = 0; i < out.length; i++) out[i] = parseInt(String(hex).slice(i * 2, i * 2 + 2), 16);
-  return out;
-};
 
 // One renderer for the whole app: rust-bitcoin's Address::from_script via
 // the entropylab-wasm crate, exactly what the inspector shows — exotic
 // witness programs (off-curve v1 keys, v1 ≠ 32 bytes, v2–v16) get their
 // bech32m address here too instead of diverging to a hex fallback
 // (issue #354). Unknown templates still return null and show the script hex.
+// coders' hex.decode is strict: malformed script hex throws here and the box
+// falls back to showing the script, instead of zero-filling the bad digits
+// into a fabricated address template.
 const addressFor = (scriptHex, network) => {
   try {
-    return addressFromScript(hexToBytes(scriptHex), network);
+    return addressFromScript(hexCoder.decode(String(scriptHex ?? "")), network);
   } catch {
     return null;
   }

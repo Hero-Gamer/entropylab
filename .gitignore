@@ -14,3 +14,4 @@ node_modules/
 entropylab-wasm/target/
 psbt-wasm/target/
 vanity-wasm/target/
+test/adversarial/jev-adversarial.log

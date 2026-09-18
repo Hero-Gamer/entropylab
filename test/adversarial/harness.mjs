@@ -1,0 +1,357 @@
+// harness.mjs — Jev adversarial browser-testing harness for entropylab.
+// Launches ONE headless Chrome and runs every scenario in its own isolated
+// tab, in parallel by default (--serial disables). Records console errors,
+// uncaught exceptions, unhandled rejections, and wrapped-network attempts,
+// then asks Jev (TypeSafe System One) for an ok/suspect/broken verdict and
+// prints a table. Zero npm dependencies — native WebSocket + fetch.
+import { spawn, spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { SCENARIOS, HELPER } from "./scenarios.mjs";
+import { verdict, jevAvailable } from "./jev.mjs";
+
+// The app under test: the built page at the repo root, resolved relative to
+// this file so the harness works in any checkout (override with --app=<path>).
+import { fileURLToPath } from "node:url";
+const REPO_ROOT = join(fileURLToPath(import.meta.url), "..", "..", "..");
+const PAGE_URL = "file:///" + join(REPO_ROOT, "entropylab.html").replace(/\\/g, "/");
+const CHROME_PATHS = [
+  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+];
+const TAP_SCRIPT = `
+  (() => {
+    window.__TAP = { net: [], errors: [], rejections: [] };
+    const cap = 64;
+    const recNet = (kind, what) => {
+      if (window.__TAP.net.length < cap)
+        window.__TAP.net.push({ kind, url: String(what).slice(0, 200) });
+    };
+    addEventListener("error", (e) => {
+      if (window.__TAP.errors.length < cap)
+        window.__TAP.errors.push(String(e.message || e.error || "").slice(0, 200));
+    });
+    addEventListener("unhandledrejection", (e) => {
+      if (window.__TAP.rejections.length < cap)
+        window.__TAP.rejections.push(String(e.reason || "").slice(0, 200));
+    });
+    if (typeof fetch === "function") {
+      const orig = fetch.bind(window);
+      window.fetch = (...a) => { recNet("fetch", a[0] ? (a[0].url ?? a[0]) : ""); return orig(...a); };
+    }
+    const origOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (m, u, ...rest) {
+      recNet("xhr", m + " " + u);
+      return origOpen.call(this, m, u, ...rest);
+    };
+    if (navigator.sendBeacon) {
+      const origBeacon = navigator.sendBeacon.bind(navigator);
+      navigator.sendBeacon = (u, d) => { recNet("sendBeacon", u); return origBeacon(u, d); };
+    }
+    if (window.WebSocket) {
+      const OrigWS = WebSocket;
+      window.WebSocket = function (u, p) { recNet("WebSocket", u); return new OrigWS(u, p); };
+      window.WebSocket.prototype = OrigWS.prototype;
+    }
+    if (window.EventSource) {
+      const OrigES = EventSource;
+      window.EventSource = function (u, o) { recNet("EventSource", u); return new OrigES(u, o); };
+      window.EventSource.prototype = OrigES.prototype;
+    }
+  })();
+`;
+
+const TAP_SNAPSHOT = `
+  (() => {
+    const t = window.__TAP || { net: [], errors: [], rejections: [] };
+    return JSON.stringify({
+      net: t.net, errors: t.errors, rejections: t.rejections,
+      alive: !!document.body, title: document.title || "",
+    });
+  })()
+`;
+
+// ---------- minimal CDP client over native WebSocket ----------
+class CDP {
+  #nextId = 0;
+  #pending = new Map();
+  #listeners = [];
+  constructor(ws) {
+    this.ws = ws;
+    ws.addEventListener("message", (ev) => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch { return; }
+      if (msg.id != null) {
+        const p = this.#pending.get(msg.id);
+        if (p) {
+          this.#pending.delete(msg.id);
+          if (msg.error) p.reject(new Error(`${msg.error.message} (${msg.error.code})`));
+          else p.resolve(msg.result);
+        }
+      } else if (msg.method) {
+        for (const l of this.#listeners) l(msg);
+      }
+    });
+  }
+  send(method, params = {}, sessionId) {
+    const id = ++this.#nextId;
+    const msg = { id, method, params };
+    if (sessionId) msg.sessionId = sessionId;
+    return new Promise((resolve, reject) => {
+      this.#pending.set(id, { resolve, reject });
+      this.ws.send(JSON.stringify(msg));
+    });
+  }
+  onEvent(fn) { this.#listeners.push(fn); }
+  waitFor(method, sessionId, predicate, timeoutMs) {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => { this.off(fn); resolve(null); }, timeoutMs);
+      const fn = (msg) => {
+        if (msg.method !== method) return;
+        if (sessionId && msg.sessionId !== sessionId) return;
+        if (predicate && !predicate(msg.params)) return;
+        clearTimeout(timer);
+        this.off(fn);
+        resolve(msg.params);
+      };
+      this.onEvent(fn);
+    });
+  }
+  off(fn) { this.#listeners = this.#listeners.filter((l) => l !== fn); }
+}
+
+const launchChrome = () => {
+  const binary = CHROME_PATHS.find((p) => existsSync(p));
+  if (!binary) throw new Error("Chrome not found at the usual Windows paths");
+  const profile = mkdtempSync(join(tmpdir(), "jev-adversarial-"));
+  // --remote-debugging-port=0: read the picked port from DevToolsActivePort.
+  const proc = spawn(binary, [
+    "--headless=new",
+    "--remote-debugging-port=0",
+    `--user-data-dir=${profile}`,
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-gpu",
+  ], { stdio: "ignore" });
+  return { proc, profile, binary };
+};
+
+const readDebugPort = async (profile, timeoutMs = 15000) => {
+  const file = join(profile, "DevToolsActivePort");
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (existsSync(file)) {
+      const port = parseInt(readFileSync(file, "utf8").split("\n")[0], 10);
+      if (port > 0) return port;
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error("DevToolsActivePort never appeared");
+};
+
+const connect = async (endpoint) => {
+  const ws = new WebSocket(endpoint);
+  await new Promise((res, rej) => {
+    ws.addEventListener("open", res);
+    ws.addEventListener("error", rej);
+  });
+  return new CDP(ws);
+};
+
+const evaluate = (cdp, sessionId, expr, timeoutMs = 30000) => {
+  const p = cdp.send("Runtime.evaluate", {
+    expression: expr,
+    returnByValue: true,
+    awaitPromise: true,
+  }, sessionId);
+  return Promise.race([
+    p,
+    new Promise((_, rej) => setTimeout(() => rej(new Error(`evaluate timeout (script start: ${expr.slice(0, 80)})`)), timeoutMs)),
+  ]);
+};
+
+const runScenario = async (cdp, scenario, onEvent) => {
+  const log = {
+    name: scenario.name,
+    actions: [],
+    consoleErrors: [],
+    exceptions: [],
+    rejections: [],
+    network: [],
+    invariantFailures: [],
+    alive: null,
+    title: "",
+  };
+  let { targetId } = await cdp.send("Target.createTarget", {
+    url: "about:blank", newWindow: false,
+  });
+  const { sessionId } = await cdp.send("Target.attachToTarget", {
+    targetId, flatten: true,
+  });
+
+  const collector = (msg) => {
+    if (msg.sessionId !== sessionId) return;
+    if (msg.method === "Runtime.consoleAPICalled" && msg.params.type === "error") {
+      log.consoleErrors.push(
+        (msg.params.args || []).map((a) => a.value ?? a.description ?? "").join(" ").slice(0, 200),
+      );
+    } else if (msg.method === "Runtime.exceptionThrown") {
+      const d = msg.params.exceptionDetails;
+      log.exceptions.push((d.exception?.description || d.text || "").slice(0, 200));
+    } else if (msg.method === "Log.entryAdded") {
+      const e = msg.params.entry;
+      if (e.level === "error") log.consoleErrors.push(`[${e.source}] ${e.text}`.slice(0, 200));
+    }
+  };
+  cdp.onEvent(collector);
+
+  try {
+    await cdp.send("Page.enable", {}, sessionId);
+    await cdp.send("Runtime.enable", {}, sessionId);
+    await cdp.send("Log.enable", {}, sessionId);
+    await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: TAP_SCRIPT }, sessionId);
+
+    const loaded = cdp.waitFor("Page.loadEventFired", sessionId, null, 20000);
+    await cdp.send("Page.navigate", { url: APP_URL }, sessionId);
+    if (!(await loaded)) log.invariantFailures.push("load event never fired (page hang?)");
+    await evaluate(cdp, sessionId, "new Promise(r => setTimeout(r, 400))");
+
+    for (const action of scenario.actions) {
+      try {
+        const expr = `(() => {\n${HELPER}\nreturn ${action};\n})()`;
+        const res = await evaluate(cdp, sessionId, expr);
+        if (res.exceptionDetails) log.actions.push("EXCEPTION: " + (res.exceptionDetails.exception?.description || res.exceptionDetails.text).slice(0, 160));
+        else log.actions.push(String(res.result?.value ?? res.result?.description ?? ""));
+      } catch (e) {
+        log.actions.push("HARNESS: " + String(e.message || e).slice(0, 160));
+      }
+    }
+
+    // In-page invariant assertions
+    try {
+      const res = await evaluate(cdp, sessionId, `(() => {\n${HELPER}\nreturn ${scenario.assert};\n})()`);
+      const out = res.result?.value ?? {};
+      if (Array.isArray(out.failures)) log.invariantFailures.push(...out.failures);
+    } catch (e) {
+      log.invariantFailures.push("assert hook failed to run: " + String(e.message || e).slice(0, 120));
+    }
+
+    // Common invariants from the tap
+    try {
+      const raw = await evaluate(cdp, sessionId, TAP_SNAPSHOT);
+      const snap = JSON.parse(raw.result?.value ?? "{}");
+      log.network = snap.net || [];
+      log.rejections = snap.rejections || [];
+      log.exceptions.push(...(snap.errors || []).filter((e) => !log.exceptions.includes(e)));
+      log.alive = !!snap.alive;
+      log.title = snap.title || "";
+      if (snap.net?.length) log.invariantFailures.push(`network attempts: ${snap.net.length}`);
+    } catch (e) {
+      log.invariantFailures.push("tap snapshot failed: " + String(e.message || e).slice(0, 120));
+    }
+  } finally {
+    cdp.off(collector);
+    await cdp.send("Target.closeTarget", { targetId }).catch(() => {});
+  }
+  return log;
+};
+
+// ---------- main ----------
+const args = process.argv.slice(2);
+const SERIAL = args.includes("--serial");
+const ONLY = args.find((a) => a.startsWith("--scenario="))?.split("=")[1];
+const APP_OVERRIDE = args.find((a) => a.startsWith("--app="))?.split("=")[1];
+const APP_URL = APP_OVERRIDE ? (APP_OVERRIDE.startsWith("file:") ? APP_OVERRIDE : "file:///" + APP_OVERRIDE.replace(/\\/g, "/")) : PAGE_URL;
+
+if (!jevAvailable()) {
+  console.log("WARNING: TYPESAFE_API_KEY not found (process env or User scope). Verdicts will be skipped.");
+}
+
+let picked = SCENARIOS;
+if (ONLY) {
+  picked = SCENARIOS.filter((s) => s.name === ONLY || s.name.includes(ONLY));
+  if (!picked.length) {
+    console.log(`No scenario matches "${ONLY}". Available:`);
+    for (const s of SCENARIOS) console.log("  " + s.name);
+    process.exit(1);
+  }
+}
+
+console.log(`Launching headless Chrome, ${picked.length} scenario(s), mode=${SERIAL ? "serial" : "parallel"}`);
+const { proc, profile, binary } = launchChrome();
+const port = await readDebugPort(profile);
+let version;
+try {
+  version = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json();
+} catch {
+  await new Promise((r) => setTimeout(r, 500));
+  version = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json();
+}
+const cdp = await connect(version.webSocketDebuggerUrl);
+console.log(`Connected: ${version.Browser} via ${binary}`);
+
+const started = Date.now();
+let logs;
+if (SERIAL) {
+  logs = [];
+  for (const s of picked) logs.push(await runScenario(cdp, s));
+} else {
+  logs = await Promise.all(picked.map((s) => runScenario(cdp, s)));
+}
+
+// Jev verdicts (serially to keep ordering deterministic)
+const rows = [];
+for (const log of logs) {
+  let answers = null;
+  try { answers = await verdict(log); } catch (e) { answers = { error: String(e) }; }
+  const choice = answers?.verdict?.choice ?? "(none)";
+  const severity = answers?.severity?.score != null ? Math.round(answers.severity.score * 100) / 100 : "-";
+  const networkNoul = answers?.network_egress?.noul != null ? Math.round(answers.network_egress.noul * 100) / 100 : "-";
+  const hangNoul = answers?.hang_or_freeze?.noul != null ? Math.round(answers.hang_or_freeze.noul * 100) / 100 : "-";
+  rows.push({
+    name: log.name,
+    choice,
+    severity,
+    net: log.network.length,
+    exceptions: log.exceptions.length,
+    inv: log.invariantFailures.length,
+    netq: networkNoul,
+    hangq: hangNoul,
+    actions: log.actions,
+    failures: log.invariantFailures,
+  });
+}
+
+const pad = (s, w) => String(s).padEnd(w).slice(0, w);
+console.log("\n=== Jev adversarial verdict table (took " + ((Date.now() - started) / 1000).toFixed(1) + "s) ===");
+console.log(pad("scenario", 26) + " " + pad("verdict", 10) + " " + pad("sev", 6) + " " + pad("excp", 5) + " " + pad("net", 5) + " " + pad("inv", 5) + " " + pad("net?", 6) + " " + pad("hang?", 6));
+for (const r of rows) {
+  console.log(
+    pad(r.name, 26) + " " + pad(r.choice, 10) + " " + pad(r.severity, 6) + " " + pad(r.exceptions, 5) + " " +
+    pad(r.net, 5) + " " + pad(r.inv, 5) + " " + pad(r.netq, 6) + " " + pad(r.hangq, 6)
+  );
+}
+for (const r of rows) {
+  if (r.failures.length) {
+    console.log(`\n${r.name} invariant failures:`);
+    for (const f of r.failures) console.log("  - " + f);
+  }
+  console.log(`\n${r.name} action log:`);
+  for (const a of r.actions) console.log("  · " + a);
+}
+
+// Local verdict if Jev unavailable
+if (!jevAvailable()) {
+  for (const r of rows) {
+    const local = r.net + r.exceptions + r.inv ? "would be broken locally" : "clean locally";
+    console.log(`${r.name}: ${local}`);
+  }
+}
+
+cdp.ws.close();
+proc.kill();
+setTimeout(() => {
+  try { rmSync(profile, { recursive: true, force: true }); } catch {}
+  process.exit(0);
+}, 500);

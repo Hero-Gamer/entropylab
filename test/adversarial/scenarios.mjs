@@ -145,7 +145,10 @@ export const SCENARIOS = [
       // Selecting a file only stashes its text (app.js's #journal-file change
       // handler); nothing parses it until #journal-unlock runs. Checking for
       // an error before this click tested the file picker, not the import.
-      `(async () => { const b = $('#journal-unlock'); if (!b) return "no-unlock-button"; b.click(); await sleep(1200); return "unlock-clicked"; })()`,
+      // The change handler reads the file asynchronously (await file.text());
+      // give it a beat before unlocking, or the import runs on an empty stash
+      // and the error is the timing artifact "Choose a journal file first."
+      `(async () => { await sleep(800); const b = $('#journal-unlock'); if (!b) return "no-unlock-button"; b.click(); await sleep(1200); return "unlock-clicked"; })()`,
       `(() => { const err = $('#journal-error'); return "journal-error=" + (err ? (err.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 140) : "(none)"); })()`,
     ],
     assert: `

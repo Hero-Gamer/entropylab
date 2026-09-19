@@ -123,6 +123,9 @@ button:not(:disabled):active * { color: inherit !important; }
 .wrap { max-width: 1000px; margin: 0 auto; padding: calc(var(--site-header-height) + 20px) 16px 0; }
 .kicker { font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 20px; margin: 16px 0; }
+/* On a phone the side padding is width the content needs more than the frame
+   does, so the card gives most of it back. */
+@media (max-width: 520px) { .card { padding: 20px 10px; } }
 /* A card that only reads, never takes input: no edge and no rounded corner,
    the way the readouts inside the tools now sit. The border stays in place
    unpainted, so nothing shifts. */
@@ -2340,7 +2343,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 @media (max-width: 520px) {
   /* A 24px thumb cannot resolve a step this narrow, so the slider, its ticks
      and the note that tells you to drag it all go; the numbers are the control. */
-  .msig-threshold-control, .msig-threshold-help { display: none; }
+  .msig-threshold-control { display: none; }
   /* With the slider gone the numbers answer to the note above them, so they
      take the step they would have had as the section's first control. */
   .msig-threshold-labels { margin-top: var(--space-section); }
@@ -2725,6 +2728,12 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    costs less than dropping an item. The controls close up by 2px here too, the
    network picker having taken a fourth slot in the row. */
 @media (max-width: 400px) {
+  /* Two frames of side padding plus the page gutter is what squeezes a small
+     phone, so all three give most of it back to the content. This block has
+     to stay after the 719px one, which sets the gutter to 12px at the same
+     specificity. */
+  .wrap { padding-left: 10px; padding-right: 10px; }
+  .workspace-panel { padding: 20px 10px; }
   .site-title { font-size: 17px; }
   .download-controls { gap: 4px; }
 }

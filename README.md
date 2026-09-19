@@ -370,6 +370,14 @@ Then, on a machine with Bitcoin Core (a pruned node is fine):
 ots verify entropylab.html
 ```
 
+On **Windows**, `opentimestamps-client`'s `python-bitcoinlib` dependency
+looks for OpenSSL as `libeay32.dll`, which stock Windows does not provide
+(`LoadLibrary() argument 1 must be str, not None`). No full OpenSSL install
+is needed: Git for Windows already ships it. Copy
+`libcrypto-3-x64.dll` (and `libssl-3-x64.dll`) from
+`C:\Program Files\Git\mingw64\bin\` into any PATH directory as
+`libeay32.dll` and verification runs natively.
+
 EntropyLab itself never stamps, upgrades, or verifies `.ots` files and never
 talks to a calendar. The HTML stays air-gappable.
 

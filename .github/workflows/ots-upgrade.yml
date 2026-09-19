@@ -41,7 +41,17 @@ jobs:
           fi
           OTS="$RUNNER_TEMP/ots/bin/ots"
           # ots upgrade entropylab.html.ots — completes a pending calendar receipt.
-          "$OTS" upgrade entropylab.html.ots
+          # It exits non-zero whenever the timestamp is still incomplete, which
+          # is the ordinary state until a calendar has a block attestation.
+          # That is a "come back tomorrow", not a failure, so do not let it
+          # take the job down; any partial progress it wrote is still worth
+          # committing.
+          if "$OTS" upgrade entropylab.html.ots; then
+            echo "Timestamp complete."
+          else
+            echo "Proof is still pending a Bitcoin attestation; retrying on the next run."
+          fi
+          rm -f entropylab.html.ots.bak
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add entropylab.html.ots

@@ -505,6 +505,11 @@ jobs:
               echo "Proof already covers $ACTUAL; not re-stamping. Upgrade workflow completes pending attestations."
               exit 0
             fi
+            # The committed proof covers a superseded digest. `ots stamp`
+            # creates its output with an exclusive open and fails if the path
+            # exists, so the stale proof has to go first or every release
+            # after the first one dies here.
+            rm -f entropylab.html.ots
           fi
           # ots stamp entropylab.html — pending calendar receipt, not a Bitcoin timestamp.
           "$OTS" stamp entropylab.html

@@ -217,8 +217,14 @@ test("OpenTimestamps stamps the tested HTML off the Pages/test critical path", (
   assert.ok(!jobNeeds(workflowJob(workflow, "artifact")).includes("timestamp"), "calendars must not block the HTML commit");
   assert.ok(!jobNeeds(workflowJob(workflow, "deploy")).includes("timestamp"), "calendars must not block Pages");
   assert.doesNotMatch(timestamp, /npm run build/, "timestamp must not rebuild the wallet HTML");
+  // `ots stamp` creates its output with an exclusive open, so a proof left
+  // over from the previous release makes every later stamp fail.
+  assert.match(timestamp, /rm -f entropylab\.html\.ots/, "stamp must clear a superseded proof first");
   const upgrade = read(".github/workflows/ots-upgrade.yml");
   assert.match(upgrade, /ots upgrade entropylab\.html\.ots/);
+  // A still-pending proof exits non-zero; that is the normal state, not a
+  // broken job.
+  assert.match(upgrade, /if "\$OTS" upgrade entropylab\.html\.ots; then/, "a pending proof must not fail the upgrade job");
   assert.match(upgrade, /opentimestamps-client==0\.7\.2/);
   assert.doesNotMatch(upgrade, /npm run build/);
   assert.doesNotMatch(upgrade, /SHA256SUMS\.txt/);

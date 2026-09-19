@@ -3978,7 +3978,7 @@
     assert(reuseToggle && !reuseToggle.checked, "MS Station key reuse was not opt-in");
     const originState = document.getElementById("msig-origin-state");
     assert(originState?.hidden, "The redundant global co-signer derivation controls are still visible");
-    const scriptType = document.getElementById("msig-script-type");
+    const scriptType = document.getElementById("msig-script-tabs");
     const keyOrder = document.getElementById("msig-key-order");
     const bip87Toggle = document.getElementById("msig-legacy-account-toggle");
     const keyRows = document.getElementById("msig-keys");
@@ -3989,12 +3989,7 @@
     let rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
     assert(rows.length >= 2, "MS Station did not start with at least two co-signer rows");
     rows.forEach((row, index) => {
-      const railLabel = row.querySelector(".msig-key-rail-label");
-      const keyStripStyle = getComputedStyle(row.querySelector(".msig-session-keys"));
-      assert(railLabel && railLabel.textContent === `Co-signer ${index + 1}`, "A co-signer row did not render its numbered side rail");
-      assert(row.getAttribute("aria-labelledby") === railLabel.id, "A co-signer side rail did not label its row");
-      assert(row.querySelectorAll(".msig-key-rail-line").length === 2, "A co-signer side rail did not bracket its content");
-      assert(keyStripStyle.flexWrap === "nowrap" && keyStripStyle.overflowX === "auto", "A co-signer key strip was not a single horizontally scrollable row");
+      assert(row.getAttribute("aria-labelledby"), "A co-signer row was not labelled by its title");
       const advanced = row.querySelector(".msig-cosigner-advanced");
       assert(advanced && !advanced.open, "A co-signer's Advanced entry did not start collapsed");
       const fingerprint = row.querySelector(".msig-master-fingerprint");
@@ -4003,9 +3998,6 @@
       assert(fingerprint.compareDocumentPosition(fullPath) & Node.DOCUMENT_POSITION_FOLLOWING, "A co-signer's master fingerprint was not placed left of its full derivation path");
       assert(!advanced.contains(row.querySelector("textarea")) && !advanced.contains(row.querySelector(".msig-full-path")), "A co-signer's key or full path was hidden in Advanced entry");
     });
-    const railLeft = rows[0].querySelector(".msig-key-rail-line").getBoundingClientRect().left;
-    const reuseBorderLeft = reuseToggle.closest(".choice").getBoundingClientRect().left;
-    assert(Math.abs(railLeft - reuseBorderLeft) <= 1, `The co-signer rail did not align with the key-reuse container border (${railLeft} vs ${reuseBorderLeft})`);
     const rowOption = (row) => row.querySelector(".msig-session-keys .msig-session-key");
     rows.forEach((row) => input(row.querySelector("textarea"), ""));
     rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
@@ -4033,11 +4025,12 @@
     rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
     assert(rowOption(rows[0]).classList.contains("active"), "The picked key was not marked active on the first row");
     assert(rowOption(rows[0]).getAttribute("aria-pressed") === "true", "The picked key did not expose its selected state");
+    // Selection reads as the accent edge plus a check mark, the same treatment
+    // the Key Station pickers use, rather than a solid orange fill.
     const activeKeyStyle = getComputedStyle(rowOption(rows[0]));
-    assert(activeKeyStyle.backgroundColor === "rgb(255, 153, 0)" && activeKeyStyle.color === "rgb(0, 0, 0)", "The picked key did not retain its orange pressed state");
+    assert(activeKeyStyle.borderColor === "rgb(255, 153, 0)", `The picked key did not take the accent border (${activeKeyStyle.borderColor})`);
+    assert(getComputedStyle(rowOption(rows[0]).querySelector(".session-key-check")).display !== "none", "The picked key did not show its check mark");
     assert(activeKeyStyle.boxShadow.includes("inset"), "The picked key did not retain its inset pressed appearance");
-    const activeLifeHash = rowOption(rows[0]).querySelector(".key-tab-lifehash");
-    assert(getComputedStyle(activeLifeHash).boxShadow !== "none", "The picked key's LifeHash did not gain its dark emphasis shadow");
     assert(rowOption(rows[1]), "An assigned key disappeared from another row while reuse was off");
     assert(rowOption(rows[1]).classList.contains("unavailable") && rowOption(rows[1]).disabled, "An assigned key was not faded and unavailable on another row while reuse was off");
 
@@ -4265,7 +4258,8 @@
       row.textContent.includes("Legacy · BIP87 · Account 0")
     );
     assert(exportRow, "Legacy account result did not show its BIP87 co-signer export");
-    const bip87Export = exportRow.querySelector(".mono")?.textContent.trim();
+    const exportValue = (row) => (row.querySelector(".mono") || row.nextElementSibling)?.textContent.trim();
+    const bip87Export = exportValue(exportRow);
     assert(/^\[[0-9a-f]{8}\/87h\/1h\/0h\]tpub/.test(bip87Export || ""), "BIP87 testnet origin or account key is wrong");
     const nativeTab = [...document.querySelectorAll("#acct-tabs button")].find((button) => button.textContent.includes("Native SegWit"));
     assert(nativeTab, "Native SegWit account tab is missing");
@@ -4274,18 +4268,22 @@
       () => [...document.querySelectorAll("#acct p")].find((row) => row.textContent.includes("Native SegWit · BIP48")),
       "Native SegWit BIP48 co-signer export",
     );
-    const bip48Export = bip48Row.querySelector(".mono")?.textContent.trim();
+    const bip48Export = exportValue(bip48Row);
     assert(/^\[[0-9a-f]{8}\/48h\/1h\/0h\/2h\]tpub/.test(bip48Export || ""), "BIP48 testnet origin or account key is wrong");
 
     document.querySelector('#workspace [data-workspace="msig"]').click();
     await until(() => !document.getElementById("msig-card").hidden, "multisig workspace");
     const addMultisig = document.getElementById("add-msig");
     assert(addMultisig.disabled && addMultisig.getAttribute("aria-disabled") === "true", "The Multi Signature plus control was available before the first multisig existed");
-    const multisigScript = document.getElementById("msig-script-type");
+    const setMsigScript = (kind) => {
+      const button = document.querySelector(`#msig-script-tabs [data-msig-script="${kind}"]`);
+      assert(button, `script type segment ${kind} is missing`);
+      button.click();
+    };
+    const msigScript = () => document.querySelector("#msig-script-tabs .tab.active")?.dataset.msigScript || "";
     const multisigPurpose = document.getElementById("msig-purpose");
     equal(multisigPurpose.value, "48", "Native SegWit multisig did not default to purpose 48");
-    multisigScript.value = "p2sh";
-    multisigScript.dispatchEvent(new Event("change", { bubbles: true }));
+    setMsigScript("p2sh");
     equal(multisigPurpose.value, "45", "Legacy multisig did not default to purpose 45");
     const bip87Toggle = document.getElementById("msig-legacy-bip87");
     assert(!document.getElementById("msig-legacy-account-toggle").hidden, "BIP87 option stayed hidden for Legacy");
@@ -4306,7 +4304,7 @@
     input(document.getElementById("msig-n-number"), "2");
     input(document.getElementById("msig-x-0"), bip87Export);
     input(document.getElementById("msig-x-1"), bip48Export);
-    equal(multisigScript.value, "p2wsh");
+    equal(msigScript(), "p2wsh", "script type was not detected from the co-signer origins");
     assert(document.getElementById("msig-purpose-warning").textContent.includes("do not match"), "Mixed co-signer purposes did not show a warning");
     assert(
       document.getElementById("msig-go").disabled,
@@ -4352,9 +4350,9 @@
     equal(multisigProgress.getAttribute("aria-valuenow"), "100", "Multisig progress did not reach 100%");
     assert(multisigProgress.querySelector(".derive-progress-label")?.textContent.includes("Done"), "Completed multisig progress did not show Done");
     const resultText = document.getElementById("msig-out").textContent;
-    assert(resultText.includes("1-of-1 multisig · Purpose 87'"), "Result did not identify purpose 87 separately from script type");
+    assert(document.getElementById("msig-summary-policy")?.textContent.includes("1-of-1 multisig"), "The summary did not state the policy");
+    assert(document.getElementById("msig-summary-path")?.textContent.includes("87'"), "The summary path did not identify the BIP87 purpose");
     assert(resultText.includes("/87h/1h/0h") && resultText.includes("/<0;1>/*"), "BIP87 wallet descriptor paths are wrong");
-    assert(resultText.includes("Receive address #11"), "The multisig receive QR did not use the starting address index");
     const multisigReceiveRows = document.querySelectorAll('#msig-out [data-address-table="msig-receive"] tbody tr');
     equal(multisigReceiveRows.length, 5, "The requested multisig receive address range was not rendered");
     equal(multisigReceiveRows[0].querySelector("th")?.textContent.trim(), "11", "The multisig receive table did not start at the requested index");
@@ -4366,14 +4364,15 @@
     await until(() => document.querySelector('#msig-out [data-address-table="msig-branch-2"]'), "custom multisig branch result");
     assert(!document.querySelector('#msig-out [data-address-table="msig-receive"]'), "An unselected multisig Receive table was rendered");
     assert(!document.querySelector('#msig-out [data-address-table="msig-change"]'), "An unselected multisig Change table was rendered");
-    assert(document.querySelector("#msig-out .account-address-lead h4")?.textContent.includes("Custom branch 2 address #11"), "The custom multisig branch QR label was unclear");
+    // The lead-address block is gone; the branch table still proves the custom
+    // branch derived the requested index.
+    equal(document.querySelector('#msig-out [data-address-table="msig-branch-2"] tbody th')?.textContent.trim(), "11", "The custom multisig branch did not start at the requested index");
     input(multisigBranchStart, "0");
     input(multisigBranchRange, "2");
     input(multisigAddressRange, "5");
 
     input(document.getElementById("msig-x-0"), "");
-    multisigScript.value = "p2wsh";
-    multisigScript.dispatchEvent(new Event("change", { bubbles: true }));
+    setMsigScript("p2wsh");
     // The BIP87 choice is not Legacy-only any more, so it survives a script-type
     // change; clearing it returns this script type to its own standard.
     equal(multisigPurpose.value, "87", "The BIP87 choice did not carry across a script-type change");
@@ -4385,7 +4384,7 @@
     equal(multisigPurpose.value, "69420", "A custom co-signer purpose was not auto-detected");
     const deriveCustomMultisig = await until(() => !document.getElementById("msig-go").disabled && document.getElementById("msig-go"), "custom-purpose multisig derive button");
     deriveCustomMultisig.click();
-    await until(() => document.getElementById("msig-out").textContent.includes("Purpose 69420'") || document.getElementById("msig-error").textContent, "custom-purpose multisig result");
+    await until(() => document.getElementById("msig-summary-path")?.textContent.includes("69420'") || document.getElementById("msig-error").textContent, "custom-purpose multisig result");
     assert(
       !document.getElementById("msig-error").textContent,
       `Custom-purpose multisig derivation failed: ${document.getElementById("msig-error").textContent}`,
@@ -4404,9 +4403,12 @@
     [...document.querySelectorAll("#msig-tabs button")].find((button) => button.id === "msig-tab-lab").click();
     const wipe = document.getElementById("msig-wipe");
     if (!wipe.disabled) wipe.click();
-    const script = document.getElementById("msig-script-type");
-    script.value = "p2wsh";
-    script.dispatchEvent(new Event("change", { bubbles: true }));
+    const setMsigScript = (kind) => {
+      const button = document.querySelector(`#msig-script-tabs [data-msig-script="${kind}"]`);
+      assert(button, `script type segment ${kind} is missing`);
+      button.click();
+    };
+    setMsigScript("p2wsh");
     input(document.getElementById("msig-network"), "0");
     input(document.getElementById("msig-n-number"), "1");
     input(document.getElementById("msig-x-0"), decorated);
@@ -4442,9 +4444,12 @@
     [...document.querySelectorAll("#msig-tabs button")].find((button) => button.id === "msig-tab-lab").click();
     const wipe = document.getElementById("msig-wipe");
     if (!wipe.disabled) wipe.click();
-    const script = document.getElementById("msig-script-type");
-    script.value = "p2wsh";
-    script.dispatchEvent(new Event("change", { bubbles: true }));
+    const setMsigScript = (kind) => {
+      const button = document.querySelector(`#msig-script-tabs [data-msig-script="${kind}"]`);
+      assert(button, `script type segment ${kind} is missing`);
+      button.click();
+    };
+    setMsigScript("p2wsh");
     input(document.getElementById("msig-network"), "0");
     input(document.getElementById("msig-n-number"), "1");
     input(document.getElementById("msig-x-0"), deepKey);
@@ -4462,11 +4467,11 @@
     document.getElementById("msig-edit-inputs").click();
     await until(() => !document.getElementById("msig-lab").hidden && document.getElementById("msig-x-0")?.value, "lab restored for the BIP84 co-signer");
     input(document.getElementById("msig-x-0"), "");
-    script.value = "p2sh";
-    script.dispatchEvent(new Event("change", { bubbles: true }));
-    equal(document.getElementById("msig-script-type").value, "p2sh", "script type moved without a co-signer key");
+    setMsigScript("p2sh");
+    const msigScript = () => document.querySelector("#msig-script-tabs .tab.active")?.dataset.msigScript || "";
+    equal(msigScript(), "p2sh", "script type moved without a co-signer key");
     input(document.getElementById("msig-x-0"), bip84Key);
-    await until(() => document.getElementById("msig-script-type").value === "p2wsh", "script type decoded from the m/84h origin");
+    await until(() => msigScript() === "p2wsh", "script type decoded from the m/84h origin");
     equal(document.getElementById("msig-purpose").value, "84", "BIP84 purpose was not decoded from the origin");
     const go84 = await until(() => !document.getElementById("msig-go").disabled && document.getElementById("msig-go"), "BIP84 multisig derive button");
     go84.click();

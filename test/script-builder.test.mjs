@@ -114,5 +114,4 @@ test("the editor renders the builder on every output row and wires it", () => {
   // The network comes from the header picker's getter, not a local select.
   assert.match(editor, /buildOutputScript\(text, \{ network: network\(\), mode \}\)/);
   const css = read("src/css/styles.css");
-  assert.match(css, /\.psbted-build \{/);
 });

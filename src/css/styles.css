@@ -123,6 +123,9 @@ button:not(:disabled):active * { color: inherit !important; }
 .wrap { max-width: 1000px; margin: 0 auto; padding: calc(var(--site-header-height) + 20px) 16px 0; }
 .kicker { font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 20px; margin: 16px 0; }
+/* On a phone the side padding is width the content needs more than the frame
+   does, so the card gives most of it back. */
+@media (max-width: 520px) { .card { padding: 20px 10px; } }
 /* A card that only reads, never takes input: no edge and no rounded corner,
    the way the readouts inside the tools now sit. The border stays in place
    unpainted, so nothing shifts. */
@@ -177,8 +180,15 @@ button:not(:disabled):active * { color: inherit !important; }
 }
 /* Buttons carry one type across the app. Stated here rather than in the block
    above, which also dresses the segmented controls: those size themselves from
-   the row they sit in. */
-.btn { font-size: 16px; font-weight: 600; }
+   the row they sit in. A label that wraps sets its two lines as close as the
+   words are tall: through font: inherit a button otherwise takes the leading of
+   whatever it sits in, which spaced the lines as if they were paragraphs. */
+.btn { font-size: 16px; font-weight: 600; line-height: 1; }
+/* A phone gives a label less room before it wraps, so the type steps down
+   one notch rather than the words breaking sooner. It sits here, with the
+   button's own type, so the header's smaller buttons still overrule it
+   below. */
+@media (max-width: 520px) { .btn { font-size: 15px; } }
 .tab.active {
   background: var(--selection-accent);
   color: var(--selection-fg);
@@ -762,8 +772,12 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
 .copy-status:empty { display: none; }
 /* The check carries the confirmation, so it takes the green and a little more
    size; the word beside it is a status line, not a signal, and stays grey. */
-.bip85-copy-status { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 14px; line-height: normal; }
-.bip85-copy-status svg { width: 20px; height: 20px; color: var(--ok-bright); fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.bip85-copy-status, .copy-field-status { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 14px; line-height: normal; }
+.bip85-copy-status svg, .copy-field-status svg { width: 20px; height: 20px; color: var(--ok-bright); fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+/* The copy confirmation sits in a 14px label row, so it is pinned to
+   that line box: appearing and clearing must not move the row. */
+.copy-field-status { height: 14px; font-size: 12px; gap: 4px; }
+.copy-field-status svg { width: 14px; height: 14px; }
 .copy-button {
   flex: 0 0 auto; display: grid; place-items: center;
   width: 21px; height: 21px; padding: 0; border: 0; background: transparent; color: var(--faint);
@@ -821,13 +835,21 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
 th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px; }
 td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; font-family: var(--mono); }
-.qr { max-width: 100%; background: var(--paper); padding: 8px; border: 1px solid var(--border); border-radius: 8px; display: inline-block; }
+.qr { max-width: 100%; background: var(--paper); border: 1px solid var(--border); border-radius: 8px; display: inline-block; }
 .qr svg { display: block; max-width: 100%; width: 140px; height: auto; aspect-ratio: 1; }
 .qr-descriptor { padding: 12px; }
 .qr-descriptor svg { width: 280px; height: auto; }
 .qr-seed { padding: 12px; }
 .qr-seed svg { width: 200px; height: auto; }
 .watch-only-qr { margin: var(--space-control) 0 var(--space-component); }
+/* A copyable field's title carries its QR button on the same line; the value
+   sits under it and wraps as one block. */
+.copy-field-label { display: flex; align-items: center; gap: var(--space-control); }
+.copy-field-value {
+  display: block; width: 100%; min-width: 0; margin: var(--space-control) 0 0; padding: 0;
+  border: 0; background: none; color: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer;
+}
+.copy-field-value:hover { color: var(--selection-accent-ink); }
 .watch-only-qr > p { margin: var(--space-control) 0 0; }
 /* Inline-block sits on a text line, whose descender space would add to the 8px. */
 .watch-only-qr > .qr { vertical-align: top; }
@@ -1316,8 +1338,20 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-summary-lifehash { flex: 0 0 auto; width: 72px; height: 72px; border-radius: 8px; image-rendering: pixelated; background: #fff; }
 .key-summary-lifehash[hidden] { display: none; }
 .key-summary-text { flex: 1 1 auto; min-width: 0; }
+/* The co-signer column sets the block's height, so the summary beside it
+   starts at the top rather than floating against the middle of the stack. */
+#msig-summary .key-summary-text { align-self: flex-start; }
 .key-summary-fingerprint { display: block; font-family: var(--mono); font-weight: 700; letter-spacing: 0.04em; color: var(--fg); }
 .key-summary-meta { margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
+/* The keys the multisig was built from, in the order its script uses them.
+   Readouts rather than controls: no edge and no corner of their own, the
+   LifeHash carrying the only radius. */
+.msig-summary-cosigners { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-control); margin-top: var(--space-section); }
+/* The title takes its own line above the marks, and the row's gap sets it
+   off them, so it adds no margin of its own. */
+.msig-summary-cosigners-label { flex: 1 1 100%; margin: 0; }
+.msig-summary-cosigners[hidden] { display: none; }
+.msig-summary-cosigner { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-family: var(--mono); font-size: 12px; }
 .key-summary-path { font-family: var(--mono); word-break: break-all; }
 /* The parent line sits apart from the child's own two lines, and carries the
    parent's LifeHash beside the fingerprint it names. */
@@ -1325,6 +1359,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .bip85-parent-lifehash { flex: 0 0 auto; }
 .bip85-parent-fingerprint { font-family: var(--mono); font-weight: 600; color: var(--fg); }
 .key-tab-lifehash { width: 22px; height: 22px; border-radius: 4px; image-rendering: pixelated; background: #fff; }
+/* A derived multisig tab carries one small LifeHash per co-signer, sized
+   down so a 2-of-3 still reads as a tab rather than a filmstrip. */
+.msig-tab-lifehashes { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 2px; }
+.msig-tab-lifehash { width: 14px; height: 14px; }
 .key-tab.is-lab { font-weight: 700; }
 .key-tab-lab-icon { width: 16px; height: 16px; padding: 0; color: var(--muted); }
 .key-tab-lab-icon svg { display: block; width: 100%; height: 100%; }
@@ -1345,14 +1383,16 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .session-key-option:not(.active):hover { border-color: var(--accent); }
 /* Selection is unmistakable: accent border and tint plus a check mark, so
    it does not rest on the border colour alone. */
-.session-key-option.active {
+.session-key-option.active,
+.msig-session-key.active {
   border-color: var(--selection-accent); color: var(--fg);
   background: color-mix(in oklab, var(--selection-accent) 16%, var(--surface-2));
   box-shadow: inset 0 0 0 1px var(--selection-accent);
 }
 .session-key-check { display: none; width: 16px; height: 16px; color: var(--selection-accent); }
 .session-key-check svg { display: block; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-.session-key-option.active .session-key-check { display: inline-flex; }
+.session-key-option.active .session-key-check,
+.msig-session-key.active .session-key-check { display: inline-flex; }
 .msig-session-keys {
   display: flex; flex-wrap: nowrap; gap: 8px; max-width: 100%; margin: 0 0 8px;
   overflow-x: auto; overflow-y: hidden; overscroll-behavior-inline: contain; scrollbar-width: thin;
@@ -1363,21 +1403,14 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   min-height: 44px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px;
   background: var(--surface-2); color: var(--fg); font-family: var(--mono); font-size: 13px; cursor: pointer;
 }
-.msig-session-key.active {
-  background: var(--selection-accent); color: var(--selection-fg); border-color: var(--selection-accent);
-  box-shadow: inset 0 2px 4px rgb(0 0 0 / 30%);
-}
-.msig-session-key.active * { color: inherit; }
-.msig-session-key.active .key-tab-lifehash {
-  box-shadow: 0 0 0 2px rgb(0 0 0 / 82%), 0 3px 8px rgb(0 0 0 / 70%);
-}
 .msig-session-key.unavailable { opacity: 0.45; filter: grayscale(0.55); cursor: not-allowed; }
 .msig-origin-fields { display: grid; grid-template-columns: minmax(150px, .7fr) minmax(0, 2fr); gap: var(--space-component); }
 .msig-origin-fields .field { min-width: 0; margin-top: 0; }
 .msig-master-fingerprint, .msig-full-path { font-family: var(--mono); }
+/* The group sits under its title exactly where the control it replaced did. */
+.msig-script-type-field .segmented-control { margin-top: var(--space-control); }
 .msig-path-components { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-component); }
 .msig-path-component { margin-top: 0; }
-.msig-path-component .derivation-index-control { margin-top: var(--space-control); }
 .workspace-panel > :first-child { margin-top: 0; }
 .workspace-panel > :last-child { margin-bottom: 0; }
 /* Inside the panel a card closes on its own bottom edge. Whatever follows
@@ -1826,7 +1859,16 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .qr-ref-hint { margin: 12px 0 0; }
 .qr-ref-actions { margin-top: var(--space-component); justify-content: center; }
 /* Per-address QR: compact button in each address-table row, one shared overlay. */
-.addr-text { overflow-wrap: anywhere; }
+.addr-text {
+  min-width: 0; margin: 0; padding: 0; border: 0; background: none;
+  color: inherit; font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer;
+}
+.addr-text:hover { color: var(--selection-accent-ink); }
+/* In a table the address itself names what was copied, so the mark stands
+   alone beside its QR button. */
+.copy-field-status.is-icon-only {
+  width: 14px; margin-left: 6px; justify-content: center; vertical-align: middle;
+}
 .addr-qr {
   margin-left: 6px; padding: 1px 6px; border: 1px solid var(--faint); border-radius: 6px;
   background: transparent; color: var(--muted); font: inherit; font-size: 10px;
@@ -1889,7 +1931,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    layout: the text lands where a control would, not the box around it. Text
    written to sit directly under a label carries .label-description. */
 .label:has(+ .label-description) { margin-bottom: 4px; }
-.label + .label-description { margin-top: 0; }
+.label + .label-description { margin-top: 0; margin-bottom: 0; }
 /* The exception: a checkbox's own text is not a heading over content. It sits
    inside the control, on one line with the box, so it owns no gap either side.
    The components above already say margin: 0; this repeats it only to outrank
@@ -1966,6 +2008,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   font-size: 16px; font-weight: 700; line-height: 1.25; letter-spacing: .08em; white-space: nowrap;
   transition: color .16s ease, opacity .16s ease;
 }
+/* The card sets its own display, which outranks the browser's rule for the
+   attribute, so hiding it has to be said here. */
+.master-fingerprint-card[hidden], .master-fingerprint-arrow[hidden] { display: none; }
 .master-fingerprint-card.is-disabled { background: color-mix(in oklab, var(--surface-2) 62%, var(--bg)); }
 .master-fingerprint-card.is-disabled .master-fingerprint-label,
 .master-fingerprint-card.is-disabled .master-fingerprint-value {
@@ -1998,23 +2043,23 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    open or shut. That means the row spans the card rather than hugging its
    text — a line only as wide as the words would read as an underline. The
    glyph and label still sit left; only the hit area grows with it. */
-:is(.derivation-advanced, .key-group, .sources, .wallet-advanced) > summary {
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary {
   display: inline-flex; align-items: center; gap: 4px; width: fit-content; min-height: 32px;
   margin-bottom: var(--space-control);
   color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; list-style: none;
 }
-:is(.derivation-advanced, .key-group, .sources, .wallet-advanced) > summary::-webkit-details-marker { display: none; }
-:is(.derivation-advanced, .key-group, .sources, .wallet-advanced) > summary::before {
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary::-webkit-details-marker { display: none; }
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary::before {
   content: "\25B8"; display: inline-block; width: 0.7em; font-size: 22px; line-height: 1; transform: translateY(-2px);
 }
-:is(.derivation-advanced, .key-group, .sources, .wallet-advanced)[open] > summary::before { content: "\25BE"; }
-:is(.derivation-advanced, .key-group, .sources, .wallet-advanced) > summary:hover { color: var(--fg); }
-:is(.derivation-advanced, .key-group, .sources, .wallet-advanced) > summary:focus-visible { outline-offset: 4px; border-radius: 3px; }
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced)[open] > summary::before { content: "\25BE"; }
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary:hover { color: var(--fg); }
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary:focus-visible { outline-offset: 4px; border-radius: 3px; }
 /* Open, the toggle titles the block rather than standing off from it, and the
    block carries the space beneath itself instead. The gap under the toggle is
    the same either way — set on the summary itself — so opening the section
    moves the fields in without shifting the toggle. */
-:is(.derivation-advanced, .key-group, .sources, .wallet-advanced)[open] > summary { color: var(--fg); }
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced)[open] > summary { color: var(--fg); }
 /* A key view group is a row, not a word: the whole line answers the pointer,
    so there is no dead space beside the title. */
 .key-group > summary { display: flex; width: auto; min-height: 36px; }
@@ -2026,7 +2071,8 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    has to be excluded by name: this rule would otherwise make it display:block
    and collapse its own flex layout, dropping the gap between box and word and
    leaving the two on a shared baseline instead of centred. */
-.derivation-advanced-fields :is(.field, .field-head) > label:not(.derivation-harden) {
+.derivation-advanced-fields :is(.field, .field-head) > label:not(.derivation-harden),
+.key-settings :is(.field, .field-head) > label:not(.derivation-harden) {
   display: block; font-size: 14px; font-weight: 600; color: var(--fg);
 }
 .derivation-advanced .derivation-index-value input:not([type="checkbox"]) { padding-right: 12px; }
@@ -2088,7 +2134,8 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* Until the key can be derived the estimate is not advice to act on, so it
    steps back to the dim grey. The button follows the estimate in the markup,
    so the state is read from their shared parent rather than a sibling. */
-.key-lab:has(#go:disabled) #address-estimate { color: var(--faint); }
+.key-lab:has(#go:disabled) #address-estimate,
+.msig-lab:has(#msig-go:disabled) #msig-address-estimate { color: var(--faint); --edge-note-color: var(--faint); }
 /* A deliberate asymmetry: the estimate belongs to the section above it, whose
    closing rule it answers to, and not to the Derive button under it. So it
    takes a wide seam above and sits close beneath. 16px is the floor below —
@@ -2097,7 +2144,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .derivation-estimate { margin: var(--space-intro) 0 0; }
 .msig-legacy-account-toggle { margin: 0; }
 .msig-legacy-account-toggle[hidden] { display: none !important; }
-.msig-legacy-account-toggle input { margin-top: 2px; }
 #msig-account:disabled { cursor: not-allowed; color: var(--muted); opacity: 1; }
 #msig-account[data-state="mixed"] { color: var(--warn); }
 .msig-account-warning { color: var(--warn); }
@@ -2155,26 +2201,44 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* Descriptor import comes before manual policy setup: importing establishes
    the policy, while skipping it leaves the quorum controls editable. */
 .msig-import { margin: 0 0 var(--space-section); padding: 0 0 var(--space-component); border-bottom: 1px solid var(--border); }
-.msig-import summary { width: fit-content; color: var(--muted); font-weight: 700; cursor: pointer; }
-.msig-import summary:hover { color: var(--fg); }
-.msig-import summary:focus-visible { outline-offset: 4px; border-radius: 3px; }
-.msig-import[open] summary { margin-bottom: var(--space-component); color: var(--fg); }
 .msig-import textarea { min-height: 72px; }
+/* An edge note that opens a disclosure's revealed content takes no gap above
+   it — whether it sits straight under the summary or inside the first field. */
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary + .edge-note,
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary + * > .edge-note:first-child { margin-top: 0; }
 .msig-import .btn { margin-top: var(--space-control); }
 .msig-threshold-control {
   --msig-slider-inset: 14px;
-  min-width: 0; margin: var(--space-control) 0 0; padding: 16px 18px 14px;
-  border: 1px solid var(--border); border-radius: 12px; background: var(--bg);
+  min-width: 0; margin: var(--space-section) 0 0; padding: 16px 18px 14px;
+  border: 0; border-radius: 12px; background: var(--bg);
 }
-.msig-threshold-labels {
-  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;
-  margin: var(--space-section) 18px 0;
-}
+/* Two labelled numbers in block flow: the pair reads down the left edge with
+   the rest of the section, so neither a grid nor a centre line is needed. */
+.msig-threshold-labels { margin-top: var(--space-control); margin-bottom: 28px; }
+/* Two dimensions at once: the handle sits centred over its number, and what
+   the number means sits beside it on the number's own line. */
 .msig-threshold-labels label {
-  display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0;
-  color: var(--fg); font-size: 13px; font-weight: 600; line-height: 1.35; text-align: center; cursor: pointer;
+  display: grid; grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--space-control); row-gap: 4px; align-items: center;
+  min-width: 0; cursor: pointer;
 }
-.msig-threshold-number {
+.msig-threshold-labels label > .label { grid-area: 1 / 1; margin: 0; }
+.msig-threshold-labels label > input { grid-area: 2 / 1; }
+.msig-threshold-labels label > .field-note { grid-area: 2 / 2; margin: 0; }
+/* A handle and its number are one control in two places: hovering or dragging
+   the handle lights the number it drives, on the same edge colour the handle
+   itself takes. :active covers the whole drag, where the pointer has left the
+   handle; data-active-handle alone would outlive the gesture. */
+.msig-threshold-control:has(.msig-threshold-thumb-m:hover) ~ .msig-threshold-labels label[for="msig-m-number"] > input,
+.msig-threshold-control:has(.msig-threshold-slider:active[data-active-handle="m"]) ~ .msig-threshold-labels label[for="msig-m-number"] > input,
+.msig-threshold-control:has(.msig-threshold-thumb-n:hover) ~ .msig-threshold-labels label[for="msig-n-number"] > input,
+.msig-threshold-control:has(.msig-threshold-slider:active[data-active-handle="n"]) ~ .msig-threshold-labels label[for="msig-n-number"] > input {
+  border-color: var(--selection-accent);
+}
+.msig-threshold-labels label + label { margin-top: var(--space-component); }
+/* The base form-control rule outranks a lone class here, so the quorum
+   numbers match its shape to win the size they ask for. */
+.msig-threshold-labels input.msig-threshold-number {
   appearance: textfield; flex: 0 0 54px; width: 54px !important; min-width: 54px; min-height: 30px !important;
   height: 30px; margin: 0 !important; padding: 0 8px !important; text-align: center;
   border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--fg);
@@ -2193,15 +2257,34 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .msig-threshold-track span {
   position: absolute; top: -1px; bottom: -1px; left: var(--msig-m-position); right: calc(100% - var(--msig-n-position));
-  min-width: 0; border-radius: 999px; background: var(--selection-accent);
-  box-shadow: 0 0 10px color-mix(in oklab, var(--selection-accent) 38%, transparent);
+  min-width: 0; border-radius: 999px; background: var(--accent);
+  box-shadow: 0 0 10px color-mix(in oklab, var(--accent) 38%, transparent);
 }
 .msig-threshold-thumb {
   position: absolute; top: 50%; width: 24px; height: 24px; transform: translate(-50%, -50%);
-  border: 2px solid #a3a3a3; border-radius: 50%; background: linear-gradient(#858585, #5f5f5f);
+  /* The handle names itself, so a dragged thumb still says which end it is. */
+  display: grid; place-items: center;
+  color: #ededed; font-family: var(--mono); font-size: 14px; font-weight: 400; line-height: 1;
+  border: 2px solid #a3a3a3; border-radius: 50%;
+  /* The face is a flat colour under a fixed sheen, so hover can darken it on
+     the same curve the edge already travels; a gradient alone cannot transition. */
+  background-color: #4f4f4f; background-image: linear-gradient(rgb(255 255 255 / .14), rgb(0 0 0 / .14));
   box-shadow: 0 2px 7px rgb(0 0 0 / .75), inset 0 1px 1px rgb(255 255 255 / .2);
-  transition: box-shadow .12s ease, border-color .12s ease, transform .12s ease;
+  transition: box-shadow .12s ease, border-color .12s ease, transform .12s ease, background-color .12s ease, color .12s ease;
   pointer-events: auto; cursor: ew-resize;
+}
+/* The edge answers the pointer, as it does on the method cards and the key
+   chips. No scale: focus already takes the white edge and the lift, so the
+   two states stay distinct. The rule above transitions border-color, so the
+   change carries no motion of its own. A locked slider drops pointer events
+   entirely, and says nothing here. */
+/* A drag moves the pointer off the face it started on, so the dragged handle
+   wears the same treatment: :active holds for the whole gesture and ends on
+   release, while data-active-handle alone would outlive it. */
+.msig-threshold-thumb:hover,
+.msig-threshold-slider:active[data-active-handle="m"] .msig-threshold-thumb-m,
+.msig-threshold-slider:active[data-active-handle="n"] .msig-threshold-thumb-n {
+  border-color: var(--selection-accent); background-color: #111; color: var(--selection-accent);
 }
 .msig-threshold-thumb-m { left: var(--msig-m-position); z-index: 2; }
 .msig-threshold-thumb-n { left: var(--msig-n-position); z-index: 3; }
@@ -2219,7 +2302,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .msig-threshold-ticks {
   position: relative; height: 19px; margin: 0 var(--msig-slider-inset);
-  color: var(--faint); font-family: var(--mono); font-size: 11px; line-height: 1; text-align: center;
+  color: var(--muted); font-family: var(--mono); font-size: 12px; line-height: 1; text-align: center;
 }
 .msig-threshold-ticks span {
   position: absolute; top: 0; left: var(--msig-tick-position); width: max-content;
@@ -2229,40 +2312,18 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   content: ""; position: absolute; top: 1px; left: 50%; width: 1px; height: 4px;
   transform: translateX(-50%); background: var(--border);
 }
-.msig-threshold-help { margin: 12px 0 0; text-align: center; }
+.msig-threshold-help { margin: 0 0 var(--space-control); }
 .msig-threshold-control:disabled,
 .msig-threshold-labels:has(.msig-threshold-number:disabled) { opacity: .58; }
 .msig-threshold-control:disabled .msig-threshold-slider { pointer-events: none; cursor: not-allowed; }
 .msig-threshold-lock { text-align: center; }
- .msig-keys { display: grid; gap: var(--space-component); margin-top: var(--space-section); }
+ .msig-keys { display: grid; gap: var(--space-component); margin-top: var(--space-section); padding-top: var(--space-section); border-top: 1px solid var(--border); }
  .msig-keys .field { margin-top: 0; }
  .msig-key-order-status[hidden] { display: none; }
-.msig-key-row {
-  display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px;
-}
+.msig-key-row { display: grid; gap: var(--space-control); }
+.msig-key-title { margin-top: 0; color: var(--accent); font-size: 16px; }
 .msig-key-content { display: grid; min-width: 0; gap: 8px; }
 .msig-cosigner-advanced { padding-top: 8px; }
-.msig-cosigner-advanced[open] { padding-bottom: 2px; }
-.msig-cosigner-advanced .derivation-advanced-fields { margin-top: var(--space-component); }
-.msig-key-rail {
-  display: flex; min-height: 100%; align-items: center; flex-direction: column;
-  color: var(--muted); transform: translateX(-17px);
-}
-.msig-key-rail-line {
-  position: relative; flex: 1 1 0; width: 1px; min-height: 14px;
-  background: var(--border);
-}
-.msig-key-rail-line::before {
-  content: ""; position: absolute; left: 0; width: 10px; height: 1px;
-  background: var(--border);
-}
-.msig-key-rail-line-top::before { top: 0; }
-.msig-key-rail-line-bottom::before { bottom: 0; }
-.msig-key-rail-label {
-  margin: 9px 0; writing-mode: vertical-rl; transform: rotate(180deg);
-  color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
-  white-space: nowrap;
-}
 .msig-key-row-head {
   display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
 }
@@ -2280,11 +2341,14 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .msig-script-order code { font-size: 13px; overflow-wrap: anywhere; }
 @media (max-width: 520px) {
-  .msig-threshold-control { --msig-slider-inset: 12px; padding: 14px 10px 12px; }
-  .msig-threshold-labels { gap: 8px; margin-inline: 10px; }
+  /* A 24px thumb cannot resolve a step this narrow, so the slider, its ticks
+     and the note that tells you to drag it all go; the numbers are the control. */
+  .msig-threshold-control { display: none; }
+  /* With the slider gone the numbers answer to the note above them, so they
+     take the step they would have had as the section's first control. */
+  .msig-threshold-labels { margin-top: var(--space-section); }
   .msig-threshold-labels label { font-size: 11px; }
-  .msig-threshold-number { flex: 0 0 auto; width: 56px !important; min-width: 56px; height: 40px; min-height: 40px !important; font-size: 16px; }
-  .msig-threshold-ticks { font-size: 9px; }
+  .msig-threshold-labels input.msig-threshold-number { flex: 0 0 auto; width: 56px !important; min-width: 56px; height: 40px; min-height: 40px !important; }
 }
 .psbt-grid { margin-top: var(--space-component); }
 .psbt-grid > .field, .psbt-grid > div > .field:first-child { margin-top: 0; }
@@ -2418,8 +2482,16 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-view .wallet-data-actions { gap: var(--space-component) var(--space-control); }
 .key-view .wallet-data-actions > .edge-note { margin-top: 0; }
 @media (min-width: 521px) {
-  .key-view .wallet-data-actions > .btn { flex: 1 1 0; }
+  .key-view .wallet-data-actions > .btn,
+  .msig-data-actions > .btn { flex: 1 1 0; }
 }
+/* The multisig footer keeps the same rhythm as the key view's. */
+.msig-data-actions { gap: var(--space-component) var(--space-control); }
+.msig-data-actions > .edge-note { flex: 1 1 100%; margin-top: 0; }
+/* Title and its line share one item, so the pair keeps the 4px the label
+   convention gives it rather than the footer's row gap pushing them apart. */
+.msig-downloads-head { flex: 1 1 100%; }
+.msig-downloads-head > .label { margin-top: 0; }
 .wallet-dat-birthday { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; flex-wrap: wrap; }
 /* The birthday select's longest option is wider than a narrow phone layout;
    let it shrink and clip — the full wording is in the help line below. */
@@ -2438,6 +2510,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   background: color-mix(in oklab, var(--warn) 6%, var(--bg));
 }
 .wallet-result-messages h3 { margin: 0 0 8px; color: var(--notice-title, inherit); }
+/* The multisig note leads the groups below it, whose first rule would
+   otherwise sit tight against it. Scoped to that card so the key views'
+   notes keep their own spacing. */
+.account-result-card > .wallet-result-messages { margin-bottom: var(--space-component); }
 /* A warning that guards funds rather than informs: square, edged and titled
    in the alert red. The notice supplies only these three values. */
 .wallet-result-messages.is-danger { --notice-edge: var(--danger-bright); --notice-title: var(--danger-bright); }
@@ -2448,6 +2524,13 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .wallet-data-fields > :first-child { margin-top: 0; }
 .wallet-data-fields > :last-child { margin-bottom: 0; }
 .wallet-data-subtitle { margin: 20px 0 6px; color: var(--fg); font-family: var(--sans); font-size: 14px; font-weight: 700; }
+/* The result flows straight into the tool card, the way the key view does:
+   no second edge inside the first. It keeps only the seam below the summary
+   that the card it replaced used to supply. */
+.account-result-card { margin-top: var(--space-component); }
+/* The groups close on a rule the way the key view's do, where .key-groups
+   supplies it; here they are direct children, so the last one carries it. */
+.account-result-card > .key-group:last-of-type { border-bottom: 1px solid var(--border); }
 .account-result-section { margin-top: 24px; }
 .account-result-section > .wallet-data-section-head { margin-bottom: 16px; }
 /* A note in the flow with a coloured left edge: red in a group holding data
@@ -2463,18 +2546,23 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .edge-note.is-private { --edge-note-color: var(--danger-bright); }
 .edge-note.is-public { --edge-note-color: var(--ok-bright); }
 .edge-note.is-info { --edge-note-color: var(--accent); }
+.edge-note.is-muted { --edge-note-color: var(--muted); }
 /* Help text wearing the note pattern hands its colour to the edge, the way
    every other note does, rather than staying the muted grey of a bare note. */
 .field-note.edge-note { color: var(--fg); }
 /* The derivation estimate keeps the larger gap that ties it to the section
    above it rather than to the button below. */
-#address-estimate.edge-note { margin-top: var(--space-intro); }
+.derivation-estimate.edge-note { margin-top: var(--space-intro); }
 /* A note with a title, like the Safety notes list, sets the title the way the
    other notes set their bold lead: body text, not a display heading. */
 /* A tool intro titles the page rather than raising an alarm, so it keeps the
    plain lettering while warning notes take their edge colour. */
 .tool-intro.edge-note > :is(h2, h3) { color: var(--fg); }
 .edge-note > :is(h2, h3) { margin: 0 0 var(--space-control); font: inherit; font-size: 16px; font-weight: 600; letter-spacing: normal; color: var(--edge-note-color, inherit); }
+/* Paragraphs inside a note sit on the note's padding, not on their own
+   default margins; only the gap between them is stated. */
+.edge-note > p { margin: 0; }
+.edge-note > p + p { margin-top: var(--space-control); }
 .edge-note ul { display: grid; gap: var(--space-control); margin: 0; padding-left: 20px; }
 .edge-note li { font-size: inherit; }
 .edge-note li::marker { color: var(--muted); }
@@ -2640,6 +2728,12 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    costs less than dropping an item. The controls close up by 2px here too, the
    network picker having taken a fourth slot in the row. */
 @media (max-width: 400px) {
+  /* Two frames of side padding plus the page gutter is what squeezes a small
+     phone, so all three give most of it back to the content. This block has
+     to stay after the 719px one, which sets the gutter to 12px at the same
+     specificity. */
+  .wrap { padding-left: 10px; padding-right: 10px; }
+  .workspace-panel { padding: 20px 10px; }
   .site-title { font-size: 17px; }
   .download-controls { gap: 4px; }
 }

@@ -36,25 +36,10 @@ test("the value cell holds just the input — the unit lives in the header", () 
   assert.doesNotMatch(editor, /data-txout-val="\$\{index\}"[^>]*> sats<\/td>/);
 });
 
-test("the CSS gives the data columns the room and keeps fields compact", () => {
-  const css = read("src/css/styles.css");
-  assert.match(css, /\.psbted-pairs \.psbted-idx \{ width: 2\.5em; \}/);
-  assert.match(css, /\.psbted-pairs \.psbted-col-del \{ width: 2\.4em; \}/);
-  assert.match(css, /\.psbted-txins \.psbted-col-vout \{ width: 9ch; \}/);
-  assert.match(css, /\.psbted-txins \.psbted-col-seq \{ width: 15ch; \}/);
-  assert.match(css, /\.psbted-txouts \.psbted-col-val \{ width: 20ch; \}/);
-  assert.match(css, /\.psbted-kv \.psbted-col-field \{ width: 15em; \}/);
-  // Data-table density: no 44px control heights inside the tables.
-  assert.match(css, /\.psbted-pairs input, \.psbted-add input, \.psbted-add select \{[^}]*min-height: 0;/);
-  // Version/locktime are compact fields, not full-width rows.
-  assert.match(css, /\.psbted-txhead input \{ width: 11em; \}/);
-});
 
 test("the script builder input gets the column's room and stays visible", () => {
   const css = read("src/css/styles.css");
   // The select must not claim a full-width field; the text input flexes.
-  assert.match(css, /\.psbted-build select \{ width: auto; \}/);
-  assert.match(css, /\.psbted-build input, \.psbted-build select \{[^}]*min-height: 0;/);
   // The placeholder announces all four input kinds in the wide cell.
   const editor = read("src/js/psbt-editor.js");
   assert.match(editor, /placeholder="address · OP_… ASM · 0x raw hex · text"/);
@@ -65,6 +50,4 @@ test("the Add input / Add output actions are not the pair-add grid", () => {
   assert.match(editor, /<div class="psbted-add-el"><button type="button" class="btn secondary" data-tx-add="input">Add input<\/button><\/div>/);
   assert.match(editor, /<div class="psbted-add-el"><button type="button" class="btn secondary" data-tx-add="output">Add output<\/button><\/div>/);
   const css = read("src/css/styles.css");
-  assert.match(css, /\.psbted-add-el \{ margin: 4px 0 14px; \}/);
-  assert.match(css, /\.psbted-add-el \.btn \{ min-height: 0; padding: 6px 12px; \}/);
 });

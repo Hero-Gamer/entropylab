@@ -84,7 +84,7 @@
           <p class="key-summary-meta" id="key-summary-script"></p>
           <p class="key-summary-meta key-summary-path" id="key-summary-path"></p>
         </div>
-        <button class="btn secondary" id="key-edit-inputs" type="button">Edit input</button>
+        <button class="btn secondary" id="key-edit-inputs" type="button">Edit Input</button>
       </div>
       <div class="key-lab" id="key-lab">
       <div class="global-sync-host" id="global-sync-host"></div>
@@ -93,7 +93,7 @@
         <div class="seed-length-select">
           <select id="seed-length-select" aria-labelledby="seed-length-label"><option value="12">12 words</option><option value="15">15 words</option><option value="18">18 words</option><option value="21">21 words</option><option value="24" selected="selected">24 words</option></select>
         </div>
-        <p class="field-note edge-note is-public" id="seed-length-help">24 words use 256 bits of BIP39 entropy.</p>
+        <p class="field-note edge-note is-muted" id="seed-length-help">24 words use 256 bits of BIP39 entropy.</p>
       </section>
       <div id="form" class="key-form">
       <p class="label">Dice roll options</p>
@@ -201,7 +201,7 @@ words, pick one of the checksum words.</span></span>
           </div>
         </details>
       </div>
-      <p class="field-note address-estimate derivation-estimate edge-note is-public" id="address-estimate" role="status">Measuring this device…</p>
+      <p class="field-note address-estimate derivation-estimate edge-note is-muted" id="address-estimate" role="status">Measuring this device…</p>
       <div class="derive-progress" id="derive-progress" role="progressbar" aria-label="Key derivation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete" hidden><span class="derive-progress-track"><span class="derive-progress-bar"></span></span><span class="derive-progress-label">0%</span></div>
       <div class="row key-action-row current-item-actions tool-actions">
         <button class="btn primary" id="go" disabled aria-disabled="true">Derive Key</button>
@@ -376,7 +376,7 @@ words, pick one of the checksum words.</span></span>
           <span class="field-note" id="bip85-pwdlen-help">Base64: 20–86. Base85: 10–80.</span>
         </label>
       </div>
-      <p class="edge-note is-public bip85-path-row">Path <code id="bip85-path">m/83696968'/39'/0'/24'/0'</code></p>
+      <p class="edge-note is-muted bip85-path-row">Path <code id="bip85-path">m/83696968'/39'/0'/24'/0'</code></p>
       <p class="err" id="bip85-error" role="alert"></p>
       <div class="row bip85-actions current-item-actions tool-actions">
         <button class="btn primary" id="bip85-go" type="button" disabled aria-disabled="true">Derive Child Key</button>
@@ -387,7 +387,7 @@ words, pick one of the checksum words.</span></span>
     </section>
       <div class="tool-intro edge-note is-info" id="msig-tool-intro" hidden>
         <h2>Build a watch-only multisig</h2>
-        <p class="muted tool-intro-note">Paste each co-signer’s xpub. You can receive to the addresses. Spending still needs the required signatures. No private keys required.</p>
+        <p class="muted tool-intro-note">You supply individual co-signer xpubs, choose from keys entered in the Key Station, or paste in an existing multisig wallet descriptor. Verify the derived addresses, or any other info needed to setup a watch-only multisig wallet.</p>
       </div>
       <section class="key-manager no-print" id="msig-manager" hidden>
       <div class="key-tab-strip"><div class="key-tabs" id="msig-tabs" role="tablist" aria-label="Multisigs"></div><div class="add-item-control"><button class="add-key" id="add-msig" type="button" aria-label="Open MS Station to derive another multisig" aria-describedby="add-msig-tooltip" disabled>+</button><span class="add-item-tooltip" id="add-msig-tooltip" role="tooltip">Open MS Station</span></div><div class="add-item-control"><button class="add-key remove-key" id="delete-msig" type="button" aria-label="Delete current multisig" aria-describedby="delete-msig-tooltip" disabled>−</button><span class="add-item-tooltip" id="delete-msig-tooltip" role="tooltip">Delete this multisig</span></div></div>
@@ -397,63 +397,70 @@ words, pick one of the checksum words.</span></span>
         <div class="key-summary-text">
           <code class="key-summary-fingerprint" id="msig-summary-policy"></code>
           <p class="key-summary-meta" id="msig-summary-script"></p>
-          <p class="key-summary-meta" id="msig-summary-network"></p>
+          <p class="key-summary-meta key-summary-path" id="msig-summary-path"></p>
+          <div class="msig-summary-cosigners" id="msig-summary-cosigners" hidden></div>
         </div>
-        <button class="btn secondary" id="msig-edit-inputs" type="button">Edit input</button>
+        <button class="btn secondary" id="msig-edit-inputs" type="button">Edit Input</button>
       </div>
       <div class="msig-lab" id="msig-lab">
-      <details class="msig-import" id="msig-import">
-        <summary>Import a multisig wallet descriptor</summary>
-        <label class="field"><span>Multisig output descriptor</span>
+      <details class="msig-import" id="msig-import" open>
+        <summary>Import existing multisig wallet</summary>
+                <p class="field-note edge-note is-public" id="msig-descriptor-help">Input a wallet-exported multisig descriptor — the quorum, script type, key order, and co-signer xpubs will be filled in below. Only accepts watch-only public keys; a descriptor carrying private keys will be refused.</p>
+        <label class="field"><span class="muted label-value">Paste wallet descriptor here</span>
           <textarea id="msig-descriptor" placeholder="wsh(sortedmulti(2,[fingerprint/48h/0h/0h/2h]Zpub…/0/*, …))" autocomplete="off" spellcheck="false" aria-describedby="msig-descriptor-help"></textarea>
-          <span class="field-note" id="msig-descriptor-help">Split a wallet-exported multisig descriptor into one co-signer field per key — the quorum, script type, and key order fill in too. Watch-only public keys only; a descriptor carrying private keys is refused.</span>
         </label>
-        <button class="btn secondary" id="msig-descriptor-import" type="button" disabled aria-disabled="true">Import descriptor</button>
+        <button class="btn secondary" id="msig-descriptor-import" type="button" disabled aria-disabled="true">Import Descriptor</button>
         <p class="hint" id="msig-descriptor-status" role="status" hidden></p>
       </details>
-      <div class="msig-threshold-labels">
-        <label for="msig-m-number"><span>Signatures needed to spend (m)</span><input class="msig-threshold-number" id="msig-m-number" type="number" min="1" max="15" step="1" value="2" inputmode="numeric" aria-describedby="msig-threshold-help"></label>
-        <label for="msig-n-number"><span>Total signing keys (n)</span><input class="msig-threshold-number" id="msig-n-number" type="number" min="1" max="15" step="1" value="3" inputmode="numeric" aria-describedby="msig-threshold-help"></label>
-      </div>
+      <p class="label">Quorum</p>
+      <p class="field-note msig-threshold-help" id="msig-threshold-help">This will be updated for you if you import an existing multisig above, or you can configure a new multisig directly below.</p>
+      <p class="edge-note is-public" data-i18n-rich>Multisig requires a quorum of <strong><span class="mono">m</span></strong> signatures of <strong><span class="mono">n</span></strong> total signing keys to spend.</p>
       <fieldset class="msig-threshold-control" id="msig-threshold-control">
         <legend class="sr-only">Multisig signature threshold</legend>
         <div class="msig-threshold-slider" id="msig-threshold-slider" style="--msig-m-position:12.5%;--msig-n-position:25%" data-slider-max="9">
           <div class="msig-threshold-track" aria-hidden="true"><span></span></div>
-          <span class="msig-threshold-thumb msig-threshold-thumb-m" aria-hidden="true"></span>
-          <span class="msig-threshold-thumb msig-threshold-thumb-n" aria-hidden="true"></span>
+          <span class="msig-threshold-thumb msig-threshold-thumb-m" aria-hidden="true">m</span>
+          <span class="msig-threshold-thumb msig-threshold-thumb-n" aria-hidden="true">n</span>
           <input class="msig-threshold-range" id="msig-m" type="range" min="1" max="15" step="1" value="2" aria-label="Signatures needed to spend (m)" aria-describedby="msig-threshold-help">
           <input class="msig-threshold-range" id="msig-n" type="range" min="1" max="15" step="1" value="3" aria-label="Total signing keys (n)" aria-describedby="msig-threshold-help">
         </div>
         <div class="msig-threshold-ticks" id="msig-threshold-ticks" aria-hidden="true"><span style="--msig-tick-position:0%">1</span><span style="--msig-tick-position:12.5%">2</span><span style="--msig-tick-position:25%">3</span><span style="--msig-tick-position:37.5%">4</span><span style="--msig-tick-position:50%">5</span><span style="--msig-tick-position:62.5%">6</span><span style="--msig-tick-position:75%">7</span><span style="--msig-tick-position:87.5%">8</span><span style="--msig-tick-position:100%">9</span></div>
-        <p class="field-note msig-threshold-help" id="msig-threshold-help">Enter values, drag either handle, or use the arrow keys. Editing one value past the other moves both.</p>
       </fieldset>
+      <div class="msig-threshold-labels">
+        <label for="msig-m-number"><span class="label">m</span><input class="msig-threshold-number" id="msig-m-number" type="number" min="1" max="15" step="1" value="2" inputmode="numeric" aria-describedby="msig-threshold-help"><span class="field-note">Signatures needed to spend</span></label>
+        <label for="msig-n-number"><span class="label">n</span><input class="msig-threshold-number" id="msig-n-number" type="number" min="1" max="15" step="1" value="3" inputmode="numeric" aria-describedby="msig-threshold-help"><span class="field-note">Total signing keys</span></label>
+      </div>
       <p class="hint ok msig-threshold-lock" id="msig-threshold-lock" role="status" hidden></p>
       <div class="key-settings msig-policy-settings">
-        <div class="key-settings-row">
-          <label class="field msig-script-type-field"><span>Script type</span>
-            <select id="msig-script-type" aria-describedby="msig-script-warning"><option value="p2sh">Legacy</option><option value="p2sh-p2wsh">Nested SegWit</option><option value="p2wsh" selected>Native SegWit</option><option value="p2tr">Taproot</option><option value="mixed" disabled data-custom-select-placeholder="true">Mixed · incompatible keys</option></select>
-            <span class="field-note msig-script-warning" id="msig-script-warning" role="status" hidden></span>
-          </label>
-          <label class="field"><span>Key order</span>
-            <select id="msig-key-order" aria-describedby="msig-key-order-help">
-              <option value="sorted" selected>Sorted · sortedmulti</option>
-              <option value="listed">As listed · multi</option>
-            </select>
-            <span class="field-note" id="msig-key-order-help">Sorted is the default. Addresses stay the same no matter which co-signer you paste first. As listed uses multi: the order of the fields is part of the wallet. Taproot uses sortedmulti_a or multi_a.</span>
-          </label>
+        <div class="field msig-script-type-field">
+          <label id="msig-script-type-label">Script type</label>
+          <div class="row segmented-control is-wide" id="msig-script-tabs" role="group" aria-labelledby="msig-script-type-label" aria-describedby="msig-script-warning">
+            <button type="button" class="tab" data-msig-script="p2sh" aria-pressed="false">Legacy</button>
+            <button type="button" class="tab" data-msig-script="p2sh-p2wsh" aria-pressed="false"><span class="script-label-full">Nested SegWit</span><span class="script-label-short">Nested SW</span></button>
+            <button type="button" class="tab active" data-msig-script="p2wsh" aria-pressed="true"><span class="script-label-full">Native SegWit</span><span class="script-label-short">Native SW</span></button>
+            <button type="button" class="tab" data-msig-script="p2tr" aria-pressed="false">Taproot</button>
+          </div>
+          <span class="field-note msig-script-warning" id="msig-script-warning" role="status" hidden></span>
         </div>
-        <label class="choice msig-legacy-account-toggle" id="msig-legacy-account-toggle" hidden>
-          <input id="msig-legacy-bip87" type="checkbox" aria-describedby="msig-legacy-bip87-help">
-          <span><strong>Use standardized BIP87 accounts</strong><span class="desc" id="msig-legacy-bip87-help" data-i18n-rich>Uses <span class="mono">m/87'/coin'/account'</span> with this Legacy P2SH descriptor. BIP87 account keys are script-agnostic. Leave unchecked for default BIP45 without accounts.</span></span>
+        <label class="field"><span>Key order</span>
+          <span class="field-note" id="msig-key-order-help">Sorted is the default. Addresses stay the same no matter which co-signer you paste first. As listed uses multi: the order of the fields is part of the wallet. Taproot uses sortedmulti_a or multi_a.</span>
+          <select id="msig-key-order" aria-describedby="msig-key-order-help">
+            <option value="sorted" selected>Sorted · sortedmulti</option>
+            <option value="listed">As listed · multi</option>
+          </select>
         </label>
+        <div class="switch-row msig-legacy-account-toggle" id="msig-legacy-account-toggle" hidden>
+          <label class="switch-toggle"><input id="msig-legacy-bip87" type="checkbox" aria-describedby="msig-legacy-bip87-help"><span class="label">Use standardized BIP87 accounts</span></label>
+          <p class="switch-note" id="msig-legacy-bip87-help" data-i18n-rich>Uses <span class="mono">m/87'/coin'/account'</span> with this Legacy P2SH descriptor. BIP87 account keys are script-agnostic. Leave unchecked for default BIP45 without accounts.</p>
+        </div>
       </div>
-      <p class="hint" id="msig-key-order-status" hidden></p>
-      <label class="choice msig-key-reuse-toggle">
-        <input id="msig-reuse-session-keys" type="checkbox">
-        <span><strong>Allow key reuse</strong><span class="desc">Keep selected Key Station keys available for more than one co-signer input. Reused keys need different derivation paths.</span></span>
-      </label>
+      <p class="edge-note is-public" id="msig-key-order-status" hidden></p>
+      <div class="switch-row msig-key-reuse-toggle">
+        <label class="switch-toggle"><input id="msig-reuse-session-keys" type="checkbox" aria-describedby="msig-reuse-session-keys-note"><span class="label">Allow key reuse</span></label>
+        <p class="switch-note" id="msig-reuse-session-keys-note">Keep selected Key Station keys available for more than one co-signer input. Reused keys need different derivation paths.</p>
+      </div>
       <div id="msig-keys" class="msig-keys"><label class="field">Co-signer 1 multisig extended public key<textarea id="msig-x-0" placeholder="xpub…" autocomplete="off" spellcheck="false"></textarea></label><label class="field">Co-signer 2 multisig extended public key<textarea id="msig-x-1" placeholder="xpub…" autocomplete="off" spellcheck="false"></textarea></label><label class="field">Co-signer 3 multisig extended public key<textarea id="msig-x-2" placeholder="xpub…" autocomplete="off" spellcheck="false"></textarea></label></div>
-      <p class="hint" id="msig-hint"></p>
+      <p class="edge-note is-public" id="msig-hint"></p>
       <p class="hint msig-purpose-warning" id="msig-purpose-warning" role="status" hidden></p>
       <p class="hint msig-account-warning" id="msig-account-warning" role="status" hidden></p>
       <div class="key-settings msig-output-settings">
@@ -465,28 +472,33 @@ words, pick one of the checksum words.</span></span>
           <input id="msig-account" type="text" value="" disabled><input id="msig-account-harden" type="checkbox" checked>
           <span id="msig-purpose-help"></span><span id="msig-network-help"></span><span id="msig-account-help"></span>
         </div>
-        <div class="key-settings-row address-branch-settings">
-          <div class="field"><div class="field-head"><label for="msig-branch-start">Starting address branch index</label><label class="derivation-harden"><input id="msig-branch-start-harden" type="checkbox"><span>Harden</span></label></div>
-            <div class="derivation-index-control"><span class="derivation-index-value"><input id="msig-branch-start" type="number" min="0" max="2147483647" step="1" inputmode="numeric" value="0" aria-describedby="msig-branch-start-help"><span class="derivation-index-prime" aria-hidden="true">'</span></span></div>
-            <span class="field-note" id="msig-branch-start-help">First address branch to derive · 0 is Receive · 1 is Change · Unhardened · 0 to 2,147,483,647</span>
+        <details class="derivation-advanced msig-output-advanced" id="msig-output-advanced">
+          <summary>Advanced multisig entry</summary>
+          <div class="derivation-advanced-fields">
+    <div class="key-settings-row address-branch-settings">
+              <div class="field"><div class="field-head"><label for="msig-branch-start">Starting address branch index</label><label class="derivation-harden"><input id="msig-branch-start-harden" type="checkbox"><span>Harden</span></label></div>
+                <div class="derivation-index-control"><span class="derivation-index-value"><input id="msig-branch-start" type="number" min="0" max="2147483647" step="1" inputmode="numeric" value="0" aria-describedby="msig-branch-start-help"><span class="derivation-index-prime" aria-hidden="true">'</span></span></div>
+                <span class="field-note" id="msig-branch-start-help">First address branch to derive · 0 is Receive · 1 is Change · Unhardened · 0 to 2,147,483,647</span>
+              </div>
+              <label class="field">Address branch range
+                <input id="msig-branch-range" type="number" min="1" max="2" step="1" inputmode="numeric" value="2" aria-describedby="msig-branch-range-help">
+                <span class="field-note" id="msig-branch-range-help">Derives Receive and Change branches · Max 2</span>
+              </label>
+            </div>
+            <div class="key-settings-row address-range-settings">
+              <div class="field"><div class="field-head"><label for="msig-address-start">Starting address index</label><label class="derivation-harden"><input id="msig-address-start-harden" type="checkbox"><span>Harden</span></label></div>
+                <div class="derivation-index-control"><span class="derivation-index-value"><input id="msig-address-start" type="number" min="0" max="2147483647" step="1" inputmode="numeric" value="0" aria-describedby="msig-address-start-help"><span class="derivation-index-prime" aria-hidden="true">'</span></span></div>
+                <span class="field-note" id="msig-address-start-help">First receive and change index to derive · Unhardened · 0 to 2,147,483,647</span>
+              </div>
+              <label class="field">Address range
+                <input id="msig-address-range" type="number" min="1" max="10000" step="1" inputmode="numeric" value="10" aria-describedby="msig-address-range-help">
+                <span class="field-note" id="msig-address-range-help">Derives 10 receive and 10 change addresses · Max 10,000</span>
+              </label>
+            </div>
           </div>
-          <label class="field">Address branch range
-            <input id="msig-branch-range" type="number" min="1" max="2" step="1" inputmode="numeric" value="2" aria-describedby="msig-branch-range-help">
-            <span class="field-note" id="msig-branch-range-help">Derives Receive and Change branches · Max 2</span>
-          </label>
-        </div>
-        <div class="key-settings-row address-range-settings">
-          <div class="field"><div class="field-head"><label for="msig-address-start">Starting address index</label><label class="derivation-harden"><input id="msig-address-start-harden" type="checkbox"><span>Harden</span></label></div>
-            <div class="derivation-index-control"><span class="derivation-index-value"><input id="msig-address-start" type="number" min="0" max="2147483647" step="1" inputmode="numeric" value="0" aria-describedby="msig-address-start-help"><span class="derivation-index-prime" aria-hidden="true">'</span></span></div>
-            <span class="field-note" id="msig-address-start-help">First receive and change index to derive · Unhardened · 0 to 2,147,483,647</span>
-          </div>
-          <label class="field">Address range
-            <input id="msig-address-range" type="number" min="1" max="10000" step="1" inputmode="numeric" value="10" aria-describedby="msig-address-range-help">
-            <span class="field-note" id="msig-address-range-help">Derives 10 receive and 10 change addresses · Max 10,000</span>
-          </label>
-        </div>
+        </details>
       </div>
-      <p class="field-note address-estimate derivation-estimate" id="msig-address-estimate" role="status">Measuring this device…</p>
+      <p class="field-note address-estimate derivation-estimate edge-note is-muted" id="msig-address-estimate" role="status">Measuring this device…</p>
       <div class="row current-item-actions tool-actions">
         <button class="btn primary" id="msig-go" type="button" aria-describedby="msig-script-warning" disabled aria-disabled="true">Derive Multisig</button>
         <div class="derive-progress" id="msig-derive-progress" role="progressbar" aria-label="Multisig derivation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete" hidden><span class="derive-progress-track"><span class="derive-progress-bar"></span></span><span class="derive-progress-label">0%</span></div>

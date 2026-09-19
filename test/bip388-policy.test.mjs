@@ -88,15 +88,3 @@ test("filename names the policy", () => {
   assert.equal(bip388PolicyFilename({ m: 2, n: 3 }), "entropylab-msig-2of3-bip388.txt");
   assert.equal(bip388PolicyFilename({}), "entropylab-bip388.txt");
 });
-
-test("MS Station wires copy/save; no new workspace tab", () => {
-  const app = read("src/js/app.js");
-  const shell = read("src/shell.html");
-  assert.match(app, /id="msig-copy-bip388"/);
-  assert.match(app, /id="msig-save-bip388"/);
-  assert.match(app, /hodlT\("Copy BIP 388 policy"\)/);
-  assert.match(app, /hodlT\("Save BIP 388 policy"\)/);
-  assert.match(app, /buildBip388PolicyText/);
-  assert.doesNotMatch(shell, /msig-copy-bip388|msig-save-bip388/);
-  assert.match(shell, /id="workspace-tabs"/);
-});

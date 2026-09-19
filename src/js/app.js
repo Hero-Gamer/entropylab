@@ -792,21 +792,60 @@ function hodlWatchOnlyMultipathDescriptor(receiveDescriptor, branches = [0, 1]) 
 function hodlDescriptorQrSvg(payload) {
   return hodlUqrRenderSvg(payload, { ecc: "M", border: 4, pixelSize: 4, blackColor: "#111111", whiteColor: "#ffffff" });
 }
+// A descriptor copies by clicking its text, confirming beside its QR button
+// rather than replacing anything: the value stays readable while it confirms.
+function hodlInitDescriptorCopy() {
+  document.addEventListener("click", (event) => {
+    let button = event.target.closest?.("[data-copy-field]");
+    if (!button) return;
+    let value = button.textContent.trim(),
+      note = button.parentElement?.querySelector(":scope > .copy-field-status") || button.previousElementSibling?.querySelector(".copy-field-status");
+    if (!value || value === "\u2014") return;
+    let done = () => {
+      if (!note) return;
+      note.innerHTML = `${hodlCopiedIconMarkup()}${note.classList.contains("is-icon-only") ? "" : hodlT("Copied")}`;
+      clearTimeout(note.hodlCopiedTimer);
+      note.hodlCopiedTimer = setTimeout(() => {
+        if (note.isConnected) note.textContent = "";
+      }, 1600);
+    };
+    let fallback = () => {
+      let field = document.createElement("textarea");
+      field.value = value;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.left = "-9999px";
+      document.body.append(field);
+      field.select();
+      try {
+        if (document.execCommand("copy")) done();
+      } finally {
+        field.remove();
+      }
+    };
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(value).then(done).catch(fallback);
+    else fallback();
+  });
+}
+// A long value the user is meant to move somewhere else — a descriptor, an
+// extended key — reads as one row: the label carries its QR button and the
+// copy confirmation, and the value itself is the copy target.
+function hodlCopyFieldHtml(labelText, value, labelClass = "label") {
+  let qr = value && value.length <= 1e3 ? hodlAddressQrButton(value, labelText) : "";
+  return `<p class="${labelClass} copy-field-label">${hodlEscapeHtml(labelText)}${qr}<span class="copy-status copy-field-status" aria-live="polite"></span></p>` +
+    `<button type="button" class="mono copy-field-value" data-copy-field title="${hodlTAttr("Copy")}">${hodlEscapeHtml(value ?? "\u2014")}</button>`;
+}
 function hodlWatchOnlyDescriptorExport(receiveDescriptor, changeDescriptor, addressBranches = null, { labelClass = "label", collapsible = true } = {}) {
   let branches = (addressBranches?.length ? addressBranches : [
     { branch: 0, label: "Receive", publicDescriptor: receiveDescriptor },
     { branch: 1, label: "Change", publicDescriptor: changeDescriptor }
-  ]).filter((entry) => entry.publicDescriptor), first = branches[0], multipath = first ? branches.length === 1 ? first.publicDescriptor : hodlWatchOnlyMultipathDescriptor(first.publicDescriptor, branches.map((entry) => entry.branch)) : "", qr = "";
-  if (multipath) {
-    try {
-      if (multipath.length > 1e3) throw new Error("Descriptor too long for a static QR.");
-      qr = `<div class="watch-only-qr"><div class="qr qr-descriptor" aria-label="${hodlTAttr("Watch-only wallet descriptor QR code")}">${hodlDescriptorQrSvg(multipath)}</div><p class="muted">${hodlT("Import this output descriptor into Sparrow or another wallet.")}</p></div>`;
-    } catch (error) {
-      qr = `<p class="muted">${hodlEscapeHtml(error.message || "Descriptor too long for a static QR.")} Copy the text instead, or import the selected branch descriptors separately.</p>`;
-    }
-  }
-  let details = branches.map((entry) => hodlPublicFieldHtml(`Watch-only ${hodlAddressBranchLabel(entry.branch).toLowerCase()} descriptor`, entry.publicDescriptor, void 0, labelClass)).join("");
-  return `${hodlPublicFieldHtml("Watch-only wallet descriptor", multipath || "\u2014", void 0, labelClass)}${qr}${collapsible ? `<details class="wallet-advanced"><summary>Address branch descriptors</summary>${details}</details>` : details}`;
+  ]).filter((entry) => entry.publicDescriptor), first = branches[0], multipath = first ? branches.length === 1 ? first.publicDescriptor : hodlWatchOnlyMultipathDescriptor(first.publicDescriptor, branches.map((entry) => entry.branch)) : "";
+  // Each descriptor is titled with a QR button beside it, the same control an
+  // address row carries: the code opens in the shared overlay instead of one
+  // being drawn inline. A payload too long to encode simply offers no button.
+  let field = (label, value) => hodlCopyFieldHtml(hodlTText(label), value, labelClass);
+  let details = branches.map((entry) => field(`Watch-only ${hodlAddressBranchLabel(entry.branch).toLowerCase()} descriptor`, entry.publicDescriptor)).join("");
+  return `${field("Watch-only wallet descriptor", multipath || "\u2014")}${collapsible ? `<details class="wallet-advanced"><summary>Address branch descriptors</summary>${details}</details>` : details}`;
 }
 function hodlAccountResult(node, definition, network, count, options = {}) {
   let rawPublic = node.publicExtendedKey, rawPrivate = node.privateKey ? node.privateExtendedKey : null, family = hodlAccountExportFamily(definition, options), keyVersions = hodlExtendedKeyVersions[hodlNetworkFamily(network)], primaryConfig = keyVersions[family] || keyVersions.x, genericConfig = keyVersions.x;
@@ -1049,7 +1088,7 @@ function hodlAddressBranchVirtualConfigs(branches, includeWif, prefix) {
 function hodlAccountAdvancedExports(account, includePrivate = false, labelClass = "label") {
   if (!account.hasAlternateExport) return "";
   let privateExport = includePrivate && account.genericPrivate ? hodlPrivateFieldHtml("Generic {name} for descriptor compatibility", account.genericPrivate, { name: account.genericPrivateLabel }, labelClass) : "";
-  let publicExport = !includePrivate && account.genericPublic ? hodlPublicFieldHtml("Generic {name} for descriptor compatibility", account.genericPublic, { name: account.genericPublicLabel }, labelClass) : "";
+  let publicExport = !includePrivate && account.genericPublic ? hodlPublicFieldHtml("Generic {name} for descriptor compatibility", account.genericPublic, { name: account.genericPublicLabel }, labelClass, true) : "";
   if (!privateExport && !publicExport) return "";
   // One more field among the account exports, not a disclosure of its own.
   return privateExport || publicExport;
@@ -1072,7 +1111,7 @@ function hodlImportedCoreRecoveryExport(wallet, account) {
 }
 function hodlRenderMultisigCosignerExport(exports, accountId) {
   let items = Array.isArray(exports) ? exports.filter((candidate) => candidate.accountId === accountId) : [];
-  return items.map((item) => hodlPublicFieldHtml("Multisig co-signer {prefix} · {label}", item.value, { prefix: item.prefix, label: item.label })).join("");
+  return items.map((item) => hodlPublicFieldHtml("Multisig co-signer {prefix} · {label}", item.value, { prefix: item.prefix, label: item.label }, "label", true)).join("");
 }
 function hodlNormalizeAddressCheck(value){
   let text=String(value??"").trim();
@@ -1239,7 +1278,7 @@ function hodlAddressIndexHtml(index) {
   return Number.isSafeInteger(index) && index >= 0 ? String(index) : hodlEscapeHtml(index);
 }
 function hodlAddressTableRows(rows, includeWif = false, rowOffset = 0) {
-  return rows.map((row, offset) => `<tr aria-rowindex="${rowOffset + offset + 2}"><th scope="row">${hodlAddressIndexHtml(row.index)}</th><td>${hodlEscapeHtml(hodlDisplayDerivationPath(row.path))}</td><td><span class="addr-text">${hodlEscapeHtml(row.address)}</span>${hodlAddressQrButton(row.address, hodlT("Address #{n}", { n: row.index }))}</td>${includeWif ? `<td>${hodlPrivateValue(row.wif, "mono table-private-field-value")}</td>` : ""}</tr>`).join("");
+  return rows.map((row, offset) => `<tr aria-rowindex="${rowOffset + offset + 2}"><th scope="row">${hodlAddressIndexHtml(row.index)}</th><td>${hodlEscapeHtml(hodlDisplayDerivationPath(row.path))}</td><td><button type="button" class="addr-text" data-copy-field title="${hodlTAttr("Copy")}">${hodlEscapeHtml(row.address)}</button>${hodlAddressQrButton(row.address, hodlT("Address #{n}", { n: row.index }))}<span class="copy-field-status is-icon-only" aria-live="polite"></span></td>${includeWif ? `<td>${hodlPrivateValue(row.wif, "mono table-private-field-value")}</td>` : ""}</tr>`).join("");
 }
 function hodlAddressVirtualSpacer(height, columns) {
   return height > 0 ? `<tr class="address-virtual-spacer" aria-hidden="true"><td colspan="${columns}" style="height:${height}px"></td></tr>` : "";
@@ -1282,7 +1321,7 @@ function hodlSlip132Fields(account, wallet, isPrivate = false, labelClass = "lab
   let coreLabel = isPrivate ? account.genericPrivateLabel : account.genericPublicLabel;
   let slip = account.hasAlternateExport ? (isPrivate ? account.primaryPrivate : account.primaryPublic) : "";
   let slipLabel = isPrivate ? account.primaryPrivateLabel : account.primaryPublicLabel;
-  let field = isPrivate ? hodlPrivateFieldHtml : hodlPublicFieldHtml, parts = [];
+  let field = isPrivate ? hodlPrivateFieldHtml : (name, value, vars, cls) => hodlPublicFieldHtml(name, value, vars, cls, true), parts = [];
   if (pasted) parts.push(field("As pasted", pasted, void 0, labelClass));
   if (core && core !== pasted) parts.push(field(`Bitcoin Core ${coreLabel}`, core, void 0, labelClass));
   if (slip && slip !== pasted && slip !== core) parts.push(field(`SLIP-132 ${slipLabel}`, slip, void 0, labelClass));
@@ -1325,9 +1364,10 @@ function hodlShowAccount(id) {
 // optional placeholder values); the helper translates with the text view and
 // escapes for its HTML slot. That keeps raw translation calls out of template
 // interpolations and keeps the literals extractable by scripts/i18n-sync.mjs.
-function hodlPublicFieldHtml(label, value, vars, labelClass = "label") {
-  let labelHtml = hodlEscapeHtml(hodlTText(label, vars));
-  return `<p><span class="${labelClass}">${labelHtml}</span><br><span class="mono">${hodlEscapeHtml(value ?? "\u2014")}</span></p>`;
+function hodlPublicFieldHtml(label, value, vars, labelClass = "label", copyable = false) {
+  let text = hodlTText(label, vars);
+  if (copyable) return hodlCopyFieldHtml(text, value, labelClass);
+  return `<p><span class="${labelClass}">${hodlEscapeHtml(text)}</span><br><span class="mono">${hodlEscapeHtml(value ?? "\u2014")}</span></p>`;
 }
 function hodlPrivateValue(value, className = "secret private-field-value") {
   let mask = "************", text = String(value ?? "\u2014");
@@ -1385,6 +1425,16 @@ function hodlWalletMessages(wallet, idPrefix) {
   if (wallet.passphraseUsed) warnings.unshift(hodlNote("A BIP39 passphrase is in use. It creates a different wallet, is not printed in the recovery sheet, and must be preserved separately to recover this wallet."));
   if (!warnings.length && !notes.length) return "";
   let items = [...warnings.map((message) => `<li class="is-warning">${hodlEscapeHtml(hodlFormatNote(message))}</li>`), ...notes.map((message) => `<li>${hodlEscapeHtml(hodlFormatNote(message))}</li>`)].join("");
+  // The multisig result reports that no private material is here, so its notes
+  // wear the green note, named for assistive tech but untitled on screen. The
+  // key views warn about material that is present, and keep the red note titled.
+  // Paragraphs rather than bullets: the standing notes read as one statement,
+  // while a conditional note or a warning still gets its own line instead of
+  // being buried mid-sentence.
+  if (idPrefix === "multisig") {
+    let lines = [...warnings, ...notes].map((message) => `<p>${hodlEscapeHtml(hodlFormatNote(message))}</p>`).join("");
+    return `<section class="edge-note is-public wallet-result-messages" aria-label="${hodlTAttr("Safety notes")}">${lines}</section>`;
+  }
   return `<section class="edge-note is-private wallet-result-messages" aria-labelledby="${idPrefix}-safety-heading"><h3 id="${idPrefix}-safety-heading">Safety notes</h3><ul>${items}</ul></section>`;
 }
 // The privacy bar: one switch for every masked value in the key view, kept in
@@ -1413,6 +1463,32 @@ function hodlPrivacyEyeMarkup(revealed = hodlRevealPrivate) {
 // view opens with every group closed, so the full scope of what it holds reads
 // at a glance.
 var hodlKeyGroupsOpenByKey = new Map();
+// The multisig result groups its sections the way the key view groups a key's:
+// same markup, same summary grammar, open state remembered per multisig so
+// switching tabs does not reopen what was shut. Watch-only data leads, so it
+// is the one a fresh result opens on.
+var hodlMsigGroupsOpenByMsig = new Map();
+function hodlMsigGroupsOpen() {
+  let id = hodlMsigs[hodlActiveMsig]?.id;
+  if (id == null) return new Set(["watch"]);
+  if (!hodlMsigGroupsOpenByMsig.has(id)) hodlMsigGroupsOpenByMsig.set(id, new Set(["watch"]));
+  return hodlMsigGroupsOpenByMsig.get(id);
+}
+function hodlMsigGroupMarkup(id, title, body, className = "") {
+  return `<details class="key-group${className ? ` ${className}` : ""}" data-key-group="${id}"${hodlMsigGroupsOpen().has(id) ? " open" : ""}><summary>${title}</summary><div class="key-group-body">${body}</div></details>`;
+}
+// The toggle event does not bubble, so it is caught on the way down.
+function hodlWatchMsigGroups() {
+  let out = document.getElementById("msig-out");
+  if (!out || out.hodlMsigGroupsWatched) return;
+  out.hodlMsigGroupsWatched = true;
+  out.addEventListener("toggle", (event) => {
+    let group = event.target;
+    if (!group?.dataset?.keyGroup) return;
+    if (group.open) hodlMsigGroupsOpen().add(group.dataset.keyGroup);
+    else hodlMsigGroupsOpen().delete(group.dataset.keyGroup);
+  }, true);
+}
 function hodlKeyGroupsOpen() {
   let id = hodlKeys[hodlActiveKey]?.id;
   if (id == null) return new Set(["receive"]);
@@ -1483,7 +1559,7 @@ function hodlHdWalletData(wallet, accountMarkup = "") {
   let fingerprint = wallet.masterFingerprint ? hodlPublicFieldHtml("Master fingerprint", wallet.masterFingerprint) : "";
   let parentFingerprint = !wallet.masterFingerprint && wallet.parentFingerprint ? hodlPublicFieldHtml("Encoded parent fingerprint (not a master fingerprint)", wallet.parentFingerprint) : "";
   let nodeFingerprint = !wallet.masterFingerprint && wallet.nodeFingerprint ? hodlPublicFieldHtml("Imported key fingerprint (not a master fingerprint)", wallet.nodeFingerprint) : "";
-  let rootPublic = wallet.rootXpub ? hodlPublicFieldHtml("Root {name}", wallet.rootXpub, { name: wallet.rootPublicLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.pubName }) : "";
+  let rootPublic = wallet.rootXpub ? hodlPublicFieldHtml("Root {name}", wallet.rootXpub, { name: wallet.rootPublicLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.pubName }, "label", true) : "";
   let importedPublic = wallet.importedPublicKey ? hodlPublicFieldHtml("Imported {name}", wallet.importedPublicKey, { name: wallet.importedPublicLabel || hodlTText("extended public key") }) : "";
   // The toolbar holds the script type and the privacy bar, and sticks under the
   // header as one piece. Below it: what recovers the wallet, what identifies it,
@@ -1631,14 +1707,16 @@ function hodlMsigCoreImportDescriptorsJson() {
 function hodlMsigCoreImportDescriptorsMarkup() {
   if (!hodlWalletResult || hodlWalletResult.kind !== "msig") return "";
   if (!hodlWalletResult.receiveDescriptor && !hodlWalletResult.changeDescriptor) return "";
-  return `<div class="wallet-data-actions no-print" id="msig-core-importdescriptors">
-    <label class="wallet-dat-birthday">${hodlT("Wallet birthday")} <select data-wallet-dat-birthday aria-describedby="msig-core-importdescriptors-help"><option value="genesis"${hodlWalletDatBirthday === "genesis" ? " selected" : ""}>${hodlT("Recovering keys · scan from genesis")}</option><option value="now"${hodlWalletDatBirthday === "now" ? " selected" : ""}>${hodlT("New keys · created today")}</option></select></label>
-    <button class="btn secondary green save-wallet-dat" id="msig-download-wallet-dat" type="button" aria-describedby="msig-core-importdescriptors-help">${hodlWalletExport.walletDatButtonLabel(false)}</button>
+  // The footer the key view uses: the Downloads title, what the export is, the
+  // birthday titled the way a field is, then the two saves splitting the row.
+  // The ids stay msig’s own, so both views wear the same shape without two
+  // elements answering to one label.
+  return `<div class="wallet-data-actions msig-data-actions no-print" id="msig-core-importdescriptors">
+    <div class="msig-downloads-head"><p class="label">${hodlT("Downloads")}</p><p class="muted label-description">${hodlT("Import the watch-only wallet descriptor into Sparrow or another wallet.")}</p></div>
+    <p class="edge-note is-public" id="msig-core-importdescriptors-help">${hodlT("Online node: createwallet disable_private_keys=true blank=true, then importdescriptors. First getnewaddress must match receive index 0 here.")}</p>
+    <div class="wallet-birthday-field"><p class="label" id="msig-birthday-label">${hodlT("Wallet birthday")}</p><p class="muted label-description wallet-dat-birthday-help" id="msig-birthday-help">${hodlT("Bitcoin Core only auto-scans history back to the birthday. Choose “New keys” only for entropy created right now; recovering older keys with today's birthday can look empty until you run <code>rescanblockchain 0</code> in Bitcoin Core.")}</p><select data-wallet-dat-birthday aria-labelledby="msig-birthday-label" aria-describedby="msig-birthday-help msig-core-importdescriptors-help"><option value="genesis"${hodlWalletDatBirthday === "genesis" ? " selected" : ""}>${hodlT("Recovering keys · scan from genesis")}</option><option value="now"${hodlWalletDatBirthday === "now" ? " selected" : ""}>${hodlT("New keys · created today")}</option></select></div>
+    <button class="btn secondary green" id="msig-save-importdescriptors" type="button">${hodlT("Save Core Watch-only JSON")}</button>
     <button class="btn secondary" id="msig-copy-importdescriptors" type="button">${hodlT("Copy Core importdescriptors")}</button>
-    <button class="btn secondary green" id="msig-save-importdescriptors" type="button">${hodlT("Save Core watch-only JSON")}</button>
-    <button class="btn secondary" id="msig-copy-bip388" type="button">${hodlT("Copy BIP 388 policy")}</button>
-    <button class="btn secondary green" id="msig-save-bip388" type="button">${hodlT("Save BIP 388 policy")}</button>
-    <p class="muted wallet-dat-birthday-help" id="msig-core-importdescriptors-help">${hodlT("Bitcoin Core only auto-scans history back to the birthday. Choose “New keys” only for entropy created right now; recovering older keys with today's birthday can look empty until you run <code>rescanblockchain 0</code> in Bitcoin Core.")} ${hodlT("Put the wallet.dat in a wallets folder and loadwallet; the JSON is for bitcoin-cli importdescriptors. BIP 388 is the wallet policy Ledger and Specter register. No private keys. First getnewaddress must match receive index 0 here.")}</p>
   </div>`;
 }
 function hodlCopyMsigCoreImportDescriptors() {
@@ -6477,11 +6555,13 @@ function hodlRenderMasterFingerprintPreview(revision = hodlMasterFingerprintRevi
     return;
   }
   preview.hidden = false;
-  arrow.hidden = false;
-  passphraseCard.hidden = false;
   let clear = () => {
     hodlSetMasterFingerprintCard(baseCard, base, "", baseImage);
     hodlSetMasterFingerprintCard(passphraseCard, passphraseValue, "", passphraseImage);
+    // Nothing to derive from, so the second card and the arrow that points at
+    // it say nothing rather than standing there greyed out.
+    passphraseCard.hidden = true;
+    arrow.hidden = true;
     arrow.classList.add("is-disabled");
   };
   let mnemonic = hodlFingerprintMnemonic();
@@ -6501,6 +6581,10 @@ function hodlRenderMasterFingerprintPreview(revision = hodlMasterFingerprintRevi
   } catch {
   }
   let available = hodlSetMasterFingerprintCard(passphraseCard, passphraseValue, value, passphraseImage);
+  // The passphrase card appears only once it has a fingerprint to show: until
+  // then the row is the base seed alone, not a pair with half of it empty.
+  passphraseCard.hidden = !available;
+  arrow.hidden = !available;
   arrow.classList.toggle("is-disabled", !available);
 }
 function hodlQueueMasterFingerprintPreview(delay = 90) {
@@ -7136,10 +7220,10 @@ function hodlImportMsigDescriptor() {
   try {
     let imported = hodlParseMsigDescriptor(document.getElementById("msig-descriptor")?.value);
     if (hodlReadMsigXpubs().some((value) => String(value).trim())) throw new Error("Co-signer fields already hold keys. Clear them before importing a descriptor.");
-    let script = document.getElementById("msig-script-type"), keyOrder = document.getElementById("msig-key-order");
-    if (imported.kind && script) {
-      hodlSyncSelect(script, imported.kind);
-      script.dispatchEvent(new Event("change"));
+    let keyOrder = document.getElementById("msig-key-order");
+    if (imported.kind) {
+      hodlSetMsigScript(imported.kind);
+      hodlSetMsigPurpose(hodlStandardMsigPurpose(imported.kind));
     }
     if (keyOrder) {
       hodlSyncSelect(keyOrder, imported.sorted ? "sorted" : "listed");
@@ -7274,18 +7358,10 @@ function hodlSyncMsigDeriveButton() {
   button.title = ready ? "" : reason;
 }
 function hodlUpdateMsigScriptDetection() {
-  let select = document.getElementById("msig-script-type");
-  if (!select) return hodlSummarizeMultisigScriptKinds([]);
+  if (!document.getElementById("msig-script-tabs")) return hodlSummarizeMultisigScriptKinds([]);
   let summary = hodlDetectMsigScriptSummary(), desired = summary.mixed ? "mixed" : summary.kind;
-  if (desired === "mixed") {
-    if (select.value !== "mixed") select.dataset.lastConcrete = select.value;
-    hodlSyncSelect(select, "mixed");
-  } else if (desired) {
-    select.dataset.lastConcrete = desired;
-    hodlSyncSelect(select, desired);
-  } else if (select.value === "mixed") {
-    hodlSyncSelect(select, select.dataset.lastConcrete || "p2wsh");
-  } else select.dataset.lastConcrete = select.value;
+  if (desired) hodlSetMsigScript(desired);
+  else if (hodlScriptKind() === "mixed") hodlSetMsigScript(hodlMsigScriptLastConcrete || "p2wsh");
   hodlUpdateMsigPurposeDetection();
   hodlUpdateMsigLegacyControls();
   let warning = document.getElementById("msig-script-warning"), labels = summary.kinds.map(hodlMultisigScriptLabel), message = summary.mixed ? hodlT("Co-signer exports indicate different script types ({labels}). A Mixed selection does not define one multisig output policy; export every key for the same script type before deriving.", { labels: labels.join(" and ") }) : "";
@@ -7411,8 +7487,8 @@ function hodlInvalidateMsig() {
 function hodlUpdateMsigHint() {
   let n = Number(document.getElementById("msig-n").value || 3), m = document.getElementById("msig-m").value || "2", hint = document.getElementById("msig-hint");
   if (hint) {
-    hint.textContent = n === 1 ? hodlTText("Spending will need this key. Receiving needs none of the private keys.") : hodlTText("Spending will need {m} of these {n} keys. Receiving needs none of the private keys.", { m, n });
-    hint.className = "hint ok";
+    hint.textContent = n === 1 ? hodlTText("Spending requires this key.") : hodlTText("Spending requires {m} of these {n} keys.", { m, n });
+    hint.className = "edge-note is-public";
   }
 }
 var hodlMsigSliderBaseMax = 9, hodlMsigSliderLimit = 15;
@@ -7585,7 +7661,7 @@ function hodlUpdateMsigKeyOrderStatus() {
   status.hidden = sorted;
   if (sorted) {
     status.textContent = "";
-    status.className = "hint";
+    status.className = "edge-note is-public";
     return
   }
   let op = hodlMsigPolicyOp(hodlScriptKind(), !1);
@@ -7599,7 +7675,7 @@ function hodlUpdateMsigKeyOrderStatus() {
     return "position " + (index + 1)
   });
   status.textContent = op + " uses this order: " + parts.join(", ") + ". Use Move up or Move down to change a position.";
-  status.className = "hint ok"
+  status.className = "edge-note is-public"
 }
 
 function hodlSyncMsigKeyMoveButtons() {
@@ -7623,22 +7699,20 @@ function hodlReindexMsigKeys() {
     let ta = row.querySelector("textarea"),
       pos = row.querySelector(".msig-key-position"),
       lab = row.querySelector("label.field"),
-      railLabel = row.querySelector(".msig-key-rail-label"),
+      title = row.querySelector(".msig-key-title"),
       fingerprint = row.querySelector(".msig-master-fingerprint");
     if (ta) ta.id = "msig-x-" + index;
     if (pos) pos.textContent = hodlTText("Position {n}", { n: index + 1 });
-    if (railLabel) {
-      railLabel.id = "msig-cosigner-" + index + "-label";
-      railLabel.textContent = hodlTText("Co-signer {n}", { n: index + 1 });
-      row.setAttribute("aria-labelledby", railLabel.id)
+    if (title) {
+      title.id = "msig-cosigner-" + index + "-label";
+      title.textContent = hodlTText("Co-signer {n}", { n: index + 1 });
+      row.setAttribute("aria-labelledby", title.id)
     }
+    let advancedSummary = row.querySelector(".msig-cosigner-advanced > summary");
+    if (advancedSummary) advancedSummary.textContent = hodlTText("Advanced entry for Co-signer {n}", { n: index + 1 });
     row.querySelector(".msig-session-keys")?.setAttribute("aria-label", hodlTText("Key Station keys for co-signer {n}", { n: index + 1 }));
     row.querySelector(".msig-full-path")?.setAttribute("aria-label", hodlTText("Full derivation path for co-signer {n}", { n: index + 1 }));
     fingerprint?.setAttribute("aria-label", hodlTText("Master fingerprint for co-signer {n}", { n: index + 1 }));
-    if (lab) {
-      let title = lab.childNodes[0];
-      if (title && title.nodeType === 3) title.textContent = hodlTText("Co-signer {n} multisig extended public key", { n: index + 1 })
-    }
   });
   hodlSyncMsigKeyMoveButtons();
   hodlUpdateMsigKeyPlaceholders();
@@ -7763,7 +7837,14 @@ function hodlCreateMsigSessionKeyButton(option, className, active, unavailable, 
   image.hidden = true;
   if (fingerprint) hodlFillKeyTabLifehash(image, fingerprint);
   label.textContent = fingerprint;
-  button.append(image, label);
+  // The selected chip carries a check mark as well as its accent border, so
+  // the selection reads without relying on colour alone — the same mark the
+  // Key Station pickers wear.
+  let check = document.createElement("span");
+  check.className = "session-key-check";
+  check.setAttribute("aria-hidden", "true");
+  check.innerHTML = hodlCopiedIconMarkup();
+  button.append(image, label, check);
   button.onclick = onSelect;
   return button;
 }
@@ -7846,8 +7927,20 @@ function hodlRenderMsigPathComponents(row) {
       hodlUpdateMsigFullPathFromComponents(row);
     });
     harden.append(checkbox, hardenText);
-    control.append(value, harden);
-    field.append(title, control);
+    // Name left, qualifier right, both above the input — the shape every
+    // settings field in Key Station uses. A span rather than a div: the field
+    // itself is a <label>, which takes phrasing content only.
+    let head = document.createElement("span");
+    head.className = "field-head";
+    head.append(title, harden);
+    // The input sits in the same value wrapper Key Station uses: it is what
+    // cancels the base input's own top margin, so the gap under the head row
+    // is the control's alone rather than that margin stacked on top of it.
+    let valueWrap = document.createElement("span");
+    valueWrap.className = "derivation-index-value";
+    valueWrap.append(value);
+    control.append(valueWrap);
+    field.append(head, control);
     fields.appendChild(field);
   });
 }
@@ -7982,23 +8075,16 @@ function hodlFillKeys(values) {
     let row = document.createElement("div");
     row.className = "msig-key-row";
     row.setAttribute("role", "group");
-    let rail = document.createElement("div");
-    rail.className = "msig-key-rail";
-    let railTop = document.createElement("span");
-    railTop.className = "msig-key-rail-line msig-key-rail-line-top";
-    railTop.setAttribute("aria-hidden", "true");
-    let railLabel = document.createElement("span");
-    railLabel.className = "msig-key-rail-label";
-    railLabel.id = "msig-cosigner-" + i + "-label";
-    railLabel.textContent = hodlTText("Co-signer {n}", { n: i + 1 });
-    row.setAttribute("aria-labelledby", railLabel.id);
-    let railBottom = document.createElement("span");
-    railBottom.className = "msig-key-rail-line msig-key-rail-line-bottom";
-    railBottom.setAttribute("aria-hidden", "true");
-    rail.append(railTop, railLabel, railBottom);
+    // The co-signer is named by a title above its fields rather than a bracket
+    // beside them: the same separation, and the full width for the key.
+    let title = document.createElement("p");
+    title.className = "label msig-key-title";
+    title.id = "msig-cosigner-" + i + "-label";
+    title.textContent = hodlTText("Co-signer {n}", { n: i + 1 });
+    row.setAttribute("aria-labelledby", title.id);
     let content = document.createElement("div");
     content.className = "msig-key-content";
-    row.append(rail, content);
+    row.append(title, content);
     if (listed) {
       let head = document.createElement("div");
       head.className = "msig-key-row-head";
@@ -8023,7 +8109,7 @@ function hodlFillKeys(values) {
     }
     let lab = document.createElement("label");
     lab.className = "field";
-    lab.textContent = hodlTText("Co-signer {n} multisig extended public key", { n: i + 1 });
+    lab.textContent = hodlTText("Extended public key");
     let ta = document.createElement("textarea");
     ta.id = "msig-x-" + i;
     ta.autocomplete = "off";
@@ -8070,7 +8156,7 @@ function hodlFillKeys(values) {
     let advanced = document.createElement("details");
     advanced.className = "derivation-advanced msig-cosigner-advanced";
     let advancedSummary = document.createElement("summary");
-    advancedSummary.textContent = hodlTText("Advanced entry");
+    advancedSummary.textContent = hodlTText("Advanced entry for Co-signer {n}", { n: i + 1 });
     let pathComponents = document.createElement("div");
     pathComponents.className = "derivation-advanced-fields msig-path-components";
     advanced.append(advancedSummary, pathComponents);
@@ -8207,7 +8293,7 @@ function hodlCheckXpub(ta) {
 function hodlResetMsigForm() {
   hodlSetMsigThresholdLock(false);
   hodlSetMsigThresholds(2, 3);
-  hodlSyncSelect(document.getElementById("msig-script-type"), "p2wsh");
+  hodlSetMsigScript("p2wsh");
   hodlSetMsigPurpose(48);
   let legacy = document.getElementById("msig-legacy-bip87");
   if (legacy) legacy.checked = false;
@@ -8235,7 +8321,9 @@ function hodlResetMsigForm() {
     descriptorStatus.textContent = "";
     descriptorStatus.hidden = true;
   }
-  if (descriptorPanel) descriptorPanel.open = false;
+  // MS Station starts on the import panel: a fresh station and a cleared one
+  // both open it, since pasting a descriptor is the usual way in.
+  if (descriptorPanel) descriptorPanel.open = true;
   hodlSyncMsigDescriptorImport();
 }
 function hodlInitMsig() {
@@ -8247,7 +8335,6 @@ function hodlInitMsig() {
       hodlUpdateMsigKeyOrderStatus();
       hodlRefreshMsigSessionPickers();
     },
-    script = document.getElementById("msig-script-type"),
     purpose = document.getElementById("msig-purpose"),
     coinType = document.getElementById("msig-network"),
     branchStartInput = document.getElementById("msig-branch-start"),
@@ -8259,11 +8346,18 @@ function hodlInitMsig() {
     hodlRefreshMsigSessionPickers();
     hodlSyncMsigClearButton(true);
   });
-  script.addEventListener("change", () => {
-    if (script.value !== "mixed") script.dataset.lastConcrete = script.value;
-    hodlSetMsigPurpose(hodlStandardMsigPurpose(script.value));
-    recheck();
+  document.getElementById("msig-script-tabs")?.querySelectorAll("[data-msig-script]").forEach((button) => {
+    button.addEventListener("click", () => {
+      // No early return on an unchanged kind: detection may have already set the
+      // selection from the co-signer keys while the purpose still holds its old
+      // value, and pressing a segment must always restate both.
+      let kind = button.dataset.msigScript;
+      hodlSetMsigScript(kind);
+      hodlSetMsigPurpose(hodlStandardMsigPurpose(kind));
+      recheck();
+    });
   });
+  hodlSyncMsigScriptTabs();
   [purpose, coinType, branchStartInput, addressStartInput].forEach((input) => {
     input?.addEventListener("keydown", (event) => {
       if (["e", "E", "+", "-", "."].includes(event.key)) event.preventDefault();
@@ -8331,8 +8425,27 @@ function hodlInitMsig() {
     hodlSyncMsigClearButton(true);
   });
 }
+// The multisig script type is a button group, not a field to read: the choice
+// lives here and the pressed segment reports it. "mixed" is a state the
+// co-signer keys put it in, not something the row offers, so it presses
+// nothing and the warning beside it says why.
+var hodlMsigScriptSelection = "p2wsh", hodlMsigScriptLastConcrete = "p2wsh";
 function hodlScriptKind() {
-  return document.getElementById("msig-script-type")?.value || "p2wsh";
+  return hodlMsigScriptSelection || "p2wsh";
+}
+function hodlSyncMsigScriptTabs() {
+  document.getElementById("msig-script-tabs")?.querySelectorAll("[data-msig-script]").forEach((button) => {
+    let active = button.dataset.msigScript === hodlMsigScriptSelection;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+// Sets the choice without acting on it: the detection and the restores speak
+// through this, the way they used to write the select's value.
+function hodlSetMsigScript(kind) {
+  hodlMsigScriptSelection = kind || "p2wsh";
+  if (hodlMsigScriptSelection !== "mixed") hodlMsigScriptLastConcrete = hodlMsigScriptSelection;
+  hodlSyncMsigScriptTabs();
 }
 
 function hodlTaprootNumsKey() {
@@ -8436,7 +8549,7 @@ async function hodlBuildMsig(progress) {
       addressBranches.push({ branch, role: hodlAddressBranchRole(branch), label: hodlAddressBranchLabel(branch), publicDescriptor: hodlDescriptorWithChecksum(descriptor), privateDescriptor: null, rows });
     }
     let receiveBranch = addressBranches.find((entry) => entry.branch === 0), changeBranch = addressBranches.find((entry) => entry.branch === 1);
-    let notes = ["This is watch-only. Private keys never entered this calculator.", "Each key origin lets a signer match its seed to one co-signer.", "A signer is only needed when you spend."];
+    let notes = ["This screen displays no private keys."];
     if (bip45) notes.push("Legacy BIP45 addresses use co-signer branch 0 before the selected address branch.");
     if (kind === "p2sh" && legacyStandard === "bip87") notes.push("Legacy P2SH uses the selected BIP87 account paths. Keep the descriptor with every seed backup.");
     if (kind === "p2tr") notes.push("Taproot script-path multisig. The internal key is the BIP341 NUMS point, so spending is only possible through the " + (sorted ? "sortedmulti_a" : "multi_a") + " script path.");
@@ -8498,35 +8611,24 @@ function hodlShowMsig() {
   hodlRevealPrivate = false;
   let out = document.getElementById("msig-out");
   if (!out) return;
-  let accountLabel = hodlWalletResult.accountMixed ? " \xB7 Account Mixed" : hodlWalletResult.account == null ? "" : ` \xB7 Account ${hodlWalletResult.account}`, purposeLabel = Number.isSafeInteger(hodlWalletResult.purpose) ? ` \xB7 Purpose ${hodlPathComponent(hodlWalletResult.purpose, hodlWalletResult.hardening?.purpose !== false)}` : "", branches = hodlAccountAddressBranches(hodlWalletResult), firstBranch = branches[0], firstAddress = firstBranch?.rows[0], firstIndex = firstAddress?.index ?? 0, firstLabel = firstBranch ? hodlAddressBranchLabel(firstBranch.branch) : "Address";
+  let branches = hodlAccountAddressBranches(hodlWalletResult);
   out.innerHTML = `
-    <section class="card account-result-card">
-      <div class="kicker">${hodlWalletResult.m}-of-${hodlWalletResult.n} multisig${purposeLabel}${hodlWalletResult.sorted===!1?" \xB7 listed order":""} \xB7 ${hodlWalletResult.network}${accountLabel}</div>
-      <h2 tabindex="-1">Your multisig wallet</h2>
-      <p class="muted">${hodlT("Anyone can pay these addresses. Spending later needs {m} signature(s) from the configured {n} signing key(s). This screen has no private keys.", { m: hodlWalletResult.m, n: hodlWalletResult.n })}</p>
+    <section class="account-result-card">
       ${hodlWalletMessages(hodlWalletResult,"multisig")}
       ${hodlWalletResult.sorted===!1&&hodlWalletResult.scriptOrder?.length?`<section class="account-result-section" aria-labelledby="multisig-order-heading"><div class="wallet-data-section-head"><h3 id="multisig-order-heading">${hodlT("Script key order")}</h3><p class="muted">${hodlT("{op} uses the co-signers in this order. Changing the order creates a different wallet.", { op: hodlMsigPolicyOp(hodlWalletResult.script,!1) })}</p></div><ol class="msig-script-order">${hodlWalletResult.scriptOrder.map(item=>`<li><span class="msig-script-order-position">${hodlT("Position {n}", { n: item.position })}</span><code>${hodlEscapeHtml(item.fingerprint?item.fingerprint+"/"+item.path:item.fingerprint||"")}</code></li>`).join("")}</ol></section>`:""}
-      <section class="account-result-section account-watch-section" aria-labelledby="multisig-watch-heading">
-        <div class="wallet-data-section-head">
-          <h3 id="multisig-watch-heading">Watch-only wallet data</h3>
-          <p class="muted">These descriptors reveal every address in the selected branches for this multisig, but cannot authorize spending.</p>
-        </div>
-        ${hodlWatchOnlyDescriptorExport(hodlWalletResult.receiveDescriptor, hodlWalletResult.changeDescriptor, branches, { labelClass: "muted" })}
-        ${hodlMsigPolicySheetMarkup()}
-        ${hodlMsigCoreImportDescriptorsMarkup()}
-      </section>
-      <section class="account-result-section account-address-section" aria-labelledby="multisig-address-heading">
-        <div class="wallet-data-section-head">
-          <h3 id="multisig-address-heading">Addresses</h3>
-          <p class="muted">Verify the first selected address on every signing device before accepting bitcoin.</p>
-        </div>
-        ${firstAddress ? `<div class="account-address-lead"><h4 class="wallet-data-subtitle">${hodlEscapeHtml(firstLabel)} address #${hodlAddressIndexHtml(firstIndex)}</h4><div class="qr" aria-label="Multisig ${hodlEscapeHtml(firstLabel.toLowerCase())} address ${hodlAddressIndexHtml(firstIndex)} QR code">${hodlQrSvg(firstAddress.address)}</div><p class="mono">${hodlEscapeHtml(firstAddress.address)}</p><p class="muted mono">${hodlEscapeHtml(firstAddress.path)}</p></div>` : ""}
+      ${hodlMsigGroupMarkup("watch", hodlT("Watch-only wallet data"), `
+        <p class="edge-note is-public">${hodlT("These descriptors reveal every address in the selected branches for this multisig, but cannot authorize spending. Descriptors can be imported into Sparrow or another wallet.")}</p>
+        ${hodlWatchOnlyDescriptorExport(hodlWalletResult.receiveDescriptor, hodlWalletResult.changeDescriptor, branches, { collapsible: false })}
+      `, "account-watch-section")}
+      ${hodlMsigGroupMarkup("addresses", hodlT("Addresses"), `
+        <p class="edge-note is-public">${hodlT("Verify the first selected address on every signing device before accepting bitcoin.")}</p>
         ${hodlAddressBranchTables(branches, false, "msig")}
         ${hodlAddressMatchMarkup()}
-      </section>
-      <p class="muted">${hodlT("Import the watch-only wallet descriptor into Sparrow or another wallet, or download a Bitcoin Core wallet.dat.")}</p>
+      `, "account-address-section")}
+      ${hodlMsigCoreImportDescriptorsMarkup()}
     </section>`;
   hodlBindAddressVirtualization(hodlAddressBranchVirtualConfigs(branches, false, "msig"));
+  hodlWatchMsigGroups();
   hodlBindAddressMatch();
   hodlBindMsigCoreImportDescriptors();
 }
@@ -11995,23 +12097,62 @@ function hodlMsigPolicyName(result) {
   if (!result) return "";
   return `${result.m}-of-${result.n}`;
 }
+// The origin path the co-signers share. Validation forces the purpose, coin
+// type and script step to match the selection, so one line is true of every
+// key; only the account may differ, and that is said rather than papered over.
+function hodlMsigSummaryPath(result) {
+  let path = result?.scriptOrder?.find((entry) => entry.path)?.path || "";
+  if (!path) return "";
+  // Origins are stored with h; a path is read with the apostrophe, the way
+  // every other path in the app is shown.
+  path = path.replace(/h/g, "'");
+  return `m/${path}${result.accountMixed ? " \xB7 accounts vary" : ""}`;
+}
 function hodlSnapshotMsigSummary(state = hodlMsigs[hodlActiveMsig]) {
   if (!state?.result || state.result.kind !== "msig") return;
   state.createdPolicy = hodlMsigPolicyName(state.result);
   state.createdScript = hodlMsigScriptLabel(state.result.script);
   state.createdNetwork = state.result.network || "";
+  // The co-signers as the script orders them, kept with the rest of the
+  // summary so the view keeps naming what was derived after the form moves on.
+  state.createdCosigners = Array.isArray(state.result.scriptOrder) ? state.result.scriptOrder.slice() : [];
+  state.createdPath = hodlMsigSummaryPath(state.result);
 }
 function hodlMsigHasResult(state = hodlMsigs[hodlActiveMsig]) {
   return Boolean(state && !state.isLab && state.result?.kind === "msig");
 }
 function hodlPaintMsigSummary() {
-  let state = hodlMsigs[hodlActiveMsig], policy = document.getElementById("msig-summary-policy"), script = document.getElementById("msig-summary-script"), network = document.getElementById("msig-summary-network"), edit = document.getElementById("msig-edit-inputs");
+  let state = hodlMsigs[hodlActiveMsig], policy = document.getElementById("msig-summary-policy"), script = document.getElementById("msig-summary-script"), path = document.getElementById("msig-summary-path"), edit = document.getElementById("msig-edit-inputs");
   if (policy) {
-    policy.textContent = state?.createdPolicy || hodlMsigPolicyName(state?.result);
+    let name = state?.createdPolicy || hodlMsigPolicyName(state?.result);
+    policy.textContent = name ? `${name} multisig` : "";
     policy.tabIndex = -1;
   }
   if (script) script.textContent = state?.createdScript || hodlMsigScriptLabel(state?.result?.script);
-  if (network) network.textContent = state?.createdNetwork || state?.result?.network || "";
+  if (path) path.textContent = state?.createdPath || hodlMsigSummaryPath(state?.result);
+  let cosigners = document.getElementById("msig-summary-cosigners");
+  if (cosigners) {
+    // Each key the multisig needs, named by its master fingerprint and its
+    // LifeHash: the same pair the pickers and the key tabs identify a key by.
+    let entries = state?.createdCosigners || state?.result?.scriptOrder || [];
+    let heading = document.createElement("p");
+    heading.className = "label msig-summary-cosigners-label";
+    heading.textContent = hodlTText("Co-signers");
+    cosigners.replaceChildren(heading, ...entries.map((entry) => {
+      let item = document.createElement("span"), image = document.createElement("img"), label = document.createElement("code");
+      item.className = "msig-summary-cosigner";
+      image.className = "key-tab-lifehash";
+      image.width = 22;
+      image.height = 22;
+      image.alt = "";
+      image.hidden = true;
+      if (entry.fingerprint) hodlFillKeyTabLifehash(image, entry.fingerprint);
+      label.textContent = entry.fingerprint || "";
+      item.append(image, label);
+      return item;
+    }));
+    cosigners.hidden = !entries.length;
+  }
   if (edit) edit.onclick = hodlEditMsigInputs;
 }
 function hodlSyncMsigResultView() {
@@ -12167,7 +12308,7 @@ function hodlRestoreMsig() {
   hodlSetMsigThresholdLock(false);
   hodlSetMsigThresholds(state.fields.m || "2", state.fields.n || "3");
   let legacy = document.getElementById("msig-legacy-bip87");
-  hodlSyncSelect(document.getElementById("msig-script-type"), state.fields.script || "p2wsh");
+  hodlSetMsigScript(state.fields.script || "p2wsh");
   hodlSetMsigPurpose(state.fields.purpose ?? (state.fields.legacyBip87 ? 87 : hodlStandardMsigPurpose(state.fields.script || "p2wsh")));
   if (legacy) legacy.checked = hodlReadMsigPurpose(false) === 87;
   hodlUpdateMsigLegacyControls();
@@ -12237,6 +12378,29 @@ function hodlMsigTabKeydown(event, index) {
   hodlSelectMsig(next);
   hodlElement("#msig-tabs").children[next]?.focus();
 }
+// The station tab keeps the keychain. A derived multisig is named by the keys
+// it was built from, so it wears their LifeHashes instead — the mark the
+// summary and the pickers already identify a key by. A restored multisig with
+// no recorded order still gets the icon rather than a bare tab.
+function hodlCreateMsigTabMark(state) {
+  if (state.isLab) return hodlCreateMsigIcon(true);
+  let entries = (state.createdCosigners || state.result?.scriptOrder || []).filter((entry) => entry.fingerprint);
+  if (!entries.length) return hodlCreateMsigIcon(false);
+  let stack = document.createElement("span");
+  stack.className = "msig-tab-lifehashes";
+  stack.setAttribute("aria-hidden", "true");
+  entries.forEach((entry) => {
+    let image = document.createElement("img");
+    image.className = "key-tab-lifehash msig-tab-lifehash";
+    image.width = 14;
+    image.height = 14;
+    image.alt = "";
+    image.hidden = true;
+    hodlFillKeyTabLifehash(image, entry.fingerprint);
+    stack.appendChild(image);
+  });
+  return stack;
+}
 function hodlCreateMsigTab(index) {
   let state = hodlMsigs[index], active = index === hodlActiveMsig, button = document.createElement("button"), name = state.isLab ? "MS Station" : state.createdPolicy || state.name || "Multisig " + state.number, label = document.createElement("span");
   button.type = "button";
@@ -12245,7 +12409,7 @@ function hodlCreateMsigTab(index) {
   button.dataset.msigNumber = String(state.number);
   label.className = "key-tab-label";
   label.textContent = name;
-  button.append(hodlCreateMsigIcon(state.isLab), label);
+  button.append(hodlCreateMsigTabMark(state), label);
   button.setAttribute("role", "tab");
   button.setAttribute("aria-controls", "msig-card");
   button.setAttribute("aria-selected", String(active));
@@ -15457,6 +15621,7 @@ async function hodlBoot() {
   hodlInitAddressBenchmark();
   hodlInitSegmentedControls();
   initQrReferences();
+  hodlInitDescriptorCopy();
   hodlInitLocale(hodlApplyLocale);
 }
 // Curve operations need the WebAssembly module instantiated first (async in

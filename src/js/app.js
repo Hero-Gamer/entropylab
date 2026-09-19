@@ -798,11 +798,12 @@ function hodlInitDescriptorCopy() {
   document.addEventListener("click", (event) => {
     let button = event.target.closest?.("[data-copy-field]");
     if (!button) return;
-    let value = button.textContent.trim(), note = button.previousElementSibling?.querySelector(".copy-field-status");
+    let value = button.textContent.trim(),
+      note = button.parentElement?.querySelector(":scope > .copy-field-status") || button.previousElementSibling?.querySelector(".copy-field-status");
     if (!value || value === "\u2014") return;
     let done = () => {
       if (!note) return;
-      note.innerHTML = `${hodlCopiedIconMarkup()}${hodlT("Copied")}`;
+      note.innerHTML = `${hodlCopiedIconMarkup()}${note.classList.contains("is-icon-only") ? "" : hodlT("Copied")}`;
       clearTimeout(note.hodlCopiedTimer);
       note.hodlCopiedTimer = setTimeout(() => {
         if (note.isConnected) note.textContent = "";
@@ -1277,7 +1278,7 @@ function hodlAddressIndexHtml(index) {
   return Number.isSafeInteger(index) && index >= 0 ? String(index) : hodlEscapeHtml(index);
 }
 function hodlAddressTableRows(rows, includeWif = false, rowOffset = 0) {
-  return rows.map((row, offset) => `<tr aria-rowindex="${rowOffset + offset + 2}"><th scope="row">${hodlAddressIndexHtml(row.index)}</th><td>${hodlEscapeHtml(hodlDisplayDerivationPath(row.path))}</td><td><span class="addr-text">${hodlEscapeHtml(row.address)}</span>${hodlAddressQrButton(row.address, hodlT("Address #{n}", { n: row.index }))}</td>${includeWif ? `<td>${hodlPrivateValue(row.wif, "mono table-private-field-value")}</td>` : ""}</tr>`).join("");
+  return rows.map((row, offset) => `<tr aria-rowindex="${rowOffset + offset + 2}"><th scope="row">${hodlAddressIndexHtml(row.index)}</th><td>${hodlEscapeHtml(hodlDisplayDerivationPath(row.path))}</td><td><button type="button" class="addr-text" data-copy-field title="${hodlTAttr("Copy")}">${hodlEscapeHtml(row.address)}</button>${hodlAddressQrButton(row.address, hodlT("Address #{n}", { n: row.index }))}<span class="copy-field-status is-icon-only" aria-live="polite"></span></td>${includeWif ? `<td>${hodlPrivateValue(row.wif, "mono table-private-field-value")}</td>` : ""}</tr>`).join("");
 }
 function hodlAddressVirtualSpacer(height, columns) {
   return height > 0 ? `<tr class="address-virtual-spacer" aria-hidden="true"><td colspan="${columns}" style="height:${height}px"></td></tr>` : "";
@@ -1712,7 +1713,7 @@ function hodlMsigCoreImportDescriptorsMarkup() {
   // elements answering to one label.
   return `<div class="wallet-data-actions msig-data-actions no-print" id="msig-core-importdescriptors">
     <div class="msig-downloads-head"><p class="label">${hodlT("Downloads")}</p><p class="muted label-description">${hodlT("Import the watch-only wallet descriptor into Sparrow or another wallet.")}</p></div>
-    <p class="edge-note is-public" id="msig-core-importdescriptors-help">${hodlT("Watch-only JSON for bitcoin-cli importdescriptors. No private keys. Online node: createwallet disable_private_keys=true blank=true, then importdescriptors. First getnewaddress must match receive index 0 here.")}</p>
+    <p class="edge-note is-public" id="msig-core-importdescriptors-help">${hodlT("Online node: createwallet disable_private_keys=true blank=true, then importdescriptors. First getnewaddress must match receive index 0 here.")}</p>
     <div class="wallet-birthday-field"><p class="label" id="msig-birthday-label">${hodlT("Wallet birthday")}</p><p class="muted label-description wallet-dat-birthday-help" id="msig-birthday-help">${hodlT("Bitcoin Core only auto-scans history back to the birthday. Choose “New keys” only for entropy created right now; recovering older keys with today's birthday can look empty until you run <code>rescanblockchain 0</code> in Bitcoin Core.")}</p><select data-wallet-dat-birthday aria-labelledby="msig-birthday-label" aria-describedby="msig-birthday-help msig-core-importdescriptors-help"><option value="genesis"${hodlWalletDatBirthday === "genesis" ? " selected" : ""}>${hodlT("Recovering keys · scan from genesis")}</option><option value="now"${hodlWalletDatBirthday === "now" ? " selected" : ""}>${hodlT("New keys · created today")}</option></select></div>
     <button class="btn secondary green" id="msig-save-importdescriptors" type="button">${hodlT("Save Core Watch-only JSON")}</button>
     <button class="btn secondary" id="msig-copy-importdescriptors" type="button">${hodlT("Copy Core importdescriptors")}</button>
@@ -7486,7 +7487,7 @@ function hodlInvalidateMsig() {
 function hodlUpdateMsigHint() {
   let n = Number(document.getElementById("msig-n").value || 3), m = document.getElementById("msig-m").value || "2", hint = document.getElementById("msig-hint");
   if (hint) {
-    hint.textContent = n === 1 ? hodlTText("Spending will need this key. Receiving needs none of the private keys.") : hodlTText("Spending will need {m} of these {n} keys. Receiving needs none of the private keys.", { m, n });
+    hint.textContent = n === 1 ? hodlTText("Spending requires this key.") : hodlTText("Spending requires {m} of these {n} keys.", { m, n });
     hint.className = "edge-note is-public";
   }
 }
@@ -8548,7 +8549,7 @@ async function hodlBuildMsig(progress) {
       addressBranches.push({ branch, role: hodlAddressBranchRole(branch), label: hodlAddressBranchLabel(branch), publicDescriptor: hodlDescriptorWithChecksum(descriptor), privateDescriptor: null, rows });
     }
     let receiveBranch = addressBranches.find((entry) => entry.branch === 0), changeBranch = addressBranches.find((entry) => entry.branch === 1);
-    let notes = ["This screen displays no private keys. A signer is only needed when you spend."];
+    let notes = ["This screen displays no private keys."];
     if (bip45) notes.push("Legacy BIP45 addresses use co-signer branch 0 before the selected address branch.");
     if (kind === "p2sh" && legacyStandard === "bip87") notes.push("Legacy P2SH uses the selected BIP87 account paths. Keep the descriptor with every seed backup.");
     if (kind === "p2tr") notes.push("Taproot script-path multisig. The internal key is the BIP341 NUMS point, so spending is only possible through the " + (sorted ? "sortedmulti_a" : "multi_a") + " script path.");

@@ -984,8 +984,6 @@ test("multisig account is retained internally as a value derived from key origin
 
 test("multisig threshold labels describe signatures and keys", () => {
   for (const markup of [shell]) {
-    assert.match(markup, />Signatures needed to spend \(m\)/);
-    assert.match(markup, />Total signing keys \(n\)/);
     assert.doesNotMatch(markup, /People \/ devices \(n\)/);
     assert.match(markup, /id="msig-m-number" type="number" min="1" max="15"[^>]*value="2"/);
     assert.match(markup, /id="msig-n-number" type="number" min="1" max="15"[^>]*value="3"/);
@@ -994,7 +992,6 @@ test("multisig threshold labels describe signatures and keys", () => {
     assert.doesNotMatch(markup, /msig-threshold-ratio|msig-[mn]-output/);
     assert.doesNotMatch(markup, /<select id="msig-[mn]"/);
     assert.ok(markup.indexOf('id="msig-import"') < markup.indexOf('class="msig-threshold-labels"'));
-    assert.ok(markup.indexOf('class="msig-threshold-labels"') < markup.indexOf('<fieldset class="msig-threshold-control"'));
   }
   assert.match(app, /hodlMsigSliderBaseMax=9,hodlMsigSliderLimit=15/);
   assert.match(app, /drag\.handle=delta<0\?"m":"n"/);

@@ -1856,7 +1856,16 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .qr-ref-hint { margin: 12px 0 0; }
 .qr-ref-actions { margin-top: var(--space-component); justify-content: center; }
 /* Per-address QR: compact button in each address-table row, one shared overlay. */
-.addr-text { overflow-wrap: anywhere; }
+.addr-text {
+  min-width: 0; margin: 0; padding: 0; border: 0; background: none;
+  color: inherit; font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer;
+}
+.addr-text:hover { color: var(--selection-accent-ink); }
+/* In a table the address itself names what was copied, so the mark stands
+   alone beside its QR button. */
+.copy-field-status.is-icon-only {
+  width: 14px; margin-left: 6px; justify-content: center; vertical-align: middle;
+}
 .addr-qr {
   margin-left: 6px; padding: 1px 6px; border: 1px solid var(--faint); border-radius: 6px;
   background: transparent; color: var(--muted); font: inherit; font-size: 10px;
@@ -1919,7 +1928,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    layout: the text lands where a control would, not the box around it. Text
    written to sit directly under a label carries .label-description. */
 .label:has(+ .label-description) { margin-bottom: 4px; }
-.label + .label-description { margin-top: 0; }
+.label + .label-description { margin-top: 0; margin-bottom: 0; }
 /* The exception: a checkbox's own text is not a heading over content. It sits
    inside the control, on one line with the box, so it owns no gap either side.
    The components above already say margin: 0; this repeats it only to outrank
@@ -2197,18 +2206,36 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .msig-import .btn { margin-top: var(--space-control); }
 .msig-threshold-control {
   --msig-slider-inset: 14px;
-  min-width: 0; margin: var(--space-control) 0 0; padding: 16px 18px 14px;
-  border: 1px solid var(--border); border-radius: 12px; background: var(--bg);
+  min-width: 0; margin: var(--space-section) 0 0; padding: 16px 18px 14px;
+  border: 0; border-radius: 12px; background: var(--bg);
 }
-.msig-threshold-labels {
-  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;
-  margin: var(--space-section) 18px 0;
-}
+/* Two labelled numbers in block flow: the pair reads down the left edge with
+   the rest of the section, so neither a grid nor a centre line is needed. */
+.msig-threshold-labels { margin-top: var(--space-control); margin-bottom: 28px; }
+/* Two dimensions at once: the handle sits centred over its number, and what
+   the number means sits beside it on the number's own line. */
 .msig-threshold-labels label {
-  display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0;
-  color: var(--fg); font-size: 13px; font-weight: 600; line-height: 1.35; text-align: center; cursor: pointer;
+  display: grid; grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--space-control); row-gap: 4px; align-items: center;
+  min-width: 0; cursor: pointer;
 }
-.msig-threshold-number {
+.msig-threshold-labels label > .label { grid-area: 1 / 1; margin: 0; }
+.msig-threshold-labels label > input { grid-area: 2 / 1; }
+.msig-threshold-labels label > .field-note { grid-area: 2 / 2; margin: 0; }
+/* A handle and its number are one control in two places: hovering or dragging
+   the handle lights the number it drives, on the same edge colour the handle
+   itself takes. :active covers the whole drag, where the pointer has left the
+   handle; data-active-handle alone would outlive the gesture. */
+.msig-threshold-control:has(.msig-threshold-thumb-m:hover) ~ .msig-threshold-labels label[for="msig-m-number"] > input,
+.msig-threshold-control:has(.msig-threshold-slider:active[data-active-handle="m"]) ~ .msig-threshold-labels label[for="msig-m-number"] > input,
+.msig-threshold-control:has(.msig-threshold-thumb-n:hover) ~ .msig-threshold-labels label[for="msig-n-number"] > input,
+.msig-threshold-control:has(.msig-threshold-slider:active[data-active-handle="n"]) ~ .msig-threshold-labels label[for="msig-n-number"] > input {
+  border-color: var(--selection-accent);
+}
+.msig-threshold-labels label + label { margin-top: var(--space-component); }
+/* The base form-control rule outranks a lone class here, so the quorum
+   numbers match its shape to win the size they ask for. */
+.msig-threshold-labels input.msig-threshold-number {
   appearance: textfield; flex: 0 0 54px; width: 54px !important; min-width: 54px; min-height: 30px !important;
   height: 30px; margin: 0 !important; padding: 0 8px !important; text-align: center;
   border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--fg);
@@ -2227,14 +2254,20 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .msig-threshold-track span {
   position: absolute; top: -1px; bottom: -1px; left: var(--msig-m-position); right: calc(100% - var(--msig-n-position));
-  min-width: 0; border-radius: 999px; background: var(--selection-accent);
-  box-shadow: 0 0 10px color-mix(in oklab, var(--selection-accent) 38%, transparent);
+  min-width: 0; border-radius: 999px; background: var(--accent);
+  box-shadow: 0 0 10px color-mix(in oklab, var(--accent) 38%, transparent);
 }
 .msig-threshold-thumb {
   position: absolute; top: 50%; width: 24px; height: 24px; transform: translate(-50%, -50%);
-  border: 2px solid #a3a3a3; border-radius: 50%; background: linear-gradient(#858585, #5f5f5f);
+  /* The handle names itself, so a dragged thumb still says which end it is. */
+  display: grid; place-items: center;
+  color: #ededed; font-family: var(--mono); font-size: 14px; font-weight: 400; line-height: 1;
+  border: 2px solid #a3a3a3; border-radius: 50%;
+  /* The face is a flat colour under a fixed sheen, so hover can darken it on
+     the same curve the edge already travels; a gradient alone cannot transition. */
+  background-color: #4f4f4f; background-image: linear-gradient(rgb(255 255 255 / .14), rgb(0 0 0 / .14));
   box-shadow: 0 2px 7px rgb(0 0 0 / .75), inset 0 1px 1px rgb(255 255 255 / .2);
-  transition: box-shadow .12s ease, border-color .12s ease, transform .12s ease;
+  transition: box-shadow .12s ease, border-color .12s ease, transform .12s ease, background-color .12s ease, color .12s ease;
   pointer-events: auto; cursor: ew-resize;
 }
 /* The edge answers the pointer, as it does on the method cards and the key
@@ -2242,7 +2275,14 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    two states stay distinct. The rule above transitions border-color, so the
    change carries no motion of its own. A locked slider drops pointer events
    entirely, and says nothing here. */
-.msig-threshold-thumb:hover { border-color: var(--selection-accent); }
+/* A drag moves the pointer off the face it started on, so the dragged handle
+   wears the same treatment: :active holds for the whole gesture and ends on
+   release, while data-active-handle alone would outlive it. */
+.msig-threshold-thumb:hover,
+.msig-threshold-slider:active[data-active-handle="m"] .msig-threshold-thumb-m,
+.msig-threshold-slider:active[data-active-handle="n"] .msig-threshold-thumb-n {
+  border-color: var(--selection-accent); background-color: #111; color: var(--selection-accent);
+}
 .msig-threshold-thumb-m { left: var(--msig-m-position); z-index: 2; }
 .msig-threshold-thumb-n { left: var(--msig-n-position); z-index: 3; }
 .msig-threshold-slider[data-active-handle="m"] .msig-threshold-thumb-m { z-index: 4; }
@@ -2269,7 +2309,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   content: ""; position: absolute; top: 1px; left: 50%; width: 1px; height: 4px;
   transform: translateX(-50%); background: var(--border);
 }
-.msig-threshold-help { margin: 12px 0 0; text-align: center; }
+.msig-threshold-help { margin: 0 0 var(--space-control); }
 .msig-threshold-control:disabled,
 .msig-threshold-labels:has(.msig-threshold-number:disabled) { opacity: .58; }
 .msig-threshold-control:disabled .msig-threshold-slider { pointer-events: none; cursor: not-allowed; }
@@ -2298,11 +2338,14 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .msig-script-order code { font-size: 13px; overflow-wrap: anywhere; }
 @media (max-width: 520px) {
-  .msig-threshold-control { --msig-slider-inset: 12px; padding: 14px 10px 12px; }
-  .msig-threshold-labels { gap: 8px; margin-inline: 10px; }
+  /* A 24px thumb cannot resolve a step this narrow, so the slider, its ticks
+     and the note that tells you to drag it all go; the numbers are the control. */
+  .msig-threshold-control, .msig-threshold-help { display: none; }
+  /* With the slider gone the numbers answer to the note above them, so they
+     take the step they would have had as the section's first control. */
+  .msig-threshold-labels { margin-top: var(--space-section); }
   .msig-threshold-labels label { font-size: 11px; }
-  .msig-threshold-number { flex: 0 0 auto; width: 56px !important; min-width: 56px; height: 40px; min-height: 40px !important; font-size: 16px; }
-  .msig-threshold-ticks { font-size: 9px; }
+  .msig-threshold-labels input.msig-threshold-number { flex: 0 0 auto; width: 56px !important; min-width: 56px; height: 40px; min-height: 40px !important; }
 }
 .psbt-grid { margin-top: var(--space-component); }
 .psbt-grid > .field, .psbt-grid > div > .field:first-child { margin-top: 0; }

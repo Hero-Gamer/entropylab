@@ -387,7 +387,7 @@ words, pick one of the checksum words.</span></span>
     </section>
       <div class="tool-intro edge-note is-info" id="msig-tool-intro" hidden>
         <h2>Build a watch-only multisig</h2>
-        <p class="muted tool-intro-note">Paste each co-signer’s xpub. You can receive to the addresses. Spending still needs the required signatures. No private keys required.</p>
+        <p class="muted tool-intro-note">You supply individual co-signer xpubs, choose from keys entered in the Key Station, or paste in an existing multisig wallet descriptor. Verify the derived addresses, or any other info needed to setup a watch-only multisig wallet.</p>
       </div>
       <section class="key-manager no-print" id="msig-manager" hidden>
       <div class="key-tab-strip"><div class="key-tabs" id="msig-tabs" role="tablist" aria-label="Multisigs"></div><div class="add-item-control"><button class="add-key" id="add-msig" type="button" aria-label="Open MS Station to derive another multisig" aria-describedby="add-msig-tooltip" disabled>+</button><span class="add-item-tooltip" id="add-msig-tooltip" role="tooltip">Open MS Station</span></div><div class="add-item-control"><button class="add-key remove-key" id="delete-msig" type="button" aria-label="Delete current multisig" aria-describedby="delete-msig-tooltip" disabled>−</button><span class="add-item-tooltip" id="delete-msig-tooltip" role="tooltip">Delete this multisig</span></div></div>
@@ -404,30 +404,32 @@ words, pick one of the checksum words.</span></span>
       </div>
       <div class="msig-lab" id="msig-lab">
       <details class="msig-import" id="msig-import" open>
-        <summary>Import a multisig wallet descriptor</summary>
-                <p class="field-note edge-note is-public" id="msig-descriptor-help">Split a wallet-exported multisig descriptor into one co-signer field per key — the quorum, script type, and key order fill in too. Watch-only public keys only; a descriptor carrying private keys is refused.</p>
-        <label class="field"><span class="muted label-value">Paste an existing multisig wallet descriptor here</span>
+        <summary>Import existing multisig wallet</summary>
+                <p class="field-note edge-note is-public" id="msig-descriptor-help">Input a wallet-exported multisig descriptor — the quorum, script type, key order, and co-signer xpubs will be filled in below. Only accepts watch-only public keys; a descriptor carrying private keys will be refused.</p>
+        <label class="field"><span class="muted label-value">Paste wallet descriptor here</span>
           <textarea id="msig-descriptor" placeholder="wsh(sortedmulti(2,[fingerprint/48h/0h/0h/2h]Zpub…/0/*, …))" autocomplete="off" spellcheck="false" aria-describedby="msig-descriptor-help"></textarea>
         </label>
         <button class="btn secondary" id="msig-descriptor-import" type="button" disabled aria-disabled="true">Import Descriptor</button>
         <p class="hint" id="msig-descriptor-status" role="status" hidden></p>
       </details>
-      <div class="msig-threshold-labels">
-        <label for="msig-m-number"><span>Signatures needed to spend (m)</span><input class="msig-threshold-number" id="msig-m-number" type="number" min="1" max="15" step="1" value="2" inputmode="numeric" aria-describedby="msig-threshold-help"></label>
-        <label for="msig-n-number"><span>Total signing keys (n)</span><input class="msig-threshold-number" id="msig-n-number" type="number" min="1" max="15" step="1" value="3" inputmode="numeric" aria-describedby="msig-threshold-help"></label>
-      </div>
+      <p class="label">Quorum</p>
+      <p class="field-note msig-threshold-help" id="msig-threshold-help">This will be updated for you if you import an existing multisig above, or you can configure a new multisig directly below.</p>
+      <p class="edge-note is-public" data-i18n-rich>Multisig requires a quorum of <strong><span class="mono">m</span></strong> signatures of <strong><span class="mono">n</span></strong> total signing keys to spend.</p>
       <fieldset class="msig-threshold-control" id="msig-threshold-control">
         <legend class="sr-only">Multisig signature threshold</legend>
         <div class="msig-threshold-slider" id="msig-threshold-slider" style="--msig-m-position:12.5%;--msig-n-position:25%" data-slider-max="9">
           <div class="msig-threshold-track" aria-hidden="true"><span></span></div>
-          <span class="msig-threshold-thumb msig-threshold-thumb-m" aria-hidden="true"></span>
-          <span class="msig-threshold-thumb msig-threshold-thumb-n" aria-hidden="true"></span>
+          <span class="msig-threshold-thumb msig-threshold-thumb-m" aria-hidden="true">m</span>
+          <span class="msig-threshold-thumb msig-threshold-thumb-n" aria-hidden="true">n</span>
           <input class="msig-threshold-range" id="msig-m" type="range" min="1" max="15" step="1" value="2" aria-label="Signatures needed to spend (m)" aria-describedby="msig-threshold-help">
           <input class="msig-threshold-range" id="msig-n" type="range" min="1" max="15" step="1" value="3" aria-label="Total signing keys (n)" aria-describedby="msig-threshold-help">
         </div>
         <div class="msig-threshold-ticks" id="msig-threshold-ticks" aria-hidden="true"><span style="--msig-tick-position:0%">1</span><span style="--msig-tick-position:12.5%">2</span><span style="--msig-tick-position:25%">3</span><span style="--msig-tick-position:37.5%">4</span><span style="--msig-tick-position:50%">5</span><span style="--msig-tick-position:62.5%">6</span><span style="--msig-tick-position:75%">7</span><span style="--msig-tick-position:87.5%">8</span><span style="--msig-tick-position:100%">9</span></div>
-        <p class="field-note msig-threshold-help" id="msig-threshold-help">Enter values, drag either handle, or use the arrow keys. Editing one value past the other moves both.</p>
       </fieldset>
+      <div class="msig-threshold-labels">
+        <label for="msig-m-number"><span class="label">m</span><input class="msig-threshold-number" id="msig-m-number" type="number" min="1" max="15" step="1" value="2" inputmode="numeric" aria-describedby="msig-threshold-help"><span class="field-note">Signatures needed to spend</span></label>
+        <label for="msig-n-number"><span class="label">n</span><input class="msig-threshold-number" id="msig-n-number" type="number" min="1" max="15" step="1" value="3" inputmode="numeric" aria-describedby="msig-threshold-help"><span class="field-note">Total signing keys</span></label>
+      </div>
       <p class="hint ok msig-threshold-lock" id="msig-threshold-lock" role="status" hidden></p>
       <div class="key-settings msig-policy-settings">
         <div class="field msig-script-type-field">

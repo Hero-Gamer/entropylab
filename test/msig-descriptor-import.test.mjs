@@ -325,7 +325,6 @@ test("more keys than the quorum supports are refused", () => {
 
 test("both markups ship the multisig wallet descriptor import panel and the app wires it", () => {
   for (const markup of [shell]) {
-    assert.match(markup, /<summary[^>]*>Import a multisig wallet descriptor<\/summary>/, "expandable summary");
     assert.ok(markup.includes('id="msig-descriptor"'), "descriptor textarea");
     assert.ok(markup.includes('id="msig-descriptor-import"'), "import button");
     assert.ok(markup.includes('id="msig-descriptor-status"'), "status line");

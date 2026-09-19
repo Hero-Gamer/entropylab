@@ -50,28 +50,45 @@ const detectCli = () => {
   if (probe(["jev-cli"])) cliTransport = ["jev-cli"];
   else if (probe(["wsl", "-d", "Ubuntu", "--", "jev-cli"])) cliTransport = ["wsl", "-d", "Ubuntu", "--", "jev-cli"];
   else cliTransport = null;
+  // Say which transport answers, once: a silent fallback here would leave
+  // the log unable to tell a CLI run from an HTTP one.
+  console.log(`Jev transport: ${cliTransport ? cliTransport.join(" ") : "HTTP (jev-cli not found)"}`);
   return cliTransport;
 };
 
 // The CLI's `ask` reads the whole request document on stdin and answers with
-// the same { answers } shape as the direct API. WSL needs WSLENV to carry the
-// key across from the Windows environment. Undefined => caller falls back.
-const askViaCli = (doc) => {
+// the same { answers } shape as the direct API. It is handed the key
+// getApiKey() resolved, which may have come from the Windows User scope and
+// so be absent from process.env. WSL needs WSLENV to carry it across; any
+// existing WSLENV entries are kept. Undefined => caller falls back, and every
+// fallback is logged with the CLI's exit status and first stderr line (the
+// key redacted), since a CLI that fails and an absent one otherwise look
+// identical in the verdict table. Note a fallback after an API-side error
+// sends the request a second time.
+const askViaCli = (doc, key) => {
   const cmd = detectCli();
   if (!cmd) return undefined;
   const isWsl = cmd[0] === "wsl";
+  const env = { ...process.env, TYPESAFE_API_KEY: key };
+  if (isWsl) env.WSLENV = [process.env.WSLENV, "TYPESAFE_API_KEY"].filter(Boolean).join(":");
   const r = spawnSync(cmd[0], [...cmd.slice(1), "ask", "--format", "json", "-"], {
     input: JSON.stringify(doc),
     encoding: "utf8",
     maxBuffer: 32 * 1024 * 1024,
     stdio: ["pipe", "pipe", "pipe"],
-    env: isWsl ? { ...process.env, WSLENV: "TYPESAFE_API_KEY" } : process.env,
+    env,
   });
-  if (r.status !== 0) return undefined;
-  try {
-    return JSON.parse(r.stdout).answers ?? undefined;
-  } catch {
+  const fallBack = (why) => {
+    const detail = safe(String(r.stderr ?? "").split(key).join("[redacted]").split("\n")[0], 200);
+    console.log(`Jev transport: jev-cli ${why}; falling back to HTTP${detail ? ` (${detail})` : ""}`);
     return undefined;
+  };
+  if (r.status !== 0) return fallBack(r.error ? `failed to run (${r.error.code ?? r.error.message})` : `exited ${r.status}`);
+  try {
+    const answers = JSON.parse(r.stdout).answers;
+    return answers ?? fallBack("returned no answers");
+  } catch {
+    return fallBack("returned unparseable output");
   }
 };
 
@@ -81,7 +98,7 @@ export const jev = async (state, questions) => {
   const key = getApiKey();
   if (!key) return null;
   const doc = { state, model: DEFAULT_MODEL, questions };
-  const viaCli = askViaCli(doc);
+  const viaCli = askViaCli(doc, key);
   if (viaCli !== undefined) return viaCli;
   // Encode to UTF-8 bytes explicitly, same as the ps1 script.
   const utf8Body = Buffer.from(JSON.stringify(doc), "utf8");

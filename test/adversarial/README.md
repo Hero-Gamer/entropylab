@@ -34,6 +34,13 @@ The API key comes from `TYPESAFE_API_KEY` (process env first, then the
 Windows User-scoped registry value via PowerShell — same as the ps1). It
 is never printed.
 
+Verdicts go through [portlandhodl/jev-cli](https://github.com/portlandhodl/jev-cli)
+when it is installed (on `PATH`, or inside WSL's Ubuntu on Windows), and
+through the direct HTTP client otherwise. The log's first `Jev transport:`
+line says which; a CLI call that fails falls back to HTTP with its own
+`Jev transport:` line giving the exit status. The nightly installs the CLI
+at the commit pinned by `JEV_CLI_REV` in the workflow, with `--locked`.
+
 ## Running
 
 ```bash

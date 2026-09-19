@@ -31,16 +31,60 @@ const getApiKey = () => {
 
 export const jevAvailable = () => !!getApiKey();
 
+// Prefer portlandhodl's jev-cli when it's available — native on PATH, or
+// via WSL on Windows hosts whose Rust toolchain lives there (this project's
+// build host). Falls back to the direct HTTP client below. Probed once.
+let cliTransport;
+const detectCli = () => {
+  if (cliTransport !== undefined) return cliTransport;
+  const probe = (cmd) => {
+    try {
+      return spawnSync(cmd[0], [...cmd.slice(1), "--version"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      }).status === 0;
+    } catch {
+      return false;
+    }
+  };
+  if (probe(["jev-cli"])) cliTransport = ["jev-cli"];
+  else if (probe(["wsl", "-d", "Ubuntu", "--", "jev-cli"])) cliTransport = ["wsl", "-d", "Ubuntu", "--", "jev-cli"];
+  else cliTransport = null;
+  return cliTransport;
+};
+
+// The CLI's `ask` reads the whole request document on stdin and answers with
+// the same { answers } shape as the direct API. WSL needs WSLENV to carry the
+// key across from the Windows environment. Undefined => caller falls back.
+const askViaCli = (doc) => {
+  const cmd = detectCli();
+  if (!cmd) return undefined;
+  const isWsl = cmd[0] === "wsl";
+  const r = spawnSync(cmd[0], [...cmd.slice(1), "ask", "--format", "json", "-"], {
+    input: JSON.stringify(doc),
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+    stdio: ["pipe", "pipe", "pipe"],
+    env: isWsl ? { ...process.env, WSLENV: "TYPESAFE_API_KEY" } : process.env,
+  });
+  if (r.status !== 0) return undefined;
+  try {
+    return JSON.parse(r.stdout).answers ?? undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 // Ask Jev a set of questions about `state`. Returns `answers` or null
 // when no API key is configured. Throws on HTTP/API errors.
 export const jev = async (state, questions) => {
   const key = getApiKey();
   if (!key) return null;
+  const doc = { state, model: DEFAULT_MODEL, questions };
+  const viaCli = askViaCli(doc);
+  if (viaCli !== undefined) return viaCli;
   // Encode to UTF-8 bytes explicitly, same as the ps1 script.
-  const utf8Body = Buffer.from(
-    JSON.stringify({ state, model: DEFAULT_MODEL, questions }),
-    "utf8",
-  );
+  const utf8Body = Buffer.from(JSON.stringify(doc), "utf8");
   const res = await fetch(JEV_URL, {
     method: "POST",
     headers: {

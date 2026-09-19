@@ -78,6 +78,8 @@
       const root = document.documentElement;
       equal(root.dataset.browserFailed, "0");
       assert(Number(root.dataset.browserChecks) >= 5, "Sanity barrage did not record its checks");
+      equal(root.dataset.selfTestsFailed, "0");
+      assert(Number(root.dataset.selfTests) >= 10, "Known-answer self-test did not record its vectors");
       assert(document.getElementById("btc-calc"), "Page was killed despite all checks passing");
       assert(!document.querySelector(".sanity-failure"), "Failure screen rendered on a sane host");
     });
@@ -251,6 +253,8 @@
     const root = document.documentElement;
     equal(root.dataset.browserFailed, "0");
     assert(Number(root.dataset.browserChecks) >= 5, "Sanity barrage did not record its checks");
+    equal(root.dataset.selfTestsFailed, "0");
+    assert(Number(root.dataset.selfTests) >= 10, "Known-answer self-test did not record its vectors");
     assert(document.getElementById("btc-calc"), "Page was killed despite all checks passing");
     assert(!document.querySelector(".sanity-failure"), "Failure screen rendered on a sane host");
   });

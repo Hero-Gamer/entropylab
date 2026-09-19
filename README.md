@@ -260,6 +260,14 @@ the limits of browser-memory cleanup.
   iPhone/iPad/Mac Lockdown Mode blocks WebAssembly (the secp256k1 engine):
   exclude the site in Safari's page menu, or open the saved HTML in Firefox
   on an air-gapped computer. There is no JavaScript secp256k1 fallback.
+- Before any input is wired, runs published test vectors (BIP39 encoding and
+  seed, BIP32 private and public derivation, the BIP44/49/84/86 first receive
+  addresses, and an RFC 6979 ECDSA signature and its verification) through the
+  same WebAssembly engine the calculator uses, and kills the page the same way
+  if this browser computes any of them wrong. It catches a miscompiling engine
+  or a corrupted copy; it cannot catch an exploit aimed at the vectors
+  themselves, so for anything that matters, compare the master fingerprint and
+  first address against a second browser or signing device too.
 - Produces recovery information that can be saved or printed for offline use.
 - Exports a Bitcoin Core `wallet.dat` (SQLite descriptor wallet) with every
   derived output descriptor already imported — receive and change for each
@@ -547,6 +555,7 @@ To remove generated files, run `npm run clean`.
 │   ├── browser-suite.html            In-page browser test suite
 │   ├── browser.test.mjs              Headless-Firefox integration harness
 │   ├── browser-check.test.mjs        Tests for the startup browser sanity checks
+│   ├── self-test-wasm.test.mjs       Tests for the boot self-test (oracle-checked vectors)
 │   ├── network-check.test.mjs        Tests for the network-check module
 │   ├── sqlite-writer.test.mjs        Tests for the SQLite writer (verified with real SQLite)
 │   ├── ui-defaults.test.mjs          UI defaults and markup invariants
@@ -576,6 +585,7 @@ To remove generated files, run `npm run clean`.
 │       ├── online.js       Hosted-site online warning
 │       ├── network-check.js Network adapter detection and warning
 │       ├── browser-check.js Startup browser sanity checks and kill-screen
+│       ├── self-test.js    Known-answer vectors run through the WASM before boot
 │       ├── enhanced-inputs.js
 │       └── repeat-inputs.js
 ├── entropylab.html         Compiled application (generated, CI-committed)

@@ -34,6 +34,9 @@ import { inspectPsbtInscriptions, describeEnvelope } from "./inscription.js";
 import { parseOpReturn, describeOpReturn } from "./opreturn.js";
 import { parseRawTx, extractEcdsaSignatures, inscriptionHints, isPsbtMagic, serializeTx } from "./tx.js";
 import { wasmExports as hodlWasm, withInput as hodlWasmIn, withOutput as hodlWasmOut } from "./entropylab-wasm.js";
+// Published test vectors run through that same engine before boot; a host
+// that computes any of them wrong never gets a seed field (self-test.js).
+import { selfTestGate as hodlSelfTestGate } from "./self-test.js";
 import { indexHdKey, indexSingleKey, matchOwnership, pathLabel } from "./ownership.js";
 import { hex as hodlHex } from "./coders.js";
 import { addressFor, addressFromScript, descriptorDerive, p2pkhScript, p2shP2wpkhScript, p2shScript, p2trKeyScript, p2wpkhScript, p2wshScript } from "./addresses.js";
@@ -15629,9 +15632,19 @@ async function hodlBoot() {
 // If the engine cannot boot — a CSP or browser that refuses the inline
 // module, a corrupted copy — the page is killed like a failed browser-check
 // barrage, because output from a broken secp256k1 engine cannot be trusted.
-const hodlCurveFailure = () => {
+// The same screen reports a module that loads but computes a published
+// vector wrong: `failedSelfTests` lists those tests (trusted literals from
+// self-test.js, never user input), and the Lockdown advice gives way to the
+// generic advice, since a working-but-wrong engine is not Lockdown Mode.
+const hodlCurveFailure = (failedSelfTests) => {
   if (!document.body) return;
-  const rows = `<tr><td>secp256k1 WebAssembly module</td><td>Failed</td></tr>`;
+  const rows = failedSelfTests
+    ? failedSelfTests.map((name) => `<tr><td>${name}</td><td>Failed</td></tr>`).join("")
+    : `<tr><td>secp256k1 WebAssembly module</td><td>Failed</td></tr>`;
+  const advice = failedSelfTests
+    ? `<p class="sanity-failure-advice">This browser computed a published Bitcoin test vector incorrectly, so any keys or addresses it shows cannot be trusted. Open this file in a different current, mainstream browser such as Firefox on a trusted, air-gapped computer. Do not enter seed material until every check passes.</p>`
+    : `<p class="sanity-failure-advice">iPhone, iPad, and Mac Lockdown Mode block WebAssembly. This calculator needs it for secp256k1.</p>
+    <p class="sanity-failure-advice">In Safari: tap the page-menu button in the address bar, tap More, turn off Lockdown Mode for this website, then reload. Or open the saved HTML in Firefox on a trusted air-gapped computer. Do not enter seed material until every check passes.</p>`;
   document.body.innerHTML = `
 <main class="sanity-failure">
   <div class="sanity-failure-card" role="alert">
@@ -15642,9 +15655,8 @@ const hodlCurveFailure = () => {
       <thead><tr><th>Startup sanity check</th><th>Result</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
-    <p class="sanity-failure-advice">iPhone, iPad, and Mac Lockdown Mode block WebAssembly. This calculator needs it for secp256k1.</p>
-    <p class="sanity-failure-advice">In Safari: tap the page-menu button in the address bar, tap More, turn off Lockdown Mode for this website, then reload. Or open the saved HTML in Firefox on a trusted air-gapped computer. Do not enter seed material until every check passes.</p>
+    ${advice}
   </div>
 </main>`;
 };
-secp256k1Ready.then(hodlBoot).catch(() => hodlCurveFailure());
+secp256k1Ready.then(() => hodlSelfTestGate(document.documentElement, hodlCurveFailure) && hodlBoot()).catch(() => hodlCurveFailure());

@@ -178,9 +178,13 @@ test("the WASM boot chain has a failure path that kills the page", () => {
   const app = read("src/js/app.js");
   assert.match(
     app,
-    /secp256k1Ready\.then\(hodlBoot\)\.catch\(/,
-    "app boot must catch secp256k1Ready rejection instead of leaving a dead page",
+    /secp256k1Ready\.then\(\(\) => hodlSelfTestGate\(document\.documentElement, hodlCurveFailure\) && hodlBoot\(\)\)\.catch\(/,
+    "app boot must catch secp256k1Ready rejection instead of leaving a dead page, and boot only after the known-answer self-test passes",
   );
+  assert.match(app, /import \{ selfTestGate as hodlSelfTestGate \} from "\.\/self-test\.js";/);
+  // hodlBoot is declared once and called once, behind the gate: no second
+  // path can wire inputs on a host that failed the self-test.
+  assert.equal(app.match(/\bhodlBoot\(\)/g)?.length, 2, "hodlBoot must be declared once and called only behind the self-test gate");
   assert.match(app, /hodlCurveFailure/, "the boot rejection must render the sanity-failure kill screen");
   assert.match(app, /<tr><td>secp256k1 WebAssembly module<\/td><td>Failed<\/td><\/tr>/);
   assert.match(app, /Lockdown Mode block WebAssembly/);

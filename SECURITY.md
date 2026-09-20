@@ -70,7 +70,11 @@ material. Its security posture rests on the following model:
   temporaries — private keys, seeds, chain codes, mnemonics, passphrases,
   signing nonces, and HMAC/PBKDF2 blocks. The JavaScript layer zeroes the
   `Uint8Array`s it is done with (`.fill(0)`, `HDKey.wipePrivateData()`),
-  including intermediate BIP32 path nodes, per-address child keys, and the
+  including temporary BIP32 serialized key/chain-code views after master
+  derivation, child derivation, and extended-key import (also on failure).
+  Returned HDKey nodes keep independent copies; this cleanup does not wipe
+  caller-owned seed buffers. The layer also clears intermediate BIP32 path
+  nodes, per-address child keys, and the
   PSBT/BIP-85/Silent-Payments session roots when a session ends or the page
   unloads. The limits are structural: JavaScript strings and DOM values
   (displayed seed phrases, WIF keys, typed input) cannot be overwritten, only

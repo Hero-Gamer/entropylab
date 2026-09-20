@@ -273,3 +273,81 @@ test("I_L == 0 returns the BIP32 retry verdict, never an invented node (issue #3
   assert.match(js, /if \(code === 1\) \{/);
   assert.match(js, /deriveChild\(index \+ 1\)/);
 });
+
+// Observe the real facade's temporary byte copies/views without changing their
+// contents or replacing its cryptography. Keep references beyond return/throw:
+// all must be zero, while returned nodes and caller-owned inputs stay usable.
+function observeHdKeyTemporaries(operation) {
+  const retained = [], originals = {};
+  let result, error;
+  for (const name of ["slice", "subarray"]) {
+    originals[name] = Uint8Array.prototype[name];
+    Uint8Array.prototype[name] = function (...args) {
+      const bytes = originals[name].apply(this, args);
+      const caller = new Error().stack.split("\n")[2];
+      if (caller.includes("/src/js/hdkey.js:")) retained.push(bytes);
+      return bytes;
+    };
+  }
+  try { result = operation(); } catch (caught) { error = caught; }
+  finally {
+    for (const name of Object.keys(originals)) Uint8Array.prototype[name] = originals[name];
+  }
+  assert.ok(retained.length > 0, "must observe real temporary buffers");
+  assert.ok(retained.every(bytes => bytes.every(byte => byte === 0)), "HDKey temporary bytes must be cleared after return or throw");
+  return { result, error };
+}
+
+const wipeVectorSeed = "000102030405060708090a0b0c0d0e0f";
+const wipeVectorXprv = "xprv9s21ZrQH143K3QTDL4LXw2F7HEK3wJUD2nW2nRk4stbPy6cq3jPPqjiChkVvvNKmPGJxWUtg6LnF5kejMRNNU3TGtRBeJgk33yuGBxrMPHi";
+
+for (const operation of ["master", "import", "private child", "public child"]) {
+  test(`HDKey temporary bytes are cleared after ${operation}`, () => {
+    const seed = hexToBytes(wipeVectorSeed);
+    const root = HDKey.fromMasterSeed(seed);
+    const publicRoot = root.neutered();
+    const oracle = ScureHDKey.fromMasterSeed(seed);
+    const { result, error } = observeHdKeyTemporaries(() => {
+      if (operation === "master") return HDKey.fromMasterSeed(seed);
+      if (operation === "import") return HDKey.fromExtendedKey(wipeVectorXprv);
+      if (operation === "private child") return root.deriveChild(0x80000000);
+      return publicRoot.deriveChild(1);
+    });
+    assert.equal(error, undefined);
+    const expected = operation === "private child" ? oracle.deriveChild(0x80000000)
+      : operation === "public child" ? oracle.deriveChild(1) : oracle;
+    assert.equal(result.publicExtendedKey, expected.publicExtendedKey);
+    if (operation !== "public child") assert.equal(result.privateExtendedKey, expected.privateExtendedKey);
+    else assert.equal(result.privateKey, null);
+    assert.equal(root.privateExtendedKey, wipeVectorXprv, "parent must survive cleanup");
+    assert.equal(bytesToHex(seed), wipeVectorSeed, "caller seed must survive cleanup");
+  });
+}
+
+test("HDKey temporary bytes are cleared after rejecting an import version", () => {
+  const { error } = observeHdKeyTemporaries(() => HDKey.fromExtendedKey(wipeVectorXprv, { private: 1, public: 2 }));
+  assert.match(error.message, /Version mismatch/);
+});
+
+test("HDKey temporary bytes are cleared after rejecting a zero private scalar", async () => {
+  const { base58checkDecode, base58checkEncode } = await import("../src/js/base58.js");
+  const payload = base58checkDecode(wipeVectorXprv);
+  payload.fill(0, 46);
+  const invalid = base58checkEncode(payload);
+  payload.fill(0);
+  const { error } = observeHdKeyTemporaries(() => HDKey.fromExtendedKey(invalid));
+  assert.match(error.message, /Invalid private key/);
+});
+
+for (const operation of ["master", "child"]) {
+  test(`HDKey temporary bytes are cleared if ${operation} construction throws`, async (t) => {
+    const { secp256k1 } = await import("../src/js/secp256k1.js");
+    const root = HDKey.fromMasterSeed(hexToBytes(wipeVectorSeed));
+    const failure = new Error("injected public-key failure");
+    t.mock.method(secp256k1, "getPublicKey", () => { throw failure; });
+    const { error } = observeHdKeyTemporaries(() => operation === "master"
+      ? HDKey.fromMasterSeed(hexToBytes(wipeVectorSeed)) : root.deriveChild(1));
+    assert.equal(error, failure);
+    assert.equal(root.privateExtendedKey, wipeVectorXprv);
+  });
+}

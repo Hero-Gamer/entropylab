@@ -14,7 +14,8 @@
 //
 // Nothing here holds keys or generates randomness; the module only ever sees
 // PSBT bytes and UTF-8 JSON. Loading mirrors secp256k1.js: browsers compile
-// asynchronously (app boot waits on psbtWasmReady), Node initializes
+// asynchronously (app boot waits for psbtWasmReady to settle, then runs the
+// PSBT self-test vectors if it loaded; see self-test.js), Node initializes
 // synchronously at import time so the test suite stays synchronous.
 import { PSBT_WASM_B64 } from "./psbt-wasm-b64.js";
 

@@ -83,6 +83,9 @@
       assert(document.getElementById("btc-calc"), "Page was killed despite all checks passing");
       assert(!document.querySelector(".sanity-failure"), "Failure screen rendered on a sane host");
     });
+    await test("offline page threw no uncaught errors", () => {
+      assert(state.uncaught.length === 0, `${state.uncaught.length} uncaught page error(s): ${state.uncaught.join(" | ")}`);
+    });
     report("offline-results.txt");
     return;
   }
@@ -154,6 +157,48 @@
       qrLabel: row.querySelector(".addr-qr")?.dataset.addressQrLabel,
     };
   };
+
+  // Removing the focused rename field fires blur synchronously in Chromium,
+  // which re-entered the editor's finish(): Enter threw and dropped focus
+  // (and journaled the rename twice), Escape committed the name it was meant
+  // to cancel. Synthetic keydowns reproduce it: the removal, not the event,
+  // fires the blur.
+  await test("renaming a key tab commits on Enter, cancels on Escape, and keeps focus", async () => {
+    // Runs before the preload test, whose cleanup deletes every test key, and
+    // waits for the state it asserts: all eight keys in, LifeHashes painted,
+    // so no load-time re-render races the rename. Key 2, not key 1: the
+    // preload test clicks key 1, and clicking an active tab opens a rename.
+    const strip = document.getElementById("key-tabs");
+    await until(() => strip.querySelectorAll(".key-tab:not(.is-lab) .key-tab-lifehash[src^='data:image/png']").length === 8, "the eight test keys to finish loading");
+    const index = 2;
+    const activeBefore = [...strip.children].findIndex((node) => node.classList.contains("active"));
+    const label = () => strip.children[index].querySelector(".key-tab-label")?.textContent;
+    const original = label();
+    const uncaughtBefore = state.uncaught.length;
+    const rename = async (value, key) => {
+      if (!strip.children[index].classList.contains("active")) strip.children[index].click();
+      strip.children[index].click();
+      const field = await until(() => strip.querySelector(".key-tab-name-input"), "the key rename field");
+      field.value = value;
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      field.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+      assert(!strip.querySelector(".key-tab-editing"), `${key} left the rename field open`);
+      assert(document.activeElement === strip.children[index], `${key} moved focus off the key tab (to ${document.activeElement?.id || document.activeElement?.tagName})`);
+    };
+    try {
+      await rename("Renamed by the suite", "Enter");
+      equal(label(), "Renamed by the suite");
+      await rename("Discard me", "Escape");
+      equal(label(), "Renamed by the suite");
+      const fresh = state.uncaught.slice(uncaughtBefore);
+      assert(fresh.length === 0, "Renaming threw: " + fresh.join(" | "));
+    } finally {
+      await rename(original, "Enter");
+      if (activeBefore !== index) strip.children[activeBefore].click();
+    }
+    equal(label(), original);
+    assert(strip.children[activeBefore].classList.contains("active"), "the previously active tab should be selected again");
+  });
 
   await test("test mode preloads the requested deterministic hashed-dice keys", async () => {
     const tabs = await until(() => {
@@ -2089,6 +2134,13 @@
     equal(pageTabsRoot.children[0].querySelector(".journal-page-tab-full").textContent, "Field notes", "F2 should rename the active notepad page");
     equal(getComputedStyle(pageTabsRoot.children[0].querySelector(".journal-page-tab-short")).display, "none", "a renamed page should render its name only once");
     assert(!pageTabsRoot.children[0].classList.contains("is-default"), "a renamed page should keep its full label at narrow widths");
+    pageTabsRoot.children[0].dispatchEvent(new KeyboardEvent("keydown", { key: "F2", bubbles: true, cancelable: true }));
+    const discarded = await until(() => pageTabsRoot.querySelector(".key-tab-name-input"), "the page rename field again");
+    discarded.value = "Discard me";
+    discarded.dispatchEvent(new Event("input", { bubbles: true }));
+    discarded.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    equal(pageTabsRoot.children[0].querySelector(".journal-page-tab-full").textContent, "Field notes", "Escape should cancel the page rename");
+    assert(document.activeElement === pageTabsRoot.children[0], "Escape should keep focus on the page tab");
     pageTabsRoot.children[1].click();
     assert(body.value.includes("second page note"), "switching pages should restore Page 2's note");
     document.getElementById("delete-journal-page").click();
@@ -4645,6 +4697,9 @@
     assert(imageRequests.length === 0, "Hosted mode fetched an inlined image: " + imageRequests.join(", "));
   });
 
+  await test("hosted page threw no uncaught errors", () => {
+    assert(state.uncaught.length === 0, `${state.uncaught.length} uncaught page error(s): ${state.uncaught.join(" | ")}`);
+  });
   report("online-results.txt");
 })();
 </script>

@@ -11943,8 +11943,17 @@ function hodlBeginKeyRename(index) {
   input.maxLength = 120;
   input.setAttribute("aria-label", "Rename " + previous);
   input.setAttribute("aria-controls", "calc-card");
+  // One-shot. Removing the focused input (the replaceWith below, or a
+  // re-render of the strip) fires blur synchronously in Chromium while the
+  // editor still reports isConnected, re-entering finish mid-swap: that
+  // re-committed and re-logged every Enter rename, committed the name Escape
+  // had just cancelled, threw from the outer replaceWith, and dropped focus.
+  // The first call is final, and a call that finds its key gone (deleted
+  // while the field was open) leaves the rebuilt strip alone.
+  let done = false;
   let finish = (commit, focus) => {
-    if (!editor.isConnected) return;
+    if (done || !editor.isConnected || hodlKeys[index] !== state) return;
+    done = true;
     let name = input.value.trim().replace(/\s+/g, " ");
     let renamed = commit && name && name !== previous && !hodlKeyNameTaken(name, index);
     if (renamed) {
@@ -12461,8 +12470,11 @@ function hodlBeginMsigRename(index) {
   input.maxLength = 120;
   input.setAttribute("aria-label", "Rename " + previous);
   input.setAttribute("aria-controls", "msig-card");
+  // One-shot, and a no-op once the multisig is gone: see hodlBeginKeyRename.
+  let done = false;
   let finish = (commit, focus) => {
-    if (!editor.isConnected) return;
+    if (done || !editor.isConnected || hodlMsigs[index] !== state) return;
+    done = true;
     let name = input.value.trim().replace(/\s+/g, " ");
     let renamed = commit && name && name !== previous && !hodlMsigNameTaken(name, index);
     if (renamed) {
@@ -12919,8 +12931,11 @@ function hodlBeginJournalPageRename(index) {
   input.maxLength = 120;
   input.setAttribute("aria-label", "Rename " + previous);
   input.setAttribute("aria-controls", "journal-page-panel");
+  // One-shot, and a no-op once the page is gone: see hodlBeginKeyRename.
+  let done = false;
   let finish = (commit, focus) => {
-    if (!editor.isConnected) return;
+    if (done || !editor.isConnected || hodlJournal.pages[index] !== page) return;
+    done = true;
     let name = input.value.trim().replace(/\s+/g, " ");
     let renamed = commit && name && name !== previous && !hodlJournalPageNameTaken(name, index);
     if (renamed) {

@@ -15478,7 +15478,10 @@ function hodlInitSecretFieldAutoClear() {
     hodlDiceCoinPositions = [];
     for (let id of ["dice", "hex", "bin", "base4", "base8", "base32", "base64", "seed", "seed-numbers", "key", "pass", "cards", "direct-cards"]) {
       let field = document.getElementById(id);
-      if (field) field.value = "";
+      if (field) {
+        field.value = "";
+        delete field.dataset.previousValue;
+      }
     }
     let psbtKey = document.getElementById("psbt-key"), psbtPass = document.getElementById("psbt-pass");
     if (psbtKey) psbtKey.value = "";

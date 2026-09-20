@@ -53,7 +53,8 @@ function raceHarness() {
     hodlJournalWipeMem: () => { context.hodlJournalGeneration++; },
     hodlErrorSpecFrom: error => error.message,
   });
-  fields.set("pass", { value: "private passphrase" });
+  fields.set("pass", { value: "private passphrase", dataset: {} });
+  fields.set("dice", { value: "1 2 3 4 5 6", dataset: { previousValue: "1 2 3 4 5 6" } });
   for (const name of ["hodlThrowIfFailed", "hodlSetSelectedScriptType", "hodlCaptureKey",
     "hodlSnapshotKeySummary", "hodlCommitDerivedKey", "hodlJournalCaptureDerivedKey",
     "hodlFocusWalletResult", "hodlJournalLog", "hodlSetWorkspaceError", "hodlJournalSetStatus",
@@ -129,6 +130,20 @@ test("pagehide and persisted pageshow erase rendered word copies", () => {
     mirrors.forEach(el => { el.textContent = "secret mnemonic"; });
     events[type]({ persisted: true });
     assert.ok(mirrors.every(el => el.textContent === ""));
+  }
+});
+
+test("pagehide and persisted pageshow drop the dice previousValue leftover", () => {
+  // #423 leftover: the wipe blanked dice.value and left dataset.previousValue
+  // holding the rolls. That is the raw entropy the visible field just lost.
+  const { context, events } = raceHarness();
+  const dice = context.document.getElementById("dice");
+  for (const type of ["pagehide", "pageshow"]) {
+    dice.value = "1 2 3 4 5 6";
+    dice.dataset.previousValue = "1 2 3 4 5 6";
+    events[type]({ persisted: true });
+    assert.equal(dice.value, "");
+    assert.equal(dice.dataset.previousValue, undefined);
   }
 });
 

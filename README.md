@@ -481,12 +481,16 @@ possible loss of funds. Follow the private reporting instructions in
 ## Building from source
 
 The build bundles the application with esbuild and inlines the result into a
-single self-contained HTML file. All Bitcoin cryptography is compiled to
-WebAssembly from the pinned Rust crate (below); the only JavaScript package
-bundled into the artifact is `uqr` (QR rendering). `package-lock.json` pins
+single self-contained HTML file. The wallet cryptographic primitives run in
+WebAssembly from the pinned Rust crates (below). The JavaScript bundle also
+includes `uqr` (QR rendering) and `@scure/btc-signer` through
+`src/js/script-builder.js`, which the PSBT editor uses to convert supplied
+addresses to output scripts. Its bundled dependencies are part of the
+production audit surface, even though the package is listed under
+`devDependencies`. The `@noble`/`@scure` packages also serve as differential
+test oracles; they are not exclusively test-only. `package-lock.json` pins
 the complete dependency tree and the integrity hash of every downloaded
-package; the `@noble`/`@scure` packages remain as dev-only differential test
-oracles, pinned and never bundled.
+package.
 
 EntropyLab's cryptography — secp256k1 curve operations (public-key
 derivation, ECDSA signing and verification in PSBT inspection, curve point
@@ -503,9 +507,10 @@ WebAssembly from the pinned Rust crate in `entropylab-wasm/` (exact crate
 versions in `entropylab-wasm/Cargo.lock`, toolchain pinned by
 `rust-toolchain.toml`) via the facades in `src/js/secp256k1.js`,
 `src/js/hashes.js`, `src/js/hdkey.js`, `src/js/bip39.js`, `src/js/base58.js`,
-`src/js/addresses.js`, and `src/js/bech32.js`. The only remaining JavaScript
-bundled from npm is `uqr` (QR rendering; no cryptography). The compiled
-artifact is committed as `src/js/entropylab-wasm-b64.js`, so building the
+`src/js/addresses.js`, and `src/js/bech32.js`. The PSBT editor and flow
+visualizer render script addresses through the WASM `addressFromScript`
+facade; the script builder's address-to-script conversion is the JavaScript
+exception described above. The compiled artifact is committed as `src/js/entropylab-wasm-b64.js`, so building the
 site needs only Node.js. CI
 rebuilds it from the Rust sources, runs its test suite against the fresh
 build, and commits the runner's copy back to `rock` after each merge (the

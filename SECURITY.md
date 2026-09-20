@@ -41,8 +41,13 @@ material. Its security posture rests on the following model:
   — no network access, and the module never generates randomness (signing is
   RFC 6979 with caller-fixed extra entropy). BIP32 extended-key derivation,
   BIP39 mnemonics, Base58Check, bech32m, and address/script construction run
-  on rust-bitcoin's crates in the same module. CI rebuilds the WASM from the
-  committed Rust sources and tests the fresh modules before building the
+  on rust-bitcoin's crates in the same module, except that the PSBT editor
+  uses `src/js/script-builder.js` and the pinned `@scure/btc-signer` package
+  for address-to-output-script conversion. That JavaScript package and its
+  bundled dependencies are part of the production audit surface. Script-to-
+  address rendering in the editor and flow visualizer uses the WASM facade.
+  CI rebuilds the WASM from the committed Rust sources and tests the fresh
+  modules before building the
   site. Those same modules are bundled with the HTML candidate for downstream
   source and browser tests, deployment, and the post-merge artifact commit;
   publication does not compile a second WASM copy.

@@ -142,7 +142,15 @@ for UI testing only and must never receive funds. The loader and its
   changing production code: a bug-fix or tighter-validation case must fail for
   the claimed reason; a new capability may first fail as a missing export/API
   but must already carry an independently determined expected result or
-  rejection. Expected values must not come from the code under test. List the
+  rejection. Coverage-only changes may start green; behaviour-preserving
+  refactors must keep relevant tests green before and after. For these cases,
+  record the unchanged contract and passing commands instead of manufacturing
+  a failure. Expected values must not come from the code under test.
+  Established independent reference libraries and differential tests are
+  allowed; identify the reference and contract, retain applicable published
+  vectors and rejection cases, and follow dependency-review requirements.
+  Do not invent a second implementation alongside the change as the sole
+  oracle. For bug fixes, tighter validation, and new capabilities, list the
   failing-then-passing command in the pull request. See `AGENTS.md` for the
   full rule. Never weaken, skip, or delete an existing test to make CI pass —
   if it is wrong, say why.

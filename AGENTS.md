@@ -121,24 +121,35 @@ network-silence, or "we do not invent entropy":
 - Run that test against the current sources before the implementation change.
   For a bug fix or tighter validation, it must fail for the claimed reason.
   A failure caused only by a missing import/export or unrelated setup does not
-  establish the claimed defect. If it is already green, the test has not
-  pinned a new contract — tighten it.
+  establish the claimed defect. If that bug-fix or tighter-validation test is
+  already green, it has not pinned the claimed change — tighten it.
 - For a new capability, a missing export/API is an acceptable first red, but
   the test must already contain an independently determined expected result or
   rejection condition.
+- Coverage-only changes may add tests that pass on the current sources.
+  Behaviour-preserving refactors must keep the relevant tests green before
+  and after the change. Neither requires an artificial failing test or a
+  production change merely to satisfy this order. Record the unchanged
+  contract and the passing commands in the PR; targeted fault injection below
+  may provide additional evidence that the tests detect a violation.
 - Expected results must be established independently of the implementation
   under test. Prefer published BIP / Bitcoin Core vectors, protocol
   specifications, stated rejection conditions, or behaviour already pinned by
   existing repository tests for the same contract. Never compute the expected
-  answer by running the code under test and copying its output. Do not add a
-  second implementation in the test and compare the two.
+  answer by running the code under test and copying its output. Do not invent
+  a second implementation alongside the change as the sole test oracle.
+  Established independent reference libraries and differential testing are
+  allowed: identify the reference and the contract being compared, and keep
+  applicable published vectors and explicit rejection cases. Agreement alone
+  is not proof of correctness. New dependencies still require review.
 - Include meaningful accepted and rejected inputs where both apply. Cover
   negative cases named in the issue or review; if one is intentionally out of
   scope, explain why in the PR.
-- Only then make the smallest production change that makes the test pass.
+- For a bug fix, tighter validation, or new capability, only then make the
+  smallest production change that makes the test pass.
 - Do not delete, skip, weaken, or soften a test to make it pass.
-- In the PR, record the command/test used for the initial red and the same
-  test/command after the implementation is green.
+- For those behaviour changes, record in the PR the command/test used for the
+  initial red and the same test/command after the implementation is green.
 
 Documentation-only and presentation-only changes do not need test vectors solely
 to satisfy this section. "When practicable" is not an exemption for the

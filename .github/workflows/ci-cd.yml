@@ -146,6 +146,9 @@ jobs:
         run: npm run build:wasm
       - name: Test the freshly built bindings
         run: node --test test/entropylab-wasm.test.mjs test/hashes-wasm.test.mjs test/hdkey-bip39-wasm.test.mjs test/addresses-wasm.test.mjs test/tx-sighash-wasm.test.mjs test/psbt-wasm.test.mjs test/psbt-sanitize.test.mjs test/wipe-wasm.test.mjs test/vanity-wasm.test.mjs test/aezeed-wasm.test.mjs test/self-test-wasm.test.mjs
+      - name: Test native Rust PSBT unit tests
+        working-directory: psbt-wasm
+        run: cargo test --locked --lib
       - name: Upload the freshly tested WASM modules
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

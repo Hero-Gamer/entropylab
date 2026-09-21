@@ -393,13 +393,15 @@ for (const log of logs) {
   });
 }
 
-const pad = (s, w) => String(s).padEnd(w).slice(0, w);
+// The verdict table is Markdown: it pastes cleanly into chat, issues, and PR
+// bodies, which is where people actually read these results.
+const col = (s) => String(s).replace(/\|/g, "\\|");
 console.log("\n=== Jev adversarial verdict table (took " + ((Date.now() - started) / 1000).toFixed(1) + "s) ===");
-console.log(pad("scenario", 26) + " " + pad("verdict", 10) + " " + pad("sev", 6) + " " + pad("excp", 5) + " " + pad("net", 5) + " " + pad("inv", 5) + " " + pad("net?", 6) + " " + pad("hang?", 6));
+console.log("| scenario | verdict | sev | excp | net | inv | net? | hang? |");
+console.log("|---|---|---|---|---|---|---|---|");
 for (const r of rows) {
   console.log(
-    pad(r.name, 26) + " " + pad(r.choice, 10) + " " + pad(r.severity, 6) + " " + pad(r.exceptions, 5) + " " +
-    pad(r.net, 5) + " " + pad(r.inv, 5) + " " + pad(r.netq, 6) + " " + pad(r.hangq, 6)
+    `| ${col(r.name)} | ${col(r.choice)} | ${col(r.severity)} | ${col(r.exceptions)} | ${col(r.net)} | ${col(r.inv)} | ${col(r.netq)} | ${col(r.hangq)} |`
   );
 }
 for (const r of rows) {

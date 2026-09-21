@@ -63,14 +63,28 @@ function onlineHarness({ hostname, protocol = "https:", search = "", stored = nu
   return { calls, banner, dismiss, formatRecoverySheet };
 }
 
-test("the online warning only appears on the hosted site (or an explicit local preview)", () => {
+test("the online warning appears on any network-served origin, not just the canonical domain", () => {
+  // Downloaded (file://) and loopback copies are local: no banner, no DOM access.
   for (const local of [
     { hostname: "", protocol: "file:", search: "" },
     { hostname: "localhost", protocol: "http:", search: "" },
-    { hostname: "example.com", protocol: "https:", search: "" },
+    { hostname: "127.0.0.1", protocol: "http:", search: "" },
   ]) {
     const { calls } = onlineHarness(local);
     assert.equal(calls.length, 0, `no DOM access at all for ${JSON.stringify(local)}`);
+  }
+  // Any non-loopback http(s) origin is "online": the canonical domain, a
+  // self-hosted mirror, and a LAN IP must all reveal the banner.
+  for (const served of [
+    { hostname: "example.com", protocol: "https:", search: "" },
+    { hostname: "mirror.example.org", protocol: "http:", search: "" },
+    { hostname: "192.168.1.50", protocol: "http:", search: "" },
+  ]) {
+    const { calls } = onlineHarness(served);
+    assert.ok(
+      calls.some(([name, id]) => name === "removeAttribute" && id === "hidden"),
+      `network-served origin reveals the banner for ${JSON.stringify(served)}`,
+    );
   }
   const preview = onlineHarness({ hostname: "localhost", protocol: "http:", search: "?online-preview=1" });
   assert.ok(preview.calls.some(([name, id]) => name === "removeAttribute" && id === "hidden"), "explicit preview reveals the banner");

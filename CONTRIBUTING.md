@@ -142,12 +142,26 @@ for UI testing only and must never receive funds. The loader and its
 - **Docs:** user-facing or security-model changes require `README.md` /
   `SECURITY.md` updates in the same pull request.
 - **Tests:** new or changed behaviour needs a test; published vectors (BIP39,
-  BIP32, Bitcoin Core) are preferred. Changes to security-sensitive validation,
-  cryptography, scripts, or transaction/PSBT parsing must cover both accepted
-  and rejected inputs. For bug fixes, add a regression case that fails before
-  the fix when practicable, and explain any identified negative case that is
-  intentionally out of scope. Never weaken, skip, or delete an existing test
-  to make CI pass — if it is wrong, say why.
+  BIP32, Bitcoin Core) are preferred. Security-sensitive changes — derivation,
+  parsing, validation, verification, cryptography, consensus-sensitive
+  behaviour, scripts, transaction/PSBT handling, network-silence, and "we do
+  not invent entropy" — must cover accepted and rejected inputs where both
+  apply. Write or extend that test first and run it on current sources before
+  changing production code: a bug-fix or tighter-validation case must fail for
+  the claimed reason; a new capability may first fail as a missing export/API
+  but must already carry an independently determined expected result or
+  rejection. Coverage-only changes may start green; behaviour-preserving
+  refactors must keep relevant tests green before and after. For these cases,
+  record the unchanged contract and passing commands instead of manufacturing
+  a failure. Expected values must not come from the code under test.
+  Established independent reference libraries and differential tests are
+  allowed; identify the reference and contract, retain applicable published
+  vectors and rejection cases, and follow dependency-review requirements.
+  Do not invent a second implementation alongside the change as the sole
+  oracle. For bug fixes, tighter validation, and new capabilities, list the
+  failing-then-passing command in the pull request. See `AGENTS.md` for the
+  full rule. Never weaken, skip, or delete an existing test to make CI pass —
+  if it is wrong, say why.
 - **Translations:** user-facing text is written in English and translated
   content-keyed — the English string at the call site is the catalog key
   (`t("Save watch-only sheet")`), and a content sweep translates static markup

@@ -25,13 +25,15 @@ import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 import { wasmReady } from "../src/js/entropylab-wasm.js";
 import { HDKey } from "../src/js/hdkey.js";
 import { secp256k1 } from "../src/js/secp256k1.js";
-import { SELF_TESTS, runSelfTests, selfTestGate } from "../src/js/self-test.js";
+import { SELF_TESTS, PSBT_SELF_TESTS, PSBT_SELF_TEST_VECTORS, runSelfTests, selfTestGate } from "../src/js/self-test.js";
+import { hex as scureHex } from "@scure/base";
 
 await wasmReady;
 
 const ABANDON = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+const ALL_TESTS = [...SELF_TESTS, ...PSBT_SELF_TESTS];
 const byName = (name) => {
-  const found = SELF_TESTS.find((entry) => entry.name === name);
+  const found = ALL_TESTS.find((entry) => entry.name === name);
   assert.ok(found, `self-test "${name}" exists`);
   return found;
 };
@@ -41,9 +43,12 @@ const shifted = (value) => value.slice(0, -1) + (value.endsWith("0") ? "1" : "0"
 
 test("every self-test has a unique name and a non-empty expected string", () => {
   assert.ok(SELF_TESTS.length >= 10, `expected the vector barrage, found ${SELF_TESTS.length}`);
-  const names = SELF_TESTS.map((entry) => entry.name);
+  assert.ok(PSBT_SELF_TESTS.length >= 5, `expected the PSBT vectors, found ${PSBT_SELF_TESTS.length}`);
+  // Unique across both lists: boot runs them as one list, and the failure
+  // screen names them.
+  const names = ALL_TESTS.map((entry) => entry.name);
   assert.equal(new Set(names).size, names.length, "self-test names must be unique");
-  for (const { name, expected, run } of SELF_TESTS) {
+  for (const { name, expected, run } of ALL_TESTS) {
     assert.ok(typeof name === "string" && name.length > 0, "every self-test is named");
     // Names are rendered as markup on the failure screen; keep them inert.
     assert.doesNotMatch(name, /[<>&"']/, `${name}: names must carry no markup characters`);
@@ -54,6 +59,41 @@ test("every self-test has a unique name and a non-empty expected string", () => 
 
 test("the shipped WebAssembly engine passes every published vector", () => {
   assert.deepEqual(runSelfTests(), []);
+});
+
+test("the shipped PSBT module passes every published vector", () => {
+  assert.deepEqual(runSelfTests(PSBT_SELF_TESTS), []);
+});
+
+test("every PSBT expected value matches an independent implementation", () => {
+  const decode = (hexText) => btc.Transaction.fromPSBT(scureHex.decode(hexText), { allowUnknownInputs: true, allowUnknownOutputs: true });
+  const summary = (tx, version) => {
+    const inputs = Array.from({ length: tx.inputsLength }, (_, i) => tx.getInput(i));
+    const outputs = Array.from({ length: tx.outputsLength }, (_, i) => tx.getOutput(i));
+    const total = outputs.reduce((sum, output) => sum + output.amount, 0n);
+    return `v${version} in:${inputs.map((input) => `${scureHex.encode(input.txid)}:${input.index}`).join(",")}` +
+      ` out:${outputs.map((output) => `${output.amount}:${scureHex.encode(output.script)}`).join(",")} total:${total}`;
+  };
+  const { BIP174_VALID_2, BIP174_INVALID_2, BIP370_MINIMAL } = PSBT_SELF_TEST_VECTORS;
+  assert.equal(byName("PSBT decode (BIP-174)").expected, summary(decode(BIP174_VALID_2), 0));
+  assert.equal(byName("PSBT v2 decode (BIP-370)").expected, summary(decode(BIP370_MINIMAL), 2));
+  assert.throws(() => decode(BIP174_INVALID_2), "the independent decoder must refuse invalid vector 2 as well");
+  assert.equal(byName("PSBT rejects an invalid file (BIP-174)").expected, "valid:accepted invalid:rejected");
+  // Rebuild: the published file byte for byte, then the same file with only
+  // output 1's amount changed. The independent decoder confirms the edited
+  // literal differs from the original in exactly that amount.
+  const [unedited, edited] = byName("PSBT rebuild (BIP-174)").expected.match(/^unedited:(\S+) edited:(\S+)$/).slice(1);
+  assert.equal(unedited, BIP174_VALID_2);
+  assert.equal(BIP174_VALID_2.split("8e24000000000000").length, 2, "the edited amount field must occur exactly once");
+  const [before, after] = [decode(unedited), decode(edited)];
+  assert.equal(before.getOutput(1).amount, 9358n);
+  assert.equal(after.getOutput(1).amount, 9357n);
+  assert.equal(summary(after, 0), summary(before, 0).replace("9358:", "9357:").replace("total:199909358", "total:199909357"));
+  // BIP-341: a 65-byte Taproot signature ends in one of six defined sighash
+  // bytes; 0x00 (SIGHASH_DEFAULT) is only valid as the implicit 64-byte form.
+  const defined = ["01", "02", "03", "81", "82", "83"];
+  const verdicts = ["01", "00", "ff"].map((byte) => `${byte}:${defined.includes(byte) ? "decoded" : "rejected"}`).join(" ");
+  assert.equal(byName("Taproot signature sighash check (BIP-341)").expected, verdicts);
 });
 
 test("every expected value matches an independent implementation", () => {
@@ -79,7 +119,7 @@ test("every expected value matches an independent implementation", () => {
 });
 
 test("every self-test fails when its expectation moves", () => {
-  for (const entry of SELF_TESTS) {
+  for (const entry of ALL_TESTS) {
     assert.deepEqual(runSelfTests([{ ...entry, expected: shifted(entry.expected) }]), [entry.name], `${entry.name} passed a wrong expectation`);
   }
 });
@@ -148,6 +188,16 @@ test("the boot gate reports failures and refuses to boot", () => {
   assert.equal(root.dataset.selfTestsFailed, "1");
   // No <html> (a host broken enough to lose it) still refuses to boot.
   assert.equal(selfTestGate(null, () => {}, broken), false);
+});
+
+test("the boot gate runs the PSBT vectors alongside the core ones when given both", () => {
+  const root = { dataset: {} };
+  const reported = [];
+  const broken = PSBT_SELF_TESTS.map((entry, index) => (index === 0 ? { ...entry, expected: shifted(entry.expected) } : entry));
+  assert.equal(selfTestGate(root, (failed) => reported.push(failed), [...SELF_TESTS, ...broken]), false);
+  assert.deepEqual(reported, [[PSBT_SELF_TESTS[0].name]], "a PSBT failure alone must stop boot");
+  assert.equal(root.dataset.selfTests, String(ALL_TESTS.length));
+  assert.equal(root.dataset.selfTestsFailed, "1");
 });
 
 test("the module never talks to the network, browser storage, or a CSPRNG", () => {

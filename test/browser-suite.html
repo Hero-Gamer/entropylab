@@ -79,7 +79,9 @@
       equal(root.dataset.browserFailed, "0");
       assert(Number(root.dataset.browserChecks) >= 5, "Sanity barrage did not record its checks");
       equal(root.dataset.selfTestsFailed, "0");
-      assert(Number(root.dataset.selfTests) >= 10, "Known-answer self-test did not record its vectors");
+      // 10 core vectors plus 5 PSBT ones: fewer means the PSBT module never
+      // loaded here and its vectors were skipped, which must not pass silently.
+      assert(Number(root.dataset.selfTests) >= 15, `Known-answer self-test recorded ${root.dataset.selfTests} vectors, expected the 15 core and PSBT ones`);
       assert(document.getElementById("btc-calc"), "Page was killed despite all checks passing");
       assert(!document.querySelector(".sanity-failure"), "Failure screen rendered on a sane host");
     });
@@ -299,7 +301,9 @@
     equal(root.dataset.browserFailed, "0");
     assert(Number(root.dataset.browserChecks) >= 5, "Sanity barrage did not record its checks");
     equal(root.dataset.selfTestsFailed, "0");
-    assert(Number(root.dataset.selfTests) >= 10, "Known-answer self-test did not record its vectors");
+    // 10 core vectors plus 5 PSBT ones: fewer means the PSBT module never
+    // loaded here and its vectors were skipped, which must not pass silently.
+    assert(Number(root.dataset.selfTests) >= 15, `Known-answer self-test recorded ${root.dataset.selfTests} vectors, expected the 15 core and PSBT ones`);
     assert(document.getElementById("btc-calc"), "Page was killed despite all checks passing");
     assert(!document.querySelector(".sanity-failure"), "Failure screen rendered on a sane host");
   });

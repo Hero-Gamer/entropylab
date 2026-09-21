@@ -178,10 +178,14 @@ test("the WASM boot chain has a failure path that kills the page", () => {
   const app = read("src/js/app.js");
   assert.match(
     app,
-    /secp256k1Ready\.then\(\(\) => hodlSelfTestGate\(document\.documentElement, hodlCurveFailure\) && hodlBoot\(\)\)\.catch\(/,
+    /Promise\.all\(\[secp256k1Ready, hodlPsbtLoaded\]\)\s*\.then\(\(\[, psbtLoaded\]\) => hodlSelfTestGate\(document\.documentElement, hodlCurveFailure, psbtLoaded \? \[\.\.\.hodlSelfTests, \.\.\.hodlPsbtSelfTests\] : hodlSelfTests\) && hodlBoot\(\)\)\s*\.catch\(/,
     "app boot must catch secp256k1Ready rejection instead of leaving a dead page, and boot only after the known-answer self-test passes",
   );
-  assert.match(app, /import \{ selfTestGate as hodlSelfTestGate \} from "\.\/self-test\.js";/);
+  assert.match(app, /import \{ selfTestGate as hodlSelfTestGate, SELF_TESTS as hodlSelfTests, PSBT_SELF_TESTS as hodlPsbtSelfTests \} from "\.\/self-test\.js";/);
+  // A PSBT module that fails to load must not kill boot (it never did: the
+  // PSBT tools report it on use), so its readiness maps a rejection to false
+  // rather than rejecting the chain; once loaded, its vectors join the gate.
+  assert.match(app, /const hodlPsbtLoaded = psbtWasmReady\.then\(\(\) => true, \(\) => false\);/);
   // hodlBoot is declared once and called once, behind the gate: no second
   // path can wire inputs on a host that failed the self-test.
   assert.equal(app.match(/\bhodlBoot\(\)/g)?.length, 2, "hodlBoot must be declared once and called only behind the self-test gate");

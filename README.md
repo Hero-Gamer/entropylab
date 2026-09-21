@@ -264,7 +264,10 @@ the limits of browser-memory cleanup.
   seed, BIP32 private and public derivation, the BIP44/49/84/86 first receive
   addresses, and an RFC 6979 ECDSA signature and its verification) through the
   same WebAssembly engine the calculator uses, and kills the page the same way
-  if this browser computes any of them wrong. It catches a miscompiling engine
+  if this browser computes any of them wrong. The separate PSBT module gets the
+  same treatment once it loads: BIP-174 and BIP-370 decodes, a byte-exact
+  rebuild through the editor's own path, rejection of an invalid file, and the
+  BIP-341 Taproot sighash-byte rule. It catches a miscompiling engine
   or a corrupted copy; it cannot catch an exploit aimed at the vectors
   themselves, so for anything that matters, compare the master fingerprint and
   first address against a second browser or signing device too.

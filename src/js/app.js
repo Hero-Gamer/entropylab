@@ -36,7 +36,8 @@ import { parseRawTx, extractEcdsaSignatures, inscriptionHints, isPsbtMagic, seri
 import { wasmExports as hodlWasm, withInput as hodlWasmIn, withOutput as hodlWasmOut } from "./entropylab-wasm.js";
 // Published test vectors run through that same engine before boot; a host
 // that computes any of them wrong never gets a seed field (self-test.js).
-import { selfTestGate as hodlSelfTestGate } from "./self-test.js";
+import { selfTestGate as hodlSelfTestGate, SELF_TESTS as hodlSelfTests, PSBT_SELF_TESTS as hodlPsbtSelfTests } from "./self-test.js";
+import { psbtWasmReady } from "./psbt-wasm.js";
 import { indexHdKey, indexSingleKey, matchOwnership, pathLabel } from "./ownership.js";
 import { hex as hodlHex } from "./coders.js";
 import { addressFor, addressFromScript, descriptorDerive, p2pkhScript, p2shP2wpkhScript, p2shScript, p2trKeyScript, p2wpkhScript, p2wshScript } from "./addresses.js";
@@ -15677,4 +15678,10 @@ const hodlCurveFailure = (failedSelfTests) => {
   </div>
 </main>`;
 };
-secp256k1Ready.then(() => hodlSelfTestGate(document.documentElement, hodlCurveFailure) && hodlBoot()).catch(() => hodlCurveFailure());
+// The PSBT module stays optional to boot, as it always was: if it fails to
+// load, the PSBT tools report that when used and the rest of the page runs.
+// Once it loads, its vectors must pass like every other.
+const hodlPsbtLoaded = psbtWasmReady.then(() => true, () => false);
+Promise.all([secp256k1Ready, hodlPsbtLoaded])
+  .then(([, psbtLoaded]) => hodlSelfTestGate(document.documentElement, hodlCurveFailure, psbtLoaded ? [...hodlSelfTests, ...hodlPsbtSelfTests] : hodlSelfTests) && hodlBoot())
+  .catch(() => hodlCurveFailure());

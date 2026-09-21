@@ -12564,7 +12564,8 @@ function hodlShowWorkspace(id) {
   let preservedTop = window.scrollY, preservedLeft = window.scrollX;
   if (hodlWorkspace === "calc") hodlCaptureKey();
   else if (hodlWorkspace === "msig") hodlCaptureMsig();
-  else if (hodlWorkspace === "vanity") hodlVanityCancel();
+  // A running vanity grind survives workspace navigation. Stop, inputs that
+  // invalidate the run, and lifecycle/session clearing own cancellation.
   hodlWorkspace = id;
   [...hodlElement("#workspace-tabs").querySelectorAll("[data-workspace]")].forEach((button) => {
     let active = button.dataset.workspace === id;

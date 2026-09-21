@@ -118,6 +118,62 @@ test("the recovery sheet is stamped with the build version exactly once", () => 
   assert.equal(formatRecoverySheet(already), already, "no double stamping");
 });
 
+test("switching away from Vanity leaves an active grind running", () => {
+  let cancelled = 0;
+  const tabs = { querySelectorAll: () => [], children: [] };
+  const element = () => ({ hidden: false });
+  const makeWorkspace = new Function(
+    "window", "document", "hodlElement", "hodlVanityCancel", "requestAnimationFrame", "cancelAnimationFrame",
+    "hodlSyncPsbtTool", "hodlSyncJournalTool", "hodlJournalLog", "hodlOutEl", "hodlQueueSegmentedControlSync",
+    `let hodlWorkspace = "vanity";
+     let hodlWorkspaceScrollFrame = 0;
+     let hodlWalletResult = null;
+     let hodlRevealPrivate = false;
+     ${appSlice("hodlShowWorkspace")}
+     return (id) => hodlShowWorkspace(id);`,
+  );
+  const switchWorkspace = makeWorkspace(
+    { scrollX: 0, scrollY: 0, scrollTo: () => {} },
+    { getElementById: element },
+    (selector) => selector === "#workspace-tabs" ? tabs : element(),
+    () => cancelled++,
+    (callback) => { callback(); return 1; },
+    () => {},
+    () => {},
+    () => {},
+    () => {},
+    { innerHTML: "result" },
+    () => {},
+  );
+
+  switchWorkspace("ln");
+  assert.equal(cancelled, 0, "a workspace navigation must not cancel the active grinder");
+});
+
+test("changes that invalidate a vanity run still cancel it", () => {
+  let cancelled = 0;
+  const api = new Function(
+    "hodlVanityCancel", "document", "hodlApplyFilteredInput", "hodlFilterVanityPrefix",
+    "hodlVanityClearResults", "hodlVanitySyncScriptNote", "hodlVanityEstimate", "hodlVanitySyncMethod",
+    `${appSlice("hodlVanityScriptChanged")}
+     ${appSlice("hodlVanityMethodChanged")}
+     return { hodlVanityScriptChanged, hodlVanityMethodChanged };`,
+  )(
+    () => cancelled++,
+    { getElementById: () => null },
+    () => {},
+    (value) => value,
+    () => {},
+    () => {},
+    () => {},
+    () => {},
+  );
+
+  api.hodlVanityScriptChanged();
+  api.hodlVanityMethodChanged();
+  assert.equal(cancelled, 2, "script and method changes must each cancel the stale run");
+});
+
 // ── repeat-inputs.js ─────────────────────────────────────────────────────────
 
 class FakeInputEvent {

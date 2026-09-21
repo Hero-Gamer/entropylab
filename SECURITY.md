@@ -105,7 +105,11 @@ material. Its security posture rests on the following model:
   indexer, and cannot detect payments on its own. BIP-321 URIs and BIP-353 DNS
   TXT records are printed from the derived code so you can publish them on a
   domain you control; the page never resolves names, never fetches
-  silentpayments.net, and ignores Lightning parameters in a URI.
+  silentpayments.net, and ignores Lightning parameters in a URI. When a URI
+  includes an ordinary Bitcoin fallback address alongside `sp=`, sender
+  outputs use the selected Silent Payment instruction and the results show
+  the unused fallback as escaped text. That fallback is not validated or
+  used to construct an output.
 - Inscription envelope detection is a parser of witness/tap-leaf scripts. It
   does not render inscription media, assign sat numbers, or contact an indexer.
 - PSBT analysis is explicitly bounded. EntropyLab does not independently fetch

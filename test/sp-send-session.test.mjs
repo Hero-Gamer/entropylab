@@ -28,6 +28,9 @@ import {
   bytesToHex,
 } from "../src/js/bip352.js";
 import { secp256k1 } from "../src/js/secp256k1.js";
+import { parseRecipientLines } from "../src/js/bip321.js";
+import { decodeSilentPaymentAddress, p2trAddressFromXonly } from "../src/js/bip352.js";
+import { tHtml } from "../src/js/i18n.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const app = readFileSync(join(root, "src/js/app.js"), "utf8");
@@ -229,6 +232,51 @@ test("UI construction wipes byte keys on success and throw, and suppresses the s
     if(fail)assert.throws(render,/construction failed/);else render();
     assert.ok(saved[0].private_key.every(b=>b===0));
   }
+});
+
+test("SP send discloses unused fallback text safely and keeps the published outputs (#399 F4)", () => {
+  const vector = JSON.parse(readFileSync(join(root, "test/fixtures/bip352-send-and-receive.json"), "utf8"))[0].sending[0];
+  const sp = vector.given.recipients[0].address;
+  const fallback = "175tWpb8K1S7NmH4Zx6rewF9WQrcZv245W"; // BIP-321 example
+  const output = { innerHTML: "" };
+  const recipients = { value: "" };
+  const document = { getElementById: (id) => id === "sp-out" ? output : id === "sp-recipients" ? recipients : null };
+  let actualOutputs;
+  // Run the app's real renderer and parser against published BIP-352 inputs.
+  // Only session-key lookup is replaced: these are fixed public test scalars.
+  const render = new Function(
+    "document", "hodlSpParseRecipients", "hodlSpHrp", "hodlSpNetwork", "decodeSilentPaymentAddress",
+    "hodlSpParseVins", "hodlSpDeriveVinKeys", "hodlSpWipeVinKeys", "createSilentPaymentOutputs",
+    "p2trAddressFromXonly", "hodlT",
+    `${loadSlice("hodlSpEscape")}; ${loadSlice("hodlSpCopyButton")}; ${loadSlice("hodlRenderSpSend")}; return hodlRenderSpSend;`,
+  )(
+    document, parseRecipientLines, () => "sp", () => "mainnet", decodeSilentPaymentAddress,
+    () => vector.given.vin, (vins) => vins, hodlSpWipeVinKeys,
+    (vins, rows, options) => {
+      const result = createSilentPaymentOutputs(vins, rows, options);
+      actualOutputs = result.outputs;
+      return result;
+    },
+    p2trAddressFromXonly, tHtml,
+  );
+  for (const path of ["", fallback, '<img src=x onerror="alert(1)">']) {
+    recipients.value = `bitcoin:${path}?sp=${sp}`;
+    render();
+    assert.deepEqual(actualOutputs, vector.expected.outputs[0], "fallback metadata must not affect outputs");
+    if (path) {
+      assert.match(output.innerHTML, /not used/i); // Safety disclosure, not full presentation copy.
+      if (path === fallback) assert.ok(output.innerHTML.includes(fallback));
+      else {
+        assert.ok(output.innerHTML.includes("&lt;img"), "untrusted fallback must be rendered as text");
+        assert.ok(!output.innerHTML.includes("<img"), "untrusted fallback must not become markup");
+      }
+    } else {
+      assert.doesNotMatch(output.innerHTML, /not used/i);
+    }
+  }
+  recipients.value = `bitcoin:?sp=${sp}`;
+  render();
+  assert.doesNotMatch(output.innerHTML, /not used/i, "a later plain URI must not retain the fallback warning");
 });
 
 test("non-Taproot session scalars retain their exact bytes", () => {

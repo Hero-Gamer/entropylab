@@ -12749,7 +12749,7 @@ async function hodlLoadTestKeys() {
 }
 // Each tool carries a full name and a short one. Narrow screens show the
 // short form so more tools stay on screen instead of off the right edge.
-var hodlWorkspaceTabs = [["calc", "Keys", "Keys"], ["msig", "Multi Signature", "MultiSig"], ["psbt", "PSBT", "PSBT"], ["bip85", "BIP-85", "BIP85"], ["sp", "Silent Payments", "SP"], ["vanity", "Vanity", "Vanity"], ["journal", "Journal", "Journal"]];
+var hodlWorkspaceTabs = [["calc", "Keys", "Keys"], ["msig", "Multi Signature", "MultiSig"], ["psbt", "PSBT", "PSBT"], ["bip85", "BIP-85 Child", "BIP-85"], ["sp", "Silent Payments", "SP"], ["vanity", "Vanity", "Vanity"], ["journal", "Journal", "Journal"]];
 // Lightning is held back until after v1. The tool, its card and its wiring
 // all stay in place; only the way in is withdrawn, so it returns by putting
 // ["ln", "Lightning", "LN"] back in the list above and its button back in

@@ -1660,7 +1660,7 @@ test("virtual keypads never focus the field on touch so the mobile keyboard stay
 });
 
 test("workspace tabs register every tool", () => {
-  for (const entry of [/\["calc", "Keys", "Keys"\]/, /\["vanity", "Vanity", "Vanity"\]/, /\["bip85", "BIP-85", "BIP85"\]/,
+  for (const entry of [/\["calc", "Keys", "Keys"\]/, /\["vanity", "Vanity", "Vanity"\]/, /\["bip85", "BIP-85 Child", "BIP-85"\]/,
     /\["msig", "Multi Signature", "MultiSig"\]/, /\["sp", "Silent Payments", "SP"\]/, /\["psbt", "PSBT", "PSBT"\]/,
     /\["ln", "Lightning", "LN"\]/, /\["journal", "Journal", "Journal"\]/]) {
     assert.match(appSource, entry);
@@ -1888,7 +1888,7 @@ test("Key Station keeps derivation actions focused and BIP-85 remains its own wo
   }
   assert.doesNotMatch(appSource, /getElementById\("bip85-open"\)/);
   assert.doesNotMatch(appSource, /getElementById\("journal-open"\)|getElementById\("journal-use-calc"\)|hodlJournalUseActiveKey|hodlJournalApplySnapshot/);
-  for (const entry of [/\["calc", "Keys", "Keys"\]/, /\["vanity", "Vanity", "Vanity"\]/, /\["bip85", "BIP-85", "BIP85"\]/,
+  for (const entry of [/\["calc", "Keys", "Keys"\]/, /\["vanity", "Vanity", "Vanity"\]/, /\["bip85", "BIP-85 Child", "BIP-85"\]/,
     /\["msig", "Multi Signature", "MultiSig"\]/, /\["sp", "Silent Payments", "SP"\]/, /\["psbt", "PSBT", "PSBT"\]/,
     /\["ln", "Lightning", "LN"\]/, /\["journal", "Journal", "Journal"\]/]) {
     assert.match(appSource, entry);
@@ -1903,7 +1903,7 @@ test("Silent Payments is a registered tool with its own card", () => {
   for (const name of ["Keys", "Multi Signature", "Silent Payments", "PSBT"]) {
     assert.match(shell, new RegExp(`aria-label="${name}"`));
   }
-  for (const entry of [/\["calc", "Keys", "Keys"\]/, /\["vanity", "Vanity", "Vanity"\]/, /\["bip85", "BIP-85", "BIP85"\]/,
+  for (const entry of [/\["calc", "Keys", "Keys"\]/, /\["vanity", "Vanity", "Vanity"\]/, /\["bip85", "BIP-85 Child", "BIP-85"\]/,
     /\["msig", "Multi Signature", "MultiSig"\]/, /\["sp", "Silent Payments", "SP"\]/, /\["psbt", "PSBT", "PSBT"\]/,
     /\["ln", "Lightning", "LN"\]/, /\["journal", "Journal", "Journal"\]/]) {
     assert.match(appSource, entry);
@@ -1951,7 +1951,7 @@ test("the workspace switcher keeps every tool on screen as a tab strip", () => {
   // Every tool with a tab ships in the static markup, each with a full name
   // and the
   // short form narrow screens show instead.
-  for (const [full, short] of [["Keys", "Keys"], ["Vanity", "Vanity"], ["BIP-85", "BIP85"], ["Multi Signature", "MultiSig"], ["Silent Payments", "SP"], ["PSBT", "PSBT"], ["Journal", "Journal"]]) {
+  for (const [full, short] of [["Keys", "Keys"], ["Vanity", "Vanity"], ["BIP-85 Child", "BIP-85"], ["Multi Signature", "MultiSig"], ["Silent Payments", "SP"], ["PSBT", "PSBT"], ["Journal", "Journal"]]) {
     assert.ok(
       shell.includes(`<span class="workspace-tab-full">${full}</span><span class="workspace-tab-short">${short}</span>`),
       `${full} is missing from the workspace strip`,
@@ -1963,7 +1963,7 @@ test("the workspace switcher keeps every tool on screen as a tab strip", () => {
   // Hidden text leaves the accessibility tree, so the full name is stated on
   // the tab itself and assistive tech hears it at every width.
   assert.match(appSource, /button\.setAttribute\("aria-label", hodlTText\(label\)\);/);
-  for (const full of ["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "Journal"]) {
+  for (const full of ["Keys", "Vanity", "BIP-85 Child", "Multi Signature", "Silent Payments", "PSBT", "Journal"]) {
     assert.match(shell, new RegExp(`aria-label="${full.replace("/", "\\/")}">[\\s\\S]*?<span class="workspace-tab-full">${full.replace("/", "\\/")}</span>`), `${full} tab needs its accessible name`);
   }
   // A tablist owes arrow keys; the key and multisig strips already answer them.

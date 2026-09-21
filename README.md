@@ -147,6 +147,8 @@ the limits of browser-memory cleanup.
   sender taproot outputs from pasted vin JSON, and receiver verification of
   pasted x-only outputs. Prints a BIP-321 `bitcoin:?sp=` URI and the BIP-353
   DNS TXT to paste on a domain you control; paste that URI back on Send.
+  Hybrid URIs with an ordinary Bitcoin fallback address still use Silent
+  Payments; the results identify the fallback address as not used.
   This is a calculator: it does not scan the chain or resolve names.
 - Grinds vanity addresses for a Key Station key (Vanity tab), picked through
   the same chip picker as BIP-85 and Silent Payments. Two methods: the

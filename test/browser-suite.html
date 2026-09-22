@@ -3478,6 +3478,15 @@
     document.querySelector('#workspace [data-workspace="psbt"]').click();
     document.querySelector('#psbt-tool-tabs [data-psbt-tool="inspector"]').click();
     await until(() => !document.getElementById("psbt-card").hidden, "PSBT Inspector");
+    const inspectorOptions = document.getElementById("psbt-key-options");
+    inspectorOptions.open = false;
+    assert(!inspectorOptions.contains(document.getElementById("psbt-session-keys")) && !inspectorOptions.contains(document.getElementById("psbt-session-keys-note")) && document.getElementById("psbt-session-keys").getClientRects().length > 0, "The Inspector's available keys or empty-state guidance are hidden behind closed options");
+    document.querySelector('#psbt-tool-tabs [data-psbt-tool="nonce"]').click();
+    await until(() => !document.getElementById("nonce-card").hidden, "Nonce Inspector");
+    const nonceOptions = document.getElementById("nonce-key-options");
+    nonceOptions.open = false;
+    assert(!nonceOptions.contains(document.getElementById("nonce-session-keys")) && !nonceOptions.contains(document.getElementById("nonce-session-keys-note")) && document.getElementById("nonce-session-keys").getClientRects().length > 0, "The Nonce Inspector's available keys or empty-state guidance are hidden behind closed options");
+    document.querySelector('#psbt-tool-tabs [data-psbt-tool="inspector"]').click();
     const text = document.getElementById("psbt-text");
     // Start from an empty shared session whatever earlier tests left behind.
     input(text, psbt);

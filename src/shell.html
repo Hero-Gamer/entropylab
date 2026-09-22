@@ -619,6 +619,11 @@ words, pick one of the checksum words.</span></span>
       <label class="field">PSBT v0 or raw transaction (base64 or hex)
         <textarea id="psbt-text" placeholder="cHNidP8B… or 020000000001…" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
       </label>
+      <div class="station-key-source tool-section">
+        <p class="label">Use an existing key</p>
+        <div class="session-key-picker" id="psbt-session-keys" role="group" aria-label="Compatible existing keys" hidden></div>
+        <p class="field-note" id="psbt-session-keys-note" hidden></p>
+      </div>
       <details class="derivation-advanced" id="psbt-key-options">
         <summary>Inspect with key (optional)</summary>
         <p class="muted label-description">Add a key to enhance the PSBT inspection features. When a key is entered the inspection results will highlight which transaction outputs belong to that key.</p>
@@ -626,11 +631,6 @@ words, pick one of the checksum words.</span></span>
           <span class="field-note">Add a key to mark which outputs are yours. Enter a BIP39 seed phrase, root xprv/tprv, WIF, or 64-character hex.</span>
           <textarea id="psbt-key" placeholder="Leave blank for inspect-only mode" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
         </label>
-        <div class="station-key-source tool-section">
-          <p class="label">Use an existing key</p>
-          <div class="session-key-picker" id="psbt-session-keys" role="group" aria-label="Compatible existing keys" hidden></div>
-          <p class="field-note" id="psbt-session-keys-note" hidden></p>
-        </div>
         <label class="field"><span>Passphrase (optional)</span>
           <input id="psbt-pass" autocomplete="off" placeholder="Enter a BIP39 passphrase, or leave blank for none">
         </label>
@@ -685,6 +685,11 @@ words, pick one of the checksum words.</span></span>
       <label class="field">PSBT v0 or signed raw transaction (base64 or hex)
         <textarea id="nonce-text" placeholder="cHNidP8B… or 020000000001…" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
       </label>
+      <div class="station-key-source tool-section">
+        <p class="label">Use an existing key</p>
+        <div class="session-key-picker" id="nonce-session-keys" role="group" aria-label="Compatible existing keys" hidden></div>
+        <p class="field-note" id="nonce-session-keys-note" hidden></p>
+      </div>
       <details class="derivation-advanced" id="nonce-key-options">
         <summary>Inspect with key (optional)</summary>
         <p class="muted label-description">Add a key to check each signature against RFC 6979 and low-r grinding, so an unexpected nonce can be told apart from a deterministic one.</p>
@@ -692,11 +697,6 @@ words, pick one of the checksum words.</span></span>
           <span class="field-note">Enter a BIP39 seed phrase, root xprv/tprv, WIF, or 64-character hex.</span>
           <textarea id="nonce-key" placeholder="Leave blank for inspect-only mode" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
         </label>
-        <div class="station-key-source tool-section">
-          <p class="label">Use an existing key</p>
-          <div class="session-key-picker" id="nonce-session-keys" role="group" aria-label="Compatible existing keys" hidden></div>
-          <p class="field-note" id="nonce-session-keys-note" hidden></p>
-        </div>
         <label class="field"><span>Passphrase (optional)</span>
           <input id="nonce-pass" autocomplete="off" placeholder="Enter a BIP39 passphrase, or leave blank for none">
         </label>

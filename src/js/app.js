@@ -9298,7 +9298,7 @@ function hodlPsbtSyncNonceHistoryControls(message = "", error = false) {
     status.textContent = message || (count
       ? hodlTText("{count} nonce history record(s) in memory. Download the file to keep them across sessions.", { count })
       : hodlTText("No nonce history in memory. Inspect a PSBT or upload a history file."));
-    status.className = error ? "err" : "muted";
+    status.className = error ? "edge-note is-private" : "edge-note is-muted";
   }
   hodlSyncPsbtControls();
   hodlScheduleJournalStateRefresh();
@@ -11084,7 +11084,7 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
     html.push("<p class='psbt-warn'><strong>" + inscriptionReport.envelopes.length + " inscription envelope" + (inscriptionReport.envelopes.length === 1 ? "" : "s") + " in this PSBT.</strong> This is what the file reveals in witness or tap-leaf scripts. EntropyLab does not number sats, fetch content from the chain, or render binary payloads.</p>");
   }
   let nonceHtml = [];
-  nonceHtml.push("<p class='label'>ECDSA nonce check</p>");
+  if (view !== "nonce") nonceHtml.push("<p class='label'>ECDSA nonce check</p>");
   if (transcriptError) nonceHtml.push("<p class='psbt-warn'><strong>Jade anti-exfil transcript not used:</strong> " + hodlEscapeHtml(transcriptError) + "</p>");
   let {
     reused,
@@ -11099,9 +11099,9 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
   else if (rValues.length === 1) nonceHtml.push("<p class='muted'>Only one ECDSA signature with a readable r is present. Nonce reuse cannot be judged from this file alone.</p>");
   else nonceHtml.push("<p class='muted'>No ECDSA signatures with a readable r value are present, so there is no nonce to compare yet.</p>");
   if (rValues.length) nonceHtml.push("<p class='psbt-kv'>r values:<br>" + rValues.map(value => hodlEscapeHtml(value.hex) + " (input " + value.input + ")").join("<br>") + "</p>");
-  rows.forEach(row => nonceHtml.push("<p class='" + row.className + "'><strong>Input " + row.input + "</strong> pubkey " + hodlEscapeHtml(row.pubkey.slice(0, 18)) + "\u2026 \u2014 " + hodlEscapeHtml(row.message) + "</p>"));
-  if (tapSignatureCount) nonceHtml.push("<p class='muted'>This PSBT also contains " + tapSignatureCount + " Taproot / Schnorr signature(s). Their sighash policies are checked above; their BIP340 nonces are not analyzed in this version.</p>");
-  nonceHtml.push("<p class='muted'>RFC 6979 comparison currently covers SegWit v0 P2WPKH and P2WSH signatures using SIGHASH_ALL, including Bitcoin Core-style low-r grinding. Jade anti-exfil is secp256k1-zkp sign-to-contract and needs the USB host nonce plus signer opening; QR / sign_psbt Jade does not run it yet. BitBox anti-klepto is a different construction. Nonce reuse detection compares r values for the same secp256k1 point, including signatures carried by finalized scriptSig/witness fields, compressed and uncompressed encodings, and recoverable non-strict DER; the same r value claimed under two different public keys is flagged as a mislabeled field rather than skipped. A clean verdict is not issued when a signature cannot be inspected. Inscription detection reads OP_FALSE OP_IF \"ord\" envelopes in tap-leaf scripts and finalized witnesses; it does not number sats. Output ownership is derived from the session key: accounts 0\u20132, 50 receive + 50 change, all four script types. It does not talk to the chain.</p>");
+  rows.forEach(row => nonceHtml.push("<p class='psbt-kv'><strong>Input " + row.input + "</strong><br><span class='psbt-address'>pubkey " + hodlEscapeHtml(row.pubkey.slice(0, 18)) + "\u2026</span><br><span class='" + row.className + "'>" + hodlEscapeHtml(row.message) + "</span></p>"));
+  if (tapSignatureCount) nonceHtml.push("<p class='edge-note is-muted'>This PSBT also contains " + tapSignatureCount + " Taproot / Schnorr signature(s). Their sighash policies are checked above; their BIP340 nonces are not analyzed in this version.</p>");
+  nonceHtml.push("<p class='field-note'>RFC 6979 comparison currently covers SegWit v0 P2WPKH and P2WSH signatures using SIGHASH_ALL, including Bitcoin Core-style low-r grinding. Jade anti-exfil is secp256k1-zkp sign-to-contract and needs the USB host nonce plus signer opening; QR / sign_psbt Jade does not run it yet. BitBox anti-klepto is a different construction. Nonce reuse detection compares r values for the same secp256k1 point, including signatures carried by finalized scriptSig/witness fields, compressed and uncompressed encodings, and recoverable non-strict DER; the same r value claimed under two different public keys is flagged as a mislabeled field rather than skipped. A clean verdict is not issued when a signature cannot be inspected. Inscription detection reads OP_FALSE OP_IF \"ord\" envelopes in tap-leaf scripts and finalized witnesses; it does not number sats. Output ownership is derived from the session key: accounts 0\u20132, 50 receive + 50 change, all four script types. It does not talk to the chain.</p>");
   let nonceIncomplete = uninspected || tapSignatureCount || unsupportedNonceChecks || crossKey.length || rValues.length < 2;
   let nonceVerdict = reused.length ? "reuse" : crossKey.length ? "cross-key" : possible.length ? "possible" : nonceIncomplete ? "incomplete" : "clean";
   if (view !== "inspect") hodlPsbtRecordNonceInspection("psbt", rValues, nonceSourceTag, nonceVerdict, nonceCheckedAt);
@@ -11173,7 +11173,7 @@ function hodlRenderRawTx(tx, nonceSourceTag = new Uint8Array(), nonceCheckedAt =
   });
   html.push("<p class='muted'>Version " + tx.version + " \xB7 locktime " + tx.locktime + (tx.segwit ? " \xB7 segwit" : "") + ". Fee unknown \u2014 previous output amounts are not in a raw transaction.</p>");
   let nonceHtml = [], verdictHtml = [];
-  nonceHtml.push("<p class='label'>ECDSA nonce check</p>");
+  if (view !== "nonce") nonceHtml.push("<p class='label'>ECDSA nonce check</p>");
   signatures.forEach((signature) => {
     let parts = hodlSigParts(signature.der), looseR = parts ? parts.r : hodlDerRLoose(signature.der);
     if (!looseR || !signature.pubkey) {
@@ -11199,7 +11199,7 @@ function hodlRenderRawTx(tx, nonceSourceTag = new Uint8Array(), nonceCheckedAt =
   else verdictHtml.push("<p class='muted'>No ECDSA signatures with a readable r and public key were found.</p>");
   nonceHtml.push(...verdictHtml);
   if (rValues.length) nonceHtml.push("<p class='psbt-kv'>r values:<br>" + rValues.map((value) => hodlEscapeHtml(value.hex) + " (input " + value.input + ")").join("<br>") + "</p>");
-  nonceHtml.push("<p class='muted'>Raw-transaction inspect does not reconstruct sighashes. Paste the PSBT when you still can; use this path for a fully signed hex dump from a hardware wallet or Bitcoin Core.</p>");
+  nonceHtml.push("<p class='field-note'>Raw-transaction inspect does not reconstruct sighashes. Paste the PSBT when you still can; use this path for a fully signed hex dump from a hardware wallet or Bitcoin Core.</p>");
   let nonceIncomplete = uninspected || crossKey.length || rValues.length < 2;
   let nonceVerdict = crossKey.length ? "cross-key" : possible.length ? "possible" : nonceIncomplete ? "incomplete" : "clean";
   if (view !== "inspect") hodlPsbtRecordNonceInspection("transaction", rValues, nonceSourceTag, nonceVerdict, nonceCheckedAt);

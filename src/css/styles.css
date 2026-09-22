@@ -1361,9 +1361,11 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* The parent line sits apart from the child's own two lines, and carries the
    parent's LifeHash beside the fingerprint it names. */
 .bip85-child-parent { display: flex; align-items: center; gap: 6px; margin-top: var(--space-control); }
-.bip85-parent-lifehash { flex: 0 0 auto; }
+.bip85-result-lineage { display: inline-flex; flex: 0 0 auto; align-items: center; gap: var(--space-control); }
+.bip85-result-lineage .key-lineage-arrow { font-size: 24px; }
 .bip85-parent-fingerprint { font-family: var(--mono); font-weight: 600; color: var(--fg); }
 .key-tab-lifehash { width: 22px; height: 22px; border-radius: 4px; image-rendering: pixelated; background: #fff; }
+.key-lineage-arrow { flex: 0 0 auto; color: var(--muted); font-family: var(--sans); font-size: 18px; line-height: 1; }
 /* A derived multisig tab carries one small LifeHash per co-signer, sized
    down so a 2-of-3 still reads as a tab rather than a filmstrip. */
 .msig-tab-lifehashes { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 2px; }
@@ -1538,6 +1540,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .journal-format-control .custom-select-option { display: flex; align-items: center; gap: 8px; }
 .journal-key-control { grid-column: 1 / -1; }
 .journal-key-option-lifehash { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 4px; image-rendering: pixelated; background: #fff; }
+.journal-key-lineage { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; }
 .journal-notes-wrap {
   --journal-font-family: var(--mono); --journal-font-size: 13px; --journal-line-height: 1.6;
   position: relative; border-radius: 0 12px 12px 12px; background: var(--bg);

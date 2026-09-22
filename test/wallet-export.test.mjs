@@ -1020,10 +1020,10 @@ test("bitcoind loads a generated msig Taproot watch-only wallet.dat", { skip: !B
     assert.equal(info.format, "sqlite");
     assert.equal(info.descriptors, true);
     assert.equal(info.private_keys_enabled, false);
-    const address = cli(["-rpcwallet=elmsigtr", "getnewaddress"]).stdout.trim();
+    const address = cli(["-rpcwallet=elmsigtr", "getnewaddress", "", "bech32m"]).stdout.trim();
     const expectedReceive = JSON.parse(cli(["deriveaddresses", wallet.receiveDescriptor, "[0,0]"]).stdout)[0];
     assert.equal(address, expectedReceive);
-    const change = cli(["-rpcwallet=elmsigtr", "getrawchangeaddress"]).stdout.trim();
+    const change = cli(["-rpcwallet=elmsigtr", "getrawchangeaddress", "bech32m"]).stdout.trim();
     const expectedChange = JSON.parse(cli(["deriveaddresses", wallet.changeDescriptor, "[0,0]"]).stdout)[0];
     assert.equal(change, expectedChange);
   });

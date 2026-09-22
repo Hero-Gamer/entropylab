@@ -200,6 +200,7 @@ words, pick one of the checksum words.</span></span>
           </div>
         </details>
       </div>
+      <p class="edge-note is-public" id="bip85-key-availability-note">Any derived child key that isn't cleared will be available elsewhere in the app wherever choosing an existing key is an option.</p>
       <p class="field-note address-estimate derivation-estimate edge-note is-muted" id="address-estimate" role="status">Measuring this device…</p>
       <div class="derive-progress" id="derive-progress" role="progressbar" aria-label="Key derivation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete" hidden><span class="derive-progress-track"><span class="derive-progress-bar"></span></span><span class="derive-progress-label">0%</span></div>
       <div class="row key-action-row current-item-actions tool-actions">
@@ -212,19 +213,19 @@ words, pick one of the checksum words.</span></span>
     </section>
       <div class="tool-intro edge-note is-info" id="vanity-tool-intro" hidden>
         <h2>Grind a vanity address from a key you already hold</h2>
-        <p class="muted tool-intro-note">Walks either the passphrase or the account number until the address matches your prefix. Same key and same counter always give the same address. Update key writes the match back. Generates no new entropy.</p>
+        <p class="muted tool-intro-note">Walks either the passphrase or the account number until the address matches your prefix. Same key and same counter always give the same address. Key Station matches can be written back; BIP-85 children stay unchanged. Generates no new entropy.</p>
       </div>
       <section class="card no-print tool-card" id="vanity-card" role="tabpanel" hidden>
         <div class="edge-note is-private" id="vanity-grind-warning" role="note">
           <h3>Before you grind</h3>
           <ul>
             <li class="is-warning">A vanity passphrase is a BIP39 passphrase: the seed words alone no longer recover the wallet. After Update key, record the passphrase with the same care as the words.</li>
-            <li>Matching is Bitcoin mainnet, at the key's first receive address (its own purpose, account, branch, and address index). Update key re-derives the key, so the Keys tab, its exports, and the Journal show the vanity wallet.</li>
+            <li>Matching is Bitcoin mainnet, at the key's first receive address (its own purpose, account, branch, and address index). Update key re-derives Key Station keys; BIP-85 child matches can be copied but do not change the child.</li>
           </ul>
         </div>
         <div class="station-key-source tool-section">
-          <p class="label">Use a key from Key Station</p>
-          <div class="session-key-picker" id="vanity-session-keys" role="group" aria-label="Key Station keys" hidden></div>
+          <p class="label">Use an existing key</p>
+          <div class="session-key-picker" id="vanity-session-keys" role="group" aria-label="Compatible existing keys" hidden></div>
           <p class="field-note" id="vanity-session-note">Derive a key on the Keys tab first — the grinder searches that key's passphrase or account index. A key with seed words supports both methods; a root-xprv key supports the derivation grind only.</p>
         </div>
         <div class="vanity-source-block tool-section" id="vanity-source-block" hidden>
@@ -333,8 +334,8 @@ words, pick one of the checksum words.</span></span>
       <p class="edge-note is-public" id="bip85-source-note">Choose a compatible HD-root key from this session, or paste a root extended private key below.</p>
       <p class="edge-note is-private" id="bip85-retention-note">Derived children remain in this page only. Anyone with the parent seed, passphrase, application, and index can reproduce them.</p>
       <div class="station-key-source tool-section">
-        <p class="label">Use a key from Key Station</p>
-        <div class="session-key-picker" id="bip85-session-keys" role="group" aria-label="Compatible Key Station keys" hidden></div>
+        <p class="label">Use an existing key</p>
+        <div class="session-key-picker" id="bip85-session-keys" role="group" aria-label="Compatible existing keys" hidden></div>
       </div>
       <label class="field">Root xprv (optional)
         <textarea id="bip85-key" placeholder="Paste a root xprv or tprv" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
@@ -456,7 +457,7 @@ words, pick one of the checksum words.</span></span>
       <p class="edge-note is-public" id="msig-key-order-status" hidden></p>
       <div class="switch-row msig-key-reuse-toggle">
         <label class="switch-toggle"><input id="msig-reuse-session-keys" type="checkbox" aria-describedby="msig-reuse-session-keys-note"><span class="label">Allow key reuse</span></label>
-        <p class="switch-note" id="msig-reuse-session-keys-note">Keep selected Key Station keys available for more than one co-signer input. Reused keys need different derivation paths.</p>
+        <p class="switch-note" id="msig-reuse-session-keys-note">Keep selected keys available for more than one co-signer input. Reused keys need different derivation paths.</p>
       </div>
       <div id="msig-keys" class="msig-keys"><label class="field">Co-signer 1 multisig extended public key<textarea id="msig-x-0" placeholder="xpub…" autocomplete="off" spellcheck="false"></textarea></label><label class="field">Co-signer 2 multisig extended public key<textarea id="msig-x-1" placeholder="xpub…" autocomplete="off" spellcheck="false"></textarea></label><label class="field">Co-signer 3 multisig extended public key<textarea id="msig-x-2" placeholder="xpub…" autocomplete="off" spellcheck="false"></textarea></label></div>
       <p class="edge-note is-public" id="msig-hint"></p>
@@ -521,8 +522,8 @@ words, pick one of the checksum words.</span></span>
         <button class="tab" type="button" data-sp-mode="verify" aria-pressed="false">Verify</button>
       </div>
       <div class="station-key-source tool-section">
-        <p class="label">Bring in a key from Key Station</p>
-        <div class="session-key-picker" id="sp-session-keys" role="group" aria-label="Compatible Key Station keys" hidden></div>
+        <p class="label">Bring in an existing key</p>
+        <div class="session-key-picker" id="sp-session-keys" role="group" aria-label="Compatible existing keys" hidden></div>
         <p class="field-note">Choose a compatible HD-root key from this session, or enter a seed phrase or root extended private key below.</p>
       </div>
       <div class="psbt-grid">
@@ -626,8 +627,8 @@ words, pick one of the checksum words.</span></span>
           <textarea id="psbt-key" placeholder="Leave blank for inspect-only mode" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
         </label>
         <div class="station-key-source tool-section">
-          <p class="label">Use a key from Key Station</p>
-          <div class="session-key-picker" id="psbt-session-keys" role="group" aria-label="Compatible Key Station keys" hidden></div>
+          <p class="label">Use an existing key</p>
+          <div class="session-key-picker" id="psbt-session-keys" role="group" aria-label="Compatible existing keys" hidden></div>
           <p class="field-note" id="psbt-session-keys-note" hidden></p>
         </div>
         <label class="field"><span>Passphrase (optional)</span>
@@ -692,8 +693,8 @@ words, pick one of the checksum words.</span></span>
           <textarea id="nonce-key" placeholder="Leave blank for inspect-only mode" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
         </label>
         <div class="station-key-source tool-section">
-          <p class="label">Use a key from Key Station</p>
-          <div class="session-key-picker" id="nonce-session-keys" role="group" aria-label="Compatible Key Station keys" hidden></div>
+          <p class="label">Use an existing key</p>
+          <div class="session-key-picker" id="nonce-session-keys" role="group" aria-label="Compatible existing keys" hidden></div>
           <p class="field-note" id="nonce-session-keys-note" hidden></p>
         </div>
         <label class="field"><span>Passphrase (optional)</span>

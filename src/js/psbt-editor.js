@@ -589,6 +589,22 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
     error.textContent = message || "";
   };
 
+  // Actions stay disabled until there is something to act on: Load waits on
+  // pasted text, End Session on anything loaded or typed.
+  const setEnabled = (button, on) => {
+    button.disabled = !on;
+    button.setAttribute("aria-disabled", String(!on));
+  };
+  const syncActions = () => {
+    setEnabled(load, Boolean(text.value.trim()));
+    setEnabled($("psbted-wipe"), Boolean(doc || text.value.trim() || $("psbted-compare-text").value.trim()));
+  };
+
+  // A report section opens on the hairline, a label with its count, and a
+  // grey line saying what the section holds — the PSBT Inspector's shape.
+  const sectionHeadHtml = (label, count, description) =>
+    `<hr class="result-divider"><p class="label">${label}${count === undefined ? "" : ` <span class="label-value">(${escapeHtml(String(count))})</span>`}</p><p class="muted label-description">${description}</p>`;
+
   const pairRows = (kind, map, mapIndex) => {
     const rows = map
       .map((pair, pairIndex) => {
@@ -631,6 +647,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
     // with it; renderResult restarts it for the current build.
     clearInterval(qrTimer);
     qrTimer = null;
+    syncActions();
     if (!doc) {
       out.innerHTML = "";
       return;
@@ -693,15 +710,18 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
     // flow diagram's detail panel when its box is selected there.
     const mapSection = (kind, index) => {
       const map = kind === "input" ? doc.inputs[index] : doc.outputs[index];
+      const payee = kind === "output" ? addressFor(tx.outputs[index].scriptPubKey, network()) : "";
       const sub =
         kind === "input"
           ? `Spends ${escapeHtml(tx.inputs[index].txid)}:${escapeHtml(String(tx.inputs[index].vout))}`
-          : `Pays ${escapeHtml(String(tx.outputs[index].value))} sats${addressFor(tx.outputs[index].scriptPubKey, network()) ? ` to ${escapeHtml(addressFor(tx.outputs[index].scriptPubKey, network()))}` : ""}`;
-      return `<section class="psbted-map"><h3>${kind === "input" ? "Input" : "Output"} ${index} key-value map</h3><p class="muted">${sub}</p>${pairRows(kind, map, index)}</section>`;
+          : `Pays <span class="psbt-amount">${escapeHtml(String(tx.outputs[index].value))} sats</span>${payee ? ` to <span class="psbt-address">${escapeHtml(payee)}</span>` : ""}`;
+      return `<section class="psbted-map card static-card"><p class="psbt-kv"><strong>${kind === "input" ? "Input" : "Output"} ${index} key-value map</strong><br>${sub}</p>${pairRows(kind, map, index)}</section>`;
     };
     // The unsigned-transaction section, rendered either inline (the default)
     // or inside the detail panel when the diagram's transaction box is open.
-    const txSection = () => `<section class="psbted-map"><h3>Unsigned transaction</h3>
+    const txSection = (inPanel = false) => `<section class="psbted-map">${inPanel
+          ? `<p class="label">Unsigned transaction</p>`
+          : sectionHeadHtml("Unsigned transaction", undefined, "The transaction the signatures commit to: its version, locktime, inputs and outputs")}
         <div class="psbted-txhead">
           <label>Version <input class="psbted-num" id="psbted-tx-version" value="${escapeHtml(String(tx.version))}" inputmode="numeric"></label>
           <label>Locktime <input class="psbted-num" id="psbted-tx-locktime" value="${escapeHtml(String(tx.locktime))}" inputmode="numeric"></label>
@@ -720,26 +740,30 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
             <p class="muted">Fields of ${selected.kind === "tx" ? "the unsigned transaction" : `${selected.kind} ${selected.index}`}, moved here from below. Activate its box again (or ×) to put them back.</p>
             <button type="button" class="psbted-del" data-viz-close aria-label="Close the ${selected.kind === "tx" ? "unsigned transaction" : `${selected.kind} ${selected.index}`} fields">×</button>
           </div>
-          ${selected.kind === "tx" ? txSection() : mapSection(selected.kind, selected.index)}
+          ${selected.kind === "tx" ? txSection(true) : mapSection(selected.kind, selected.index)}
         </div>`
       : "";
 
     out.innerHTML = `
-      <p class="psbt-kv"><strong>PSBT v${escapeHtml(String(doc.psbtVersion))}</strong> · ${tx.inputs.length} input(s) · ${tx.outputs.length} output(s) · fee ${fee} · ${verdict} · ${sanity}</p>
-      <p class="muted" id="psbted-status" aria-live="polite">${stale ? "The fields do not build right now — see the error above; the result below is the last valid build." : "Every edit rebuilds the PSBT immediately; the fields show rust-bitcoin's decode of the current build."}</p>
+      <p class="psbt-kv"><strong>PSBT v${escapeHtml(String(doc.psbtVersion))}</strong> · ${tx.inputs.length} input(s) · ${tx.outputs.length} output(s)<br>Fee: ${fee}<br>${verdict}<br>${sanity}</p>
+      <p class="edge-note ${stale ? "is-private" : "is-muted"}" id="psbted-status" aria-live="polite">${stale ? "The fields do not build right now — see the error below; the edited PSBT is the last valid build." : "Every edit rebuilds the PSBT immediately; the fields show rust-bitcoin's decode of the current build."}</p>
 
+      ${sectionHeadHtml("Transaction flow", undefined, "Where the coins come from and go. Activate a box to open its fields under the diagram.")}
       ${psbtVizHtml(doc, network(), selected)}
       ${detail}
 
       ${isSelected("tx") ? "" : txSection()}
 
-      <section class="psbted-map"><h3>Global key-value map</h3>${pairRows("global", doc.globals, 0)}</section>
+      ${sectionHeadHtml("Key-value maps", 1 + doc.inputs.length + doc.outputs.length, "The global map, then one map per input and output")}
+      <section class="psbted-map card static-card"><p class="psbt-kv"><strong>Global key-value map</strong></p>${pairRows("global", doc.globals, 0)}</section>
       ${inputSections}
       ${outputSections}
 
+      <hr class="result-divider">
       ${psbtProblemsHtml(doc, insane)}
       ${psbtSanitizeHtml(doc)}
 
+      ${sectionHeadHtml("Edited PSBT", undefined, "The rebuilt file, ready to copy, download, or load back into the editor")}
       <div id="psbted-result"></div>`;
 
     bind();
@@ -781,10 +805,10 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
       ${verdictLine}
       <label class="field">Edited PSBT (base64)<textarea id="psbted-result-b64" readonly spellcheck="false"${gated}>${stale ? "" : escapeHtml(b64)}</textarea></label>
       <div class="row psbt-actions tool-actions">
-        <button class="btn secondary" id="psbted-copy-b64" type="button"${gated}>Copy base64</button>
-        <button class="btn secondary" id="psbted-copy-hex" type="button"${gated}>Copy hex</button>
+        <button class="btn secondary" id="psbted-copy-b64" type="button"${gated}>Copy Base64</button>
+        <button class="btn secondary" id="psbted-copy-hex" type="button"${gated}>Copy Hex</button>
         <button class="btn secondary" id="psbted-download" type="button"${gated}>Download .psbt</button>
-        <button class="btn secondary" id="psbted-reload" type="button"${gated}>Load edited PSBT into the editor</button>
+        <button class="btn secondary" id="psbted-reload" type="button"${gated}>Load into Editor</button>
       </div>
       <label class="field">Edited PSBT (hex)<textarea id="psbted-result-hex" readonly spellcheck="false"${gated}>${stale ? "" : escapeHtml(hex)}</textarea></label>
       <div class="psbted-qr-block">
@@ -1276,6 +1300,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
     psbtWasmReady
       .then(async () => {
         text.value = base64Encode(psbtBytesFromUpload(new Uint8Array(await chosen.arrayBuffer())));
+        syncActions();
         loadFromText();
       })
       .catch((exception) => setError(exception.message || String(exception)));
@@ -1339,7 +1364,11 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
   $("psbted-compare-clear").addEventListener("click", () => {
     compareText.value = "";
     clearCompareReport();
+    syncActions();
   });
+  text.addEventListener("input", syncActions);
+  compareText.addEventListener("input", syncActions);
+  syncActions();
   // The header network picker broadcasts its choice; re-decode addresses.
   document.addEventListener("hodl:network-default", () => {
     if (doc) {

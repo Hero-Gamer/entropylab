@@ -652,32 +652,36 @@ words, pick one of the checksum words.</span></span>
       </div>
     </section>
       <section class="card no-print tool-card" id="psbted-card" role="tabpanel" hidden>
+      <p class="edge-note is-public">Fees and input amounts shown here are unverified PSBT claims; the editor does not check them against previous transactions or the blockchain. Nothing is signed or broadcast.</p>
       <label class="field">PSBT v0 (base64 or hex)
         <textarea id="psbted-text" placeholder="cHNidP8B..." spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
       </label>
-      <div class="row psbt-actions psbted-actions tool-actions">
-        <button class="btn primary" id="psbted-load" type="button">Load PSBT</button>
-        <button class="btn secondary" id="psbted-upload" type="button">Upload .psbt file</button>
-        <input type="file" id="psbted-file" accept=".psbt,.txt,.hex" hidden>
-        <button class="btn secondary" id="psbted-wipe" type="button">Clear editor</button>
-      </div>
       <div class="switch-row"><label class="switch-toggle"><input type="checkbox" id="psbted-insane" aria-describedby="psbted-insane-note"><span class="label">Insane editing</span></label><p class="switch-note" id="psbted-insane-note">Disable the consensus layer: edits are no longer checked against Bitcoin's rules (transaction sanity, UTXO claims, signatures, witness data) and a violating result builds and exports anyway. The problem list still reports what it finds. For deliberately broken files only.</p></div>
-      <p class="err" id="psbted-error" role="alert"></p>
-      <div id="psbted-out" aria-live="polite"></div>
-      <section class="psbted-compare" id="psbted-compare">
-        <h3>Compare with another PSBT</h3>
-        <p class="muted">Paste a second PSBT to see what changed relative to the one in the editor. The comparison reads the decoded contents, so reordered maps are not a difference; transaction, signing-state, and metadata changes are reported separately. It describes differences only — it does not judge whether a change is safe.</p>
+      <details class="derivation-advanced" id="psbted-compare">
+        <summary>Compare with another PSBT (optional)</summary>
+        <p class="muted label-description">Paste a second PSBT to see what changed relative to the one in the editor. The comparison reads the decoded contents, so reordered maps are not a difference; transaction, signing-state, and metadata changes are reported separately. It describes differences only — it does not judge whether a change is safe.</p>
         <label class="field">Other PSBT (base64 or hex)
           <textarea id="psbted-compare-text" placeholder="cHNidP8B..." spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
         </label>
-        <div class="row psbt-actions psbted-actions tool-actions">
-          <button class="btn secondary" id="psbted-compare-go" type="button">Compare</button>
-          <button class="btn secondary" id="psbted-compare-clear" type="button">Clear comparison</button>
-        </div>
         <p class="err" id="psbted-compare-error" role="alert"></p>
         <div id="psbted-compare-out" aria-live="polite"></div>
-      </section>
-      <p class="muted">Fees and input amounts shown here are unverified PSBT claims; the editor does not check them against previous transactions or the blockchain. Nothing is signed or broadcast.</p>
+        <div class="row psbt-actions psbted-actions tool-actions">
+          <button class="btn secondary" id="psbted-compare-go" type="button">Compare</button>
+          <button class="btn secondary" id="psbted-compare-clear" type="button">Clear Comparison</button>
+        </div>
+      </details>
+      <p class="label" id="psbted-result-label">PSBT editor fields</p>
+      <div class="tool-result" role="region" aria-labelledby="psbted-result-label">
+        <p class="field-note tool-result-empty">Provide a PSBT and click Load PSBT to edit its fields here.</p>
+        <div class="tool-result-body" id="psbted-out" aria-live="polite"></div>
+      </div>
+      <p class="err" id="psbted-error" role="alert"></p>
+      <div class="row psbt-actions psbted-actions tool-actions">
+        <button class="btn primary" id="psbted-load" type="button" disabled aria-disabled="true">Load PSBT</button>
+        <button class="btn secondary" id="psbted-upload" type="button">Upload .psbt File</button>
+        <input type="file" id="psbted-file" accept=".psbt,.txt,.hex" hidden>
+        <button class="btn secondary" id="psbted-wipe" type="button" disabled aria-disabled="true">End Session / Clear Fields</button>
+      </div>
     </section>
       <section class="card no-print tool-card" id="nonce-card" role="tabpanel" hidden>
       <label class="field">PSBT v0 or signed raw transaction (base64 or hex)

@@ -177,7 +177,8 @@ the limits of browser-memory cleanup.
   wallet birthday are shown alongside the node key; the decoded entropy and
   salt and the BIP32 root xprv (what `chantools showrootkey` prints) sit
   behind a reveal toggle. Decoding only: the tab never creates seeds.
-- A session **Journal** (last workspace tab) holds an **Entropy
+- A session **Journal** (temporarily hidden from release navigation while its
+  backup and restore flow is polished) holds an **Entropy
   Journal** notebook, a notepad stamped with this computer's date and time,
   a Key Manager, a live summary of everything derived in this sitting, and a debug log
   of tool switches and derives (fingerprints, not seeds). Its introduction

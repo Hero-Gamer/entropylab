@@ -2299,6 +2299,8 @@
     document.querySelector('#workspace [data-workspace="psbt"]').click();
     await until(() => !document.getElementById("psbt-manager").hidden, "PSBT audit workspace");
     document.getElementById("psbt-editor-tab").click();
+    // End Session waits on something to clear, so type into the editor first.
+    input(document.getElementById("psbted-text"), "cHNidP8B");
     document.getElementById("psbted-wipe").click();
     document.getElementById("psbt-inspector-tab").click();
     // Inspect only runs on a decodable payload, so give it one; the key is the
@@ -2979,9 +2981,17 @@
     document.querySelector('#psbt-tool-tabs [data-psbt-tool="editor"]').click();
     await until(() => !document.getElementById("psbted-card").hidden, "PSBT editor tab");
     const box = await until(() => document.getElementById("psbted-text"), "PSBT editor input");
+    // Load waits on pasted text; End Session waits on anything to clear.
+    input(box, "");
+    input(document.getElementById("psbted-compare-text"), "");
+    document.getElementById("psbted-wipe").click();
+    assert(document.getElementById("psbted-load").disabled, "Load enabled with nothing pasted");
+    assert(document.getElementById("psbted-wipe").disabled, "End Session enabled with nothing to clear");
     input(box, vector);
+    assert(!document.getElementById("psbted-load").disabled, "Load stayed disabled after a paste");
     document.getElementById("psbted-load").click();
     await until(() => document.querySelector("#psbted-out .psbted-pairs"), "editor pair tables");
+    assert(!document.getElementById("psbted-wipe").disabled, "End Session stayed disabled with a PSBT loaded");
     const outText = () => document.getElementById("psbted-out").textContent;
     assert(outText().includes("PSBT_IN_WITNESS_UTXO"), "typed pair names missing");
     const vizText = () => document.querySelector("#psbted-out .psbted-viz").textContent;

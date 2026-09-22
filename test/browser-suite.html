@@ -1536,7 +1536,9 @@
       equal(parseFloat(getComputedStyle(card.lastElementChild).marginBottom), 0, `${id} last-child margin`);
     });
     document.querySelectorAll(".tool-actions").forEach((row) => {
-      equal(parseFloat(getComputedStyle(row).marginTop), token("--space-component"), "tool action-row spacing");
+      // The nonce-history controls close a nested section, so they take the section step.
+      const expected = row.closest("#nonce-history-options") ? token("--space-section") : token("--space-component");
+      equal(parseFloat(getComputedStyle(row).marginTop), expected, "tool action-row spacing");
     });
     document.querySelectorAll(".tool-intro, .journal-section-intro").forEach((intro) => {
       equal(parseFloat(getComputedStyle(intro).marginBottom), token("--space-intro"), "tool intro spacing");
@@ -3276,7 +3278,7 @@
     const nonceBox = await until(() => !document.getElementById("nonce-card").hidden && document.getElementById("nonce-text"), "Nonce Inspector tab");
     input(nonceBox, vector);
     document.getElementById("nonce-go").click();
-    await until(() => document.getElementById("nonce-out").textContent.includes("ECDSA nonce check") || document.getElementById("nonce-error").textContent, "nonce report");
+    await until(() => document.getElementById("nonce-out").children.length > 0 || document.getElementById("nonce-error").textContent, "nonce report");
     equal(document.getElementById("nonce-error").textContent, "", "Nonce Inspector rejected a valid vector");
     const nonceOut = document.getElementById("nonce-out").textContent;
     assert(nonceOut.includes("r values:"), "finalized signature was not inspected");
@@ -3359,7 +3361,7 @@
     const nonceRawBox = await until(() => !document.getElementById("nonce-card").hidden && document.getElementById("nonce-text"), "Nonce Inspector for the raw transaction");
     input(nonceRawBox, rawTx);
     document.getElementById("nonce-go").click();
-    await until(() => document.getElementById("nonce-out").textContent.includes("ECDSA nonce check") || document.getElementById("nonce-error").textContent, "raw transaction nonce report");
+    await until(() => document.getElementById("nonce-out").children.length > 0 || document.getElementById("nonce-error").textContent, "raw transaction nonce report");
     equal(document.getElementById("nonce-error").textContent, "", "Nonce Inspector rejected a valid raw transaction");
     assert(document.getElementById("nonce-out").textContent.includes("r values:"), "raw transaction signatures were not inspected");
     document.querySelector('#psbt-tool-tabs [data-psbt-tool="inspector"]').click();
@@ -3449,7 +3451,7 @@
       await until(() => !document.getElementById("nonce-card").hidden, "Nonce Inspector");
       input(document.getElementById("nonce-text"), psbt);
       document.getElementById("nonce-go").click();
-      await until(() => document.getElementById("nonce-out").textContent.includes("ECDSA nonce check"), "nonce report with a transcript");
+      await until(() => document.getElementById("nonce-out").children.length > 0, "nonce report with a transcript");
       assert(document.getElementById("nonce-out").textContent.includes("Jade"), "the Nonce Inspector stopped using its Jade transcript");
     } finally {
       // Leave the shared session empty for the tests that follow.
@@ -3486,10 +3488,9 @@
     document.querySelector('#psbt-tool-tabs [data-psbt-tool="nonce"]').click();
     await until(() => !document.getElementById("nonce-card").hidden, "Nonce Inspector");
     const nonceOptions = document.getElementById("nonce-key-options");
-    nonceOptions.open = false;
     assert(nonceOptions.contains(document.getElementById("nonce-session-keys")) && nonceOptions.contains(document.getElementById("nonce-session-keys-note")), "The Nonce Inspector key picker was moved out of its optional-key panel");
-    nonceOptions.querySelector("summary").click();
-    assert(nonceOptions.open && document.getElementById("nonce-session-keys").getClientRects().length > 0, "The Nonce Inspector key picker did not appear when its panel opened");
+    // The Nonce Inspector shows its key options outright, with no panel to open.
+    assert(document.getElementById("nonce-session-keys").getClientRects().length > 0, "The Nonce Inspector key picker is not visible");
     document.querySelector('#psbt-tool-tabs [data-psbt-tool="inspector"]').click();
     const text = document.getElementById("psbt-text");
     // Start from an empty shared session whatever earlier tests left behind.

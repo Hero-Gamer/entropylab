@@ -142,7 +142,9 @@ button:not(:disabled):active * { color: inherit !important; }
 .tool-card > :last-child { margin-bottom: 0; }
 .tool-section { margin: var(--space-section) 0; }
 .tool-card > .tool-section:first-child { margin-top: 0; }
-.tool-card > :first-child > :first-child { margin-top: 0; }
+/* ...but a field label opening a card is not a leading block: the margin on
+   the control inside it is the gap between the label and its input. */
+.tool-card > :first-child:not(label) > :first-child { margin-top: 0; }
 .tool-card > .tool-section:last-child { margin-bottom: 0; }
 /* Major seam above the closing Sources card. It collapses with the previous
    card's 16px, so the larger value wins rather than the two adding up. The seam
@@ -1747,9 +1749,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .psbt-analysis-summary li > .label { margin: 0; }
 /* A verdict is a live status, so it takes the bright set the status notes use
    rather than the muted text tones the rest of the report reads in. */
-.psbt-analysis-summary :is(.psbt-ok, .psbted-note-ok) { color: var(--ok-bright); }
-.psbt-analysis-summary :is(.psbt-warn, .psbted-note-warn) { color: var(--warn-bright); }
-.psbt-analysis-summary :is(.psbt-bad, .psbted-note-bad) { color: var(--danger-bright); }
+:is(.psbt-analysis-summary, #nonce-out, #psbt-nonce-history-result) :is(.psbt-ok, .psbted-note-ok) { color: var(--ok-bright); }
+:is(.psbt-analysis-summary, #nonce-out, #psbt-nonce-history-result) :is(.psbt-warn, .psbted-note-warn) { color: var(--warn-bright); }
+:is(.psbt-analysis-summary, #nonce-out, #psbt-nonce-history-result) :is(.psbt-bad, .psbted-note-bad) { color: var(--danger-bright); }
 .psbt-analysis-summary li + li { margin-top: 12px; }
 /* A check family's findings nest as a dash-marked sublist, one line each. */
 .psbt-analysis-summary li ul { margin: 4px 0 2px; padding-left: 18px; list-style-type: "- "; }
@@ -2099,10 +2101,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .tool-result:has(> .tool-result-body:not(:empty)) > .tool-result-empty { display: none; }
 .tool-result-body > :first-child { margin-top: 0; }
 .tool-result-body > :last-child { margin-bottom: 0; }
-/* The session line opens the frame when it shows, and stands a step off what
-   follows it, whether that is the waiting line or the report. */
-.tool-result > .edge-note { margin-top: 0; }
-.tool-result > .edge-note:not([hidden]) ~ :is(.tool-result-empty, .tool-result-body) { margin-top: var(--space-component); }
+/* The nonce report is all verdict lines and r values: prose takes the 14px
+   body size, the mono r values keep the report's own 13px. */
+:is(#nonce-out, #psbt-nonce-history-result) { font-size: 14px; }
+#nonce-out strong { font-weight: 600; }
 /* A run of toggles is fenced top and bottom. Each toggle draws the rule below
    itself, so only the first in a run draws one above: a second would stack
    a rule on the one its neighbour already drew. */
@@ -2113,7 +2115,8 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 /* With no fields wrapper to carry the gap, the last thing in the open block
    does, so the rule sits as far below the content as below the shut toggle. */
-.tool-card > .derivation-advanced[open] > :last-child { margin-bottom: var(--space-control); }
+.tool-card > .derivation-advanced:is([open], .is-static) > :last-child { margin-bottom: var(--space-control); }
+.derivation-advanced.is-static > .label:first-child { margin-top: 0; }
 /* The card's other accordion, styled as the fairness toggle so the two read as
    one control type: heading-sized text, grey until hovered or open, and the
    same disclosure triangle. The native marker steps aside because it cannot
@@ -2249,6 +2252,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .last-word-field .custom-select-list::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
 .clear-current-action { flex: 0 0 auto; }
 .tool-actions { margin-top: var(--space-component); }
+/* The history controls close the section, so they sit a step further from the
+   status line above them than the 16px rhythm inside it. */
+#nonce-history-options > .tool-actions { margin-top: var(--space-section); }
 /* A card's closing actions are the things to press, so their labels carry the
    weight. On the row rather than on .btn, which the tabs share: a tab reads as
    a place you are, not an action you take. */

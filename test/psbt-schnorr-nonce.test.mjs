@@ -154,6 +154,8 @@ test("the report counts only parseable Schnorr signatures as present (issue #333
   const app = readFileSync(join(root, "..", "src/js/app.js"), "utf8");
   assert.match(app, /let parsedTapSignatures = tapSignatures\.reduce/);
   assert.match(app, /tapSignatureCount \+= parsedTapSignatures/);
-  assert.match(app, /signatures\.length \+ parsedTapSignatures \? signatures\.length \+ parsedTapSignatures \+ " signature\(s\) present"/);
+  // The condition and the number shown both count only parseable Schnorr
+  // signatures; the wrapping span is presentation and may change.
+  assert.match(app, /signatures\.length \+ parsedTapSignatures \? "<span class='[^']*'>" \+ \(signatures\.length \+ parsedTapSignatures\) \+ " signature\(s\) present/);
   assert.doesNotMatch(app, /tapSignatureCount \+= tapSignatures\.length/);
 });

@@ -9483,7 +9483,13 @@ function hodlSyncPsbtControls() {
     enable(card.go, ready);
     if (card.download) enable(card.download, ready);
     let session = document.getElementById(card.session);
-    if (session) session.hidden = !typed && !loaded && idle;
+    if (session) {
+      session.hidden = !typed && !loaded && idle;
+      // A loaded key is a secret in page memory: the line turns red while it
+      // is held, and grey again once there is none.
+      session.classList.toggle("is-private", loaded);
+      session.classList.toggle("is-muted", !loaded);
+    }
     anything ||= typed || Boolean(document.getElementById(card.out)?.childElementCount);
   }
   enable("psbt-wipe", anything);
@@ -9537,6 +9543,9 @@ function hodlRunNonce() {
       document.getElementById("nonce-key").value = "";
       document.getElementById("nonce-pass").value = "";
     }
+    // A run with no key loaded starts from no session, whatever the last one
+    // said: an "ended" confirmation belongs to the session that ended.
+    if (!hodlPsbtPriv && !hodlPsbtHd) hodlPsbtSessionSpec = { key: "No session key. Inspect-only mode." };
     hodlPaintPsbtSession();
     let bytes = hodlPsbtBytes(document.getElementById("nonce-text").value);
     let kind = isPsbtMagic(bytes) ? "psbt" : "transaction";
@@ -10122,6 +10131,9 @@ function hodlRunPsbt() {
       document.getElementById("psbt-key").value = "";
       document.getElementById("psbt-pass").value = "";
     }
+    // A run with no key loaded starts from no session, whatever the last one
+    // said: an "ended" confirmation belongs to the session that ended.
+    if (!hodlPsbtPriv && !hodlPsbtHd) hodlPsbtSessionSpec = { key: "No session key. Inspect-only mode." };
     hodlPaintPsbtSession();
     let bytes = hodlPsbtBytes(document.getElementById("psbt-text").value);
     let kind = isPsbtMagic(bytes) ? "psbt" : "transaction";
@@ -10694,7 +10706,17 @@ function hodlRenderOutputHtml(output, index, network, map, entries) {
   if (opReturn) {
     let amount = typeof output.amount === "bigint" ? output.amount : BigInt(output.amount || 0);
     let lines = describeOpReturn({ ...opReturn, amount, burned: amount !== 0n });
-    return "<p class='" + (opReturn.ok ? "psbt-warn" : "psbt-bad") + "'><strong>Output " + index + "</strong> \xB7 " + hodlSats(output.amount) + " BTC<br>" + lines.map(hodlEscapeHtml).join("<br>") + "</p>";
+    // A data carrier reads like any other output. The flag rides on its lines,
+    // not the whole block: the OP_RETURN header and the lines that warn (value
+    // burned, malformed script) in the muted red; the payload and notes as text.
+    let flagged = (line, at) => at === 0 || line.startsWith("burns ") || line.startsWith("malformed:");
+    // The payload preview names itself ("text: " or "hex: "); that name is a
+    // label in grey and the payload that follows reads as the value.
+    let plain = (line) => {
+      let named = line.match(/^(text|hex): /);
+      return named ? "<span class='muted'>" + hodlEscapeHtml(named[0]) + "</span>" + hodlEscapeHtml(line.slice(named[0].length)) : hodlEscapeHtml(line);
+    };
+    return "<p class='psbt-kv'><strong>Output " + index + "</strong><br><span class='psbt-amount'>" + hodlSats(output.amount) + " BTC</span><br>" + lines.map((line, at) => flagged(line, at) ? "<span class='psbt-opreturn-flag" + (at === 0 ? " psbt-opreturn-head" : "") + "'>" + hodlEscapeHtml(line) + "</span>" : plain(line)).join("<br>") + "</p>";
   }
   let scan = matchOwnership(map, output.script);
   let address = hodlAddr(output.script, network);
@@ -10721,7 +10743,7 @@ function hodlRenderOutputHtml(output, index, network, map, entries) {
   } else if (scan.state === "no-session") {
     extra = "<br><span class='muted'>Load a session key to see if this output is yours.</span>";
   }
-  return "<p class='" + className + "'><strong>Output " + index + "</strong> \xB7 " + hodlSats(output.amount) + " BTC<br>" + hodlEscapeHtml(address) + extra + "</p>";
+  return "<p class='" + className + "'><strong>Output " + index + "</strong><br><span class='psbt-amount'>" + hodlSats(output.amount) + " BTC</span><br><span class='psbt-address'>" + hodlEscapeHtml(address) + "</span>" + extra + "</p>";
 }
 function hodlOwnershipWarning(outputs, network, map) {
   if (!map || !map.size) return "";
@@ -10738,9 +10760,9 @@ function hodlPsbtAnalysisSummary(checks) {
   let rows = checks.map((check) => {
     let label = check.state === "complete" ? "Completed" : check.state === "problem" ? "Problem found" : "Incomplete",
       className = check.state === "complete" ? "psbt-ok" : check.state === "problem" ? "psbt-bad" : "psbt-warn";
-    return "<li><strong>" + hodlEscapeHtml(check.label) + "</strong> — <span class='" + className + "'>" + label + "</span><br><span class='muted'>" + hodlEscapeHtml(check.detail) + "</span></li>";
+    return "<li><span class='label'>" + hodlEscapeHtml(check.label) + "</span> — <span class='" + className + "'>" + label + "</span><br><span class='muted'>" + hodlEscapeHtml(check.detail) + "</span></li>";
   }).join("");
-  return "<section class='psbt-analysis-summary' aria-label='PSBT security analysis status'><p class='label'>PSBT security analysis</p><p class='" + overallClass + "'><strong>" + overall + "</strong></p><ul>" + rows + "</ul><p class='muted'>Completed means only that the named check ran on the information available here. It does not prove that the PSBT claims are true or that the transaction is safe to sign.</p></section>";
+  return "<section class='psbt-analysis-summary' aria-label='PSBT security analysis status'><p class='label'>PSBT security analysis</p><p class='" + overallClass + "'><strong>" + overall + "</strong></p><ul>" + rows + "</ul><p class='edge-note is-private'>Completed means only that the named check ran on the information available here. It does not prove that the PSBT claims are true or that the transaction is safe to sign.</p></section>";
 }
 function hodlPsbtNonceCheck(reused, possible, nonceIncomplete) {
   if (reused.length) return { label: "Nonce analysis", state: "problem", detail: "A repeated ECDSA nonce was detected; open the Nonce Inspector for the affected signatures." };
@@ -10792,12 +10814,15 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
   } catch (exception) {
     transcriptError = exception.message || String(exception);
   }
-  html.push("<p class='label'>Where this transaction sends bitcoin</p>");
+  html.push("<hr class='result-divider'>");
+  html.push("<p class='label'>" + hodlT("Tx outputs") + " <span class='label-value'>(" + tx.outputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction sends bitcoin") + "</p>");
   let ownershipMap = hodlSessionOwnership(network);
   tx.outputs.forEach((output, index) => {
     html.push(hodlRenderOutputHtml(output, index, network, ownershipMap, psbt.outputs[index]));
   });
   html.push(hodlOwnershipWarning(tx.outputs, network, ownershipMap));
+  html.push("<hr class='result-divider'>");
+  html.push("<p class='label'>" + hodlT("Tx inputs") + " <span class='label-value'>(" + tx.inputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction’s outputs are spending from") + "</p>");
   psbt.inputs.forEach((entries, index) => {
     let witnessUtxo = hodlWitUtxo(entries);
     // The non-witness UTXO is the checkable claim: it embeds the previous
@@ -10844,7 +10869,7 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
     // counted (issue #333).
     let parsedTapSignatures = tapSignatures.reduce((count, tapSig) => count + (tapSig.r ? 1 : 0), 0);
     tapSignatureCount += parsedTapSignatures;
-    html.push("<p class='psbt-kv'><strong>Input " + index + "</strong> \xB7 " + hodlHexRev(previous.txid) + " : " + previous.vout + (claim ? " \xB7 " + hodlSats(claim.amount) + " BTC claimed" : "") + "<br>" + hodlEscapeHtml(destination) + "<br>" + (signatures.length + parsedTapSignatures ? signatures.length + parsedTapSignatures + " signature(s) present" : finalized ? "Finalized input data present" : "Not signed yet") + (declaredSighashError ? "<br>Declared sighash policy unreadable: " + hodlEscapeHtml(declaredSighashError) : "<br>Signature policy: " + hodlEscapeHtml(declaredLabel)) + "</p>");
+    html.push("<p class='psbt-kv'><strong>Input " + index + "</strong> \xB7 " + hodlHexRev(previous.txid) + " : " + previous.vout + (claim ? "<br><span class='psbt-amount'>" + hodlSats(claim.amount) + " BTC claimed</span><br><span class='psbt-address'>" + hodlEscapeHtml(destination) + "</span>" : "<br>" + hodlEscapeHtml(destination)) + "<br>" + (signatures.length + parsedTapSignatures ? "<span class='psbt-sig-present'>" + (signatures.length + parsedTapSignatures) + " signature(s) present</span>" : finalized ? "<span class='psbt-sig-finalized'>Finalized input data present</span>" : "<span class='psbt-sig-unsigned'>Not signed yet</span>") + "<br><span class='psbt-sig-policy'>" + (declaredSighashError ? "Declared sighash policy unreadable: " + hodlEscapeHtml(declaredSighashError) : "Signature policy: " + hodlEscapeHtml(declaredLabel)) + "</span></p>");
     if (claimConflict) html.push("<p class='psbt-bad'><strong>Conflicting previous-output claims:</strong> input " + index + " declares " + hodlSats(witnessUtxo.amount) + " BTC in its witness UTXO but " + hodlSats(nonWitnessUtxo.amount) + " BTC in its non-witness UTXO (checked against the embedded previous transaction). Neither amount is trusted and the fee is left unknown.</p>");
     if (nonWitnessError) html.push("<p class='psbt-bad'><strong>Non-witness UTXO problem:</strong> input " + index + ": " + hodlEscapeHtml(nonWitnessError) + " That field claims nothing.</p>");
     let inputEnvelopes = (inscriptionReport.inputs[index] && inscriptionReport.inputs[index].envelopes) || [];
@@ -10973,16 +10998,18 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
       rows.push({ input: index, message, className, pubkey: hodlHex.encode(signature.pubkey) });
     });
   });
+  html.push("<hr class='result-divider'>");
+  html.push("<p class='label'>" + hodlT("Tx fees") + "</p><p class='muted label-description'>" + hodlT("Remainder of total inputs after total outputs are accounted for") + "</p>");
   if (conflictedInputs.length) html.push("<p class='psbt-bad'><strong>Fee unknown</strong> — input(s) " + conflictedInputs.join(", ") + " carry conflicting witness and non-witness UTXO amounts.</p>");
   else if (knownInputs === tx.inputs.length) {
     let outputSum = tx.outputs.reduce((sum, output) => sum + output.amount, 0n), fee = inputSum - outputSum;
-    if (fee >= 0n) html.push("<p class='psbt-kv'><strong>Unverified fee (PSBT previous-output claims)</strong> \xB7 " + hodlSats(fee) + " BTC</p>");
+    if (fee >= 0n) html.push("<p class='psbt-kv'><strong>Unverified fee (PSBT previous-output claims)</strong><br><span class='psbt-amount'>" + hodlSats(fee) + " BTC</span></p>");
     else {
       feeInconsistent = 1;
       html.push("<p class='psbt-bad'><strong>Inconsistent claimed amounts:</strong> outputs exceed claimed inputs by " + hodlSats(-fee) + " BTC.</p>");
     }
   } else html.push("<p class='muted'>Fee unknown — some inputs do not include a claimed previous-output amount.</p>");
-  html.push("<p class='muted'>Witness-UTXO amounts are unverified PSBT claims; non-witness UTXO amounts are cross-checked against the embedded previous transaction. Neither is checked against the blockchain.</p>");
+  html.push("<p class='edge-note is-public'>Witness-UTXO amounts are unverified PSBT claims; non-witness UTXO amounts are cross-checked against the embedded previous transaction. Neither is checked against the blockchain.</p>");
   if (inscriptionReport.envelopes.length) {
     html.push("<p class='psbt-warn'><strong>" + inscriptionReport.envelopes.length + " inscription envelope" + (inscriptionReport.envelopes.length === 1 ? "" : "s") + " in this PSBT.</strong> This is what the file reveals in witness or tap-leaf scripts. EntropyLab does not number sats, fetch content from the chain, or render binary payloads.</p>");
   }
@@ -11060,11 +11087,14 @@ function hodlRenderRawTx(tx, nonceSourceTag = new Uint8Array(), nonceCheckedAt =
     rValues = [],
     uninspected = 0;
   html.push("<p class='psbt-warn'><strong>Raw Bitcoin transaction.</strong> Not a PSBT. Input amounts and fee are unknown without previous outputs. RFC 6979 cannot be checked here. This is the last look before broadcast.</p>");
-  html.push("<p class='label'>Where this transaction sends bitcoin</p>");
+  html.push("<hr class='result-divider'>");
+  html.push("<p class='label'>" + hodlT("Tx outputs") + " <span class='label-value'>(" + tx.outputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction sends bitcoin") + "</p>");
   tx.outputs.forEach((output, index) => {
     html.push(hodlRenderOutputHtml(output, index, network, map, null));
   });
   html.push(hodlOwnershipWarning(tx.outputs, network, map));
+  html.push("<hr class='result-divider'>");
+  html.push("<p class='label'>" + hodlT("Tx inputs") + " <span class='label-value'>(" + tx.inputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction’s outputs are spending from") + "</p>");
   tx.inputs.forEach((input, index) => {
     html.push("<p class='psbt-kv'><strong>Input " + index + "</strong> \xB7 " + hodlHexRev(input.txid) + " : " + input.vout + "<br>sequence " + hodlEscapeHtml("0x" + input.sequence.toString(16)) + (input.sequence < 0xfffffffe ? " \xB7 RBF-capable" : "") + "</p>");
   });

@@ -3518,6 +3518,13 @@
     assert(!on("psbt-go") && !on("psbt-download") && !on("psbt-wipe"), "End Session left a PSBT action enabled");
     equal(selected("psbt-session-keys").length, 0, "End Session left a chip selected");
     assert(document.getElementById("psbt-session").textContent.includes("Session ended"), "End Session did not confirm itself");
+    // The confirmation belongs to the session that ended. Inspecting a new PSBT
+    // without a key starts over, so the line must say so, not repeat "ended".
+    input(text, psbt);
+    document.getElementById("psbt-go").click();
+    await until(() => document.getElementById("psbt-out").textContent.includes("PSBT security analysis"), "a fresh inspection after End Session");
+    assert(document.getElementById("psbt-session").textContent.includes("No session key"), `a new inspection kept the ended session's message: "${document.getElementById("psbt-session").textContent}"`);
+    document.getElementById("psbt-wipe").click();
   });
 
   await test("PSBT editor truncates long fields and the overlay edits them", async () => {

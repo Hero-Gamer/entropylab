@@ -505,7 +505,7 @@ export const psbtSanitizeHtml = (doc, title = "") => {
     // giant line once a family has several.
     const findings = (family.findings || []).slice(0, 8);
     const list = findings.length ? `<ul>${findings.map((finding) => `<li>${escapeHtml(sanitizeFindingText(finding))}</li>`).join("")}</ul>` : "";
-    return `<li><strong>${escapeHtml(label)}</strong> — <span class="psbted-note-${cls}">${word}</span>${extra}${list}</li>`;
+    return `<li><span class="label">${escapeHtml(label)}</span> — <span class="psbted-note-${cls}">${word}</span>${extra}${list}</li>`;
   };
   const heading = title ? `${escapeHtml(title)} — ` : "";
   return `<section class="psbted-sanitize psbt-analysis-summary" aria-label="${title ? escapeHtml(title) + " " : ""}PSBT format and origin checks">

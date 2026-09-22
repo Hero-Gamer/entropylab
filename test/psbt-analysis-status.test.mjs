@@ -39,7 +39,7 @@ test("complete listed checks do not overstate a security conclusion", () => {
 test("a found problem preserves its blocking state", () => {
   const html = hodlPsbtAnalysisSummary([check("complete"), check("problem", "SIGHASH policy")]);
   assert.match(html, /ISSUES FOUND/);
-  assert.match(html, /SIGHASH policy<\/strong> — <span class='psbt-bad'>Problem found/);
+  assert.match(html, /SIGHASH policy<\/span> — <span class='psbt-bad'>Problem found/);
   assert.doesNotMatch(html, /ANALYSIS INCOMPLETE/);
 });
 

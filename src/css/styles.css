@@ -1369,6 +1369,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-view { margin-top: var(--space-component); }
 .station-key-source > .label { margin: 0 0 8px; }
 .station-key-source > .field-note { display: block; margin: var(--space-control) 0 0; }
+.station-key-source > .field-note[hidden] { display: none; }
 .msig-key-reuse-toggle { margin-top: var(--space-section); }
 .session-key-picker {
   display: flex; flex-wrap: nowrap; gap: 8px; max-width: 100%;
@@ -1468,8 +1469,8 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .segmented-control.is-stacked > .tab:first-child { border-radius: 8px 8px 0 0; }
 .segmented-control.is-stacked > .tab:last-child { border-radius: 0 0 8px 8px; }
 .segmented-control.is-stacked > .tab:only-child { border-radius: 8px; }
-#msig-card[hidden], #calc-card[hidden], #psbt-card[hidden], #psbted-card[hidden], #bip85-card[hidden], #sp-card[hidden], #vanity-card[hidden], #ln-card[hidden] { display: none !important; }
-#calc-card:not([hidden]), #msig-card:not([hidden]), #bip85-card:not([hidden]), #sp-card:not([hidden]), #psbt-card:not([hidden]), #psbted-card:not([hidden]), #vanity-card:not([hidden]), #ln-card:not([hidden]) { margin-top: 0; border-radius: 0 0 20px 20px; position: relative; z-index: 1; }
+#msig-card[hidden], #calc-card[hidden], #psbt-card[hidden], #psbted-card[hidden], #nonce-card[hidden], #bip85-card[hidden], #sp-card[hidden], #vanity-card[hidden], #ln-card[hidden] { display: none !important; }
+#calc-card:not([hidden]), #msig-card:not([hidden]), #bip85-card:not([hidden]), #sp-card:not([hidden]), #psbt-card:not([hidden]), #psbted-card:not([hidden]), #nonce-card:not([hidden]), #vanity-card:not([hidden]), #ln-card:not([hidden]) { margin-top: 0; border-radius: 0 0 20px 20px; position: relative; z-index: 1; }
 #journal-card[hidden], #journal-notes-card[hidden], #journal-keymanager-card[hidden], #journal-state-card[hidden], #journal-log-card[hidden] { display: none !important; }
 #journal-card:not([hidden]), #journal-notes-card:not([hidden]), #journal-keymanager-card:not([hidden]), #journal-state-card:not([hidden]), #journal-log-card:not([hidden]) { margin-top: 0; border-radius: 0 0 20px 20px; position: relative; z-index: 1; }
 #journal-locked-panel[hidden], #journal-work-panel[hidden], #journal-create-panel[hidden], #journal-open-panel[hidden], #journal-editor[hidden], #journal-view[hidden] { display: none; }
@@ -1931,7 +1932,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    layout: the text lands where a control would, not the box around it. Text
    written to sit directly under a label carries .label-description. */
 .label:has(+ .label-description) { margin-bottom: 4px; }
-.label + .label-description { margin-top: 0; margin-bottom: 0; }
+/* A toggle's title does the same job as a label, so a description written to
+   sit under it sits the same way. */
+.label + .label-description,
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary + :is(.label-description, .field-note) { margin-top: 0; margin-bottom: 0; }
 /* The exception: a checkbox's own text is not a heading over content. It sits
    inside the control, on one line with the box, so it owns no gap either side.
    The components above already say margin: 0; this repeats it only to outrank
@@ -2034,6 +2038,28 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   margin: 0; padding: 0 0 var(--space-control);
   border-bottom: 1px solid var(--border);
 }
+/* Elsewhere a toggle sits in a grid that spaces it. One placed straight in a
+   card's block flow takes the gap a field would. */
+.tool-card > .derivation-advanced { margin-top: var(--space-component); }
+/* A tool's result reads inside a frame of its own. It is a readout, not a
+   control, so it stays square. Until the tool has something to show, a
+   grey line says what will appear; the body filling is what hides it. */
+.tool-result { margin-bottom: var(--space-intro); padding: var(--space-component) 10px; border: 1px solid var(--border); background: var(--bg); }
+.tool-result > .tool-result-empty { margin: 0; }
+.tool-result:has(> .tool-result-body:not(:empty)) > .tool-result-empty { display: none; }
+.tool-result-body > :first-child { margin-top: 0; }
+.tool-result-body > :last-child { margin-bottom: 0; }
+/* A run of toggles is fenced top and bottom. Each toggle draws the rule below
+   itself, so only the first in a run draws one above: a second would stack
+   a rule on the one its neighbour already drew. */
+.tool-card > .derivation-advanced:not(.derivation-advanced + .derivation-advanced) {
+  /* Below the title sit its own 8px margin and the toggle's 8px padding;
+     the rule above gets the same 16px so the title centres between the two. */
+  padding-top: var(--space-component); border-top: 1px solid var(--border);
+}
+/* With no fields wrapper to carry the gap, the last thing in the open block
+   does, so the rule sits as far below the content as below the shut toggle. */
+.tool-card > .derivation-advanced[open] > :last-child { margin-bottom: var(--space-control); }
 /* The card's other accordion, styled as the fairness toggle so the two read as
    one control type: heading-sized text, grey until hovered or open, and the
    same disclosure triangle. The native marker steps aside because it cannot

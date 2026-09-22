@@ -7771,7 +7771,7 @@ function hodlFillStationKeyPicker(id, selectedSource, onSelect, keys = hodlSessi
   box.replaceChildren();
   box.hidden = !keys.length;
   keys.forEach((state) => {
-    let fingerprint = state.result?.masterFingerprint || state.name || "Key " + state.number, button = document.createElement("button"), image = document.createElement("img"), label = document.createElement("span"), selected = selectedSource === "key:" + state.id;
+    let master = state.result?.masterFingerprint || "", fingerprint = master || state.name || "Key " + state.number, button = document.createElement("button"), image = document.createElement("img"), label = document.createElement("span"), selected = selectedSource === "key:" + state.id;
     button.type = "button";
     button.className = "session-key-option" + (selected ? " active" : "");
     button.dataset.keyId = String(state.id);
@@ -7782,7 +7782,9 @@ function hodlFillStationKeyPicker(id, selectedSource, onSelect, keys = hodlSessi
     image.height = 22;
     image.alt = "";
     image.hidden = true;
-    hodlFillKeyTabLifehash(image, fingerprint);
+    // A LifeHash draws a master fingerprint. A single key has none, so its chip
+    // shows its name alone; handing the name to the renderer rejects.
+    if (master) hodlFillKeyTabLifehash(image, master);
     label.textContent = fingerprint;
     // The selected chip carries a check mark as well as its accent border,
     // so the selection reads without relying on colour alone.
@@ -7795,10 +7797,69 @@ function hodlFillStationKeyPicker(id, selectedSource, onSelect, keys = hodlSessi
     box.appendChild(button);
   });
 }
+// Only the keys the PSBT loader can take: an HD seed or root xprv, or a single
+// private key. Offering anything else would be a chip that only errors.
+function hodlPsbtSourceKeys() {
+  return hodlKeys.filter((state) => !state.isLab && state.result && (
+    (state.result.kind === "hd" && (state.result.mnemonic || state.result.rootXprv)) ||
+    (state.result.kind === "single" && state.result.privHex)));
+}
+// Both inspectors share one session, so a chip picked on either loads the key
+// for both and both pickers mark it. The key never lands in a field: the PSBT
+// tool clears its key fields once a key is loaded, and the chip is the proof.
+function hodlPickPsbtSessionKey(state) {
+  let prior = hodlPsbtErrorSpec, report = hodlPsbtTool === "nonce" ? hodlSetNonceError : hodlSetPsbtError;
+  hodlSetPsbtError(null);
+  hodlSetNonceError(null);
+  try {
+    hodlUseActiveKeyForPsbt(state);
+    for (let id of ["psbt-key", "psbt-pass", "nonce-key", "nonce-pass"]) {
+      let field = document.getElementById(id);
+      if (field) field.value = "";
+    }
+  } catch (exception) {
+    let spec = hodlPsbtErrorSpec !== prior ? hodlPsbtErrorSpec : null;
+    hodlPsbtErrorSpec = null;
+    report(spec || { raw: exception.message || String(exception) });
+  }
+  hodlPaintPsbtSession();
+  hodlRefreshStationKeyPickers();
+  hodlSyncPsbtControls();
+}
+// With no loadable key, each picker says where keys come from, and the words
+// "Key Station" take you there. The sentence is translated whole, with the
+// link as a placeholder so every language keeps its own word order, then built
+// from nodes: nothing here is parsed as HTML.
+function hodlPaintPsbtKeyNotes() {
+  let empty = !hodlPsbtSourceKeys().length;
+  for (let id of ["psbt-session-keys-note", "nonce-session-keys-note"]) {
+    let note = document.getElementById(id);
+    if (!note) continue;
+    note.hidden = !empty;
+    if (!empty) continue;
+    let marker = "\u0000", [before, after = ""] = hodlTText("Keys that are derived in {station} can be used to enhance PSBT inspection.", { station: marker }).split(marker);
+    let link = document.createElement("a");
+    link.href = "#key-station";
+    link.textContent = hodlTText("Key Station");
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      hodlOpenKeyStation();
+    });
+    note.replaceChildren(before, link, after);
+  }
+}
+function hodlOpenKeyStation() {
+  hodlShowWorkspace("calc");
+  let lab = hodlKeys.findIndex((state) => state.isLab);
+  if (lab >= 0) hodlSelectKey(lab);
+}
 function hodlRefreshStationKeyPickers() {
   hodlFillStationKeyPicker("bip85-session-keys", hodlBip85Source, hodlPickBip85SessionKey);
   hodlFillStationKeyPicker("sp-session-keys", hodlSpSource, hodlPickSpSessionKey);
   hodlFillStationKeyPicker("vanity-session-keys", hodlVanitySource, hodlPickVanitySessionKey, hodlVanitySourceKeys());
+  hodlFillStationKeyPicker("psbt-session-keys", hodlPsbtSource, hodlPickPsbtSessionKey, hodlPsbtSourceKeys());
+  hodlFillStationKeyPicker("nonce-session-keys", hodlPsbtSource, hodlPickPsbtSessionKey, hodlPsbtSourceKeys());
+  hodlPaintPsbtKeyNotes();
   // The selected key's passphrase and path may have changed on the Keys tab.
   hodlVanitySyncSource();
 }
@@ -8648,9 +8709,10 @@ function hodlSetPsbtError(spec) {
   error.textContent = !spec ? "" : spec.key ? hodlTText(spec.key, spec.vars) : spec.raw || "";
 }
 function hodlRefreshPsbtLocale() {
-  let session = document.getElementById("psbt-session");
-  if (session) session.textContent = hodlPsbtSessionText();
+  hodlPaintPsbtSession();
+  hodlPaintPsbtKeyNotes();
   if (hodlPsbtErrorSpec) hodlSetPsbtError(hodlPsbtErrorSpec);
+  if (hodlNonceErrorSpec) hodlSetNonceError(hodlNonceErrorSpec);
   hodlPsbtSyncNonceHistoryControls();
   if (hodlPsbtLast) {
     let output = document.getElementById("psbt-out");
@@ -9192,6 +9254,7 @@ function hodlPsbtSyncNonceHistoryControls(message = "", error = false) {
       : hodlTText("No nonce history in memory. Inspect a PSBT or upload a history file."));
     status.className = error ? "err" : "muted";
   }
+  hodlSyncPsbtControls();
   hodlScheduleJournalStateRefresh();
 }
 function hodlPsbtRenderNonceHistoryComparison() {
@@ -9343,11 +9406,10 @@ function hodlLoadPsbtKey(text, passphrase) {
   }
   hodlPsbtSource = "manual";
 }
-function hodlUseActiveKeyForPsbt() {
-  let state = hodlKeys[hodlActiveKey];
+function hodlUseActiveKeyForPsbt(state = hodlKeys[hodlActiveKey]) {
   if (!state || !state.result) {
-    hodlPsbtErrorSpec = { key: "Generate an active key first, then return to PSBT / Nonce." };
-    throw new Error(hodlTText("Generate an active key first, then return to PSBT / Nonce."));
+    hodlPsbtErrorSpec = { key: "Generate an active key first, then return here." };
+    throw new Error(hodlTText("Generate an active key first, then return here."));
   }
   let result = state.result;
   hodlPsbtWipeMem();
@@ -9370,7 +9432,7 @@ function hodlUseActiveKeyForPsbt() {
     hodlPsbtErrorSpec = { key: "The active key has no private material available for a session check." };
     throw new Error(hodlTText("The active key has no private material available for a session check."));
   }
-  hodlPsbtSource = "active";
+  hodlPsbtSource = "key:" + state.id;
   hodlPsbtSessionSpec = state.name ? { key: "Session key from {name}. Kept in page memory only.", vars: { name: state.name } } : { key: "Session key from the active key. Kept in page memory only." };
 }
 function hodlDownloadBytes(bytes, name) {
@@ -9387,36 +9449,141 @@ function hodlPsbtClearNonceHistory(all = false) {
   hodlPsbtSyncNonceHistoryControls();
   hodlPsbtRenderNonceHistoryComparison();
 }
+// The session lines and footer actions follow what the station actually
+// holds. Nothing reports "no session key" before anything has been entered,
+// and no button offers an action with nothing to act on: Inspect, Inspect
+// Nonces and Download need a PSBT or transaction that decodes, and End Session
+// needs something to end.
+// The session is shared, so End Session counts both cards and the key.
+function hodlSyncPsbtControls() {
+  let value = (id) => String(document.getElementById(id)?.value || "").trim();
+  let decodes = (text) => {
+    if (!text) return false;
+    try {
+      hodlPsbtBytes(text);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  let enable = (id, on) => {
+    let button = document.getElementById(id);
+    if (!button) return;
+    button.disabled = !on;
+    button.setAttribute("aria-disabled", String(!on));
+  };
+  let loaded = Boolean(hodlPsbtPriv || hodlPsbtHd);
+  let idle = hodlPsbtSessionSpec.key === "No session key. Inspect-only mode.";
+  let anything = loaded || hodlPsbtNonceHistory.length > 0;
+  for (let card of [
+    { text: "psbt-text", fields: ["psbt-key", "psbt-pass"], go: "psbt-go", download: "psbt-download", out: "psbt-out", session: "psbt-session" },
+    { text: "nonce-text", fields: ["nonce-key", "nonce-pass", "psbt-ax-transcript"], go: "nonce-go", out: "nonce-out", session: "nonce-session" },
+  ]) {
+    let text = value(card.text), typed = Boolean(text || card.fields.some((id) => value(id))), ready = decodes(text);
+    enable(card.go, ready);
+    if (card.download) enable(card.download, ready);
+    let session = document.getElementById(card.session);
+    if (session) session.hidden = !typed && !loaded && idle;
+    anything ||= typed || Boolean(document.getElementById(card.out)?.childElementCount);
+  }
+  enable("psbt-wipe", anything);
+  enable("nonce-wipe", anything);
+}
+function hodlPaintPsbtSession() {
+  for (let id of ["psbt-session", "nonce-session"]) {
+    let line = document.getElementById(id);
+    if (line) line.textContent = hodlPsbtSessionText();
+  }
+}
+var hodlNonceErrorSpec = null;
+function hodlSetNonceError(spec) {
+  hodlNonceErrorSpec = spec || null;
+  let error = document.getElementById("nonce-error");
+  if (!error) return;
+  error.textContent = !spec ? "" : spec.key ? hodlTText(spec.key, spec.vars) : spec.raw || "";
+}
+// Ending the session is one act wherever it starts: the shared key goes, and
+// so does everything either card holds.
+function hodlEndPsbtSession() {
+  hodlPsbtWipeMem();
+  hodlPsbtClearNonceHistory(true);
+  hodlPsbtLast = null;
+  hodlPsbtSessionSpec = { key: "Session ended and accessible fields were cleared (best effort)." };
+  for (let id of ["psbt-key", "psbt-pass", "psbt-text", "psbt-ax-transcript", "nonce-key", "nonce-pass", "nonce-text"]) {
+    let field = document.getElementById(id);
+    if (field) field.value = "";
+  }
+  for (let id of ["psbt-out", "nonce-out"]) {
+    let output = document.getElementById(id);
+    if (output) output.innerHTML = "";
+  }
+  hodlSetPsbtError(null);
+  hodlSetNonceError(null);
+  hodlPaintPsbtSession();
+  hodlRefreshStationKeyPickers();
+  hodlSyncPsbtControls();
+}
+// The Nonce Inspector runs the same analysis as the PSBT Inspector against its
+// own input and the shared session, and shows only the nonce view.
+function hodlRunNonce() {
+  let output = document.getElementById("nonce-out"), manual = document.getElementById("nonce-key").value;
+  hodlSetNonceError(null);
+  hodlPsbtResetNonceInspection();
+  output.innerHTML = "";
+  let prior = hodlPsbtErrorSpec;
+  try {
+    if (manual.trim()) {
+      hodlLoadPsbtKey(manual, document.getElementById("nonce-pass").value);
+      document.getElementById("nonce-key").value = "";
+      document.getElementById("nonce-pass").value = "";
+    }
+    hodlPaintPsbtSession();
+    let bytes = hodlPsbtBytes(document.getElementById("nonce-text").value);
+    let kind = isPsbtMagic(bytes) ? "psbt" : "transaction";
+    let sourceTag = hodlSha256(bytes), checkedAt = new Date().toISOString();
+    if (kind === "psbt") output.innerHTML = hodlRenderPsbt(hodlParsePsbt(bytes), sourceTag, checkedAt, "nonce");
+    else output.innerHTML = hodlRenderRawTx(parseRawTx(bytes), sourceTag, checkedAt, "nonce");
+    hodlJournalLog("inspect-nonces", kind, "psbt");
+  } catch (exception) {
+    hodlPsbtResetNonceInspection();
+    let spec = hodlPsbtErrorSpec !== prior ? hodlPsbtErrorSpec : null;
+    hodlPsbtErrorSpec = prior;
+    hodlSetNonceError(spec || { raw: exception instanceof Error ? exception.message : String(exception) });
+    hodlJournalLog("inspect-error", "", "psbt");
+  }
+}
 function hodlInitPsbt() {
   let go = document.getElementById("psbt-go");
   if (!go) return;
-  go.onclick = hodlRunPsbt;
-  document.getElementById("psbt-use-calc").onclick = () => {
-    hodlSetPsbtError(null);
-    try {
-      hodlUseActiveKeyForPsbt();
-      document.getElementById("psbt-key").value = "";
-      document.getElementById("psbt-pass").value = "";
-      document.getElementById("psbt-session").textContent = hodlPsbtSessionText();
-    } catch (exception) {
-      if (!hodlPsbtErrorSpec) hodlSetPsbtError({ raw: exception.message || String(exception) });
-      else hodlSetPsbtError(hodlPsbtErrorSpec);
-    }
+  go.onclick = () => {
+    hodlRunPsbt();
+    hodlRefreshStationKeyPickers();
+    hodlSyncPsbtControls();
   };
-  document.getElementById("psbt-wipe").onclick = () => {
-    hodlPsbtWipeMem();
-    hodlPsbtClearNonceHistory(true);
-    hodlPsbtLast = null;
-    hodlPsbtSessionSpec = { key: "Session ended and accessible fields were cleared (best effort)." };
-    document.getElementById("psbt-key").value = "";
-    document.getElementById("psbt-pass").value = "";
-    document.getElementById("psbt-text").value = "";
-    let ax = document.getElementById("psbt-ax-transcript");
-    if (ax) ax.value = "";
-    document.getElementById("psbt-out").innerHTML = "";
-    hodlSetPsbtError(null);
-    document.getElementById("psbt-session").textContent = hodlPsbtSessionText();
+  document.getElementById("psbt-wipe").onclick = hodlEndPsbtSession;
+  document.getElementById("nonce-wipe").onclick = hodlEndPsbtSession;
+  document.getElementById("nonce-go").onclick = () => {
+    hodlRunNonce();
+    hodlRefreshStationKeyPickers();
+    hodlSyncPsbtControls();
   };
+  const nonceFile = document.getElementById("nonce-file");
+  document.getElementById("nonce-upload").onclick = () => nonceFile.click();
+  nonceFile.addEventListener("change", () => {
+    const chosen = nonceFile.files?.[0];
+    nonceFile.value = "";
+    if (!chosen) return;
+    (async () => {
+      try {
+        const bytes = hodlPsbtInspectorBytesFromUpload(new Uint8Array(await chosen.arrayBuffer()));
+        document.getElementById("nonce-text").value = hodlBytesToB64(bytes);
+        hodlRunNonce();
+      } catch (exception) {
+        hodlSetNonceError({ raw: exception.message || String(exception) });
+      }
+      hodlSyncPsbtControls();
+    })();
+  });
   // Same load path as the editor: Sparrow/Coldcard binary .psbt, or a
   // base64/hex text export saved to disk. The textarea mirrors the file as
   // base64 so Inspect and Download keep working without a second parser.
@@ -9434,6 +9601,7 @@ function hodlInitPsbt() {
       } catch (exception) {
         hodlSetPsbtError({ raw: exception.message || String(exception) });
       }
+      hodlSyncPsbtControls();
     })();
   });
   document.getElementById("psbt-download").onclick = () => {
@@ -9478,14 +9646,17 @@ function hodlInitPsbt() {
     hodlPsbtClearNonceHistory();
     hodlPsbtSyncNonceHistoryControls(hodlTText("Nonce history cleared from memory. Inspect again to add the current file."));
   };
-  document.getElementById("psbt-text").addEventListener("input", hodlPsbtResetNonceInspection);
+  document.getElementById("nonce-text").addEventListener("input", hodlPsbtResetNonceInspection);
+  document.getElementById("psbt-card").addEventListener("input", hodlSyncPsbtControls);
+  document.getElementById("nonce-card").addEventListener("input", hodlSyncPsbtControls);
   hodlPsbtSyncNonceHistoryControls();
   let clearSecretFields = () => {
     hodlPsbtWipeMem();
     hodlPsbtClearNonceHistory(true);
-    let key = document.getElementById("psbt-key"), pass = document.getElementById("psbt-pass");
-    if (key) key.value = "";
-    if (pass) pass.value = "";
+    for (let id of ["psbt-key", "psbt-pass", "nonce-key", "nonce-pass"]) {
+      let field = document.getElementById(id);
+      if (field) field.value = "";
+    }
   };
   addEventListener("pagehide", clearSecretFields);
   addEventListener("pageshow", (event) => {
@@ -9944,7 +10115,6 @@ function hodlRunPsbt() {
   let output = document.getElementById("psbt-out"), manual = document.getElementById("psbt-key").value;
   hodlSetPsbtError(null);
   hodlPsbtLast = null;
-  hodlPsbtResetNonceInspection();
   output.innerHTML = "";
   try {
     if (manual.trim()) {
@@ -9952,16 +10122,15 @@ function hodlRunPsbt() {
       document.getElementById("psbt-key").value = "";
       document.getElementById("psbt-pass").value = "";
     }
-    document.getElementById("psbt-session").textContent = hodlPsbtSessionText();
+    hodlPaintPsbtSession();
     let bytes = hodlPsbtBytes(document.getElementById("psbt-text").value);
     let kind = isPsbtMagic(bytes) ? "psbt" : "transaction";
     let sourceTag = hodlSha256(bytes), checkedAt = new Date().toISOString();
-    if (kind === "psbt") output.innerHTML = hodlRenderPsbt(hodlParsePsbt(bytes), sourceTag, checkedAt);
-    else output.innerHTML = hodlRenderRawTx(parseRawTx(bytes), sourceTag, checkedAt);
+    if (kind === "psbt") output.innerHTML = hodlRenderPsbt(hodlParsePsbt(bytes), sourceTag, checkedAt, "inspect");
+    else output.innerHTML = hodlRenderRawTx(parseRawTx(bytes), sourceTag, checkedAt, "inspect");
     hodlJournalLog("inspect", kind, "psbt");
   } catch (exception) {
     hodlPsbtLast = null;
-    hodlPsbtResetNonceInspection();
     if (!hodlPsbtErrorSpec) hodlSetPsbtError({ raw: exception instanceof Error ? exception.message : String(exception) });
     else hodlSetPsbtError(hodlPsbtErrorSpec);
     hodlJournalLog("inspect-error", "", "psbt");
@@ -10574,12 +10743,17 @@ function hodlPsbtAnalysisSummary(checks) {
   return "<section class='psbt-analysis-summary' aria-label='PSBT security analysis status'><p class='label'>PSBT security analysis</p><p class='" + overallClass + "'><strong>" + overall + "</strong></p><ul>" + rows + "</ul><p class='muted'>Completed means only that the named check ran on the information available here. It does not prove that the PSBT claims are true or that the transaction is safe to sign.</p></section>";
 }
 function hodlPsbtNonceCheck(reused, possible, nonceIncomplete) {
-  if (reused.length) return { label: "Nonce analysis", state: "problem", detail: "A repeated ECDSA nonce was detected; see the blocking warning below." };
-  if (possible.length) return { label: "Nonce analysis", state: "incomplete", detail: "A possible repeated ECDSA nonce for the same public key could not be confirmed from this file; see the warning below and verify the signatures independently." };
+  if (reused.length) return { label: "Nonce analysis", state: "problem", detail: "A repeated ECDSA nonce was detected; open the Nonce Inspector for the affected signatures." };
+  if (possible.length) return { label: "Nonce analysis", state: "incomplete", detail: "A possible repeated ECDSA nonce for the same public key could not be confirmed from this file; open the Nonce Inspector and verify the signatures independently." };
   if (nonceIncomplete) return { label: "Nonce analysis", state: "incomplete", detail: "Coverage is partial: unreadable signatures, fewer than two comparable ECDSA signatures, missing key/digest data, unsupported scripts, or Taproot/Schnorr signatures prevented one or more nonce checks." };
   return { label: "Nonce analysis", state: "complete", detail: "All ECDSA signatures in this PSBT had comparable nonce values; no repeated r was found for the same key within this file." };
 }
-function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt = new Date().toISOString()) {
+// One analysis, two views. "inspect" is the PSBT Inspector: everything but the
+// per-signature nonce detail, with the nonce verdict kept as a summary row.
+// "nonce" is the Nonce Inspector: that detail alone. "all" is both, in the
+// original order. The computation is identical in every view; only what is
+// emitted differs, so a verdict can never depend on which tab asked.
+function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt = new Date().toISOString(), view = "all") {
   // The inspector follows the header network picker (mainnet/testnet); there
   // is no per-tool network control.
   let network = hodlNetworkDefault,
@@ -10609,7 +10783,11 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
     inscriptionReport = { inputs: [], envelopes: [] };
     inscriptionScanIncomplete = true;
   }
-  try {
+  // The Jade transcript belongs to the Nonce Inspector. The PSBT Inspector
+  // neither shows it nor verifies anti-exfil, so it must not read it: the
+  // transcript steers signatures away from the unsupported-check count, and a
+  // field on another tab would otherwise lift the Inspector's nonce verdict.
+  if (view !== "inspect") try {
     transcript = hodlParseAntiExfil(document.getElementById("psbt-ax-transcript")?.value || "");
   } catch (exception) {
     transcriptError = exception.message || String(exception);
@@ -10808,27 +10986,28 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
   if (inscriptionReport.envelopes.length) {
     html.push("<p class='psbt-warn'><strong>" + inscriptionReport.envelopes.length + " inscription envelope" + (inscriptionReport.envelopes.length === 1 ? "" : "s") + " in this PSBT.</strong> This is what the file reveals in witness or tap-leaf scripts. EntropyLab does not number sats, fetch content from the chain, or render binary payloads.</p>");
   }
-  html.push("<p class='label'>ECDSA nonce check</p>");
-  if (transcriptError) html.push("<p class='psbt-warn'><strong>Jade anti-exfil transcript not used:</strong> " + hodlEscapeHtml(transcriptError) + "</p>");
+  let nonceHtml = [];
+  nonceHtml.push("<p class='label'>ECDSA nonce check</p>");
+  if (transcriptError) nonceHtml.push("<p class='psbt-warn'><strong>Jade anti-exfil transcript not used:</strong> " + hodlEscapeHtml(transcriptError) + "</p>");
   let {
     reused,
     possible,
     crossKey
   } = hodlCompareNonces(rValues);
-  if (reused.length) html.push("<p class='psbt-bad'><strong>Reused nonce detected for the same public key.</strong> The same r value appears on different message digests. If both signatures are valid, the private key can be recovered. Do not broadcast this transaction.</p>");
-  else if (possible.length) html.push("<p class='psbt-warn'><strong>Possible repeated nonce for the same public key.</strong> The message digests could not both be reconstructed, so verify these signatures independently before treating this as a key leak.</p>");
-  if (crossKey.length) html.push("<p class='psbt-bad'><strong>Same r value claimed under different public keys.</strong> " + crossKey.length + " pair(s) share an r value but name different keys — a mislabeled signature field can hide real nonce reuse this way. Verify every signature against its input's key independently before signing or broadcasting.</p>");
-  else if (uninspected) html.push("<p class='psbt-warn'><strong>Incomplete nonce coverage.</strong> Some ECDSA signatures could not be inspected, so this is not a clean verdict.</p>");
-  else if (rValues.length >= 2) html.push("<p class='psbt-ok'>No repeated ECDSA nonce r values were found for the same public key in this PSBT.</p>");
-  else if (rValues.length === 1) html.push("<p class='muted'>Only one ECDSA signature with a readable r is present. Nonce reuse cannot be judged from this file alone.</p>");
-  else html.push("<p class='muted'>No ECDSA signatures with a readable r value are present, so there is no nonce to compare yet.</p>");
-  if (rValues.length) html.push("<p class='psbt-kv'>r values:<br>" + rValues.map(value => hodlEscapeHtml(value.hex) + " (input " + value.input + ")").join("<br>") + "</p>");
-  rows.forEach(row => html.push("<p class='" + row.className + "'><strong>Input " + row.input + "</strong> pubkey " + hodlEscapeHtml(row.pubkey.slice(0, 18)) + "\u2026 \u2014 " + hodlEscapeHtml(row.message) + "</p>"));
-  if (tapSignatureCount) html.push("<p class='muted'>This PSBT also contains " + tapSignatureCount + " Taproot / Schnorr signature(s). Their sighash policies are checked above; their BIP340 nonces are not analyzed in this version.</p>");
-  html.push("<p class='muted'>RFC 6979 comparison currently covers SegWit v0 P2WPKH and P2WSH signatures using SIGHASH_ALL, including Bitcoin Core-style low-r grinding. Jade anti-exfil is secp256k1-zkp sign-to-contract and needs the USB host nonce plus signer opening; QR / sign_psbt Jade does not run it yet. BitBox anti-klepto is a different construction. Nonce reuse detection compares r values for the same secp256k1 point, including signatures carried by finalized scriptSig/witness fields, compressed and uncompressed encodings, and recoverable non-strict DER; the same r value claimed under two different public keys is flagged as a mislabeled field rather than skipped. A clean verdict is not issued when a signature cannot be inspected. Inscription detection reads OP_FALSE OP_IF \"ord\" envelopes in tap-leaf scripts and finalized witnesses; it does not number sats. Output ownership is derived from the session key: accounts 0\u20132, 50 receive + 50 change, all four script types. It does not talk to the chain.</p>");
+  if (reused.length) nonceHtml.push("<p class='psbt-bad'><strong>Reused nonce detected for the same public key.</strong> The same r value appears on different message digests. If both signatures are valid, the private key can be recovered. Do not broadcast this transaction.</p>");
+  else if (possible.length) nonceHtml.push("<p class='psbt-warn'><strong>Possible repeated nonce for the same public key.</strong> The message digests could not both be reconstructed, so verify these signatures independently before treating this as a key leak.</p>");
+  if (crossKey.length) nonceHtml.push("<p class='psbt-bad'><strong>Same r value claimed under different public keys.</strong> " + crossKey.length + " pair(s) share an r value but name different keys — a mislabeled signature field can hide real nonce reuse this way. Verify every signature against its input's key independently before signing or broadcasting.</p>");
+  else if (uninspected) nonceHtml.push("<p class='psbt-warn'><strong>Incomplete nonce coverage.</strong> Some ECDSA signatures could not be inspected, so this is not a clean verdict.</p>");
+  else if (rValues.length >= 2) nonceHtml.push("<p class='psbt-ok'>No repeated ECDSA nonce r values were found for the same public key in this PSBT.</p>");
+  else if (rValues.length === 1) nonceHtml.push("<p class='muted'>Only one ECDSA signature with a readable r is present. Nonce reuse cannot be judged from this file alone.</p>");
+  else nonceHtml.push("<p class='muted'>No ECDSA signatures with a readable r value are present, so there is no nonce to compare yet.</p>");
+  if (rValues.length) nonceHtml.push("<p class='psbt-kv'>r values:<br>" + rValues.map(value => hodlEscapeHtml(value.hex) + " (input " + value.input + ")").join("<br>") + "</p>");
+  rows.forEach(row => nonceHtml.push("<p class='" + row.className + "'><strong>Input " + row.input + "</strong> pubkey " + hodlEscapeHtml(row.pubkey.slice(0, 18)) + "\u2026 \u2014 " + hodlEscapeHtml(row.message) + "</p>"));
+  if (tapSignatureCount) nonceHtml.push("<p class='muted'>This PSBT also contains " + tapSignatureCount + " Taproot / Schnorr signature(s). Their sighash policies are checked above; their BIP340 nonces are not analyzed in this version.</p>");
+  nonceHtml.push("<p class='muted'>RFC 6979 comparison currently covers SegWit v0 P2WPKH and P2WSH signatures using SIGHASH_ALL, including Bitcoin Core-style low-r grinding. Jade anti-exfil is secp256k1-zkp sign-to-contract and needs the USB host nonce plus signer opening; QR / sign_psbt Jade does not run it yet. BitBox anti-klepto is a different construction. Nonce reuse detection compares r values for the same secp256k1 point, including signatures carried by finalized scriptSig/witness fields, compressed and uncompressed encodings, and recoverable non-strict DER; the same r value claimed under two different public keys is flagged as a mislabeled field rather than skipped. A clean verdict is not issued when a signature cannot be inspected. Inscription detection reads OP_FALSE OP_IF \"ord\" envelopes in tap-leaf scripts and finalized witnesses; it does not number sats. Output ownership is derived from the session key: accounts 0\u20132, 50 receive + 50 change, all four script types. It does not talk to the chain.</p>");
   let nonceIncomplete = uninspected || tapSignatureCount || unsupportedNonceChecks || crossKey.length || rValues.length < 2;
   let nonceVerdict = reused.length ? "reuse" : crossKey.length ? "cross-key" : possible.length ? "possible" : nonceIncomplete ? "incomplete" : "clean";
-  hodlPsbtRecordNonceInspection("psbt", rValues, nonceSourceTag, nonceVerdict, nonceCheckedAt);
+  if (view !== "inspect") hodlPsbtRecordNonceInspection("psbt", rValues, nonceSourceTag, nonceVerdict, nonceCheckedAt);
   let checks = [
     {
       label: "Previous outputs and fee",
@@ -10864,10 +11043,14 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
         : "Tap-leaf scripts and finalized witnesses were scanned for recognizable inscription envelopes; this does not number sats or inspect chain data.",
     },
   ];
+  if (view === "nonce") return nonceHtml.join("");
   html.unshift(hodlPsbtAnalysisSummary(checks));
-  return html.join("")
+  return (view === "inspect" ? html : html.concat(nonceHtml)).join("");
 }
-function hodlRenderRawTx(tx, nonceSourceTag = new Uint8Array(), nonceCheckedAt = new Date().toISOString()) {
+// Same three views as hodlRenderPsbt. A raw transaction has no summary table,
+// so the Inspector carries the verdict lines themselves — the exact lines the
+// Nonce Inspector shows, never a restatement of them.
+function hodlRenderRawTx(tx, nonceSourceTag = new Uint8Array(), nonceCheckedAt = new Date().toISOString(), view = "all") {
   // The inspector follows the header network picker (mainnet/testnet); there
   // is no per-tool network control.
   let network = hodlNetworkDefault,
@@ -10889,7 +11072,8 @@ function hodlRenderRawTx(tx, nonceSourceTag = new Uint8Array(), nonceCheckedAt =
     html.push("<p class='psbt-warn'><strong>Inscription envelope</strong> in input " + hint.input + " (" + hint.scriptBytes + " bytes of script/witness). This transaction reveals OP_FALSE OP_IF \"ord\" data.</p>");
   });
   html.push("<p class='muted'>Version " + tx.version + " \xB7 locktime " + tx.locktime + (tx.segwit ? " \xB7 segwit" : "") + ". Fee unknown \u2014 previous output amounts are not in a raw transaction.</p>");
-  html.push("<p class='label'>ECDSA nonce check</p>");
+  let nonceHtml = [], verdictHtml = [];
+  nonceHtml.push("<p class='label'>ECDSA nonce check</p>");
   signatures.forEach((signature) => {
     let parts = hodlSigParts(signature.der), looseR = parts ? parts.r : hodlDerRLoose(signature.der);
     if (!looseR || !signature.pubkey) {
@@ -10907,18 +11091,21 @@ function hodlRenderRawTx(tx, nonceSourceTag = new Uint8Array(), nonceCheckedAt =
     });
   });
   let { reused, possible, crossKey } = hodlCompareNonces(rValues);
-  if (reused.length || possible.length) html.push("<p class='psbt-bad'><strong>Repeated nonce r for the same public key.</strong> Message digests cannot be rebuilt from a raw transaction without prevouts, so treat this as a warning and do not broadcast until the signatures are checked independently.</p>");
-  if (crossKey.length) html.push("<p class='psbt-warn'><strong>Same r value claimed under different public keys.</strong> A key association in a raw transaction is read from the script, not verified; verify these signatures independently before broadcast.</p>");
-  else if (uninspected) html.push("<p class='psbt-warn'><strong>Incomplete nonce coverage.</strong> Some ECDSA signatures could not be inspected.</p>");
-  else if (rValues.length >= 2) html.push("<p class='psbt-ok'>No repeated ECDSA nonce r values were found for the same public key in this transaction.</p>");
-  else if (rValues.length === 1) html.push("<p class='muted'>Only one ECDSA signature with a readable r is present. Nonce reuse cannot be judged from this file alone.</p>");
-  else html.push("<p class='muted'>No ECDSA signatures with a readable r and public key were found.</p>");
-  if (rValues.length) html.push("<p class='psbt-kv'>r values:<br>" + rValues.map((value) => hodlEscapeHtml(value.hex) + " (input " + value.input + ")").join("<br>") + "</p>");
-  html.push("<p class='muted'>Raw-transaction inspect does not reconstruct sighashes. Paste the PSBT when you still can; use this path for a fully signed hex dump from a hardware wallet or Bitcoin Core.</p>");
+  if (reused.length || possible.length) verdictHtml.push("<p class='psbt-bad'><strong>Repeated nonce r for the same public key.</strong> Message digests cannot be rebuilt from a raw transaction without prevouts, so treat this as a warning and do not broadcast until the signatures are checked independently.</p>");
+  if (crossKey.length) verdictHtml.push("<p class='psbt-warn'><strong>Same r value claimed under different public keys.</strong> A key association in a raw transaction is read from the script, not verified; verify these signatures independently before broadcast.</p>");
+  else if (uninspected) verdictHtml.push("<p class='psbt-warn'><strong>Incomplete nonce coverage.</strong> Some ECDSA signatures could not be inspected.</p>");
+  else if (rValues.length >= 2) verdictHtml.push("<p class='psbt-ok'>No repeated ECDSA nonce r values were found for the same public key in this transaction.</p>");
+  else if (rValues.length === 1) verdictHtml.push("<p class='muted'>Only one ECDSA signature with a readable r is present. Nonce reuse cannot be judged from this file alone.</p>");
+  else verdictHtml.push("<p class='muted'>No ECDSA signatures with a readable r and public key were found.</p>");
+  nonceHtml.push(...verdictHtml);
+  if (rValues.length) nonceHtml.push("<p class='psbt-kv'>r values:<br>" + rValues.map((value) => hodlEscapeHtml(value.hex) + " (input " + value.input + ")").join("<br>") + "</p>");
+  nonceHtml.push("<p class='muted'>Raw-transaction inspect does not reconstruct sighashes. Paste the PSBT when you still can; use this path for a fully signed hex dump from a hardware wallet or Bitcoin Core.</p>");
   let nonceIncomplete = uninspected || crossKey.length || rValues.length < 2;
   let nonceVerdict = crossKey.length ? "cross-key" : possible.length ? "possible" : nonceIncomplete ? "incomplete" : "clean";
-  hodlPsbtRecordNonceInspection("transaction", rValues, nonceSourceTag, nonceVerdict, nonceCheckedAt);
-  return html.join("");
+  if (view !== "inspect") hodlPsbtRecordNonceInspection("transaction", rValues, nonceSourceTag, nonceVerdict, nonceCheckedAt);
+  if (view === "nonce") return nonceHtml.join("");
+  if (view === "inspect") return html.concat(["<p class='label'>Nonce analysis</p>"], verdictHtml, ["<p class='muted'>" + hodlT("Open the Nonce Inspector for every r value and the per-signature detail.") + "</p>"]).join("");
+  return html.concat(nonceHtml).join("");
 }
 var hodlAccountId = "bip84",
   hodlNextKeyId = 1,
@@ -12755,7 +12942,7 @@ var hodlWorkspaceTabs = [["calc", "Keys", "Keys"], ["msig", "Multi Signature", "
 // ["ln", "Lightning", "LN"] back in the list above and its button back in
 // the shell strip. Nothing persists the active tool, so no session can be
 // left pointing at a tab that is no longer there.
-var hodlPsbtTool = "nonce";
+var hodlPsbtTool = "inspector";
 function hodlSyncPsbtTool() {
   let visible = hodlWorkspace === "psbt",
       intros = document.getElementById("psbt-tool-intros"),
@@ -12771,17 +12958,16 @@ function hodlSyncPsbtTool() {
       button.tabIndex = active ? 0 : -1;
     });
   }
-  let nonceIntro = document.getElementById("psbt-tool-intro"),
-      editorIntro = document.getElementById("psbted-tool-intro");
-  nonceIntro.classList.toggle("active", visible && hodlPsbtTool === "nonce");
-  nonceIntro.setAttribute("aria-hidden", String(!visible || hodlPsbtTool !== "nonce"));
-  document.getElementById("psbt-card").hidden = !visible || hodlPsbtTool !== "nonce";
-  editorIntro.classList.toggle("active", visible && hodlPsbtTool === "editor");
-  editorIntro.setAttribute("aria-hidden", String(!visible || hodlPsbtTool !== "editor"));
-  document.getElementById("psbted-card").hidden = !visible || hodlPsbtTool !== "editor";
+  for (let [tool, intro, card] of [["inspector", "psbt-tool-intro", "psbt-card"], ["editor", "psbted-tool-intro", "psbted-card"], ["nonce", "nonce-tool-intro", "nonce-card"]]) {
+    let shown = visible && hodlPsbtTool === tool, introNode = document.getElementById(intro);
+    introNode.classList.toggle("active", shown);
+    introNode.setAttribute("aria-hidden", String(!shown));
+    document.getElementById(card).hidden = !shown;
+  }
+  if (visible) hodlSyncPsbtControls();
 }
 function hodlShowPsbtTool(id, focus = false) {
-  let next = id === "editor" ? "editor" : "nonce", changed = next !== hodlPsbtTool;
+  let next = id === "editor" || id === "nonce" ? id : "inspector", changed = next !== hodlPsbtTool;
   hodlPsbtTool = next;
   hodlSyncPsbtTool();
   if (changed) hodlJournalLog("tool-tab", hodlPsbtTool, "psbt");
@@ -13074,10 +13260,11 @@ var hodlJournalAuditedClicks = {
   "msig-edit-inputs": ["msig", "edit-input", "current-multisig"],
   "msig-descriptor-import": ["msig", "import", "descriptor"],
   "sp-wipe": ["sp", "clear", "session"],
-  "psbt-use-calc": ["psbt", "use-session-key", "active-key"],
   "psbt-wipe": ["psbt", "clear", "session"],
   "psbt-upload": ["psbt", "upload", "psbt-file"],
   "psbt-download": ["psbt", "download", "inspected-psbt"],
+  "nonce-wipe": ["psbt", "clear", "session"],
+  "nonce-upload": ["psbt", "upload", "psbt-file"],
   "psbted-load": ["psbt", "load", "editor-text"],
   "psbted-upload": ["psbt", "upload", "psbt-file"],
   "psbted-wipe": ["psbt", "clear", "editor"],
@@ -15499,6 +15686,11 @@ function hodlInitSecretFieldAutoClear() {
     let psbtText = document.getElementById("psbt-text"), psbtAxTranscript = document.getElementById("psbt-ax-transcript");
     if (psbtText) psbtText.value = "";
     if (psbtAxTranscript) psbtAxTranscript.value = "";
+    for (let id of ["nonce-key", "nonce-pass", "nonce-text"]) {
+      let field = document.getElementById(id);
+      if (field) field.value = "";
+    }
+    hodlSyncPsbtControls();
     let bip85Key = document.getElementById("bip85-key"), bip85Out = document.getElementById("bip85-out"), bip85Error = document.getElementById("bip85-error"), bip85Session = document.getElementById("bip85-session");
     if (bip85Key) bip85Key.value = "";
     if (bip85Out) bip85Out.innerHTML = "";

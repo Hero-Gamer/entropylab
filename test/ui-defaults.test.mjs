@@ -1671,19 +1671,23 @@ test("workspace tabs register every tool", () => {
   }
 });
 
-test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
+test("one PSBT workspace contains PSBT Inspector, PSBT Editor and Nonce Inspector tabs", () => {
   assert.match(appSource, /\["psbt", "PSBT", "PSBT"\]/);
   assert.doesNotMatch(appSource, /\["psbted", "PSBT Editor", "Editor"\]/);
   for (const markup of [shell]) {
-    assert.match(markup, /<div class="tool-intro-stack" id="psbt-tool-intros" hidden>[\s\S]*?id="psbt-tool-intro"[\s\S]*?id="psbted-tool-intro"[\s\S]*?<section class="key-manager no-print" id="psbt-manager" hidden>/);
+    assert.match(markup, /<div class="tool-intro-stack" id="psbt-tool-intros" hidden>[\s\S]*?id="psbt-tool-intro"[\s\S]*?id="psbted-tool-intro"[\s\S]*?id="nonce-tool-intro"[\s\S]*?<section class="key-manager no-print" id="psbt-manager" hidden>/);
     assert.match(markup, /<section class="key-manager no-print" id="psbt-manager" hidden>/);
     assert.match(markup, /<div class="key-tab-strip">\s*<div class="key-tabs" id="psbt-tool-tabs" role="tablist" aria-label="PSBT stations">/);
-    assert.match(markup, /class="tab key-tab is-lab active"[^>]*data-psbt-tool="nonce"/);
-    assert.match(markup, /class="tab key-tab is-lab"[^>]*data-psbt-tool="editor"/);
+    // The wiring is the contract: which tab starts selected and which card each
+    // one controls. How a tab is styled is left to the stylesheet.
+    assert.match(markup, /role="tab" aria-selected="true" aria-controls="psbt-card" data-psbt-tool="inspector"/);
+    assert.match(markup, /role="tab" aria-selected="false" aria-controls="psbted-card" data-psbt-tool="editor"/);
+    assert.match(markup, /role="tab" aria-selected="false" aria-controls="nonce-card" data-psbt-tool="nonce"/);
     assert.doesNotMatch(markup, /class="psbt-tool-tabs segmented-control/);
   }
-  assert.match(shell, /data-psbt-tool="nonce"[^>]*>PSBT \/ Nonce/);
-  assert.match(shell, /data-psbt-tool="editor"[^>]*>PSBT Editor/);
+  assert.match(shell, /data-psbt-tool="inspector"[^>]*>(?:<[^>]+>)*PSBT Inspector/);
+  assert.match(shell, /data-psbt-tool="nonce"[^>]*>(?:<[^>]+>)*Nonce Inspector/);
+  assert.match(shell, /data-psbt-tool="editor"[^>]*>(?:<[^>]+>)*PSBT Editor/);
   assert.match(shell, /id="psbt-nonce-history-upload"/);
   assert.match(shell, /id="psbt-nonce-history-download"[^>]*disabled/);
   assert.match(shell, /id="psbt-nonce-history-clear"[^>]*disabled/);
@@ -1694,7 +1698,10 @@ test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
   assert.match(appSource, /getElementById\("psbt-tool-intros"\)/);
   assert.match(appSource, /function hodlShowPsbtTool\(id, focus = false\)/);
   assert.match(appSource, /hodlInitTabDrag\(document\.getElementById\("psbt-tool-tabs"\)\)/);
-  assert.match(appSource, /getElementById\("psbted-card"\)\.hidden = !visible \|\| hodlPsbtTool !== "editor"/);
+  // Each tool pairs its tab id with its own intro and card.
+  assert.match(appSource, /\["inspector", "psbt-tool-intro", "psbt-card"\]/);
+  assert.match(appSource, /\["editor", "psbted-tool-intro", "psbted-card"\]/);
+  assert.match(appSource, /\["nonce", "nonce-tool-intro", "nonce-card"\]/);
   for (const markup of [shell]) {
     assert.match(markup, /id="psbted-card"/);
     assert.match(markup, /id="psbted-text"/);
@@ -2174,13 +2181,14 @@ test("tool cards follow the shared spacing contract", () => {
 
   const cardIds = [
     "calc-card", "vanity-card", "bip85-card", "msig-card", "sp-card",
-    "psbt-card", "psbted-card", "ln-card", "journal-card", "journal-notes-card",
+    "psbt-card", "psbted-card", "nonce-card", "ln-card", "journal-card", "journal-notes-card",
     "journal-keymanager-card", "journal-state-card", "journal-log-card",
   ];
   for (const id of cardIds) {
     assert.match(shell, new RegExp(`<section class="card no-print tool-card" id="${id}"`));
   }
-  assert.equal((shell.match(/class="station-key-source tool-section"/g) || []).length, 3);
+  // BIP-85, Silent Payments, Vanity, and the two PSBT inspectors.
+  assert.equal((shell.match(/class="station-key-source tool-section"/g) || []).length, 5);
 
   const actionRows = [...shell.matchAll(/class="row ([^"]*(?:current-item-actions|bip85-actions|psbt-actions|journal-global-actions)[^"]*)"/g)];
   assert.ok(actionRows.length > 0);

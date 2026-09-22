@@ -115,8 +115,8 @@ test("the Lightning card ships in the shell with its controls", () => {
   assert.match(shell, /id="ln-tool-intro"/);
 });
 
-test("the tab registry and workspace switcher carry the Lightning tool", () => {
-  for (const entry of [/\["psbt", "PSBT", "PSBT"\]/, /\["ln", "Lightning", "LN"\]/, /\["journal", "Journal", "Journal"\]/]) {
+test("the workspace switcher retains the held-back Lightning implementation", () => {
+  for (const entry of [/\["psbt", "PSBT", "PSBT"\]/, /\["journal", "Journal", "Journal"\]/]) {
     assert.match(appSource, entry);
   }
   assert.match(appSource, /getElementById\("ln-card"\)\.hidden = id !== "ln"/);

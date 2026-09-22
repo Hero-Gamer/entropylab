@@ -4105,7 +4105,8 @@
       assert(chip.textContent.includes("→"), `${id} omitted the parent-to-child arrow`);
     }
     assert([...document.querySelectorAll("#msig-keys .msig-session-key")].some((chip) => chip.dataset.keyId?.startsWith("bip85:") && chip.textContent.includes(firstChildFingerprint)), "MS Station did not offer the BIP-85 HD child");
-    assert(document.getElementById("bip85-key-availability-note").compareDocumentPosition(document.getElementById("address-estimate")) & Node.DOCUMENT_POSITION_FOLLOWING, "The child-key availability note was not above the estimate");
+    const availabilityNote = document.getElementById("bip85-key-availability-note");
+    assert(document.getElementById("bip85-bench").contains(availabilityNote) && availabilityNote.compareDocumentPosition(document.getElementById("bip85-go")) & Node.DOCUMENT_POSITION_FOLLOWING, "The child-key availability note was not above the BIP-85 derive controls");
     assert(!document.getElementById("delete-bip85").disabled, "The child delete control did not become available");
 
     document.querySelector('#workspace [data-workspace="journal"]').click();

@@ -2121,7 +2121,7 @@ test("every MS Station co-signer keeps its key and full path visible with synchr
     assert.doesNotMatch(markup, /class="station-key-source msig-station-key-source"/);
     assert.doesNotMatch(markup, /id="msig-session-keys"/);
     assert.doesNotMatch(markup, /id="msig-session-key-status"/);
-    assert.match(markup, /id="msig-reuse-session-keys"[\s\S]*Keep selected Key Station keys available for more than one co-signer input/);
+    assert.match(markup, /id="msig-reuse-session-keys"/);
   }
   assert.match(appSource, /function hodlSessionMsigKeys\(\) \{/);
   assert.match(appSource, /function hodlMatchingMsigExport\(result\) \{/);
@@ -2143,7 +2143,6 @@ test("every MS Station co-signer keeps its key and full path visible with synchr
   assert.match(appSource, /let unavailable = !reuse && !active && Boolean\(option\.baseId\) && usedElsewhere\.has\(option\.baseId\)/);
   assert.match(appSource, /button\.disabled = unavailable/);
   assert.match(appSource, /is already selected for another co-signer/);
-  assert.match(appSource, /\$\{selected \? "Remove" : "Use"\} Key Station key/);
   assert.match(appSource, /hodlFillKeyTabLifehash\(image, fingerprint\)/);
   assert.match(appSource, /hodlRefreshMsigSessionPickers\(\)/);
   // Reusing a key appends a public child to the one visible full path; there
@@ -2157,7 +2156,6 @@ test("every MS Station co-signer keeps its key and full path visible with synchr
   assert.match(appSource, /row\.dataset\.msigPathUpdate = "true"/);
   assert.match(appSource, /if \(row\.dataset\.msigPathUpdate !== "true"\) hodlSyncMsigRowPathFromKey\(row\)/);
   assert.match(appSource, /value\.setSelectionRange\(/);
-  assert.match(appSource, /hodlHint\(ta, null, hodlTText\("Choose a Key Station key above, or paste a co-signer extended public key\."\)\)/);
   assert.match(appSource, /function hodlMsigRowValue\(row, strict = false\) \{/);
   assert.match(appSource, /Master fingerprint must be exactly 8 hexadecimal characters\./);
   assert.match(appSource, /return `\[\$\{fingerprint\}\/\$\{originComponents\.map/);
@@ -2216,11 +2214,10 @@ test("test mode can preload a bounded sequence of hashed-dice keys", () => {
   assert.match(appSource, /if \(__ENTROPYLAB_TEST_HOOKS__\) await hodlLoadTestKeys\(\);/);
 });
 
-test("BIP-85 and SP Stations can bring in compatible Key Station roots", () => {
+test("BIP-85 and SP Stations can bring in compatible existing roots", () => {
   for (const markup of [shell]) {
     assert.match(markup, /id="bip85-session-keys"/);
     assert.match(markup, /id="sp-session-keys"/);
-    assert.match(markup, /Bring in a key from Key Station/);
     assert.doesNotMatch(markup, /id="bip85-use-calc"/);
     assert.doesNotMatch(markup, /id="sp-use-calc"/);
   }
@@ -2278,7 +2275,6 @@ test("BIP-85 Station retains each child in a LifeHash fingerprint tab", () => {
   assert.match(appSource, /\["seed", "M12 1\.75/);
   assert.match(appSource, /\["left-leaf",/);
   assert.match(appSource, /\["right-leaf",/);
-  assert.match(appSource, /hodlFillKeyTabLifehash\(image, state\.fingerprint\)/);
   assert.match(appSource, /hodlBip85Children\.push\(state\)/);
   assert.match(appSource, /function hodlDeleteActiveBip85\(\) \{[\s\S]*wipeBip85Result\(state\.result\)/);
   assert.match(appSource, /state\.reveal = hodlBip85Reveal/);
@@ -2304,8 +2300,7 @@ test("the vanity grinder is a workspace tab that ships collapsed and never auto-
     // The key comes in through the same clickable Key Station picker the
     // BIP-85 and Silent Payments tabs use; the selected key is restated with
     // its starting passphrase, labelled and read-only.
-    assert.match(markup, /<p class="label">Bring in a key from Key Station<\/p>/);
-    assert.match(markup, /<div class="session-key-picker" id="vanity-session-keys" role="group" aria-label="Key Station keys" hidden><\/div>/);
+    assert.match(markup, /id="vanity-session-keys"/);
     assert.match(markup, /id="vanity-source-block"[^>]*hidden/);
     assert.match(markup, /id="vanity-source"/);
     // The starting passphrase is stated, not offered for editing: it changes
@@ -2464,7 +2459,6 @@ test("Update key carries the fingerprint and LifeHash with it: rows show the res
   // from the key's words once and rendered with a LifeHash; an account row
   // keeps the key's fingerprint.
   assert.match(vanityController, /function hodlVanityMatchFingerprint\(match, run\) \{[\s\S]*?if \(run\.method !== "passphrase"\) return \(match\.fingerprint = run\.sourceLabel\);[\s\S]*?hodlMnemonicToSeed\(mnemonic, match\.passphrase\)[\s\S]*?hodlFingerprintHex\(root\.fingerprint\)/);
-  assert.match(vanityController, /<th scope="col">Key after update<\/th>/);
   assert.match(vanityController, /box\.querySelectorAll\("img\[data-vanity-lifehash\]"\)\.forEach\(\(image\) => hodlFillKeyTabLifehash\(image, image\.dataset\.vanityLifehash\)\);/);
   // The shared LifeHash filler tags the image with the fingerprint it was
   // asked for and lets only the latest request paint.

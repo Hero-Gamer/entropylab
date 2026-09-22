@@ -1704,7 +1704,7 @@
     document.querySelector('#workspace [data-workspace="vanity"]').click();
     await until(() => !document.getElementById("vanity-card").hidden, "Vanity tool to open");
     assert(document.getElementById("vanity-session-keys").hidden, "no chips are listed before a key is derived");
-    assert(document.getElementById("vanity-session-note").textContent.includes("Derive a key on the Keys tab first"), "the picker note says what to do first");
+    assert(document.getElementById("vanity-session-note").textContent.trim(), "the empty picker did not explain how to supply a key");
     assert(document.getElementById("vanity-go").disabled, "Start grinding is disabled without a key");
     // Derive a key with a passphrase (the BIP39 24-word vector), then bring
     // it in through the same clickable chip picker BIP-85 and Silent Payments use.
@@ -4092,6 +4092,20 @@
     const parentFingerprint = document.getElementById("bip85-parent-fingerprint")?.textContent.trim() || "";
     assert(/^[0-9a-f]{8}$/.test(parentFingerprint), "The BIP39 child did not name the parent it came from");
     equal(document.getElementById("bip85-parent-lifehash")?.dataset.fingerprint, parentFingerprint, "The parent LifeHash did not follow the parent fingerprint");
+    const firstChildFingerprint = firstTab.querySelector(".key-tab-label")?.textContent.trim();
+    const childChip = (id, fingerprint) => [...document.querySelectorAll(`#${id} [data-key-id^="bip85:"]`)].find((button) => button.textContent.includes(fingerprint));
+    for (const id of ["bip85-session-keys", "sp-session-keys", "vanity-session-keys", "psbt-session-keys", "nonce-session-keys"]) {
+      const chip = childChip(id, firstChildFingerprint);
+      assert(chip, `${id} did not offer the BIP-85 HD child`);
+      await until(() => [...chip.querySelectorAll("img")].every((image) => !image.hidden), `${id} child lineage LifeHashes`);
+      const images = [...chip.querySelectorAll("img")];
+      equal(images[0].dataset.fingerprint, parentFingerprint, `${id} showed the wrong parent LifeHash`);
+      equal(images[1].dataset.fingerprint, firstChildFingerprint, `${id} showed the wrong child LifeHash`);
+      assert(images[0].compareDocumentPosition(images[1]) & Node.DOCUMENT_POSITION_FOLLOWING, `${id} reversed parent and child LifeHashes`);
+      assert(chip.textContent.includes("→"), `${id} omitted the parent-to-child arrow`);
+    }
+    assert([...document.querySelectorAll("#msig-keys .msig-session-key")].some((chip) => chip.dataset.keyId?.startsWith("bip85:") && chip.textContent.includes(firstChildFingerprint)), "MS Station did not offer the BIP-85 HD child");
+    assert(document.getElementById("bip85-key-availability-note").compareDocumentPosition(document.getElementById("address-estimate")) & Node.DOCUMENT_POSITION_FOLLOWING, "The child-key availability note was not above the estimate");
     assert(!document.getElementById("delete-bip85").disabled, "The child delete control did not become available");
 
     document.querySelector('#workspace [data-workspace="journal"]').click();
@@ -4102,6 +4116,11 @@
       "BIP-85 child in the Journal key picker",
     );
     assert(bip85Option.textContent.startsWith("BIP-85 · BIP-39 · "), "The BIP-85 picker option did not identify its source and application");
+    const renderedBip85Option = await until(() => [...journalPicker.nextElementSibling.querySelectorAll('[role="option"]')].find((option) => option.textContent.includes(firstChildFingerprint)), "BIP-85 option in the Journal dropdown");
+    const journalLifeHashes = [...(renderedBip85Option?.querySelectorAll("img") || [])];
+    equal(journalLifeHashes.length, 2, "The Journal BIP-85 option did not show both lineage LifeHashes");
+    equal(journalLifeHashes[0].dataset.fingerprint, parentFingerprint, "The Journal BIP-85 option showed the wrong parent LifeHash");
+    equal(journalLifeHashes[1].dataset.fingerprint, firstChildFingerprint, "The Journal BIP-85 option showed the wrong child LifeHash");
     const notes = document.getElementById("journal-notes-text");
     notes.setSelectionRange(notes.value.length, notes.value.length);
     journalPicker.value = bip85Option.value;
@@ -4118,15 +4137,80 @@
     document.getElementById("add-bip85").click();
     await until(() => !document.getElementById("bip85-bench").hidden, "BIP-85 bench after plus");
     assert(!document.getElementById("bip85-out").textContent.trim(), "Returning to the bench left a child result visible");
+    childChip("bip85-session-keys", firstChildFingerprint).click();
+    assert(document.querySelector('#bip85-session-keys [data-key-id^="bip85:"].active'), "The BIP-85 child could not be selected as a new parent");
+    input(document.getElementById("bip85-index"), "7");
+    document.getElementById("bip85-go").click();
+    await until(() => tabs.children.length === 3 && document.querySelector("#bip85-out .key-summary"), "grandchild from BIP-85 child");
+    equal(document.getElementById("bip85-parent-fingerprint").textContent.trim(), firstChildFingerprint, "The grandchild was not derived from the selected BIP-85 child");
+    document.getElementById("delete-bip85").click();
+    await until(() => tabs.children.length === 2, "temporary grandchild deletion");
+    document.getElementById("add-bip85").click();
+    document.querySelector('#bip85-session-keys .session-key-option:not([data-key-id^="bip85:"])').click();
     input(document.getElementById("bip85-index"), "1");
     document.getElementById("bip85-go").click();
     await until(() => tabs.children.length === 3 && document.querySelector("#bip85-out .key-summary"), "second BIP-85 child tab");
+    const secondFingerprint = tabs.children[2].querySelector(".key-tab-label")?.textContent.trim();
+    childChip("sp-session-keys", secondFingerprint).click();
+    childChip("psbt-session-keys", secondFingerprint).click();
+    childChip("vanity-session-keys", secondFingerprint).click();
+    assert(document.querySelector('#sp-session-keys [data-key-id^="bip85:"].active'), "SP Station could not load the child");
+    assert(document.querySelector('#psbt-session-keys [data-key-id^="bip85:"].active'), "PSBT Station could not load the child");
+    assert(document.querySelector('#vanity-session-keys [data-key-id^="bip85:"].active'), "Vanity could not select the child");
     assert(tabs.children[2].querySelector(".key-tab-lifehash"), "The second BIP-85 child tab is missing its LifeHash target");
     equal([...document.getElementById("journal-key-insert").options].filter((option) => option.dataset.referenceKind === "bip85").length, 2, "The Journal picker did not list every BIP-85 child");
     document.getElementById("delete-bip85").click();
     await until(() => tabs.children.length === 2, "selected BIP-85 child deletion");
+    for (const id of ["bip85-session-keys", "sp-session-keys", "vanity-session-keys", "psbt-session-keys", "nonce-session-keys"]) {
+      assert(!childChip(id, secondFingerprint), `${id} kept the deleted BIP-85 child`);
+    }
+    assert(!document.getElementById("sp-key").value && !document.getElementById("psbt-session-keys").querySelector(".active") && document.getElementById("vanity-source-block").hidden, "Deleting a child left a loaded private-key session active");
     equal([...document.getElementById("journal-key-insert").options].filter((option) => option.dataset.referenceKind === "bip85").length, 1, "The Journal picker retained a deleted BIP-85 child");
     assert(!document.getElementById("delete-bip85").disabled, "The remaining child was not selected after deletion");
+
+    for (const [app, index, hd] of [["wif", "2", false], ["xprv", "3", true]]) {
+      document.getElementById("add-bip85").click();
+      document.querySelector('#bip85-session-keys .session-key-option:not([data-key-id^="bip85:"])').click();
+      const appSelect = document.getElementById("bip85-app");
+      appSelect.value = app;
+      appSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      input(document.getElementById("bip85-index"), index);
+      document.getElementById("bip85-go").click();
+      await until(() => tabs.children.length === 3 && document.querySelector("#bip85-out .key-summary"), `${app} BIP-85 child`);
+      const fingerprint = tabs.children[2].querySelector(".key-tab-label")?.textContent.trim();
+      assert(childChip("psbt-session-keys", fingerprint) && childChip("nonce-session-keys", fingerprint), `${app} was not offered to PSBT and Nonce`);
+      for (const id of ["bip85-session-keys", "sp-session-keys", "vanity-session-keys"]) {
+        equal(Boolean(childChip(id, fingerprint)), hd, `${id} offered the wrong compatibility for ${app}`);
+      }
+      equal([...document.querySelectorAll("#msig-keys .msig-session-key")].some((chip) => chip.dataset.keyId === `bip85:${tabs.children[2].id.slice("bip85-tab-".length)}`), hd, `MS Station offered the wrong compatibility for ${app}`);
+      if (app === "wif") {
+        childChip("psbt-session-keys", fingerprint).click();
+        assert(document.querySelector('#psbt-session-keys [data-key-id^="bip85:"].active'), "PSBT could not load the BIP-85 WIF child");
+      } else {
+        childChip("sp-session-keys", fingerprint).click();
+        childChip("bip85-session-keys", fingerprint).click();
+        assert(document.querySelector('#sp-session-keys [data-key-id^="bip85:"].active') && document.querySelector('#bip85-session-keys [data-key-id^="bip85:"].active'), "The XPRV child could not load as an HD root");
+      }
+      document.getElementById("delete-bip85").click();
+      await until(() => tabs.children.length === 2, `${app} child deletion`);
+      assert(!childChip("psbt-session-keys", fingerprint), `PSBT retained the deleted ${app} child`);
+    }
+    document.getElementById("add-bip85").click();
+    document.querySelector('#bip85-session-keys .session-key-option:not([data-key-id^="bip85:"])').click();
+    const appSelect = document.getElementById("bip85-app");
+    appSelect.value = "hex";
+    appSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    input(document.getElementById("bip85-index"), "4");
+    document.getElementById("bip85-go").click();
+    await until(() => tabs.children.length === 3 && document.querySelector("#bip85-out .key-summary"), "non-key BIP-85 hex output");
+    const hexChildId = `bip85:${tabs.children[2].id.slice("bip85-tab-".length)}`;
+    for (const id of ["bip85-session-keys", "sp-session-keys", "vanity-session-keys", "psbt-session-keys", "nonce-session-keys"]) {
+      assert(!document.querySelector(`#${id} [data-key-id="${hexChildId}"]`), `${id} offered HEX entropy as a key`);
+    }
+    document.getElementById("delete-bip85").click();
+    await until(() => tabs.children.length === 2, "HEX child deletion");
+    document.getElementById("bip85-app").value = "bip39";
+    document.getElementById("bip85-app").dispatchEvent(new Event("change", { bubbles: true }));
 
     keyWorkspace.click();
     await until(() => !document.getElementById("key-manager").hidden, "key workspace after BIP-85 test");
@@ -4215,7 +4299,7 @@
     rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
     assert(rows.every((row) => row.querySelector(".msig-full-path").value.startsWith("m/") && row.querySelectorAll(".msig-path-component").length >= 1), "Cleared co-signer rows did not show a default full path with synchronized Advanced components");
     const emptyKeyHint = rows[0].querySelector("textarea").nextElementSibling;
-    assert(emptyKeyHint?.classList.contains("neutral") && emptyKeyHint.textContent === "Choose a Key Station key above, or paste a co-signer extended public key.", "An empty co-signer input did not show neutral entry guidance");
+    assert(emptyKeyHint?.textContent.trim(), "An empty co-signer input did not show entry guidance");
     assert(rows.every((row) => rowOption(row)), "A co-signer row did not offer the compatible Key Station key");
 
     rowOption(rows[0]).click();

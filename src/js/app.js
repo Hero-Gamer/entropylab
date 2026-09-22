@@ -7714,7 +7714,7 @@ function hodlReindexMsigKeys() {
     }
     let advancedSummary = row.querySelector(".msig-cosigner-advanced > summary");
     if (advancedSummary) advancedSummary.textContent = hodlTText("Advanced entry for Co-signer {n}", { n: index + 1 });
-    row.querySelector(".msig-session-keys")?.setAttribute("aria-label", hodlTText("Key Station keys for co-signer {n}", { n: index + 1 }));
+    row.querySelector(".msig-session-keys")?.setAttribute("aria-label", hodlTText("Existing keys for co-signer {n}", { n: index + 1 }));
     row.querySelector(".msig-full-path")?.setAttribute("aria-label", hodlTText("Full derivation path for co-signer {n}", { n: index + 1 }));
     fingerprint?.setAttribute("aria-label", hodlTText("Master fingerprint for co-signer {n}", { n: index + 1 }));
   });
@@ -7760,10 +7760,66 @@ function hodlMsigScriptOrder(keyTokens) {
 }
 
 function hodlSessionMsigKeys() {
-  return hodlKeys.filter((state) => !state.isLab && state.result?.multisigCosignerExports?.length);
+  let keys = hodlKeys.filter((state) => !state.isLab && state.result?.multisigCosignerExports?.length);
+  for (let child of hodlBip85Children) {
+    let state = hodlBip85SessionKeyState(child);
+    if (!state || state.result.kind !== "hd") continue;
+    if (!state.result.multisigCosignerExports) {
+      let root = null, seed = null;
+      try {
+        if (state.result.mnemonic) {
+          seed = hodlMnemonicToSeed(state.result.mnemonic, "");
+          root = hodlHDKey.fromMasterSeed(seed);
+        } else root = hodlParseExtendedKey(state.result.rootXprv).node;
+        state.result.multisigCosignerExports = hodlBuildMultisigCosignerExports(root, state.result.network, 0, state.result.masterFingerprint);
+      } finally {
+        root?.wipePrivateData();
+        hodlWipeBytes(seed);
+      }
+    }
+    if (state.result.multisigCosignerExports.length) keys.push(state);
+  }
+  return keys;
 }
 function hodlSessionHdRootKeys() {
-  return hodlKeys.filter((state) => !state.isLab && state.result?.kind === "hd" && (state.result.mnemonic || state.result.rootXprv));
+  return [...hodlKeys.filter((state) => !state.isLab && state.result?.kind === "hd" && (state.result.mnemonic || state.result.rootXprv)),
+    ...hodlBip85Children.map(hodlBip85SessionKeyState).filter((state) => state?.result.kind === "hd")];
+}
+function hodlBip85SessionKeyState(child) {
+  if (!child || child.isLab || !["bip39", "xprv", "wif"].includes(child.result?.app)) return null;
+  if (child.sessionKey) return child.sessionKey;
+  let app = child.result.app, network = child.network || "mainnet", fingerprint = child.fingerprint;
+  child.sessionKey = {
+    id: `bip85:${child.id}`, isBip85Child: true, parentFingerprint: child.parentFingerprint,
+    name: `BIP-85 ${hodlBip85AppLabel(app)} ${fingerprint}`,
+    fields: { pass: "", derivationAccountPath: `m/84'/${network === "testnet" ? 1 : 0}'/0'`, branchStart: "0", addressStart: "0", branchHarden: false, addressHarden: false },
+    result: { kind: app === "wif" ? "single" : "hd", network, masterFingerprint: fingerprint,
+      mnemonic: app === "bip39" ? child.result.secret : null,
+      rootXprv: app === "xprv" ? child.result.secret : null,
+      privHex: app === "wif" ? child.result.entropyHex : null }
+  };
+  return child.sessionKey;
+}
+function hodlAppendSessionKeyLifehashes(button, state, fingerprint) {
+  let append = (value) => {
+    let image = document.createElement("img");
+    image.className = "key-tab-lifehash";
+    image.width = 22;
+    image.height = 22;
+    image.alt = "";
+    image.hidden = true;
+    hodlFillKeyTabLifehash(image, value);
+    button.appendChild(image);
+  };
+  if (state.parentFingerprint) {
+    append(state.parentFingerprint);
+    let arrow = document.createElement("span");
+    arrow.className = "key-lineage-arrow";
+    arrow.setAttribute("aria-hidden", "true");
+    arrow.textContent = "→";
+    button.appendChild(arrow);
+  }
+  if (fingerprint) append(fingerprint);
 }
 function hodlFillStationKeyPicker(id, selectedSource, onSelect, keys = hodlSessionHdRootKeys()) {
   let box = document.getElementById(id);
@@ -7771,20 +7827,14 @@ function hodlFillStationKeyPicker(id, selectedSource, onSelect, keys = hodlSessi
   box.replaceChildren();
   box.hidden = !keys.length;
   keys.forEach((state) => {
-    let master = state.result?.masterFingerprint || "", fingerprint = master || state.name || "Key " + state.number, button = document.createElement("button"), image = document.createElement("img"), label = document.createElement("span"), selected = selectedSource === "key:" + state.id;
+    let master = state.result?.masterFingerprint || "", fingerprint = master || state.name || "Key " + state.number, button = document.createElement("button"), label = document.createElement("span"), selected = selectedSource === "key:" + state.id;
     button.type = "button";
     button.className = "session-key-option" + (selected ? " active" : "");
     button.dataset.keyId = String(state.id);
     button.setAttribute("aria-pressed", String(selected));
-    button.setAttribute("aria-label", "Bring in Key Station key " + fingerprint);
-    image.className = "key-tab-lifehash";
-    image.width = 22;
-    image.height = 22;
-    image.alt = "";
-    image.hidden = true;
-    // A LifeHash draws a master fingerprint. A single key has none, so its chip
-    // shows its name alone; handing the name to the renderer rejects.
-    if (master) hodlFillKeyTabLifehash(image, master);
+    button.setAttribute("aria-label", state.isBip85Child ? hodlTText("Bring in BIP-85 child {child} of parent {parent}", { child: fingerprint, parent: state.parentFingerprint }) : "Bring in Key Station key " + fingerprint);
+    // A LifeHash draws a fingerprint, not an arbitrary key name.
+    hodlAppendSessionKeyLifehashes(button, state, master);
     label.textContent = fingerprint;
     // The selected chip carries a check mark as well as its accent border,
     // so the selection reads without relying on colour alone.
@@ -7792,7 +7842,7 @@ function hodlFillStationKeyPicker(id, selectedSource, onSelect, keys = hodlSessi
     check.className = "session-key-check";
     check.setAttribute("aria-hidden", "true");
     check.innerHTML = hodlCopiedIconMarkup();
-    button.append(image, label, check);
+    button.append(label, check);
     button.onclick = () => onSelect(state);
     box.appendChild(button);
   });
@@ -7800,9 +7850,10 @@ function hodlFillStationKeyPicker(id, selectedSource, onSelect, keys = hodlSessi
 // Only the keys the PSBT loader can take: an HD seed or root xprv, or a single
 // private key. Offering anything else would be a chip that only errors.
 function hodlPsbtSourceKeys() {
-  return hodlKeys.filter((state) => !state.isLab && state.result && (
+  return [...hodlKeys.filter((state) => !state.isLab && state.result && (
     (state.result.kind === "hd" && (state.result.mnemonic || state.result.rootXprv)) ||
-    (state.result.kind === "single" && state.result.privHex)));
+    (state.result.kind === "single" && state.result.privHex))),
+    ...hodlBip85Children.map(hodlBip85SessionKeyState).filter(Boolean)];
 }
 // Both inspectors share one session, so a chip picked on either loads the key
 // for both and both pickers mark it. The key never lands in a field: the PSBT
@@ -7887,20 +7938,15 @@ function hodlMsigUsedBaseKeyIds(exceptRow = null) {
   return used;
 }
 function hodlCreateMsigSessionKeyButton(option, className, active, unavailable, onSelect, ariaLabel) {
-  let { state } = option, fingerprint = state.result?.masterFingerprint || state.name, button = document.createElement("button"), image = document.createElement("img"), label = document.createElement("span");
+  let { state } = option, fingerprint = state.result?.masterFingerprint || state.name, button = document.createElement("button"), label = document.createElement("span");
   button.type = "button";
   button.className = className + (active ? " active" : "") + (unavailable ? " unavailable" : "");
   button.disabled = unavailable;
   button.dataset.keyId = String(state.id);
   button.dataset.fingerprint = fingerprint;
   button.setAttribute("aria-pressed", String(active));
-  button.setAttribute("aria-label", ariaLabel(fingerprint, active, unavailable));
-  image.className = "key-tab-lifehash";
-  image.width = 22;
-  image.height = 22;
-  image.alt = "";
-  image.hidden = true;
-  if (fingerprint) hodlFillKeyTabLifehash(image, fingerprint);
+  button.setAttribute("aria-label", state.isBip85Child ? ariaLabel(fingerprint, active, unavailable) + "; " + hodlTText("BIP-85 child of parent {fingerprint}", { fingerprint: state.parentFingerprint }) : ariaLabel(fingerprint, active, unavailable));
+  hodlAppendSessionKeyLifehashes(button, state, fingerprint);
   label.textContent = fingerprint;
   // The selected chip carries a check mark as well as its accent border, so
   // the selection reads without relying on colour alone — the same mark the
@@ -7909,7 +7955,7 @@ function hodlCreateMsigSessionKeyButton(option, className, active, unavailable, 
   check.className = "session-key-check";
   check.setAttribute("aria-hidden", "true");
   check.innerHTML = hodlCopiedIconMarkup();
-  button.append(image, label, check);
+  button.append(label, check);
   button.onclick = onSelect;
   return button;
 }
@@ -8079,7 +8125,7 @@ function hodlPickMsigSessionKey(option, row) {
   if (!ta) return;
   let value = option.value;
   if (!value) {
-    hodlHint(ta, false, "That Key Station key has no compatible multisig export for the selected script type.");
+    hodlHint(ta, false, "That key has no compatible multisig export for the selected script type.");
     return;
   }
   let parsed = hodlParseMsigRowKey(row), currentBaseId = parsed ? hodlMsigBaseKeyId(parsed) : "";
@@ -8125,7 +8171,7 @@ function hodlRefreshMsigSessionPickers() {
     options.forEach((option) => {
       let active = Boolean(option.baseId) && option.baseId === currentBaseId;
       let unavailable = !reuse && !active && Boolean(option.baseId) && usedElsewhere.has(option.baseId);
-      box.appendChild(hodlCreateMsigSessionKeyButton(option, "msig-session-key", active, unavailable, () => hodlPickMsigSessionKey(option, row), (fingerprint, selected, used) => used ? `Key Station key ${fingerprint} is already selected for another co-signer` : `${selected ? "Remove" : "Use"} Key Station key ${fingerprint} ${selected ? "from" : "for"} this co-signer`));
+      box.appendChild(hodlCreateMsigSessionKeyButton(option, "msig-session-key", active, unavailable, () => hodlPickMsigSessionKey(option, row), (fingerprint, selected, used) => used ? `Key ${fingerprint} is already selected for another co-signer` : `${selected ? "Remove" : "Use"} key ${fingerprint} ${selected ? "from" : "for"} this co-signer`));
     });
   });
 }
@@ -8184,7 +8230,7 @@ function hodlFillKeys(values) {
     chips.className = "msig-session-keys";
     chips.hidden = true;
     chips.setAttribute("role", "group");
-    chips.setAttribute("aria-label", "Key Station keys for co-signer " + (i + 1));
+    chips.setAttribute("aria-label", "Existing keys for co-signer " + (i + 1));
     lab.append(ta);
     let pathLabel = document.createElement("label");
     pathLabel.className = "field msig-full-path-field";
@@ -8332,7 +8378,7 @@ function hodlCheckXpub(ta) {
     fingerprint.setAttribute("aria-invalid", String(!valid));
   }
   if (!raw) {
-    hodlHint(ta, null, hodlTText("Choose a Key Station key above, or paste a co-signer extended public key."));
+    hodlHint(ta, null, hodlTText("Choose an existing key above, or paste a co-signer extended public key."));
     return;
   }
   try {
@@ -9672,7 +9718,7 @@ function hodlInitPsbt() {
     if (event.persisted) clearSecretFields();
   });
 }
-var hodlBip85Root = null, hodlBip85Note = "No parent loaded. Choose a Key Station key, or paste a root xprv.", hodlBip85Source = "", hodlBip85Result = null, hodlBip85Reveal = false, hodlBip85Testnet = false, hodlBip85Children = [], hodlActiveBip85 = -1, hodlNextBip85ChildId = 1;
+var hodlBip85Root = null, hodlBip85Note = "No parent loaded. Choose an existing key, or paste a root xprv.", hodlBip85Source = "", hodlBip85Result = null, hodlBip85Reveal = false, hodlBip85Testnet = false, hodlBip85Children = [], hodlActiveBip85 = -1, hodlNextBip85ChildId = 1;
 function hodlBip85WipeParent() {
   if (hodlBip85Root) try {
     hodlBip85Root.wipePrivateData();
@@ -9681,7 +9727,7 @@ function hodlBip85WipeParent() {
   hodlBip85Root = null;
   hodlBip85Source = "";
   hodlBip85Testnet = false;
-  hodlBip85Note = "No parent loaded. Choose a Key Station key, or paste a root xprv.";
+  hodlBip85Note = "No parent loaded. Choose an existing key, or paste a root xprv.";
 }
 function hodlBip85WipeMem() {
   let wiped = /* @__PURE__ */ new Set();
@@ -9703,7 +9749,7 @@ function hodlBip85WipeMem() {
   hodlBip85Root = null;
   hodlBip85Source = "";
   hodlBip85Testnet = false;
-  hodlBip85Note = "No parent loaded. Choose a Key Station key, or paste a root xprv.";
+  hodlBip85Note = "No parent loaded. Choose an existing key, or paste a root xprv.";
 }
 function hodlNewBip85BenchState() {
   return { isLab: true, id: 0, name: "BIP-85 Station", result: null, reveal: false, fingerprint: "", fingerprintKind: "" };
@@ -9824,13 +9870,13 @@ function hodlUseKeyForBip85(state) {
     // testnet wallet must not yield mainnet-version children because it
     // arrived as a mnemonic rather than a root xprv (issue #352).
     hodlBip85Testnet = hodlNetworkFamily(result.network) === "testnet";
-    hodlBip85Note = "Parent: " + (state.name || "Key Station key") + (result.passphraseUsed || (state.fields.pass || "").length ? " with BIP-39 passphrase (COLDCARD does the same \u2014 children differ without it)." : ".") + " Kept in page memory only.";
+    hodlBip85Note = "Parent: " + (state.name || "existing key") + (result.passphraseUsed || (state.fields.pass || "").length ? " with BIP-39 passphrase (COLDCARD does the same \u2014 children differ without it)." : ".") + " Kept in page memory only.";
   } else if (result.kind === "hd" && result.rootXprv) {
     hodlBip85Root = hodlHDKey.fromExtendedKey(hodlParseExtendedKey(result.rootXprv).xkey);
     hodlBip85Testnet = hodlNetworkFamily(result.network) === "testnet";
-    hodlBip85Note = "Parent: root xprv from " + (state.name || "Key Station key") + ". Kept in page memory only.";
-  } else if (result.kind === "hd") throw new Error("This Key Station key is not a BIP32 root. Import the original seed or root xprv.");
-  else throw new Error("BIP-85 needs an HD root. This Key Station key is a single private key.");
+    hodlBip85Note = "Parent: root xprv from " + (state.name || "existing key") + ". Kept in page memory only.";
+  } else if (result.kind === "hd") throw new Error("This key is not a BIP32 root. Import the original seed or root xprv.");
+  else throw new Error("BIP-85 needs an HD root. This key is a single private key.");
   hodlBip85Source = "key:" + state.id;
 }
 function hodlPickBip85SessionKey(state) {
@@ -9839,7 +9885,7 @@ function hodlPickBip85SessionKey(state) {
   try {
     hodlUseKeyForBip85(state);
     let rootXprv = state.result?.rootXprv || hodlBip85Root?.privateExtendedKey;
-    if (!rootXprv) throw new Error("This Key Station key does not expose a BIP32 root xprv/tprv.");
+    if (!rootXprv) throw new Error("This key does not expose a BIP32 root xprv/tprv.");
     document.getElementById("bip85-key").value = rootXprv;
   } catch (exception) {
     if (error) error.textContent = exception.message || String(exception);
@@ -9889,12 +9935,16 @@ function hodlRenderBip85Out() {
   let fingerprintLabel = state.fingerprintKind === "master" ? "Master fingerprint" : state.fingerprintKind === "key" ? "Key fingerprint" : "Child fingerprint";
   box.innerHTML = `<section class="wallet-data-section" aria-label="${hodlTAttr("Derived child")}">
       <div class="key-summary bip85-child-summary">
-        <img class="key-summary-lifehash" id="bip85-child-lifehash" width="72" height="72" alt="" hidden>
+        <div class="bip85-result-lineage">
+          <img class="key-summary-lifehash" id="bip85-parent-lifehash" width="72" height="72" alt="" hidden>
+          <span class="key-lineage-arrow" aria-hidden="true">→</span>
+          <img class="key-summary-lifehash" id="bip85-child-lifehash" width="72" height="72" alt="" hidden>
+        </div>
         <div class="key-summary-text">
           <code class="key-summary-fingerprint">${hodlEscapeHtml(state.fingerprint || "")}</code>
           <p class="key-summary-meta key-summary-path">${hodlEscapeHtml(derived.path || "")}</p>
           <p class="key-summary-meta bip85-child-parent">${state.parentFingerprint
-            ? `${hodlT("Child key of parent key")}<img class="key-tab-lifehash bip85-parent-lifehash" id="bip85-parent-lifehash" width="22" height="22" alt="" hidden><span class="bip85-parent-fingerprint" id="bip85-parent-fingerprint">${hodlEscapeHtml(state.parentFingerprint)}</span>`
+            ? `${hodlT("Child key of parent key")}<span class="bip85-parent-fingerprint" id="bip85-parent-fingerprint">${hodlEscapeHtml(state.parentFingerprint)}</span>`
             : hodlEscapeHtml(fingerprintLabel)}</p>
         </div>
       </div>
@@ -9941,14 +9991,8 @@ function hodlCreateBip85Tab(index) {
   label.textContent = name;
   if (state.isLab) button.append(hodlCreateBip85BenchIcon(), label);
   else {
-    let image = document.createElement("img");
-    image.className = "key-tab-lifehash";
-    image.width = 22;
-    image.height = 22;
-    image.alt = "";
-    image.hidden = true;
-    hodlFillKeyTabLifehash(image, state.fingerprint);
-    button.append(image, label);
+    hodlAppendSessionKeyLifehashes(button, state, state.fingerprint);
+    button.append(label);
   }
   button.setAttribute("role", "tab");
   button.setAttribute("aria-controls", "bip85-card");
@@ -9958,7 +10002,7 @@ function hodlCreateBip85Tab(index) {
     button.title = "Derive a BIP-85 child";
   } else {
     let kind = state.fingerprintKind === "master" ? "master fingerprint" : state.fingerprintKind === "key" ? "key fingerprint" : "child fingerprint";
-    button.setAttribute("aria-label", `${hodlBip85AppLabel(state.result?.app)} ${kind} ${name}${active ? ", selected" : ". Activate to select."}`);
+    button.setAttribute("aria-label", hodlBip85AppLabel(state.result?.app) + " " + hodlTText("child of parent {fingerprint}", { fingerprint: state.parentFingerprint }) + `, ${kind} ${name}${active ? ", selected" : ". Activate to select."}`);
     button.title = `${hodlBip85AppLabel(state.result?.app)} · ${state.result?.path || ""}`;
   }
   button.onclick = () => hodlSelectBip85(index);
@@ -10034,6 +10078,29 @@ function hodlDeleteActiveBip85() {
     return;
   }
   let deletedIndex = hodlActiveBip85;
+  let source = `key:bip85:${state.id}`;
+  if (hodlBip85Source === source) {
+    hodlBip85WipeParent();
+    document.getElementById("bip85-key").value = "";
+    hodlSyncBip85Parent();
+  }
+  if (hodlSpSource === source) {
+    hodlSpWipeKeys();
+    document.getElementById("sp-key").value = "";
+    document.getElementById("sp-pass").value = "";
+    document.getElementById("sp-out").replaceChildren();
+    document.getElementById("sp-session").textContent = hodlSpNote;
+  }
+  if (hodlPsbtSource === source) {
+    hodlPsbtWipeMem();
+    hodlPaintPsbtSession();
+    hodlSyncPsbtControls();
+  }
+  if (hodlVanitySource === source) {
+    hodlVanityCancel();
+    hodlVanityClearResults();
+    hodlVanitySource = "";
+  }
   hodlBip85Result = null;
   wipeBip85Result(state.result);
   hodlBip85Children.splice(deletedIndex, 1);
@@ -10041,6 +10108,8 @@ function hodlDeleteActiveBip85() {
   hodlActiveBip85 = Math.min(deletedIndex, hodlBip85Children.length - 1);
   hodlRenderBip85Tabs();
   hodlSyncBip85View();
+  hodlRefreshMsigSessionPickers();
+  hodlRefreshStationKeyPickers();
   hodlRefreshJournalKeyPicker();
   hodlJournalLog("station-delete", "child", "bip85");
   document.getElementById("bip85-tabs")?.children[hodlActiveBip85]?.focus();
@@ -10063,10 +10132,10 @@ function hodlRunBip85() {
   try {
     if (manual.trim()) {
       if (!hodlBip85Root || !hodlBip85Source.startsWith("key:")) hodlBip85LoadXprv(manual);
-    } else if (!hodlBip85Root) throw new Error("Choose a compatible Key Station key, or paste a root xprv/tprv.");
+    } else if (!hodlBip85Root) throw new Error("Choose a compatible existing key, or paste a root xprv/tprv.");
     result = deriveApplication(hodlBip85Root, hodlBip85Spec());
     let fingerprint = hodlBip85ChildFingerprint(result);
-    let state = { isLab: false, id: hodlNextBip85ChildId++, name: fingerprint.value, result, reveal: false, fingerprint: fingerprint.value, fingerprintKind: fingerprint.kind,
+    let state = { isLab: false, id: hodlNextBip85ChildId++, name: fingerprint.value, result, reveal: false, fingerprint: fingerprint.value, fingerprintKind: fingerprint.kind, network: hodlBip85Testnet ? "testnet" : "mainnet",
       parentFingerprint: hodlBip85Root ? hodlFingerprintHex(hodlBip85Root.fingerprint) : "" };
     hodlBip85Children.push(state);
     hodlActiveBip85 = hodlBip85Children.length - 1;
@@ -10077,6 +10146,7 @@ function hodlRunBip85() {
     if (session) session.textContent = hodlBip85Note;
     hodlRenderBip85Tabs();
     hodlSyncBip85View();
+    hodlRefreshMsigSessionPickers();
     hodlRefreshJournalKeyPicker();
   } catch (exception) {
     wipeBip85Result(result);
@@ -10212,11 +10282,11 @@ function hodlSpUseKey(state) {
   if (result.kind === "hd" && result.mnemonic) {
     let seed = hodlMnemonicToSeed(result.mnemonic, state.fields.pass || "");
     try { hodlSpHd = hodlHDKey.fromMasterSeed(seed); } finally { seed.fill(0); }
-    hodlSpNote = "Session key from " + (state.name || "Key Station key") + " (BIP39 seed). Kept in page memory only.";
+    hodlSpNote = "Session key from " + (state.name || "existing key") + " (BIP39 seed). Kept in page memory only.";
   } else if (result.kind === "hd" && result.rootXprv) {
     hodlSpHd = hodlHDKey.fromExtendedKey(hodlParseExtendedKey(result.rootXprv).xkey);
-    hodlSpNote = "Session key from " + (state.name || "Key Station key") + " (root xprv). Kept in page memory only.";
-  } else throw new Error("SP Station needs the Key Station key's seed or root xprv. Account-level and single keys cannot derive m/352'.");
+    hodlSpNote = "Session key from " + (state.name || "existing key") + " (root xprv). Kept in page memory only.";
+  } else throw new Error("SP Station needs a seed or root xprv. Account-level and single keys cannot derive m/352'.");
   hodlSpSource = "key:" + state.id;
 }
 function hodlPickSpSessionKey(state) {
@@ -10238,7 +10308,7 @@ function hodlSpEnsureHd() {
     if (!hodlSpHd || !hodlSpSource.startsWith("key:")) hodlSpLoadKey(manual, document.getElementById("sp-pass")?.value);
     hodlRefreshStationKeyPickers();
   }
-  if (!hodlSpHd || !hodlSpHd.privateKey) throw new Error("Choose a compatible Key Station key, or enter a BIP39 seed or root xprv.");
+  if (!hodlSpHd || !hodlSpHd.privateKey) throw new Error("Choose a compatible existing key, or enter a BIP39 seed or root xprv.");
   document.getElementById("sp-session").textContent = hodlSpNote;
 }
 function hodlSpDeriveSessionKeys() {
@@ -13453,18 +13523,24 @@ function hodlRefreshJournalKeyPicker() {
     option.dataset.fingerprint = fingerprint;
     option.dataset.referenceKind = "bip85";
     option.dataset.bip85App = app;
+    option.dataset.parentFingerprint = state.parentFingerprint;
     select.appendChild(option);
   });
   select.entropylabOptionIcon = (value) => {
     let option = [...select.options].find((item) => item.value === value && item.dataset.fingerprint);
     if (!option) return null;
+    if (option.dataset.referenceKind === "bip85") {
+      let lineage = document.createElement("span");
+      lineage.className = "journal-key-lineage";
+      hodlAppendSessionKeyLifehashes(lineage, { parentFingerprint: option.dataset.parentFingerprint }, option.dataset.fingerprint);
+      return lineage;
+    }
     let image = document.createElement("img");
     image.className = "journal-key-option-lifehash";
     image.width = 22;
     image.height = 22;
     image.alt = "";
     image.hidden = true;
-    image.classList.toggle("is-bip85", option.dataset.referenceKind === "bip85");
     hodlFillKeyTabLifehash(image, option.dataset.fingerprint);
     return image;
   };
@@ -14640,14 +14716,13 @@ function hodlSyncWorkspaceOverflow() {
 // Keys tab uses by hand.
 var hodlVanityGrinder = null, hodlVanityMatches = [], hodlVanityFound = 0, hodlVanityRunning = false, hodlVanityReveal = false, hodlVanityDisplayLimit = 100, hodlVanitySource = "", hodlVanityRun = null, hodlVanityApplying = false, hodlVanityStopFirst = false, hodlVanityBench = null, hodlVanityBenchPending = false, hodlVanityLiveRate = 0;
 // Only derived HD-root keys are listed — the same set the BIP-85 and Silent
-// Payments pickers offer. The Key Station lab tab is a work surface, not a
-// key, so it never appears as a chip.
+// Payments pickers offer. A BIP-85 child can be searched, but remains an
+// immutable child of its parent rather than a Key Station key to update.
 function hodlVanitySourceKeys() {
   return hodlSessionHdRootKeys();
 }
 function hodlVanitySourceState() {
-  let state = hodlKeys.find((candidate) => "key:" + candidate.id === hodlVanitySource);
-  return state && hodlVanitySourceKeys().includes(state) ? state : null;
+  return hodlVanitySourceKeys().find((candidate) => "key:" + candidate.id === hodlVanitySource) || null;
 }
 function hodlVanityKeyLabel(state) {
   return state ? state.result?.masterFingerprint || state.name || "Key " + state.number : "";
@@ -14769,8 +14844,8 @@ function hodlVanitySyncSource() {
   if (!state) hodlVanitySource = "";
   if (note) {
     note.textContent = hodlVanitySourceKeys().length
-      ? "Pick the key to grind. Its passphrase and derivation settings come along exactly as set on the Keys tab: a key with seed words supports both methods, a root-xprv key the derivation grind only."
-      : "Derive a key on the Keys tab first — the grinder searches that key's passphrase or account index. A key with seed words supports both methods; a root-xprv key supports the derivation grind only.";
+      ? hodlTText("Pick a key to grind. Key Station settings come along as set there; BIP-85 children use an empty passphrase and the default account path. A key with seed words supports both methods, a root-xprv key the derivation grind only.")
+      : hodlTText("Derive a key in Key Station or BIP-85 Station first. Seed words support both grind methods; a root xprv supports the derivation grind only.");
   }
   panel.hidden = !state;
   let passphraseOption = document.querySelector('#vanity-method-tabs [data-vanity-method-option="passphrase"]');
@@ -14778,14 +14853,16 @@ function hodlVanitySyncSource() {
     let label = hodlVanityKeyLabel(state), pass = String(state.fields?.pass ?? ""), hasMnemonic = Boolean(state.result?.mnemonic);
     let name = document.getElementById("vanity-source-name"), kind = document.getElementById("vanity-source-kind"), image = document.getElementById("vanity-source-lifehash"), field = document.getElementById("vanity-pass"), passNote = document.getElementById("vanity-pass-note");
     if (name) name.textContent = label;
-    if (kind) kind.textContent = `${hasMnemonic ? "BIP39 seed words" : "Root xprv"}${state.name && state.name !== label ? ` · ${state.name}` : ""} · ${hodlDisplayDerivationPath(state.fields?.derivationPath || "")}`;
+    if (kind) kind.textContent = `${hasMnemonic ? "BIP39 seed words" : "Root xprv"}${state.name && state.name !== label ? ` · ${state.name}` : ""} · ${hodlDisplayDerivationPath(state.fields?.derivationPath || state.fields?.derivationAccountPath || "")}`;
     if (image) {
       image.hidden = true;
       hodlFillKeyTabLifehash(image, state.result?.masterFingerprint || "");
     }
     if (field) field.textContent = pass || "No passphrase — the key uses its seed words alone";
     if (passNote) {
-      passNote.textContent = !hasMnemonic
+      passNote.textContent = state.isBip85Child
+        ? hodlTText("This BIP-85 child is immutable. You can search and copy matches, but Update key cannot change the child.")
+        : !hasMnemonic
         ? `Key ${label} was imported as a root xprv: it has no seed words, so its passphrase cannot be extended — only the derivation grind is available.`
         : pass.length
           ? `Copied verbatim from key ${label}'s Optional BIP39 passphrase on the Keys tab. Passphrase grind: candidates are this text followed by the counter characters. Derivation grind: this exact passphrase, with the account index changing.`
@@ -14809,9 +14886,10 @@ function hodlVanitySyncMethod() {
     field.hidden = field.dataset.vanityMethod !== method;
   });
   if (help) {
+    let child = hodlVanitySourceState()?.isBip85Child;
     help.textContent = method === "derivation"
-      ? "The passphrase stays as it is; each candidate is the next BIP32 account index at the key's path. A match is an account index holding the vanity address — Update key sets it on the key."
-      : "Each candidate is the starting passphrase followed by the counter characters, stretched into a seed (2,048 PBKDF2 rounds) and derived at the key's path. A match is a new passphrase for this key.";
+      ? child ? hodlTText("The passphrase stays as it is; each candidate is the next BIP32 account index. A BIP-85 child stays unchanged; copy any match you need.") : "The passphrase stays as it is; each candidate is the next BIP32 account index at the key's path. A match is an account index holding the vanity address — Update key sets it on the key."
+      : child ? hodlTText("Each candidate extends the BIP-85 child's seed words with a new passphrase. The child stays unchanged; copy any match you need.") : "Each candidate is the starting passphrase followed by the counter characters, stretched into a seed (2,048 PBKDF2 rounds) and derived at the key's path. A match is a new passphrase for this key.";
   }
   hodlVanityEstimate();
 }
@@ -14981,7 +15059,7 @@ function hodlCopyVanityValue(button, value, label) {
 function hodlVanityMatchFingerprint(match, run) {
   if (match.fingerprint) return match.fingerprint;
   if (run.method !== "passphrase") return (match.fingerprint = run.sourceLabel);
-  let state = hodlKeys.find((candidate) => candidate.id === run.sourceId), mnemonic = state?.result?.mnemonic;
+  let state = hodlVanitySourceKeys().find((candidate) => candidate.id === run.sourceId), mnemonic = state?.result?.mnemonic;
   if (!mnemonic) return "";
   let seed = hodlMnemonicToSeed(mnemonic, match.passphrase), root = null;
   try {
@@ -15006,7 +15084,9 @@ function hodlRenderVanityOut() {
   let run = hodlVanityRun, derivation = run.method === "derivation", meta = VANITY_SCRIPTS[run.script] ?? VANITY_SCRIPTS.p2wpkh, label = hodlEscapeHtml(run.sourceLabel);
   let copyMarkup = (attribute, index, title) => `<button type="button" class="copy-button" ${attribute}="${index}" aria-label="${title}" title="${title}">${hodlClipboardIconMarkup()}</button><span class="vanity-copied muted" aria-live="polite"></span>`;
   let keyCell = (match) => `<td class="vanity-key-cell">${hodlVanityKeyMarkup(hodlVanityMatchFingerprint(match, run))}</td>`;
-  let applyMarkup = (match, index) => match.savedTo
+  let applyMarkup = (match, index) => run.sourceKind === "bip85"
+    ? `<span class="vanity-saved">${hodlT("BIP-85 child unchanged")}</span>`
+    : match.savedTo
     ? `<span class="vanity-saved" role="status">${hodlCopiedIconMarkup()}Saved to key ${hodlEscapeHtml(match.savedTo)}</span>`
     : `<button type="button" class="btn secondary vanity-apply" data-vanity-apply="${index}" ${hodlVanityApplying ? "disabled" : ""} title="Write this ${derivation ? "account index" : "passphrase"} to key ${label} and re-derive it">${hodlVanityApplying ? "Updating…" : "Update key"}</button>`;
   // Passphrases are private key material: masked until the reveal toggle, and
@@ -15025,7 +15105,9 @@ function hodlRenderVanityOut() {
   let where = meta.code === 4
     ? `the BIP-352 Silent Payment code of that account (scan ${hodlEscapeHtml(hodlDisplayDerivationPath(run.pathText))}/1h/0, spend …/0h/0)`
     : `the ${hodlEscapeHtml(meta.label)} address at ${hodlEscapeHtml(hodlDisplayDerivationPath(run.pathText))}`;
-  let description = derivation
+  let description = run.sourceKind === "bip85"
+    ? hodlT("Each match derives from the selected BIP-85 child. The child remains fixed by its parent, application, and index; copy a matching address or passphrase rather than changing the child.")
+    : derivation
     ? `Each row is a BIP32 account index of key ${label} — with its passphrase unchanged, ${where} starts with the prefix. Update key sets that account on the key and re-derives it, so the Keys tab, its exports, and the Journal show this wallet.`
     : `Each row is a new BIP39 passphrase for key ${label}: the starting passphrase followed by the counter characters. With this key's seed words it derives ${where}. Update key writes the passphrase to the key and re-derives it, so the Keys tab, its exports, and the Journal show this wallet. Anyone holding the words and this passphrase holds the coins.`;
   let reveal = derivation ? "" : `<div class="wallet-data-actions no-print">
@@ -15034,9 +15116,10 @@ function hodlRenderVanityOut() {
           <span>Show passphrases <span class="reveal-private-toggle-note">(air-gap only)</span></span>
         </label>
       </div>`;
+  let actionHeader = run.sourceKind === "bip85" ? hodlT("Child status") : "Update key";
   let head = derivation
-    ? `<th scope="col">#</th><th scope="col">Account</th><th scope="col">Path</th><th scope="col">Address</th><th scope="col">Key</th><th scope="col"><span class="sr-only">Update key</span></th>`
-    : `<th scope="col">#</th><th scope="col">Counter</th><th scope="col">Passphrase (keep it secret)</th><th scope="col">Address</th><th scope="col">Key after update</th><th scope="col"><span class="sr-only">Update key</span></th>`;
+    ? `<th scope="col">#</th><th scope="col">Account</th><th scope="col">Path</th><th scope="col">Address</th><th scope="col">Key</th><th scope="col"><span class="sr-only">${hodlEscapeHtml(actionHeader)}</span></th>`
+    : `<th scope="col">#</th><th scope="col">Counter</th><th scope="col">Passphrase (keep it secret)</th><th scope="col">Address</th><th scope="col">${run.sourceKind === "bip85" ? hodlT("Derived key") : "Key after update"}</th><th scope="col"><span class="sr-only">${hodlEscapeHtml(actionHeader)}</span></th>`;
   box.innerHTML = `<section class="wallet-data-section wallet-private-section" aria-labelledby="vanity-matches-heading">
       <div class="wallet-data-section-head"><h3 id="vanity-matches-heading">Matching ${derivation ? "accounts" : "passphrases"}</h3>
       <p class="muted" id="vanity-matches-description">${description}</p></div>
@@ -15133,7 +15216,7 @@ function hodlRunVanity() {
   hodlVanityFound = 0;
   // The run's key, method, and passphrase are fixed at start; snapshot them
   // so the results (and Update key) cannot drift if the form changes mid-grind.
-  hodlVanityRun = { method: inputs.method, script: inputs.script, sourceId: inputs.sourceId, sourceLabel: inputs.sourceLabel, passphrase: inputs.passphrase, accountHardened: inputs.accountHardened, pathText: vanityPathString([...inputs.pathPrefix, ...inputs.path]) };
+  hodlVanityRun = { method: inputs.method, script: inputs.script, sourceId: inputs.sourceId, sourceLabel: inputs.sourceLabel, sourceKind: hodlVanitySourceState()?.isBip85Child ? "bip85" : "key", passphrase: inputs.passphrase, accountHardened: inputs.accountHardened, pathText: vanityPathString([...inputs.pathPrefix, ...inputs.path]) };
   hodlRenderVanityOut();
   hodlVanityRunning = true;
   hodlVanitySyncControls();
@@ -15191,6 +15274,10 @@ async function hodlVanityApplyMatch(index) {
   let error = document.getElementById("vanity-error"), match = hodlVanityMatches[index], run = hodlVanityRun;
   if (error) error.textContent = "";
   if (!match || !run || hodlVanityApplying || match.savedTo) return;
+  if (run.sourceKind === "bip85") {
+    if (error) error.textContent = "A BIP-85 child is fixed by its parent and index. Copy the match instead of changing the child.";
+    return;
+  }
   let state = hodlKeys.find((candidate) => candidate.id === run.sourceId && !candidate.isLab);
   if (!state) {
     if (error) error.textContent = `Key ${run.sourceLabel} is no longer in Key Station, so there is nothing to update.`;
@@ -15765,6 +15852,7 @@ function hodlInitSecretFieldAutoClear() {
     hodlVanitySyncControls();
     // The keys above were just reset, so their passphrases (and thus the
     // vanity picker's chips) are gone too.
+    hodlRefreshMsigSessionPickers();
     hodlRefreshStationKeyPickers();
     // The <pre> mirrors behind each input hold a second live copy of whatever
     // was typed (dice rolls, seed words, passphrase, private key).

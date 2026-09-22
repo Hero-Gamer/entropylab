@@ -142,6 +142,13 @@ the limits of browser-memory cleanup.
   reproduce the same child — this is a calculator, not a generator. Children
   follow the published BIP-85 vectors and match COLDCARD, including derivation
   from a passphrase-extended root when a BIP-39 passphrase is in effect.
+  Unremoved BIP-39 and XPRV children can be selected as HD roots in BIP-85,
+  Silent Payments, Vanity, PSBT/Nonce inspection, and multisig; WIF children
+  can be selected for PSBT/Nonce inspection. Their pickers show the parent
+  LifeHash, an arrow, then the child LifeHash and fingerprint. Deleting a child
+  removes its picker options and wipes any private sessions loaded from it.
+  Vanity matches from an immutable child can be searched and copied, but not
+  written back to that child.
 - Derives BIP-352 Silent Payment addresses (`sp1q…` / `tsp1q…`) from a seed or
   root xprv, including labeled codes, BIP-392 `spscan` / `spspend` descriptors,
   sender taproot outputs from pasted vin JSON, and receiver verification of
@@ -150,22 +157,23 @@ the limits of browser-memory cleanup.
   Hybrid URIs with an ordinary Bitcoin fallback address still use Silent
   Payments; the results identify the fallback address as not used.
   This is a calculator: it does not scan the chain or resolve names.
-- Grinds vanity addresses for a Key Station key (Vanity tab), picked through
-  the same chip picker as BIP-85 and Silent Payments. Two methods: the
-  **passphrase grind** extends the key's BIP39 passphrase with base-62
-  odometer counter characters, the **derivation grind** keeps the passphrase
-  and steps through BIP32 account indexes. Every candidate is derived the
-  standard way (PBKDF2 seed, BIP32 path — the key's own purpose, account,
-  branch, and address index) in a dedicated WebAssembly module, one Web Worker
+- Grinds vanity addresses for a Key Station key or a compatible BIP-85 child
+  (Vanity tab), picked through the same chip picker as BIP-85 and Silent
+  Payments. Two methods: the **passphrase grind** extends the key's BIP39
+  passphrase with base-62 odometer counter characters, the **derivation grind**
+  keeps the passphrase and steps through BIP32 account indexes. Every
+  candidate is derived the standard way (PBKDF2 seed, BIP32 path — the key's
+  own purpose, account, branch, and address index) in a dedicated WebAssembly module, one Web Worker
   per CPU core, and its mainnet address of the selected type (legacy, nested
   SegWit, native SegWit, Taproot, or a BIP-352 Silent Payment code) is checked
   against the chosen prefix. A short timing sample on tab entry (fixed
   published constants, never the session's keys) turns the odds into an
   expected time to a match, and **Stop on first find** halts the grind at the
   first hit. Same key and counter always reproduce the same
-  address, so nothing is invented; **Update key** writes a found passphrase or
-  account index back to the key and re-derives it, so the Keys tab, its
-  exports, and the Journal show the vanity wallet. Found passphrases stay in
+  address, so nothing is invented. For a Key Station source, **Update key**
+  writes a found passphrase or account index back to the key and re-derives it,
+  so the Keys tab, its exports, and the Journal show the vanity wallet. BIP-85
+  children stay unchanged. Found passphrases stay in
   page memory, are masked until revealed, and are wiped with the session.
 - Derives Lightning node identity public keys (Lightning tab) from a seed
   phrase: an LND 24-word **aezeed** cipher seed is deciphered in WebAssembly

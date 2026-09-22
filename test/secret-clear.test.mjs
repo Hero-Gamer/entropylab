@@ -60,14 +60,14 @@ function raceHarness() {
     "hodlFocusWalletResult", "hodlJournalLog", "hodlSetWorkspaceError", "hodlJournalSetStatus",
     "hodlKeyManagerStatus", "hodlPsbtWipeMem", "hodlBip85WipeMem", "hodlSpWipeMem",
     "hodlLnWipeMem", "hodlRenderBip85Tabs", "hodlSyncBip85View", "hodlVanityCancel",
-    "hodlVanitySyncSource", "hodlVanitySyncControls", "hodlRefreshStationKeyPickers"])
+    "hodlVanitySyncSource", "hodlVanitySyncControls", "hodlRefreshStationKeyPickers", "hodlSyncPsbtControls"])
     context[name] = (...args) => { effects.push([name, ...args]); };
   vm.runInContext('class HodlDerivationCancelledError extends Error {}', context);
   for (const name of ["hodlInvalidateDerivation", "hodlAssertDerivationActive", "hodlCalculateKey",
     "hodlWipeActiveKey", "hodlJournalImportFile", "hodlKeyManagerImportFile", "hodlInitSecretFieldAutoClear"])
     vm.runInContext(functionSource(name), context);
   context.hodlInitSecretFieldAutoClear();
-  return { context, pending, decryptStarted, events, effects, mirrors };
+  return { context, pending, decryptStarted, events, effects, mirrors, fields };
 }
 
 for (const teardown of ["clear", "pagehide", "pageshow", "stop"]) {
@@ -204,6 +204,19 @@ test("PSBT text and anti-exfil transcript fields are explicitly cleared", () => 
   assert.match(lifecycle, /getElementById\("psbt-ax-transcript"\)/);
   assert.match(lifecycle, /psbtText\.value\s*=\s*""/);
   assert.match(lifecycle, /psbtAxTranscript\.value\s*=\s*""/);
+});
+
+// The Nonce Inspector loads the shared session key from its own fields, and
+// its input can carry xprvs in proprietary PSBT fields, so page teardown has
+// to empty all three the same way it empties the PSBT Inspector's.
+test("pagehide and persisted pageshow empty the Nonce Inspector's key, passphrase and input", () => {
+  const ids = ["nonce-key", "nonce-pass", "nonce-text"];
+  for (const [type, event] of [["pagehide", {}], ["pageshow", { persisted: true }]]) {
+    const { events, fields } = raceHarness();
+    for (const id of ids) fields.set(id, { value: "xprv9s21ZrQH143K secret material", dataset: {} });
+    events[type](event);
+    for (const id of ids) assert.equal(fields.get(id).value, "", `${type} left #${id} filled`);
+  }
 });
 
 test("BIP-85 parent and derived-child fields are explicitly cleared", () => {

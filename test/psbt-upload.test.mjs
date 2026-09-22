@@ -75,9 +75,9 @@ test("both markups carry the upload control, and the editor wires it", () => {
 test("the PSBT / Nonce inspector also uploads and downloads the file", () => {
   const shell = read("src/shell.html");
   const app = read("src/js/app.js");
-  assert.match(shell, /<button class="btn secondary" id="psbt-upload" type="button">Upload \.psbt file<\/button>/);
+  assert.match(shell, /<button class="btn secondary" id="psbt-upload" type="button">Upload \.psbt File<\/button>/);
   assert.match(shell, /<input type="file" id="psbt-file" accept="\.psbt,\.txn,\.txt,\.hex" hidden>/);
-  assert.match(shell, /<button class="btn secondary" id="psbt-download" type="button">Download \.psbt<\/button>/);
+  assert.match(shell, /<button class="btn secondary" id="psbt-download" type="button"[^>]*>Download \.psbt<\/button>/);
   assert.match(app, /import \{ initPsbtEditor, psbtBytesFromUpload \} from "\.\/psbt-editor\.js"/);
   assert.match(app, /getElementById\("psbt-upload"\)/);
   assert.match(app, /getElementById\("psbt-file"\)/);

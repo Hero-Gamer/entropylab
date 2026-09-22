@@ -1309,7 +1309,7 @@
     // The visible label may be abbreviated; the accessible name never is.
     // Which tools exist and how they name themselves is the contract; where
     // they sit in the strip is a design decision that changes freely.
-    const names = ["BIP-85", "Journal", "Keys", "Multi Signature", "PSBT", "Silent Payments", "Vanity"];
+    const names = ["BIP-85 Child", "Journal", "Keys", "Multi Signature", "PSBT", "Silent Payments", "Vanity"];
     equal(tabs.map((tab) => tab.getAttribute("aria-label")).sort().join("|"), names.join("|"), "every tool tab names itself in full");
     assert(!document.querySelector('#workspace [data-workspace="sp"] .silent-payments-icon'), "Silent Payments icon should not be in the workspace tab");
     const start = document.querySelector('#workspace [data-workspace="calc"]');
@@ -1455,8 +1455,8 @@
       document.querySelector('#workspace [data-workspace="psbt"]').click();
       await until(() => !document.getElementById("psbt-card").hidden, "PSBT tool");
       const psbtTabs = [...document.querySelectorAll("#psbt-tool-tabs [data-psbt-tool]")];
-      equal(psbtTabs.length, 2, "PSBT should expose exactly two internal tabs");
-      equal(psbtTabs.map((tab) => tab.textContent.trim()).join("|"), "PSBT / Nonce|PSBT Editor");
+      equal(psbtTabs.length, 3, "PSBT should expose exactly three internal tabs");
+      equal(psbtTabs.map((tab) => tab.textContent.trim()).join("|"), "PSBT Inspector|PSBT Editor|Nonce Inspector");
       const psbtManager = document.getElementById("psbt-manager");
       assert(psbtManager && !psbtManager.hidden, "PSBT station tabs should be visible inside the PSBT tool");
       equal(Math.round(introToTabsGap(document.querySelector("#psbt-tool-intros > .tool-intro.active"), psbtManager.querySelector(":scope > .key-tab-strip"))), Math.round(singleIntroGap), "PSBT intro-to-tabs spacing differs from a single-intro tool");
@@ -1467,9 +1467,12 @@
       psbtTabs[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
       await until(() => !document.getElementById("psbted-card").hidden, "ArrowRight to open PSBT Editor");
       assert(document.activeElement === psbtTabs[1], "Focus should follow the PSBT subtab arrow key");
-      psbtTabs[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
-      await until(() => !document.getElementById("psbt-card").hidden, "ArrowLeft to open PSBT / Nonce");
-      assert(document.activeElement === psbtTabs[0], "Focus should return to PSBT / Nonce");
+      psbtTabs[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      await until(() => !document.getElementById("nonce-card").hidden, "ArrowRight to open Nonce Inspector");
+      assert(document.activeElement === psbtTabs[2], "Focus should follow the arrow key to Nonce Inspector");
+      psbtTabs[2].dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+      await until(() => !document.getElementById("psbt-card").hidden, "Home to open PSBT Inspector");
+      assert(document.activeElement === psbtTabs[0], "Focus should return to PSBT Inspector");
       // Home returns to the first top-level tool.
       tabs[tabs.length - 1].dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
       await until(() => document.activeElement === tabs[0], "Home to return to the first tab");
@@ -2295,8 +2298,11 @@
     await until(() => !document.getElementById("psbt-manager").hidden, "PSBT audit workspace");
     document.getElementById("psbt-editor-tab").click();
     document.getElementById("psbted-wipe").click();
-    document.getElementById("psbt-nonce-tab").click();
-    document.getElementById("psbt-key").value = "secret audit sentinel";
+    document.getElementById("psbt-inspector-tab").click();
+    // Inspect only runs on a decodable payload, so give it one; the key is the
+    // secret the log must never repeat.
+    input(document.getElementById("psbt-text"), "cHNidP8BAFICAAAAAf//////////////////////////////////////////BQAAAAD9////AUCcAAAAAAAAFgAUdR526BmRltRUlBxF0bOjI/FDO9ZQ+AwAAAEBHxCkAAAAAAAAFgAUBq/Ua839Iu+UrBIqoR8kEkSjfswiBgLGBH+UQe19bTBFQG6VwHzYXHeOS4zvPKerrAm5XHCe5RgSNFZ4VAAAgAAAAIAAAACAAAAAAAcAAAAAAA==");
+    input(document.getElementById("psbt-key"), "secret audit sentinel");
     document.getElementById("psbt-go").click();
     document.getElementById("psbt-wipe").click();
     document.querySelector('#workspace [data-workspace="journal"]').click();
@@ -2311,7 +2317,7 @@
     assert(/sp\tmode  send/.test(auditLog), "Silent Payments mode changes should be logged");
     assert(/sp\tcalculate-error  send/.test(auditLog), "Silent Payments calculation failures should be logged");
     assert(/sp\tclear  session/.test(auditLog), "Silent Payments clears should be logged");
-    assert(/psbt\ttool-tab  editor/.test(auditLog) && /psbt\ttool-tab  nonce/.test(auditLog), "PSBT internal tab changes should be logged");
+    assert(/psbt\ttool-tab  editor/.test(auditLog) && /psbt\ttool-tab  inspector/.test(auditLog), "PSBT internal tab changes should be logged");
     assert(/psbt\tclear  editor/.test(auditLog) && /psbt\tclear  session/.test(auditLog), "both PSBT clear actions should be logged");
     assert(/psbt\tinspect-error/.test(auditLog), "PSBT inspection failures should be logged");
     assert(!/secret audit sentinel/.test(auditLog), "secret field contents must never enter the log");
@@ -2947,9 +2953,18 @@
     document.querySelector('#psbt-tool-tabs [data-psbt-tool="nonce"]').click();
     const psbt = await until(() => document.getElementById("psbt-text"), "PSBT input");
     input(psbt, payload);
+    // An undecodable payload never reaches a parser: Inspect stays disabled.
+    assert(document.getElementById("psbt-go").disabled, "Inspect accepted an undecodable payload");
     document.getElementById("psbt-go").click();
-    await until(() => document.getElementById("psbt-error").textContent, "PSBT rejection");
     assert(!document.querySelector("#psbt-card img") && window.__browserTestInjected !== true, "Input executed markup");
+    document.querySelector('#psbt-tool-tabs [data-psbt-tool="nonce"]').click();
+    const nonceText = await until(() => !document.getElementById("nonce-card").hidden && document.getElementById("nonce-text"), "Nonce Inspector input");
+    input(nonceText, payload);
+    assert(document.getElementById("nonce-go").disabled, "Inspect Nonces accepted an undecodable payload");
+    document.getElementById("nonce-go").click();
+    assert(!document.querySelector("#nonce-card img") && window.__browserTestInjected !== true, "Nonce input executed markup");
+    input(nonceText, "");
+    input(psbt, "");
     document.querySelector('#workspace [data-workspace="calc"]').click();
     await until(() => !document.getElementById("calc-card").hidden, "key workspace");
   });
@@ -3214,8 +3229,8 @@
     // with "Coin type must be a whole number".
     const vector = "cHNidP8BAKACAAAAAqsJSaCMWvfEm4IS9Bfi8Vqz9cM9zxU4IagTn4d6W3vkAAAAAAD+////qwlJoIxa98SbghL0F+LxWrP1wz3PFTghqBOfh3pbe+QBAAAAAP7///8CYDvqCwAAAAAZdqkUdopAu9dAy+gdmI5x3ipNXHE5ax2IrI4kAAAAAAAAGXapFG9GILVT+glechue4O/p+gOcykWXiKwAAAAAAAEHakcwRAIgR1lmF5fAGwNrJZKJSGhiGDR9iYZLcZ4ff89X0eURZYcCIFMJ6r9Wqk2Ikf/REf3xM286KdqGbX+EhtdVRs7tr5MZASEDXNxh/HupccC1AaZGoqg7ECy0OIEhfKaC3Ibi1z+ogpIAAQEgAOH1BQAAAAAXqRQ1RebjO4MsRwUPJNPuuTycA5SLx4cBBBYAFIXRNTfy4mVAWjTbr6nj3aAfuCMIAAAA";
     document.querySelector('#workspace [data-workspace="psbt"]').click();
-    document.querySelector('#psbt-tool-tabs [data-psbt-tool="nonce"]').click();
-    await until(() => !document.getElementById("psbt-card").hidden, "PSBT / Nonce tab");
+    document.querySelector('#psbt-tool-tabs [data-psbt-tool="inspector"]').click();
+    await until(() => !document.getElementById("psbt-card").hidden, "PSBT Inspector tab");
     const box = await until(() => document.getElementById("psbt-text"), "PSBT input");
     const fileInput = document.getElementById("psbt-file");
     const upload = (bytes, name) => {
@@ -3238,13 +3253,15 @@
     const vectorBytes = Uint8Array.from(atob(vector), (char) => char.charCodeAt(0));
     upload(vectorBytes, "wallet.psbt");
     await until(() => box.value === vector, "binary PSBT upload");
-    await until(() => document.getElementById("psbt-out").textContent.includes("ECDSA nonce check") || document.getElementById("psbt-error").textContent, "inspector report");
+    await until(() => document.getElementById("psbt-out").textContent.includes("PSBT security analysis") || document.getElementById("psbt-error").textContent, "inspector report");
     equal(document.getElementById("psbt-error").textContent, "", "inspector rejected a valid vector");
     const out = document.getElementById("psbt-out").textContent;
     assert(out.includes("Where this transaction sends bitcoin"), "outputs section missing");
     assert(out.includes("1.99900000"), "decoded output amount missing");
     assert(out.includes("Signature policy: SIGHASH_ALL"), "sighash policy missing");
-    assert(out.includes("r values:"), "finalized signature was not inspected");
+    // The per-signature nonce detail lives in the Nonce Inspector; the
+    // inspector keeps only the verdict row asserted below.
+    assert(!out.includes("r values:"), "the inspector repeated the Nonce Inspector's detail");
     assert(out.includes("PSBT security analysis"), "analysis status summary missing");
     assert(out.includes("ANALYSIS INCOMPLETE"), "partial report was not marked incomplete");
     assert(out.includes("Previous outputs and fee — Incomplete"), "unverified previous-output claims were not exposed");
@@ -3254,6 +3271,16 @@
     sameBytes(await downloadedBytes("inspected.psbt"), vectorBytes, "downloaded PSBT differs from its binary upload");
     // Cross-session nonce history saves the requested timestamp, master
     // fingerprint field, and raw r, then loads the same file after a clear.
+    // It lives in the Nonce Inspector, so inspect the same vector there.
+    document.querySelector('#psbt-tool-tabs [data-psbt-tool="nonce"]').click();
+    const nonceBox = await until(() => !document.getElementById("nonce-card").hidden && document.getElementById("nonce-text"), "Nonce Inspector tab");
+    input(nonceBox, vector);
+    document.getElementById("nonce-go").click();
+    await until(() => document.getElementById("nonce-out").textContent.includes("ECDSA nonce check") || document.getElementById("nonce-error").textContent, "nonce report");
+    equal(document.getElementById("nonce-error").textContent, "", "Nonce Inspector rejected a valid vector");
+    const nonceOut = document.getElementById("nonce-out").textContent;
+    assert(nonceOut.includes("r values:"), "finalized signature was not inspected");
+    assert(!nonceOut.includes("Where this transaction sends bitcoin"), "the Nonce Inspector repeated the inspector's outputs");
     const historyDownload = document.getElementById("psbt-nonce-history-download");
     const historyClear = document.getElementById("psbt-nonce-history-clear");
     const historyInput = document.getElementById("psbt-nonce-history-file");
@@ -3270,7 +3297,7 @@
     equal(historyJson.records.length, 1, "nonce history should contain the one inspected ECDSA value");
     const historyRecord = historyJson.records[0];
     equal(Object.keys(historyRecord).sort().join("|"), "checkedAt|keyTag|masterFingerprint|messageTag|r|verified", "nonce history exported unexpected metadata");
-    const displayedR = out.match(/r values:\s*([0-9a-f]{64})/)?.[1];
+    const displayedR = nonceOut.match(/r values:\s*([0-9a-f]{64})/)?.[1];
     assert(displayedR && historyRecord.r === displayedR, "nonce history did not export the inspected raw r value");
     assert(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(historyRecord.checkedAt), "nonce history did not export the check time");
     assert(historyRecord.masterFingerprint === null || /^[0-9a-f]{8}$/.test(historyRecord.masterFingerprint), "nonce history master fingerprint field is invalid");
@@ -3298,6 +3325,8 @@
     }
     assert(suffix >= 0, "finalized signature fixture suffix missing");
     unsafe[suffix] = 0x02;
+    document.querySelector('#psbt-tool-tabs [data-psbt-tool="inspector"]').click();
+    await until(() => !document.getElementById("psbt-card").hidden, "back to the PSBT Inspector");
     input(box, btoa(String.fromCharCode(...unsafe)));
     document.getElementById("psbt-go").click();
     await until(() => document.getElementById("psbt-out").textContent.includes("ISSUES FOUND") || document.getElementById("psbt-error").textContent, "unsafe policy report");
@@ -3316,13 +3345,25 @@
       "21025476c2e83188368da1ff3e292e7acafcdb3566bb0ad253f62fc70f07aeee635711000000";
     input(box, rawTx);
     document.getElementById("psbt-go").click();
-    await until(() => document.getElementById("psbt-out").textContent.includes("ECDSA nonce check") || document.getElementById("psbt-error").textContent, "raw transaction report");
+    await until(() => document.getElementById("psbt-out").textContent.includes("Raw Bitcoin transaction.") || document.getElementById("psbt-error").textContent, "raw transaction report");
     equal(document.getElementById("psbt-error").textContent, "", "inspector rejected a valid raw transaction");
     const rawOut = document.getElementById("psbt-out").textContent;
     assert(rawOut.includes("Raw Bitcoin transaction."), "raw transaction banner missing");
     assert(rawOut.includes("Where this transaction sends bitcoin"), "raw transaction outputs section missing");
     assert(rawOut.includes("1Cu32FVupVCgHkMMRJdYJugxwo2Aprgk7H"), "mainnet output address missing");
-    assert(rawOut.includes("r values:"), "raw transaction signatures were not inspected");
+    // A raw transaction has no summary table, so the inspector carries the
+    // verdict lines themselves; the r values stay in the Nonce Inspector.
+    assert(rawOut.includes("Nonce analysis"), "raw transaction nonce verdict missing from the inspector");
+    assert(!rawOut.includes("r values:"), "the inspector repeated the raw transaction's r values");
+    document.querySelector('#psbt-tool-tabs [data-psbt-tool="nonce"]').click();
+    const nonceRawBox = await until(() => !document.getElementById("nonce-card").hidden && document.getElementById("nonce-text"), "Nonce Inspector for the raw transaction");
+    input(nonceRawBox, rawTx);
+    document.getElementById("nonce-go").click();
+    await until(() => document.getElementById("nonce-out").textContent.includes("ECDSA nonce check") || document.getElementById("nonce-error").textContent, "raw transaction nonce report");
+    equal(document.getElementById("nonce-error").textContent, "", "Nonce Inspector rejected a valid raw transaction");
+    assert(document.getElementById("nonce-out").textContent.includes("r values:"), "raw transaction signatures were not inspected");
+    document.querySelector('#psbt-tool-tabs [data-psbt-tool="inspector"]').click();
+    await until(() => !document.getElementById("psbt-card").hidden, "back to the PSBT Inspector for the downloads");
     const rawBytes = Uint8Array.from(rawTx.match(/../g), (pair) => parseInt(pair, 16));
     const txnDownload = await downloadedBytes("inspected.txn");
     sameBytes(txnDownload, rawBytes, "downloaded transaction differs from the inspected bytes");
@@ -3375,6 +3416,115 @@
     document.getElementById("psbt-wipe").click();
     document.querySelector('#workspace [data-workspace="calc"]').click();
     await until(() => !document.getElementById("calc-card").hidden, "key workspace");
+  });
+
+  await test("the PSBT Inspector's nonce verdict ignores the Nonce Inspector's Jade transcript", async () => {
+    // Two strict-DER ECDSA signatures with distinct r and no UTXO data: with no
+    // digest to check, each one counts as unsupported, so nonce coverage is
+    // incomplete. A Jade transcript routes them through the anti-exfil branch
+    // instead. That field lives on the Nonce Inspector and the Inspector never
+    // verified anti-exfil, so it must not lift the Inspector's verdict.
+    // Built from public constants: key 1's public key and fixed byte patterns.
+    const psbt = "cHNidP8BAHsCAAAAAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqAAAAAAD/////u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7sAAAAAAP////8BECcAAAAAAAAWABRVVVVVVVVVVVVVVVVVVVVVVVVVVQAAAAAAIgICeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5hHMEQCIBERERERERERERERERERERERERERERERERERERERERERAiAiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIgEAIgICeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5hHMEQCIDMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzAiAiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIgEAAA==";
+    const transcript = "11".repeat(32) + " 0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+    const verdict = () => document.getElementById("psbt-out").textContent.match(/Nonce analysis \u2014 (Incomplete|Completed|Problem found)/)?.[1] || "";
+    const jade = document.getElementById("psbt-ax-transcript");
+    document.querySelector('#workspace [data-workspace="psbt"]').click();
+    document.querySelector('#psbt-tool-tabs [data-psbt-tool="inspector"]').click();
+    await until(() => !document.getElementById("psbt-card").hidden, "PSBT Inspector");
+    try {
+      input(jade, "");
+      input(document.getElementById("psbt-text"), psbt);
+      document.getElementById("psbt-go").click();
+      await until(() => verdict(), "inspector verdict without a transcript");
+      const without = verdict();
+      equal(without, "Incomplete", "unsupported signatures should leave nonce coverage incomplete");
+      input(jade, transcript);
+      document.getElementById("psbt-out").innerHTML = "";
+      document.getElementById("psbt-go").click();
+      await until(() => verdict(), "inspector verdict with a transcript on the other tab");
+      equal(verdict(), without, "the Nonce Inspector's Jade transcript changed the PSBT Inspector's verdict");
+      // The transcript still does its job where it lives.
+      document.querySelector('#psbt-tool-tabs [data-psbt-tool="nonce"]').click();
+      await until(() => !document.getElementById("nonce-card").hidden, "Nonce Inspector");
+      input(document.getElementById("nonce-text"), psbt);
+      document.getElementById("nonce-go").click();
+      await until(() => document.getElementById("nonce-out").textContent.includes("ECDSA nonce check"), "nonce report with a transcript");
+      assert(document.getElementById("nonce-out").textContent.includes("Jade"), "the Nonce Inspector stopped using its Jade transcript");
+    } finally {
+      // Leave the shared session empty for the tests that follow.
+      document.getElementById("psbt-wipe").click();
+      document.querySelector('#psbt-tool-tabs [data-psbt-tool="inspector"]').click();
+    }
+  });
+
+  await test("PSBT actions wait for something to act on, and Key Station chips load a chosen key into the shared session", async () => {
+    // A decodable locktime/RBF PSBT (a committed fixture) and garbage text.
+    const psbt = "cHNidP8BAFICAAAAAf//////////////////////////////////////////BQAAAAD9////AUCcAAAAAAAAFgAUdR526BmRltRUlBxF0bOjI/FDO9ZQ+AwAAAEBHxCkAAAAAAAAFgAUBq/Ua839Iu+UrBIqoR8kEkSjfswiBgLGBH+UQe19bTBFQG6VwHzYXHeOS4zvPKerrAm5XHCe5RgSNFZ4VAAAgAAAAIAAAACAAAAAAAcAAAAAAA==";
+    const on = (id) => !document.getElementById(id).disabled;
+    const sessionShown = () => !document.getElementById("psbt-session").hidden;
+    const chips = (id) => [...document.querySelectorAll(`#${id} .session-key-option`)];
+    const selected = (id) => chips(id).map((chip, index) => chip.getAttribute("aria-pressed") === "true" ? index : -1).filter((index) => index >= 0);
+    // Own the key this test picks: derive the published BIP39 24-word vector,
+    // as the Vanity test does, rather than lean on what earlier tests left.
+    document.querySelector('#workspace [data-workspace="calc"]').click();
+    await until(() => !document.getElementById("key-manager").hidden, "key workspace");
+    await chooseMode("Seed phrase");
+    input(document.getElementById("seed"), Array(23).fill("abandon").join(" ") + " art");
+    input(document.getElementById("pass"), "");
+    await until(() => !document.getElementById("go").disabled, "Derive Key to enable");
+    document.getElementById("go").click();
+    await until(() => document.querySelector("#psbt-session-keys .session-key-option"), "a Key Station chip to be offered");
+    document.querySelector('#workspace [data-workspace="psbt"]').click();
+    document.querySelector('#psbt-tool-tabs [data-psbt-tool="inspector"]').click();
+    await until(() => !document.getElementById("psbt-card").hidden, "PSBT Inspector");
+    const text = document.getElementById("psbt-text");
+    // Start from an empty shared session whatever earlier tests left behind.
+    input(text, psbt);
+    document.getElementById("psbt-wipe").click();
+    input(text, "");
+    try {
+      // Nothing entered: nothing to inspect, download or end, and no session line.
+      assert(!on("psbt-go") && !on("psbt-download") && !on("psbt-wipe"), "a PSBT action was offered with nothing entered");
+      // Undecodable text can be cleared, but not inspected or downloaded.
+      input(text, "not a psbt!!");
+      assert(!on("psbt-go") && !on("psbt-download") && on("psbt-wipe"), "undecodable text should offer only End Session");
+      assert(sessionShown(), "the session line should appear once something is entered");
+      input(text, psbt);
+      assert(on("psbt-go") && on("psbt-download"), "a decodable PSBT should enable Inspect and Download");
+      // The same Key Station keys are offered on both tabs, none chosen yet.
+      assert(chips("psbt-session-keys").length >= 1, "the Inspector offered no Key Station key");
+      equal(chips("nonce-session-keys").length, chips("psbt-session-keys").length, "the two inspectors offered different keys");
+      equal(selected("psbt-session-keys").length, 0, "a chip was selected before any was picked");
+      // Picking a key loads it for the shared session and marks it on both tabs,
+      // without ever writing the key into a field.
+      const pick = chips("psbt-session-keys").length - 1;
+      chips("psbt-session-keys")[pick].click();
+      await until(() => selected("psbt-session-keys").length === 1, "the picked chip to be marked");
+      equal(selected("psbt-session-keys").join(), String(pick), "the Inspector marked a different chip than the one picked");
+      equal(selected("nonce-session-keys").join(), String(pick), "the Nonce Inspector did not mirror the shared session");
+      assert(document.getElementById("psbt-session").textContent.includes("Session key from"), "the session line did not report the picked key");
+      equal(document.getElementById("psbt-key").value, "", "a picked key was written into the Session key field");
+      equal(document.getElementById("psbt-error").textContent, "", "picking a compatible key reported an error");
+      // A typed key replaces the picked one, so the chips let go.
+      input(document.getElementById("psbt-key"), "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn");
+      document.getElementById("psbt-go").click();
+      await until(() => selected("psbt-session-keys").length === 0, "chips to release after a typed key");
+      equal(selected("nonce-session-keys").length, 0, "the Nonce Inspector kept a released chip");
+    } finally {
+      document.getElementById("psbt-wipe").click();
+    }
+    // End Session leaves nothing selected and nothing to act on.
+    assert(!on("psbt-go") && !on("psbt-download") && !on("psbt-wipe"), "End Session left a PSBT action enabled");
+    equal(selected("psbt-session-keys").length, 0, "End Session left a chip selected");
+    assert(document.getElementById("psbt-session").textContent.includes("Session ended"), "End Session did not confirm itself");
+    // The confirmation belongs to the session that ended. Inspecting a new PSBT
+    // without a key starts over, so the line must say so, not repeat "ended".
+    input(text, psbt);
+    document.getElementById("psbt-go").click();
+    await until(() => document.getElementById("psbt-out").textContent.includes("PSBT security analysis"), "a fresh inspection after End Session");
+    assert(document.getElementById("psbt-session").textContent.includes("No session key"), `a new inspection kept the ended session's message: "${document.getElementById("psbt-session").textContent}"`);
+    document.getElementById("psbt-wipe").click();
   });
 
   await test("PSBT editor truncates long fields and the overlay edits them", async () => {

@@ -149,7 +149,7 @@ test("render suppresses a clean verdict when a signature cannot be inspected", (
   assert.match(render, /uninspected\s*\+=\s*1/);
   assert.match(
     render,
-    /else if\s*\(uninspected\)\s*html\.push\("<p class='psbt-warn'><strong>Incomplete nonce coverage\.<\/strong>/,
+    /else if\s*\(uninspected\)\s*nonceHtml\.push\("<p class='psbt-warn'><strong>Incomplete nonce coverage\.<\/strong>/,
   );
   assert.match(render, /hodlCompressedPubkey\(signature\.pubkey\)/);
   assert.match(render, /hodlDerRLoose\(signature\.der\)/);

@@ -482,6 +482,6 @@ test("nonce findings stay out of the activity log and session state follows the 
   const app = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src/js/app.js"), "utf8");
   assert.doesNotMatch(app, /hodlJournalLog\("inspect-nonce-/);
   assert.match(app, /loaded: hodlPsbtNonceInspected/);
-  assert.match(app, /getElementById\("psbt-text"\)\.addEventListener\("input", hodlPsbtResetNonceInspection\)/);
+  assert.match(app, /getElementById\("nonce-text"\)\.addEventListener\("input", hodlPsbtResetNonceInspection\)/);
   assert.match(app, /hodlPsbtClearNonceHistory\(true\)/);
 });

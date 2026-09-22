@@ -1660,7 +1660,7 @@ test("virtual keypads never focus the field on touch so the mobile keyboard stay
 });
 
 test("workspace tabs register every tool", () => {
-  for (const entry of [/\["calc", "Keys", "Keys"\]/, /\["vanity", "Vanity", "Vanity"\]/, /\["bip85", "BIP-85", "BIP85"\]/,
+  for (const entry of [/\["calc", "Keys", "Keys"\]/, /\["vanity", "Vanity", "Vanity"\]/, /\["bip85", "BIP-85 Child", "BIP-85"\]/,
     /\["msig", "Multi Signature", "MultiSig"\]/, /\["sp", "Silent Payments", "SP"\]/, /\["psbt", "PSBT", "PSBT"\]/,
     /\["ln", "Lightning", "LN"\]/, /\["journal", "Journal", "Journal"\]/]) {
     assert.match(appSource, entry);
@@ -1671,19 +1671,23 @@ test("workspace tabs register every tool", () => {
   }
 });
 
-test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
+test("one PSBT workspace contains PSBT Inspector, PSBT Editor and Nonce Inspector tabs", () => {
   assert.match(appSource, /\["psbt", "PSBT", "PSBT"\]/);
   assert.doesNotMatch(appSource, /\["psbted", "PSBT Editor", "Editor"\]/);
   for (const markup of [shell]) {
-    assert.match(markup, /<div class="tool-intro-stack" id="psbt-tool-intros" hidden>[\s\S]*?id="psbt-tool-intro"[\s\S]*?id="psbted-tool-intro"[\s\S]*?<section class="key-manager no-print" id="psbt-manager" hidden>/);
+    assert.match(markup, /<div class="tool-intro-stack" id="psbt-tool-intros" hidden>[\s\S]*?id="psbt-tool-intro"[\s\S]*?id="psbted-tool-intro"[\s\S]*?id="nonce-tool-intro"[\s\S]*?<section class="key-manager no-print" id="psbt-manager" hidden>/);
     assert.match(markup, /<section class="key-manager no-print" id="psbt-manager" hidden>/);
     assert.match(markup, /<div class="key-tab-strip">\s*<div class="key-tabs" id="psbt-tool-tabs" role="tablist" aria-label="PSBT stations">/);
-    assert.match(markup, /class="tab key-tab is-lab active"[^>]*data-psbt-tool="nonce"/);
-    assert.match(markup, /class="tab key-tab is-lab"[^>]*data-psbt-tool="editor"/);
+    // The wiring is the contract: which tab starts selected and which card each
+    // one controls. How a tab is styled is left to the stylesheet.
+    assert.match(markup, /role="tab" aria-selected="true" aria-controls="psbt-card" data-psbt-tool="inspector"/);
+    assert.match(markup, /role="tab" aria-selected="false" aria-controls="psbted-card" data-psbt-tool="editor"/);
+    assert.match(markup, /role="tab" aria-selected="false" aria-controls="nonce-card" data-psbt-tool="nonce"/);
     assert.doesNotMatch(markup, /class="psbt-tool-tabs segmented-control/);
   }
-  assert.match(shell, /data-psbt-tool="nonce"[^>]*>PSBT \/ Nonce/);
-  assert.match(shell, /data-psbt-tool="editor"[^>]*>PSBT Editor/);
+  assert.match(shell, /data-psbt-tool="inspector"[^>]*>(?:<[^>]+>)*PSBT Inspector/);
+  assert.match(shell, /data-psbt-tool="nonce"[^>]*>(?:<[^>]+>)*Nonce Inspector/);
+  assert.match(shell, /data-psbt-tool="editor"[^>]*>(?:<[^>]+>)*PSBT Editor/);
   assert.match(shell, /id="psbt-nonce-history-upload"/);
   assert.match(shell, /id="psbt-nonce-history-download"[^>]*disabled/);
   assert.match(shell, /id="psbt-nonce-history-clear"[^>]*disabled/);
@@ -1694,7 +1698,10 @@ test("one PSBT workspace contains PSBT / Nonce and PSBT Editor tabs", () => {
   assert.match(appSource, /getElementById\("psbt-tool-intros"\)/);
   assert.match(appSource, /function hodlShowPsbtTool\(id, focus = false\)/);
   assert.match(appSource, /hodlInitTabDrag\(document\.getElementById\("psbt-tool-tabs"\)\)/);
-  assert.match(appSource, /getElementById\("psbted-card"\)\.hidden = !visible \|\| hodlPsbtTool !== "editor"/);
+  // Each tool pairs its tab id with its own intro and card.
+  assert.match(appSource, /\["inspector", "psbt-tool-intro", "psbt-card"\]/);
+  assert.match(appSource, /\["editor", "psbted-tool-intro", "psbted-card"\]/);
+  assert.match(appSource, /\["nonce", "nonce-tool-intro", "nonce-card"\]/);
   for (const markup of [shell]) {
     assert.match(markup, /id="psbted-card"/);
     assert.match(markup, /id="psbted-text"/);
@@ -1888,7 +1895,7 @@ test("Key Station keeps derivation actions focused and BIP-85 remains its own wo
   }
   assert.doesNotMatch(appSource, /getElementById\("bip85-open"\)/);
   assert.doesNotMatch(appSource, /getElementById\("journal-open"\)|getElementById\("journal-use-calc"\)|hodlJournalUseActiveKey|hodlJournalApplySnapshot/);
-  for (const entry of [/\["calc", "Keys", "Keys"\]/, /\["vanity", "Vanity", "Vanity"\]/, /\["bip85", "BIP-85", "BIP85"\]/,
+  for (const entry of [/\["calc", "Keys", "Keys"\]/, /\["vanity", "Vanity", "Vanity"\]/, /\["bip85", "BIP-85 Child", "BIP-85"\]/,
     /\["msig", "Multi Signature", "MultiSig"\]/, /\["sp", "Silent Payments", "SP"\]/, /\["psbt", "PSBT", "PSBT"\]/,
     /\["ln", "Lightning", "LN"\]/, /\["journal", "Journal", "Journal"\]/]) {
     assert.match(appSource, entry);
@@ -1903,7 +1910,7 @@ test("Silent Payments is a registered tool with its own card", () => {
   for (const name of ["Keys", "Multi Signature", "Silent Payments", "PSBT"]) {
     assert.match(shell, new RegExp(`aria-label="${name}"`));
   }
-  for (const entry of [/\["calc", "Keys", "Keys"\]/, /\["vanity", "Vanity", "Vanity"\]/, /\["bip85", "BIP-85", "BIP85"\]/,
+  for (const entry of [/\["calc", "Keys", "Keys"\]/, /\["vanity", "Vanity", "Vanity"\]/, /\["bip85", "BIP-85 Child", "BIP-85"\]/,
     /\["msig", "Multi Signature", "MultiSig"\]/, /\["sp", "Silent Payments", "SP"\]/, /\["psbt", "PSBT", "PSBT"\]/,
     /\["ln", "Lightning", "LN"\]/, /\["journal", "Journal", "Journal"\]/]) {
     assert.match(appSource, entry);
@@ -1951,7 +1958,7 @@ test("the workspace switcher keeps every tool on screen as a tab strip", () => {
   // Every tool with a tab ships in the static markup, each with a full name
   // and the
   // short form narrow screens show instead.
-  for (const [full, short] of [["Keys", "Keys"], ["Vanity", "Vanity"], ["BIP-85", "BIP85"], ["Multi Signature", "MultiSig"], ["Silent Payments", "SP"], ["PSBT", "PSBT"], ["Journal", "Journal"]]) {
+  for (const [full, short] of [["Keys", "Keys"], ["Vanity", "Vanity"], ["BIP-85 Child", "BIP-85"], ["Multi Signature", "MultiSig"], ["Silent Payments", "SP"], ["PSBT", "PSBT"], ["Journal", "Journal"]]) {
     assert.ok(
       shell.includes(`<span class="workspace-tab-full">${full}</span><span class="workspace-tab-short">${short}</span>`),
       `${full} is missing from the workspace strip`,
@@ -1963,7 +1970,7 @@ test("the workspace switcher keeps every tool on screen as a tab strip", () => {
   // Hidden text leaves the accessibility tree, so the full name is stated on
   // the tab itself and assistive tech hears it at every width.
   assert.match(appSource, /button\.setAttribute\("aria-label", hodlTText\(label\)\);/);
-  for (const full of ["Keys", "Vanity", "BIP-85", "Multi Signature", "Silent Payments", "PSBT", "Journal"]) {
+  for (const full of ["Keys", "Vanity", "BIP-85 Child", "Multi Signature", "Silent Payments", "PSBT", "Journal"]) {
     assert.match(shell, new RegExp(`aria-label="${full.replace("/", "\\/")}">[\\s\\S]*?<span class="workspace-tab-full">${full.replace("/", "\\/")}</span>`), `${full} tab needs its accessible name`);
   }
   // A tablist owes arrow keys; the key and multisig strips already answer them.
@@ -2174,13 +2181,14 @@ test("tool cards follow the shared spacing contract", () => {
 
   const cardIds = [
     "calc-card", "vanity-card", "bip85-card", "msig-card", "sp-card",
-    "psbt-card", "psbted-card", "ln-card", "journal-card", "journal-notes-card",
+    "psbt-card", "psbted-card", "nonce-card", "ln-card", "journal-card", "journal-notes-card",
     "journal-keymanager-card", "journal-state-card", "journal-log-card",
   ];
   for (const id of cardIds) {
     assert.match(shell, new RegExp(`<section class="card no-print tool-card" id="${id}"`));
   }
-  assert.equal((shell.match(/class="station-key-source tool-section"/g) || []).length, 3);
+  // BIP-85, Silent Payments, Vanity, and the two PSBT inspectors.
+  assert.equal((shell.match(/class="station-key-source tool-section"/g) || []).length, 5);
 
   const actionRows = [...shell.matchAll(/class="row ([^"]*(?:current-item-actions|bip85-actions|psbt-actions|journal-global-actions)[^"]*)"/g)];
   assert.ok(actionRows.length > 0);

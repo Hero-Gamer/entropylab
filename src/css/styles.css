@@ -22,7 +22,9 @@
   --ok-bright: #26b54c; /* a true green: --ok sits closer to olive than the status tag wants. Held a touch under full brightness and a few degrees toward yellow, so it reads as green rather than as a signal lamp */
   --blue: #6f9fca;
   --blue-bright: #3b9eff; /* 7.5:1 on the dark ground; --blue alone is too soft to carry an edge and a label */
+  --blue-ink: #6cb6ff; /* blue as text on the dark ground: 9.8:1, level with the bright orange ink beside it */
   --warn: #c9a44a;
+  --warn-bright: var(--selection-accent-ink); /* caution in a live status is the app's bright orange, so it follows that ink in each theme */
   /* The Bitcoin Core icon's orange. Both themes share it: it is a brand
    * signal (mainnet = real coins), not a surface colour. */
   --bitcoin: #f7931a;
@@ -75,6 +77,7 @@
   --ok-bright: #167e32;
   --blue: #245d8f;
   --blue-bright: #1769d6; /* 5.2:1 on white */
+  --blue-ink: #1769d6;
   --warn: #765a11;
   --playing-card-bg: #ffffff;
   --playing-card-fg: #111111;
@@ -1179,6 +1182,8 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
     --border: #b8b8b8;
     --blue: #245d8f;
     --warn: #765a11;
+    --warn-bright: #b36200;
+    --blue-ink: #1769d6;
   }
   .no-print { display: none !important; }
   html, body { background: white; color: #111; }
@@ -1369,6 +1374,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-view { margin-top: var(--space-component); }
 .station-key-source > .label { margin: 0 0 8px; }
 .station-key-source > .field-note { display: block; margin: var(--space-control) 0 0; }
+.station-key-source > .field-note[hidden] { display: none; }
 .msig-key-reuse-toggle { margin-top: var(--space-section); }
 .session-key-picker {
   display: flex; flex-wrap: nowrap; gap: 8px; max-width: 100%;
@@ -1468,8 +1474,8 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .segmented-control.is-stacked > .tab:first-child { border-radius: 8px 8px 0 0; }
 .segmented-control.is-stacked > .tab:last-child { border-radius: 0 0 8px 8px; }
 .segmented-control.is-stacked > .tab:only-child { border-radius: 8px; }
-#msig-card[hidden], #calc-card[hidden], #psbt-card[hidden], #psbted-card[hidden], #bip85-card[hidden], #sp-card[hidden], #vanity-card[hidden], #ln-card[hidden] { display: none !important; }
-#calc-card:not([hidden]), #msig-card:not([hidden]), #bip85-card:not([hidden]), #sp-card:not([hidden]), #psbt-card:not([hidden]), #psbted-card:not([hidden]), #vanity-card:not([hidden]), #ln-card:not([hidden]) { margin-top: 0; border-radius: 0 0 20px 20px; position: relative; z-index: 1; }
+#msig-card[hidden], #calc-card[hidden], #psbt-card[hidden], #psbted-card[hidden], #nonce-card[hidden], #bip85-card[hidden], #sp-card[hidden], #vanity-card[hidden], #ln-card[hidden] { display: none !important; }
+#calc-card:not([hidden]), #msig-card:not([hidden]), #bip85-card:not([hidden]), #sp-card:not([hidden]), #psbt-card:not([hidden]), #psbted-card:not([hidden]), #nonce-card:not([hidden]), #vanity-card:not([hidden]), #ln-card:not([hidden]) { margin-top: 0; border-radius: 0 0 20px 20px; position: relative; z-index: 1; }
 #journal-card[hidden], #journal-notes-card[hidden], #journal-keymanager-card[hidden], #journal-state-card[hidden], #journal-log-card[hidden] { display: none !important; }
 #journal-card:not([hidden]), #journal-notes-card:not([hidden]), #journal-keymanager-card:not([hidden]), #journal-state-card:not([hidden]), #journal-log-card:not([hidden]) { margin-top: 0; border-radius: 0 0 20px 20px; position: relative; z-index: 1; }
 #journal-locked-panel[hidden], #journal-work-panel[hidden], #journal-create-panel[hidden], #journal-open-panel[hidden], #journal-editor[hidden], #journal-view[hidden] { display: none; }
@@ -1693,13 +1699,55 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .vanity-saved { display: inline-flex; align-items: center; gap: 6px; color: var(--ok-bright); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .vanity-saved svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 .psbt-kv { font-family: var(--mono); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+/* A muted note inside a report line keeps the line's own size and rhythm;
+   .muted alone would set it at 14px in a 13px line. */
+.psbt-kv .muted { font-size: inherit; line-height: inherit; }
 .psbt-ok { color: var(--ok); }
 .psbt-bad { color: var(--danger); }
 .psbt-warn { color: var(--warn); }
-.psbt-analysis-summary { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: var(--space-component); }
+/* An analysis is a readout sitting in the result frame, not a control: no
+   frame of its own, and its checks read as a list of labelled lines rather
+   than bullets. The label keeps its type but not its block margins, since
+   it runs inline with the verdict beside it. */
+.psbt-analysis-summary { margin-bottom: var(--space-component); }
 .psbt-analysis-summary > p { margin: 0 0 8px; }
 .psbt-analysis-summary ul { margin: 0 0 8px; padding-left: 20px; }
-.psbt-analysis-summary li + li { margin-top: 8px; }
+.psbt-analysis-summary > ul { padding-left: 0; list-style: none; }
+/* Label, verdict and the dash between them read at one size. */
+.psbt-analysis-summary > ul > li { font-size: 14px; }
+/* A check's detail sits under its verdict as a tighter block: an inline span
+   cannot set its line height below the line it sits in. */
+.psbt-analysis-summary li > .muted { display: block; line-height: 1.3; }
+/* The overall verdict is a <strong>, which the browser sets at 700; the
+   report's headings sit at 600. */
+.psbt-analysis-summary > p > strong { font-weight: 600; }
+.psbt-analysis-summary > p:is(.psbt-ok, .psbt-warn, .psbt-bad) { font-size: 15px; }
+/* The report's sections — the analysis, where the coins go, what they spend —
+   are parted by the same hairline the rest of the app uses. */
+.result-divider { height: 0; margin: var(--space-section) 0; border: 0; border-top: 1px solid var(--border); }
+/* A note closing a report section stands a step off the figures above it. */
+.tool-result-body > .edge-note { margin-top: var(--space-intro); }
+/* Each output and each claimed input reads as its number, then what it moves,
+   then where: the amount in the bright orange, the address in the bright blue. */
+.psbt-amount { color: var(--selection-accent-ink); }
+.psbt-address { color: var(--blue-ink); }
+.psbt-opreturn-flag { color: var(--danger); }
+.psbt-opreturn-head { font-weight: 600; }
+/* An input's signing state, in the muted status tones: counted signatures,
+   finalized data with none to count, or nothing yet. The policy line under it
+   is detail and reads grey; a risky policy carries its own red warning. */
+.psbt-sig-present { color: var(--ok); }
+.psbt-sig-finalized { color: var(--accent); }
+.psbt-sig-unsigned { color: var(--danger); }
+.psbt-sig-present, .psbt-sig-finalized, .psbt-sig-unsigned { font-weight: 600; }
+.psbt-sig-policy { color: var(--muted); }
+.psbt-analysis-summary li > .label { margin: 0; }
+/* A verdict is a live status, so it takes the bright set the status notes use
+   rather than the muted text tones the rest of the report reads in. */
+.psbt-analysis-summary :is(.psbt-ok, .psbted-note-ok) { color: var(--ok-bright); }
+.psbt-analysis-summary :is(.psbt-warn, .psbted-note-warn) { color: var(--warn-bright); }
+.psbt-analysis-summary :is(.psbt-bad, .psbted-note-bad) { color: var(--danger-bright); }
+.psbt-analysis-summary li + li { margin-top: 12px; }
 /* A check family's findings nest as a dash-marked sublist, one line each. */
 .psbt-analysis-summary li ul { margin: 4px 0 2px; padding-left: 18px; list-style-type: "- "; }
 .psbt-analysis-summary li li + li { margin-top: 2px; }
@@ -1931,7 +1979,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    layout: the text lands where a control would, not the box around it. Text
    written to sit directly under a label carries .label-description. */
 .label:has(+ .label-description) { margin-bottom: 4px; }
-.label + .label-description { margin-top: 0; margin-bottom: 0; }
+/* A toggle's title does the same job as a label, so a description written to
+   sit under it sits the same way. */
+.label + .label-description,
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary + :is(.label-description, .field-note) { margin-top: 0; margin-bottom: 0; }
 /* The exception: a checkbox's own text is not a heading over content. It sits
    inside the control, on one line with the box, so it owns no gap either side.
    The components above already say margin: 0; this repeats it only to outrank
@@ -2034,6 +2085,32 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   margin: 0; padding: 0 0 var(--space-control);
   border-bottom: 1px solid var(--border);
 }
+/* Elsewhere a toggle sits in a grid that spaces it. One placed straight in a
+   card's block flow takes the gap a field would. */
+.tool-card > .derivation-advanced { margin-top: var(--space-component); }
+/* A tool's result reads inside a frame of its own. It is a readout, not a
+   control, so it stays square. Until the tool has something to show, a
+   grey line says what will appear; the body filling is what hides it. */
+.tool-result { margin-bottom: var(--space-intro); padding: var(--space-component) 10px; border: 1px solid var(--border); background: var(--bg); }
+.tool-result > .tool-result-empty { margin: 0; }
+.tool-result:has(> .tool-result-body:not(:empty)) > .tool-result-empty { display: none; }
+.tool-result-body > :first-child { margin-top: 0; }
+.tool-result-body > :last-child { margin-bottom: 0; }
+/* The session line opens the frame when it shows, and stands a step off what
+   follows it, whether that is the waiting line or the report. */
+.tool-result > .edge-note { margin-top: 0; }
+.tool-result > .edge-note:not([hidden]) ~ :is(.tool-result-empty, .tool-result-body) { margin-top: var(--space-component); }
+/* A run of toggles is fenced top and bottom. Each toggle draws the rule below
+   itself, so only the first in a run draws one above: a second would stack
+   a rule on the one its neighbour already drew. */
+.tool-card > .derivation-advanced:not(.derivation-advanced + .derivation-advanced) {
+  /* Below the title sit its own 8px margin and the toggle's 8px padding;
+     the rule above gets the same 16px so the title centres between the two. */
+  padding-top: var(--space-component); border-top: 1px solid var(--border);
+}
+/* With no fields wrapper to carry the gap, the last thing in the open block
+   does, so the rule sits as far below the content as below the shut toggle. */
+.tool-card > .derivation-advanced[open] > :last-child { margin-bottom: var(--space-control); }
 /* The card's other accordion, styled as the fairness toggle so the two read as
    one control type: heading-sized text, grey until hovered or open, and the
    same disclosure triangle. The native marker steps aside because it cannot
@@ -2378,7 +2455,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 #bip85-out:empty { display: none; }
 #bip85-card.is-result-view #bip85-out { margin-top: 0; }
 #bip85-out .wallet-data-section { margin-top: 0; }
-#psbt-session { margin: var(--space-control) 0 0; }
 .key-manager { margin: 14px 0 -1px; position: relative; z-index: 2; }
 .key-manager-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .key-manager-head h2 { margin: 0; }

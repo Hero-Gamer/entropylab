@@ -23,14 +23,17 @@
 #   FIREFOX_BINARY, CHROME_BINARY (or CHROMIUM_BINARY), EDGE_BINARY
 #   (EDGE_BINARY selects a local Edge install; the image ships none)
 
-# The base rootfs is pinned by digest so the canonical build environment only
-# changes by deliberate PR; bump the digest (and NODE/FIREFOX below) together.
-# Note apt packages still resolve at image-build time — full image
-# reproducibility would need snapshot pinning, which this does not attempt.
-FROM ubuntu:24.04@sha256:69cecf4bbf72d2d44a9eef1b71fb98c7fb973d78af11399deccef19beb008ad9
+# linux/amd64 manifest of the previous index pin (sha256:69cecf4b…). An index
+# digest would select a different clang on another architecture. Apt is frozen
+# to one snapshot so the clang packages cannot move between image builds.
+# Bump the digest, the snapshot, and the clang versions together.
+FROM --platform=linux/amd64 ubuntu:24.04@sha256:496754492fb28b4d3049432f2ca787449331e23fb14f0dd3fffea86bf5a93eb4
 
 ARG NODE_VERSION=v22.23.2
 ARG FIREFOX_VERSION=140.14.0esr
+ARG UBUNTU_SNAPSHOT=20260916T000000Z
+ARG CLANG_VERSION=1:18.0-59~exp2
+ARG CLANG18_VERSION=1:18.1.3-1ubuntu1
 
 ENV DEBIAN_FRONTEND=noninteractive \
     RUSTUP_HOME=/usr/local/rustup \
@@ -39,12 +42,19 @@ ENV DEBIAN_FRONTEND=noninteractive \
     BROWSER_TEST_NO_SANDBOX=1 \
     PATH=/usr/local/cargo/bin:/home/dev/.local/bin:$PATH
 
-# System packages: git, compilers (clang builds libsecp256k1's vendored C
-# for wasm32), tarball tooling, fonts so the headless layout checks measure
-# real text metrics.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# System packages: git, compilers (the pinned clang builds libsecp256k1's
+# vendored C for wasm32), tarball tooling, fonts so the headless layout
+# checks measure real text metrics. clang-18's Depends pin libllvm18 and the
+# rest of that version, so one package version is the whole compiler.
+RUN sed -i \
+      -e "s|http://archive.ubuntu.com/ubuntu|http://snapshot.ubuntu.com/ubuntu/${UBUNTU_SNAPSHOT}|g" \
+      -e "s|http://security.ubuntu.com/ubuntu|http://snapshot.ubuntu.com/ubuntu/${UBUNTU_SNAPSHOT}|g" \
+      /etc/apt/sources.list.d/ubuntu.sources \
+    && apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git gnupg xz-utils bzip2 sqlite3 python3 \
-      build-essential clang \
+      build-essential \
+      "clang=${CLANG_VERSION}" \
+      "clang-18=${CLANG18_VERSION}" \
       fontconfig fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 

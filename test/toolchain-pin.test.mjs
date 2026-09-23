@@ -34,3 +34,37 @@ test("all WASM crates and the dev image pin the same Rust channel", () => {
   assert.ok(image, "Dockerfile adds the wasm target for an explicit toolchain");
   assert.equal(image[1], channels[0]);
 });
+
+test("the dev image pins linux/amd64, one Ubuntu snapshot, and exact clang", () => {
+  const dockerfile = read("Dockerfile");
+  assert.match(dockerfile, /^FROM --platform=linux\/amd64 ubuntu:24\.04@sha256:496754492fb28b4d3049432f2ca787449331e23fb14f0dd3fffea86bf5a93eb4$/m);
+  assert.doesNotMatch(dockerfile, /sha256:69cecf4bbf72d2d44a9eef1b71fb98c7fb973d78af11399deccef19beb008ad9/, "the multi-arch index is not a clang pin");
+  assert.match(dockerfile, /^ARG UBUNTU_SNAPSHOT=20260916T000000Z$/m);
+  assert.match(dockerfile, /snapshot\.ubuntu\.com\/ubuntu\/\$\{UBUNTU_SNAPSHOT\}/);
+  assert.match(dockerfile, /^ARG CLANG_VERSION=1:18\.0-59~exp2$/m);
+  assert.match(dockerfile, /^ARG CLANG18_VERSION=1:18\.1\.3-1ubuntu1$/m);
+  assert.match(dockerfile, /"clang=\$\{CLANG_VERSION\}"/);
+  assert.match(dockerfile, /"clang-18=\$\{CLANG18_VERSION\}"/);
+});
+
+test("build-wasm compiles inside that image and stamps the commit time", () => {
+  const workflow = read(".github/workflows/ci-cd.yml");
+  const job = workflow.match(/^  build-wasm:\n[\s\S]*?(?=^  [\w-]+:)/m)?.[0] ?? "";
+  assert.match(job, /platforms: linux\/amd64/);
+  assert.match(job, /docker run --rm --platform linux\/amd64[\s\S]*npm run build:wasm/);
+  assert.match(job, /safe\.directory \/workspace/);
+  assert.doesNotMatch(job, /rm -rf/, "the runner must not delete root-owned target directories");
+  const source = read("scripts/build-wasm.mjs");
+  assert.match(source, /safe\.directory=\*/);
+  assert.match(source, /SOURCE_DATE_EPOCH/);
+  assert.match(source, /--format=%ct/);
+});
+
+test("published checksums include the three WASM modules, and reproduce checks the image bytes", () => {
+  const workflow = read(".github/workflows/ci-cd.yml");
+  const reproduce = workflow.match(/^  reproduce:\n[\s\S]*?(?=^  [\w-]+:)/m)?.[0] ?? "";
+  assert.match(reproduce, /^    needs: \[build-wasm\]/m);
+  assert.match(reproduce, /name: entropylab-wasm/);
+  assert.match(reproduce, /diff \/tmp\/wasm-first\.hashes \/tmp\/wasm-published\.hashes/);
+  assert.match(reproduce, /--platform linux\/amd64/);
+});

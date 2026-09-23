@@ -199,7 +199,7 @@ test("the WASM boot chain has a failure path that kills the page", () => {
 test("the release build attests the wallet artifact and ships a checksum manifest (issue #58)", () => {
   const workflow = read(".github/workflows/ci-cd.yml");
   const build = workflow.match(/^  build:\n(?:.|\n)*?(?=^  [a-z-]+:)/m)?.[0] ?? "";
-  assert.match(build, /sha256sum entropylab\.html > SHA256SUMS\.txt/, "build must generate SHA256SUMS.txt");
+  assert.match(build, /sha256sum[\s\S]*?entropylab\.html[\s\S]*?src\/js\/entropylab-wasm-b64\.js[\s\S]*?src\/js\/psbt-wasm-b64\.js[\s\S]*?src\/js\/vanity-wasm-b64\.js[\s\S]*?> SHA256SUMS\.txt/, "build must hash the HTML and the three WASM modules into SHA256SUMS.txt");
   assert.match(build, /node scripts\/cid\.mjs entropylab\.html > CID\.txt/, "build must generate CID.txt from the same HTML");
   assert.match(build, /actions\/attest-build-provenance@[0-9a-f]{40}/, "build must attest entropylab.html");
   assert.match(build, /subject-path: entropylab\.html/, "the attestation subject is the wallet HTML");
@@ -207,6 +207,11 @@ test("the release build attests the wallet artifact and ships a checksum manifes
   // Only merges to the default branch produce release attestations.
   assert.match(build, /if: github\.ref == 'refs\/heads\/rock' && github\.event_name == 'push'\n\s*uses: actions\/attest-build-provenance/);
   const artifact = workflow.match(/^  artifact:\n(?:.|\n)*?(?=^  [a-z-]+:)/m)?.[0] ?? "";
+  const artifactSums = artifact.match(/sha256sum[\s\S]*?> SHA256SUMS\.txt/);
+  assert.ok(artifactSums, "artifact must generate SHA256SUMS.txt");
+  for (const file of ["entropylab.html", "src/js/entropylab-wasm-b64.js", "src/js/psbt-wasm-b64.js", "src/js/vanity-wasm-b64.js"]) {
+    assert.match(artifactSums[0], new RegExp(file.replaceAll(".", "\\.")), `artifact checksum must include ${file}`);
+  }
   assert.match(artifact, /SHA256SUMS\.txt/, "the committed artifact includes the checksum manifest");
   assert.match(artifact, /CID\.txt/, "the committed artifact includes the IPFS CID name");
   assert.match(read("README.md"), /gh attestation verify entropylab\.html -R OogaBoogaX\/entropylab/);
@@ -406,6 +411,7 @@ test("third-party actions are immutable and deployment is test-gated", () => {
   // The WASM gate must rebuild the bindings from the Rust sources, test the
   // fresh build, and block both the artifact commit and the Pages deploy.
   assert.match(workflowJob(workflow, "build-wasm"), /npm run build:wasm\n/);
+  assert.match(workflowJob(workflow, "build-wasm"), /docker run --rm --platform linux\/amd64[\s\S]*npm run build:wasm/);
   assert.deepEqual(wasmGateProblems(workflow), []);
   for (const dependency of ["build", "verify", "test-ci", "test-browser", "build-wasm", "fuzz-lifehash", "fuzz-msig"]) {
     assert.ok(jobNeeds(workflowJob(workflow, "deploy")).includes(dependency), `deploy needs ${dependency}`);
@@ -421,7 +427,7 @@ function wasmGateProblems(workflow) {
   const problems = [];
   const job = workflowJob(workflow, "build-wasm");
   if (!job) return ["the build-wasm job is missing"];
-  const buildAt = job.search(/^\s*run: npm run build:wasm$/m);
+  const buildAt = job.search(/npm run build:wasm/);
   const testAt = job.search(/^\s*run: node --test /m);
   if (buildAt === -1) problems.push("the build-wasm job never rebuilds the bindings from the Rust sources");
   if (testAt === -1) {
@@ -450,8 +456,8 @@ test("the WASM gate check detects its own failure modes", () => {
     "dropping a WASM suite from the gate must be detected",
   );
   const reordered = workflow.replace(
-    /(\s*run: )(npm run build:wasm)\n(\s*- name: [^\n]+\n\s*run: )(node --test [^\n]+)/,
-    "$1$4\n$3$2"
+    /( {6}- name: Rebuild the WASM artifacts inside the pinned image\n[\s\S]*?cargo test --locked --lib'\n)( {6}- name: Test the freshly built bindings\n {8}run: node --test [^\n]+\n)/,
+    "$2$1",
   );
   assert.notEqual(reordered, workflow, "fixture: the build and test steps must be reorderable");
   assert.ok(

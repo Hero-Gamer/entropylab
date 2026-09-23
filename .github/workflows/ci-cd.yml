@@ -75,7 +75,13 @@ jobs:
       - name: Build static site
         run: npm run build
       - name: Generate the SHA-256 checksum manifest
-        run: sha256sum entropylab.html > SHA256SUMS.txt
+        run: |
+          sha256sum \
+            entropylab.html \
+            src/js/entropylab-wasm-b64.js \
+            src/js/psbt-wasm-b64.js \
+            src/js/vanity-wasm-b64.js \
+            > SHA256SUMS.txt
       - name: Generate the IPFS CID name
         run: node scripts/cid.mjs entropylab.html > CID.txt
       - name: Attest the wallet artifact
@@ -129,11 +135,13 @@ jobs:
   # are shared with the site build, then bundled with the candidate for every
   # downstream consumer (including tests that import source modules or build
   # a hooks-enabled page). The post-merge job commits these same tested bytes,
-  # not a second compilation. Cross-machine build identity is not asserted.
+  # not a second compilation. The compile runs in the pinned dev image so the
+  # clang is the image's clang, not the runner's. A second image build is
+  # checked by the reproduce job. Cross-machine identity is not claimed.
   build-wasm:
     name: Build · WASM from Rust sources
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -142,13 +150,30 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Rebuild the WASM artifacts from the Rust sources
-        run: npm run build:wasm
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the pinned dev image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: entropylab-dev:local
+          platforms: linux/amd64
+          cache-from: type=gha,scope=dev-image
+          cache-to: type=gha,mode=max,scope=dev-image
+      # Root, because the image's cargo home is root-owned. The script trusts
+      # the mount itself (`safe.directory=*`); do not delete target/ from the
+      # runner — those directories are root-owned and the host rm cannot.
+      - name: Rebuild the WASM artifacts inside the pinned image
+        run: |
+          docker run --rm --platform linux/amd64 --user root \
+            -v "$GITHUB_WORKSPACE:/workspace" -w /workspace entropylab-dev:local \
+            bash -c 'set -euo pipefail
+              git config --global --add safe.directory /workspace
+              npm run build:wasm
+              cd psbt-wasm
+              cargo test --locked --lib'
       - name: Test the freshly built bindings
         run: node --test test/entropylab-wasm.test.mjs test/hashes-wasm.test.mjs test/hdkey-bip39-wasm.test.mjs test/addresses-wasm.test.mjs test/tx-sighash-wasm.test.mjs test/psbt-wasm.test.mjs test/psbt-sanitize.test.mjs test/wipe-wasm.test.mjs test/vanity-wasm.test.mjs test/aezeed-wasm.test.mjs test/self-test-wasm.test.mjs
-      - name: Test native Rust PSBT unit tests
-        working-directory: psbt-wasm
-        run: cargo test --locked --lib
       - name: Upload the freshly tested WASM modules
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -453,7 +478,13 @@ jobs:
       - name: Verify the candidate digest
         run: echo "${{ needs.build.outputs.sha256 }}  entropylab.html" | sha256sum -c -
       - name: Generate the SHA-256 checksum manifest
-        run: sha256sum entropylab.html > SHA256SUMS.txt
+        run: |
+          sha256sum \
+            entropylab.html \
+            src/js/entropylab-wasm-b64.js \
+            src/js/psbt-wasm-b64.js \
+            src/js/vanity-wasm-b64.js \
+            > SHA256SUMS.txt
       - name: Generate the IPFS CID name
         run: node scripts/cid.mjs entropylab.html > CID.txt
       - name: Commit the generated artifact
@@ -557,15 +588,15 @@ jobs:
   # aspiration. The same commit is built on the runner and inside the pinned
   # dev image and the digests must match, and the WASM modules are built
   # twice inside the image from different staging paths and must match too.
-  # A fresh in-image WASM build differing from the committed artifacts is a
-  # warning for now — those were last produced by a runner clang, not the
-  # image's; it becomes a hard gate once the artifact job builds inside the
-  # image (follow-up). Standalone on purpose: nothing `needs` it yet, so a
-  # flaky image mirror can never block a merge — make it a required check to
-  # gate.
+  # The WASM half must match the modules build-wasm compiled in the same
+  # image (those are the bytes the candidate publishes). A fresh image build
+  # differing from the modules already committed on the branch stays a
+  # warning: the artifact job writes the image bytes on the next rock merge,
+  # and that commit skips CI. Nothing that gates a merge `needs` this job.
 
   reproduce:
     name: Reproduce · byte-identical builds across environments
+    needs: [build-wasm]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -589,25 +620,31 @@ jobs:
           context: .
           load: true
           tags: entropylab-dev:local
-          cache-from: type=gha,scope=reproduce
-          cache-to: type=gha,mode=max,scope=reproduce
+          platforms: linux/amd64
+          cache-from: type=gha,scope=dev-image
+          cache-to: type=gha,mode=max,scope=dev-image
       # The container runs as root so it can write the runner-owned checkout;
       # safe.directory lets git stamp the commit inside the mounted repo.
       - name: Build inside the image and require identical digests
         run: |
-          docker run --rm --user root -v "$GITHUB_WORKSPACE:/workspace" -w /workspace entropylab-dev:local \
+          docker run --rm --platform linux/amd64 --user root -v "$GITHUB_WORKSPACE:/workspace" -w /workspace entropylab-dev:local \
             bash -c 'set -euo pipefail
               git config --global --add safe.directory /workspace
               npm ci --ignore-scripts --no-audit --no-fund
               npm run build
               sha256sum entropylab.html service-worker.js | tee image.sums'
           diff runner.sums image.sums
+      - name: Download the modules build-wasm compiled in this image
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: entropylab-wasm
+          path: published-wasm
       # scripts/build-wasm.mjs needs no node_modules (node + cargo only), so
-      # the second staging path is a bare clone. Both sums files list the same
-      # relative paths, so a plain diff compares the digests.
+      # the second staging path is a bare clone. Hash-only diffs, because the
+      # published copy lives at a different path than the fresh build.
       - name: Build the WASM modules twice in the image and require identity
         run: |
-          docker run --rm --user root -v "$GITHUB_WORKSPACE:/workspace" -w /workspace entropylab-dev:local \
+          docker run --rm --platform linux/amd64 --user root -v "$GITHUB_WORKSPACE:/workspace" -w /workspace entropylab-dev:local \
             bash -c 'set -euo pipefail
               git config --global --add safe.directory "*"
               npm run build:wasm
@@ -617,9 +654,16 @@ jobs:
               node scripts/build-wasm.mjs
               sha256sum src/js/entropylab-wasm-b64.js src/js/psbt-wasm-b64.js src/js/vanity-wasm-b64.js | tee /tmp/wasm-second.sums
               diff /tmp/wasm-first.sums /tmp/wasm-second.sums
+              cut -d" " -f1 /tmp/wasm-first.sums > /tmp/wasm-first.hashes
+              sha256sum \
+                /workspace/published-wasm/src/js/entropylab-wasm-b64.js \
+                /workspace/published-wasm/src/js/psbt-wasm-b64.js \
+                /workspace/published-wasm/src/js/vanity-wasm-b64.js \
+                | cut -d" " -f1 > /tmp/wasm-published.hashes
+              diff /tmp/wasm-first.hashes /tmp/wasm-published.hashes
               cd /workspace
               if ! git diff --exit-code -- src/js/entropylab-wasm-b64.js src/js/psbt-wasm-b64.js src/js/vanity-wasm-b64.js > /tmp/wasm-drift.diff; then
-                echo "::warning file=scripts/build-wasm.mjs::Fresh in-image WASM build differs from the committed artifacts (those were produced by a runner clang); drift summary follows in the log."
+                echo "::warning file=scripts/build-wasm.mjs::Fresh in-image WASM build differs from the modules committed on this branch. The artifact job commits the image bytes on the next rock merge; that commit skips CI."
                 head -20 /tmp/wasm-drift.diff
               fi'
 

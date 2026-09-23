@@ -51,8 +51,12 @@ material. Its security posture rests on the following model:
   site. Those same modules are bundled with the HTML candidate for downstream
   source and browser tests, deployment, and the post-merge artifact commit;
   publication does not compile a second WASM copy.
-   Cross-machine byte identity is not claimed — the C side compiles with the
-   builder's clang, and build-host paths are remapped out of the binary.
+   CI compiles these modules inside the pinned dev image (one linux/amd64
+   rootfs, one Ubuntu snapshot, clang 18.1.3) and requires a second build in
+   that image to match the bytes it publishes. A host clang is a different
+   compiler. Cross-machine byte identity is not claimed until those published
+   hashes are reproduced in that same image on a second machine. Build-host
+   paths are remapped out of the binary.
   iOS/macOS Lockdown Mode disables WebAssembly. Exclude the site in Safari
   or use a host that can compile WASM. There is no JavaScript secp256k1
   fallback; a host that cannot run the module is treated as broken.

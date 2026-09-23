@@ -106,7 +106,7 @@ const feeHtml = (doc) => {
   if (doc.fee?.known) {
     return doc.fee.sats === null
       ? `<span class="psbted-note-bad">${escapeHtml(doc.fee?.error || "outputs exceed claimed inputs")}</span>`
-      : `<span class="psbted-viz-feenum">${groupSats(doc.fee.sats)} sats</span> <span class="muted">(PSBT claim)</span>`;
+      : `<span class="psbted-viz-feenum">${groupSats(doc.fee.sats)} sats</span>`;
   }
   return doc.fee?.error
     ? `<span class="psbted-note-bad">${escapeHtml(doc.fee.error)}</span>`
@@ -122,7 +122,7 @@ const costHtml = (doc) => {
   return `<span title="exact serialized transaction size">${facts.vsize} vB · ${facts.weight} WU</span>${rate}`;
 };
 
-const inputBox = (doc, index, network, selected) => {
+const inputBox = (doc, index, network) => {
   const input = doc.tx.inputs[index];
   const pairs = doc.inputs[index] ?? [];
   const claim = claimedPrevout(pairs);
@@ -134,18 +134,17 @@ const inputBox = (doc, index, network, selected) => {
   const status = signingStatus(pairs);
   // The prevout's script template tags the box like a block explorer would.
   const kind = claim && !conflict ? scriptKind(claim.scriptPubKey) : null;
-  const open = selected?.kind === "input" && selected.index === index;
-  return `<div class="psbted-viz-box${open ? " is-open" : ""}">
-    <button type="button" class="psbted-viz-open" data-viz="input:${index}" aria-expanded="${open}" aria-label="Input ${index}, ${escapeHtml(address ?? label)}: show and edit this input's PSBT fields">
+  return `<div class="psbted-viz-box">
+    <button type="button" class="psbted-viz-open" data-viz="input:${index}" aria-label="Input ${index}, ${escapeHtml(address ?? label)}: go to this input's PSBT fields">
       <span class="psbted-viz-idx">#${index}</span>
       <span class="psbted-viz-id psbted-viz-in"${address ? ` title="${escapeHtml(address)}"` : ""}>${escapeHtml(label)}</span>
     </button>
-    <p class="psbted-viz-amount">${conflict ? `<span class="psbted-note-bad">conflicting claims: ${groupSats(conflict[0])} vs ${groupSats(conflict[1])} sats</span>` : claim ? `${groupSats(claim.value)} sats` : `<span class="muted">no amount claim</span>`}</p>
+    <p class="psbted-viz-amount psbt-amount">${conflict ? `<span class="psbted-note-bad">conflicting claims: ${groupSats(conflict[0])} vs ${groupSats(conflict[1])} sats</span>` : claim ? `${groupSats(claim.value)} sats` : `<span class="muted">no amount claim</span>`}</p>
     <p class="psbted-viz-sub" title="spends ${escapeHtml(input.txid)}:${escapeHtml(String(input.vout))}">${kind ? `<span class="psbted-viz-kind">${escapeHtml(kind)}</span> · ` : ""}<span class="${status.tone}">${escapeHtml(status.text)}</span></p>
   </div>`;
 };
 
-const outputBox = (doc, index, network, selected) => {
+const outputBox = (doc, index, network) => {
   const output = doc.tx.outputs[index];
   const address = addressFor(output.scriptPubKey, network);
   const kind = scriptKind(output.scriptPubKey, output.asm);
@@ -153,9 +152,8 @@ const outputBox = (doc, index, network, selected) => {
   // The sub-line adds what the label does not already say: the script
   // template for addressed outputs, the asm for data-carrier/raw scripts.
   const sub = address ? (kind ?? "script") : shortenMiddle(output.asm || output.scriptPubKey, 24, 12) || "script";
-  const open = selected?.kind === "output" && selected.index === index;
-  return `<div class="psbted-viz-box${open ? " is-open" : ""}">
-    <button type="button" class="psbted-viz-open" data-viz="output:${index}" aria-expanded="${open}" aria-label="Output ${index}, ${escapeHtml(address ?? label)}: show and edit this output's PSBT fields">
+  return `<div class="psbted-viz-box">
+    <button type="button" class="psbted-viz-open" data-viz="output:${index}" aria-label="Output ${index}, ${escapeHtml(address ?? label)}: go to this output's PSBT fields">
       <span class="psbted-viz-idx">#${index}</span>
       <span class="psbted-viz-id ${address || !kind ? "psbted-viz-out" : "psbted-viz-tag"}"${address ? ` title="${escapeHtml(address)}"` : ""}>${escapeHtml(label)}</span>
     </button>
@@ -165,39 +163,38 @@ const outputBox = (doc, index, network, selected) => {
 };
 
 // The diagram. `doc` is the editor's inspection document (fresh from
-// psbtInspectDoc or carrying pending field edits); `selected` is the open
-// box ({ kind: "input"|"output", index } or { kind: "tx" }) or null. The SVG
-// layer ships empty: psbt-editor.js measures the laid-out boxes and draws
-// the connector paths into it (no layout in this pure module).
-export const psbtVizHtml = (doc, network, selected = null) => {
-  const inputs = doc.tx.inputs.map((_, index) => inputBox(doc, index, network, selected)).join("");
-  const outputs = doc.tx.outputs.map((_, index) => outputBox(doc, index, network, selected)).join("");
+// psbtInspectDoc or carrying pending field edits). Every box is a link to
+// its own section below, so the diagram holds no selection of its own. The
+// SVG layer ships empty: psbt-editor.js measures the laid-out boxes and
+// draws the connector paths into it (no layout in this pure module).
+export const psbtVizHtml = (doc, network) => {
+  const inputs = doc.tx.inputs.map((_, index) => inputBox(doc, index, network)).join("");
+  const outputs = doc.tx.outputs.map((_, index) => outputBox(doc, index, network)).join("");
   // Column totals ride in the hint lines; the inputs side can only total
   // when every input carries a claim (doc.totalIn is null otherwise).
   const inputsHint = doc.totalIn === null
     ? "amounts as claimed by the PSBT, not verified"
     : `${groupSats(doc.totalIn)} sats claimed, not verified`;
-  const txOpen = selected?.kind === "tx";
   return `<div class="psbted-viz">
   <svg class="psbted-viz-svg" aria-hidden="true" focusable="false"></svg>
   <div class="psbted-viz-cols">
     <div class="psbted-viz-col">
-      <h3 class="psbted-viz-heading">Inputs (${doc.tx.inputs.length})</h3>
+      <h3 class="psbted-viz-heading">Inputs <span class="label-value">(${doc.tx.inputs.length})</span></h3>
       <p class="psbted-viz-hint muted">${inputsHint}</p>
       ${inputs || `<div class="psbted-viz-box muted">No inputs.</div>`}
     </div>
     <div class="psbted-viz-mid">
       <div class="psbted-viz-arrow" aria-hidden="true"></div>
-      <button type="button" class="psbted-viz-tx${txOpen ? " is-open" : ""}" data-viz="tx" aria-expanded="${txOpen}" aria-label="Unsigned transaction: show and edit the version and locktime fields">
+      <button type="button" class="psbted-viz-tx" data-viz="tx" aria-label="Unsigned transaction: go to the version and locktime fields">
         <span class="psbted-viz-txline"><strong>PSBT v${escapeHtml(String(doc.psbtVersion))}</strong> · unsigned tx</span>
         <span class="psbted-viz-txline muted">version ${escapeHtml(String(doc.tx.version))} · locktime ${escapeHtml(String(doc.tx.locktime))}</span>
-        <span class="psbted-viz-txline">fee ${feeHtml(doc)}</span>
+        <span class="psbted-viz-txline psbt-amount">fee ${feeHtml(doc)}</span>
         <span class="psbted-viz-txline">${costHtml(doc)}</span>
       </button>
       <div class="psbted-viz-arrow" aria-hidden="true"></div>
     </div>
     <div class="psbted-viz-col">
-      <h3 class="psbted-viz-heading">Outputs (${doc.tx.outputs.length})</h3>
+      <h3 class="psbted-viz-heading">Outputs <span class="label-value">(${doc.tx.outputs.length})</span></h3>
       <p class="psbted-viz-hint muted">${doc.totalOut === null ? "outputs total unknown — amounts overflow u64" : `${groupSats(doc.totalOut)} sats in total`} · editable in the boxes</p>
       ${outputs || `<div class="psbted-viz-box muted">No outputs.</div>`}
     </div>

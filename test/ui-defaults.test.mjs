@@ -1510,6 +1510,9 @@ test("PSBT amounts and fees are labeled as unverified claims", () => {
   // Witness claims are unverified; non-witness claims are checked against the
   // embedded previous transaction (issue #350). Neither touches the chain.
   assert.match(app, /Witness-UTXO amounts are unverified PSBT claims/);
+  // The editor states the same caveat for its own fee and input amounts,
+  // inside the output it qualifies.
+  assert.match(read("src/js/psbt-editor.js"), /Fees and input amounts shown here are unverified PSBT claims/);
   assert.doesNotMatch(app, /Fee \(from PSBT fields\)/);
 });
 
@@ -1722,9 +1725,9 @@ test("one PSBT workspace contains PSBT Inspector, PSBT Editor and Nonce Inspecto
     // button rows keep their compact, text-sized buttons.
     assert.match(markup, /<div class="row psbt-actions psbted-actions tool-actions">/);
   }
-  assert.match(appSource, /import \{ initPsbtEditor, psbtBytesFromUpload \} from "\.\/psbt-editor\.js"/);
+  assert.match(appSource, /import \{ initPsbtEditor, psbtBytesFromText as hodlPsbtBytesFromText, psbtBytesFromUpload, psbtQrPlan as hodlPsbtQrPlan \} from "\.\/psbt-editor\.js"/);
   // The editor reads the header picker's network through the passed getter.
-  assert.match(appSource, /initPsbtEditor\(\{ networkDefault: \(\) => hodlNetworkDefault \}\)/);
+  assert.match(appSource, /initPsbtEditor\(\{ networkDefault: \(\) => hodlNetworkDefault, copiedIcon: hodlCopiedIconMarkup \}\)/);
 });
 
 test("Journal gates its five tools behind the local notebook", () => {

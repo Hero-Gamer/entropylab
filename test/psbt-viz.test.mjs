@@ -49,8 +49,9 @@ const syntheticDoc = (overrides = {}) => ({
 
 test("the diagram shows one box per input and output with decoded claims", () => {
   const html = psbtVizHtml(inspectValid(), "mainnet");
-  assert.match(html, /Inputs \(2\)/);
-  assert.match(html, /Outputs \(2\)/);
+  // The count rides in its own element, so match the pair, not the spacing.
+  assert.match(html, /Inputs[\s\S]{0,40}\(2\)/);
+  assert.match(html, /Outputs[\s\S]{0,40}\(2\)/);
   for (const target of ["input:0", "input:1", "output:0", "output:1"]) {
     assert.ok(html.includes(`data-viz="${target}"`), `missing box ${target}`);
   }
@@ -158,16 +159,18 @@ test("a taproot signature with an undefined sighash suffix does not read as sign
   assert.ok(html.includes("malformed signing field"), "it should read as malformed instead");
 });
 
-test("the selected box is marked open and expanded, the rest are not", () => {
+test("every box is a link to its own section, and the diagram holds no selection", () => {
   const doc = inspectValid();
-  const html = psbtVizHtml(doc, "mainnet", { kind: "input", index: 1 });
+  const html = psbtVizHtml(doc, "mainnet");
   const box = (target) => html.match(new RegExp(`<button[^>]*data-viz="${target}"[^>]*>`))[0];
-  assert.ok(box("input:1").includes('aria-expanded="true"'), "selected box not expanded");
-  assert.ok(!box("input:0").includes('aria-expanded="true"'), "unselected box expanded");
-  assert.ok(html.includes("is-open"), "selected box is not highlighted");
-  // A stale selection (out of range) selects nothing.
-  const stale = psbtVizHtml(doc, "mainnet", { kind: "input", index: 9 });
-  assert.ok(!stale.includes('aria-expanded="true"'), "out-of-range selection must be ignored");
+  // Each box names the section it jumps to; psbt-editor.js scrolls to the
+  // element carrying the matching data-psbted-section.
+  for (const target of ["input:0", "input:1", "output:0", "tx"]) {
+    assert.ok(box(target).includes(`data-viz="${target}"`), `${target} box is not a link`);
+  }
+  // Nothing opens in place any more, so no box carries an expanded state.
+  assert.ok(!html.includes("aria-expanded"), "a link must not claim to expand anything");
+  assert.ok(!html.includes("is-open"), "no box keeps a selected state");
 });
 
 test("the connector layer ships empty: the browser draws the lines with layout", () => {
@@ -177,22 +180,16 @@ test("the connector layer ships empty: the browser draws the lines with layout",
   assert.ok(!html.includes("<path"), "paths need layout; they must not be in the pure markup");
 });
 
-test("the transaction box is a button that opens the transaction fields", () => {
-  const doc = inspectValid();
-  const closed = psbtVizHtml(doc, "mainnet");
-  const txButton = closed.match(/<button[^>]*data-viz="tx"[^>]*>/);
+test("the transaction box is a button that links to the transaction fields", () => {
+  const html = psbtVizHtml(inspectValid(), "mainnet");
+  const txButton = html.match(/<button[^>]*data-viz="tx"[^>]*>/);
   assert.ok(txButton, "transaction box is not a button");
-  assert.ok(txButton[0].includes('aria-expanded="false"'), "transaction box starts closed");
-  const open = psbtVizHtml(doc, "mainnet", { kind: "tx" });
-  assert.ok(open.includes('class="psbted-viz-tx is-open"'), "open transaction box not highlighted");
-  assert.ok(open.match(/<button[^>]*data-viz="tx"[^>]*>/)[0].includes('aria-expanded="true"'), "open transaction box not expanded");
-  assert.ok(!open.includes('data-viz="input:0" aria-expanded="true"'), "transaction selection must not expand a map box");
+  assert.ok(/aria-label="Unsigned transaction: go to/.test(txButton[0]), "the tx box does not say where it goes");
 });
 
 test("fee states: known fee, negative fee, unknown fee", () => {
   const known = psbtVizHtml(syntheticDoc({ fee: { known: true, sats: 1412 } }), "mainnet");
   assert.ok(known.includes(`${sats("1412")} sats`), "known fee missing");
-  assert.ok(known.includes("(PSBT claim)"), "known fee is not marked as a claim");
   const negative = psbtVizHtml(syntheticDoc({ fee: { known: true, sats: null } }), "mainnet");
   assert.ok(negative.includes("outputs exceed claimed inputs"), "negative fee missing");
   const unknown = psbtVizHtml(syntheticDoc({ fee: { known: false } }), "mainnet");

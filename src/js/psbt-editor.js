@@ -11,7 +11,7 @@
 // build is kept below, marked stale. The unsigned transaction pair (global
 // key 00) is regenerated from the transaction section on every build, so it
 // is never edited directly.
-import { renderSVG as renderQrSvg } from "uqr";
+import { addressQrButtonHtml } from "./address-qr.js";
 import { addressFromScript } from "./addresses.js";
 import { psbtInspectDoc, psbtBuildBytes, psbtWasmReady } from "./psbt-wasm.js";
 import { comparePsbtDocs } from "./psbt-diff.js";
@@ -88,7 +88,6 @@ export const psbtQrPlan = (bytes) => {
   return { mode: "ur", parts: hodlUrEncodePsbt(bytes, { maxBytes: 200 }).map((part) => part.toUpperCase()) };
 };
 
-const QR_OPTIONS = { ecc: "M", border: 4, pixelSize: 4, blackColor: "#111111", whiteColor: "#ffffff" };
 
 const escapeHtml = (text) =>
   String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -512,7 +511,7 @@ export const psbtSanitizeHtml = (doc, title = "") => {
     <p class="label">PSBT format and origin checks</p>
     <p class="psbted-note-${tone}"><strong>${heading}${overall}</strong></p>
     <ul>${row("Duplicate keys", dup)}${row("Origin derivation", orig)}</ul>
-    <p class="muted">Format and origin-consistency facts from this file. Not a safety verdict.</p>
+    <p class="edge-note is-muted">Format and origin-consistency facts from this file. Not a safety verdict.</p>
   </section>`;
 };
 
@@ -548,7 +547,7 @@ export const psbtProblemsHtml = (doc, insane = false) => {
     <p class="psbted-note-${tone}"><strong>${escapeHtml(heading)}</strong>${gate ? ` — ${escapeHtml(gate)}` : ""}</p>
     ${items ? `<ul>${items}</ul>` : ""}
     ${doc.problemsTruncated ? `<p class="muted">List truncated; more problems exist than are shown.</p>` : ""}
-    <p class="muted">Checked against Bitcoin's consensus rules and BIP-174's signer checks, using the PSBT's own UTXO claims — amounts and scripts are not verified against the chain.</p>
+    <p class="edge-note is-muted">Checked against Bitcoin's consensus rules and BIP-174's signer checks, using the PSBT's own UTXO claims — amounts and scripts are not verified against the chain.</p>
   </section>`;
 };
 
@@ -556,7 +555,7 @@ export const psbtProblemsHtml = (doc, insane = false) => {
 // header network picker's choice, read through the `networkDefault` getter
 // (mainnet/testnet), and re-decoded live when the picker changes it (the
 // "hodl:network-default" document event).
-export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
+export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = () => "" } = {}) => {
   const load = document.getElementById("psbted-load");
   if (!load) return;
   const $ = (id) => document.getElementById(id);
@@ -568,11 +567,8 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
   let stale = false; // true while the current fields do not build; resultBytes is then the last valid build
   let pristineTx = null; // signingAnchor of the document the current signing pairs commit to; null while unknown
   let insane = $("psbted-insane")?.checked ?? false; // insane editing: the consensus layer reports but does not gate
-  let qrTimer = null; // animation timer of the UR fragment QR, when running
-  // Which flow-diagram part is open ({ kind: "input"|"output", index } for a
-  // box or { kind: "tx" } for the middle transaction box); its fields render
-  // in the panel under the diagram instead of inline.
-  let selected = null;
+  // Clears the highlight a diagram box leaves on the section it jumps to.
+  let anchorTimer = null;
 
   initExpandable();
   // Edits saved in the expandable editor window are field edits, exactly
@@ -599,11 +595,6 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
     setEnabled(load, Boolean(text.value.trim()));
     setEnabled($("psbted-wipe"), Boolean(doc || text.value.trim() || $("psbted-compare-text").value.trim()));
   };
-
-  // A report section opens on the hairline, a label with its count, and a
-  // grey line saying what the section holds — the PSBT Inspector's shape.
-  const sectionHeadHtml = (label, count, description) =>
-    `<hr class="result-divider"><p class="label">${label}${count === undefined ? "" : ` <span class="label-value">(${escapeHtml(String(count))})</span>`}</p><p class="muted label-description">${description}</p>`;
 
   const pairRows = (kind, map, mapIndex) => {
     const rows = map
@@ -638,15 +629,13 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
       <select data-add-type="${kind}:${mapIndex}" aria-label="New pair type">${options}<option value="" title="keydata field takes the full key: one type byte, then keydata">Custom type…</option></select>
       <input data-add-key="${kind}:${mapIndex}" placeholder="keydata (hex)" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="New pair keydata (hex)">
       <input data-add-val="${kind}:${mapIndex}" placeholder="value (hex)" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="New pair value (hex)">
-      <button type="button" class="btn secondary" data-add="${kind}:${mapIndex}">Add pair</button>
+      <button type="button" class="btn secondary" data-add="${kind}:${mapIndex}">Add Pair</button>
     </div>`;
   };
 
   const render = () => {
     // The result box is recreated here, so any running QR animation dies
     // with it; renderResult restarts it for the current build.
-    clearInterval(qrTimer);
-    qrTimer = null;
     syncActions();
     if (!doc) {
       out.innerHTML = "";
@@ -700,70 +689,54 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
           <td><input class="psbted-num" data-txout-val="${index}" value="${escapeHtml(String(output.value))}" inputmode="numeric" aria-label="Output ${index} value in sats"></td>
           <td><input class="psbted-txid" data-txout-script="${index}" value="${escapeHtml(output.scriptPubKey)}" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Output ${index} scriptPubKey (hex)">
             <span class="${opret?.burn ? "psbted-note-warn" : "muted"} psbted-addr">${escapeHtml(addr || opret?.text || output.asm || "")}</span>
-            <span class="psbted-build"><input data-build-script="${index}" placeholder="address · OP_… ASM · 0x raw hex · text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Build output ${index} scriptPubKey from an address, ASM, or OP_RETURN text"><select data-build-mode="${index}" aria-label="Output ${index} script builder mode"><option value="auto" selected>Auto-detect</option><option value="opreturn-text">OP_RETURN text</option><option value="opreturn-hex">OP_RETURN hex</option><option value="asm">Script ASM</option></select><button type="button" class="btn secondary" data-build-apply="${index}">Set script</button></span></td>
+            <span class="psbted-build"><input data-build-script="${index}" placeholder="address · OP_… ASM · 0x raw hex · text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Build output ${index} scriptPubKey from an address, ASM, or OP_RETURN text"><select data-build-mode="${index}" aria-label="Output ${index} script builder mode"><option value="auto" selected>Auto-detect</option><option value="opreturn-text">OP_RETURN text</option><option value="opreturn-hex">OP_RETURN hex</option><option value="asm">Script ASM</option></select><button type="button" class="btn secondary" data-build-apply="${index}">Set Script</button></span></td>
           <td><button type="button" class="psbted-del" data-txout-del="${index}" aria-label="Delete output ${index}">×</button></td>
         </tr>`;
       })
       .join("");
 
-    // One map section, rendered either inline (the default) or inside the
-    // flow diagram's detail panel when its box is selected there.
+    // One map section per PSBT part; a diagram box jumps to its own section.
     const mapSection = (kind, index) => {
       const map = kind === "input" ? doc.inputs[index] : doc.outputs[index];
-      const payee = kind === "output" ? addressFor(tx.outputs[index].scriptPubKey, network()) : "";
       const sub =
         kind === "input"
-          ? `Spends ${escapeHtml(tx.inputs[index].txid)}:${escapeHtml(String(tx.inputs[index].vout))}`
-          : `Pays <span class="psbt-amount">${escapeHtml(String(tx.outputs[index].value))} sats</span>${payee ? ` to <span class="psbt-address">${escapeHtml(payee)}</span>` : ""}`;
-      return `<section class="psbted-map card static-card"><p class="psbt-kv"><strong>${kind === "input" ? "Input" : "Output"} ${index} key-value map</strong><br>${sub}</p>${pairRows(kind, map, index)}</section>`;
+          ? `Spends <span class="psbt-address">${escapeHtml(tx.inputs[index].txid)}:${escapeHtml(String(tx.inputs[index].vout))}</span>`
+          : `Pays <span class="psbt-amount">${escapeHtml(String(tx.outputs[index].value))} sats</span>${addressFor(tx.outputs[index].scriptPubKey, network()) ? ` to <span class="psbt-address">${escapeHtml(addressFor(tx.outputs[index].scriptPubKey, network()))}</span>` : ""}`;
+      return `<section class="psbted-map" data-psbted-section="${kind}:${index}" tabindex="-1"><h3>${kind === "input" ? "Input" : "Output"} ${index} key-value map</h3><p class="muted label-description">${sub}</p>${pairRows(kind, map, index)}</section>`;
     };
     // The unsigned-transaction section, rendered either inline (the default)
     // or inside the detail panel when the diagram's transaction box is open.
-    const txSection = (inPanel = false) => `<section class="psbted-map">${inPanel
-          ? `<p class="label">Unsigned transaction</p>`
-          : sectionHeadHtml("Unsigned transaction", undefined, "The transaction the signatures commit to: its version, locktime, inputs and outputs")}
+    const txSection = () => `<section class="psbted-map" data-psbted-section="tx" tabindex="-1"><h3>Unsigned transaction</h3>
         <div class="psbted-txhead">
           <label>Version <input class="psbted-num" id="psbted-tx-version" value="${escapeHtml(String(tx.version))}" inputmode="numeric"></label>
           <label>Locktime <input class="psbted-num" id="psbted-tx-locktime" value="${escapeHtml(String(tx.locktime))}" inputmode="numeric"></label>
         </div>
+        <p class="label">Inputs</p>
         <table class="psbted-pairs psbted-txins"><thead><tr><th class="psbted-idx">#</th><th>Previous txid</th><th class="psbted-col-vout">vout</th><th class="psbted-col-seq">sequence</th><th class="psbted-col-del"></th></tr></thead><tbody>${inputRows}</tbody></table>
-        <div class="psbted-add-el"><button type="button" class="btn secondary" data-tx-add="input">Add input</button></div>
+        <div class="psbted-add-el"><button type="button" class="btn secondary" data-tx-add="input">Add Input</button></div>
+        <p class="label">Outputs</p>
         <table class="psbted-pairs psbted-txouts"><thead><tr><th class="psbted-idx">#</th><th class="psbted-col-val">Value (sats)</th><th>scriptPubKey</th><th class="psbted-col-del"></th></tr></thead><tbody>${outputRows}</tbody></table>
-        <div class="psbted-add-el"><button type="button" class="btn secondary" data-tx-add="output">Add output</button></div>
+        <div class="psbted-add-el"><button type="button" class="btn secondary" data-tx-add="output">Add Output</button></div>
       </section>`;
-    const isSelected = (kind, index) => selected && selected.kind === kind && (kind === "tx" || selected.index === index);
-    const inputSections = doc.inputs.map((_, index) => (isSelected("input", index) ? "" : mapSection("input", index))).join("");
-    const outputSections = doc.outputs.map((_, index) => (isSelected("output", index) ? "" : mapSection("output", index))).join("");
-    const detail = selected
-      ? `<div class="psbted-viz-detail" id="psbted-viz-detail">
-          <div class="psbted-viz-detail-bar">
-            <p class="muted">Fields of ${selected.kind === "tx" ? "the unsigned transaction" : `${selected.kind} ${selected.index}`}, moved here from below. Activate its box again (or ×) to put them back.</p>
-            <button type="button" class="psbted-del" data-viz-close aria-label="Close the ${selected.kind === "tx" ? "unsigned transaction" : `${selected.kind} ${selected.index}`} fields">×</button>
-          </div>
-          ${selected.kind === "tx" ? txSection(true) : mapSection(selected.kind, selected.index)}
-        </div>`
-      : "";
+    const inputSections = doc.inputs.map((_, index) => mapSection("input", index)).join("");
+    const outputSections = doc.outputs.map((_, index) => mapSection("output", index)).join("");
 
     out.innerHTML = `
-      <p class="psbt-kv"><strong>PSBT v${escapeHtml(String(doc.psbtVersion))}</strong> · ${tx.inputs.length} input(s) · ${tx.outputs.length} output(s)<br>Fee: ${fee}<br>${verdict}<br>${sanity}</p>
-      <p class="edge-note ${stale ? "is-private" : "is-muted"}" id="psbted-status" aria-live="polite">${stale ? "The fields do not build right now — see the error below; the edited PSBT is the last valid build." : "Every edit rebuilds the PSBT immediately; the fields show rust-bitcoin's decode of the current build."}</p>
+      <p class="edge-note ${stale ? "is-private" : "is-muted"}" id="psbted-status" aria-live="polite">${stale ? "The fields do not build right now — see the error above; the result below is the last valid build." : "Every edit rebuilds the PSBT immediately; the fields show rust-bitcoin's decode of the current build."}</p>
+      <p class="edge-note is-public">Fees and input amounts shown here are unverified PSBT claims; the editor does not check them against previous transactions or the blockchain. Nothing is signed or broadcast.</p>
+      <p class="psbt-kv"><strong>PSBT v${escapeHtml(String(doc.psbtVersion))}</strong> · ${tx.inputs.length} input(s) · ${tx.outputs.length} output(s)<br><span class="psbt-amount">fee ${fee}</span><br>${verdict}<br>${sanity}</p>
 
-      ${sectionHeadHtml("Transaction flow", undefined, "Where the coins come from and go. Activate a box to open its fields under the diagram.")}
-      ${psbtVizHtml(doc, network(), selected)}
-      ${detail}
+      ${psbtVizHtml(doc, network())}
 
-      ${isSelected("tx") ? "" : txSection()}
+      ${txSection()}
 
-      ${sectionHeadHtml("Key-value maps", 1 + doc.inputs.length + doc.outputs.length, "The global map, then one map per input and output")}
-      <section class="psbted-map card static-card"><p class="psbt-kv"><strong>Global key-value map</strong></p>${pairRows("global", doc.globals, 0)}</section>
+      <section class="psbted-map"><h3>Global key-value map</h3>${pairRows("global", doc.globals, 0)}</section>
       ${inputSections}
       ${outputSections}
 
-      <hr class="result-divider">
       ${psbtProblemsHtml(doc, insane)}
       ${psbtSanitizeHtml(doc)}
 
-      ${sectionHeadHtml("Edited PSBT", undefined, "The rebuilt file, ready to copy, download, or load back into the editor")}
       <div id="psbted-result"></div>`;
 
     bind();
@@ -772,8 +745,6 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
   const renderResult = () => {
     const box = document.getElementById("psbted-result");
     if (!box) return;
-    clearInterval(qrTimer);
-    qrTimer = null;
     if (!resultBytes) {
       box.innerHTML = "";
       return;
@@ -803,34 +774,38 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
     box.innerHTML = `
       ${stale ? `<p class="psbted-note-warn" id="psbted-stale-note">The fields do not build right now — this is the last valid build. Export is unavailable until they build again.</p>` : ""}
       ${verdictLine}
-      <label class="field">Edited PSBT (base64)<textarea id="psbted-result-b64" readonly spellcheck="false"${gated}>${stale ? "" : escapeHtml(b64)}</textarea></label>
+      <p class="label copy-field-label" id="psbted-result-b64-label">Edited PSBT (base64)${stale ? "" : addressQrButtonHtml(b64, "Edited PSBT (base64)", { animate: "psbt" })}<span class="copy-status copy-field-status" id="psbted-copied-b64" aria-live="polite"></span></p>
+      <div class="psbted-result-value" id="psbted-result-b64" aria-labelledby="psbted-result-b64-label">${stale ? "" : escapeHtml(b64)}</div>
+      <p class="label copy-field-label" id="psbted-result-hex-label">Edited PSBT (hex)${stale ? "" : addressQrButtonHtml(hex, "Edited PSBT (hex)", { animate: "psbt" })}<span class="copy-status copy-field-status" id="psbted-copied-hex" aria-live="polite"></span></p>
+      <div class="psbted-result-value" id="psbted-result-hex" aria-labelledby="psbted-result-hex-label">${stale ? "" : escapeHtml(hex)}</div>
       <div class="row psbt-actions tool-actions">
-        <button class="btn secondary" id="psbted-copy-b64" type="button"${gated}>Copy Base64</button>
-        <button class="btn secondary" id="psbted-copy-hex" type="button"${gated}>Copy Hex</button>
-        <button class="btn secondary" id="psbted-download" type="button"${gated}>Download .psbt</button>
-        <button class="btn secondary" id="psbted-reload" type="button"${gated}>Load into Editor</button>
+        <button class="btn secondary" id="psbted-copy-b64" type="button"${gated}>Copy Edited Base64</button>
+        <button class="btn secondary" id="psbted-copy-hex" type="button"${gated}>Copy Edited Hex</button>
+        <button class="btn secondary" id="psbted-download" type="button"${gated}>Download Edited .psbt</button>
       </div>
-      <label class="field">Edited PSBT (hex)<textarea id="psbted-result-hex" readonly spellcheck="false"${gated}>${stale ? "" : escapeHtml(hex)}</textarea></label>
-      <div class="psbted-qr-block">
-        <div class="qr psbted-qr" id="psbted-qr-code"></div>
-        <p class="muted" id="psbted-qr-note">${stale ? "QR unavailable until the fields build again." : ""}</p>
-      </div>`;
+`;
     if (stale) return;
     // Every handler re-checks stale: the keystroke path only disables these
     // buttons, and a synthetic dispatchEvent still fires a disabled button's
     // handlers, which close over the last valid build's bytes (issue #320).
+    // A copy confirms on its own label, beside the QR button, the way every
+    // other long value in the app confirms.
+    const confirmCopy = (id) => {
+      const note = $(id);
+      if (!note) return;
+      note.innerHTML = `${copiedIcon()}Copied`;
+      clearTimeout(note.copiedTimer);
+      note.copiedTimer = setTimeout(() => {
+        if (note.isConnected) note.textContent = "";
+      }, 1600);
+    };
     $("psbted-copy-b64").onclick = () => {
       if (stale) return;
-      navigator.clipboard?.writeText(b64).catch(() => {});
+      navigator.clipboard?.writeText(b64).then(() => confirmCopy("psbted-copied-b64")).catch(() => {});
     };
     $("psbted-copy-hex").onclick = () => {
       if (stale) return;
-      navigator.clipboard?.writeText(hex).catch(() => {});
-    };
-    $("psbted-reload").onclick = () => {
-      if (stale) return;
-      text.value = b64;
-      loadFromText();
+      navigator.clipboard?.writeText(hex).then(() => confirmCopy("psbted-copied-hex")).catch(() => {});
     };
     // The binary download round-trips with wallet software: Sparrow and
     // Coldcard read the .psbt file this produces.
@@ -843,31 +818,6 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     };
-    setupQr();
-  };
-
-  // The QR under the result: one static code for small PSBTs, an animated
-  // ur:crypto-psbt sequence (cycled here) for larger ones.
-  const setupQr = () => {
-    const target = document.getElementById("psbted-qr-code");
-    const note = document.getElementById("psbted-qr-note");
-    if (!target || !note || !resultBytes) return;
-    const plan = psbtQrPlan(resultBytes);
-    if (plan.mode === "static") {
-      target.innerHTML = renderQrSvg(plan.text, QR_OPTIONS);
-      target.setAttribute("aria-label", "Edited PSBT as a base64 QR code");
-      note.textContent = "Static QR: the edited PSBT as base64.";
-      return;
-    }
-    let frame = 0;
-    const draw = () => {
-      target.innerHTML = renderQrSvg(plan.parts[frame], QR_OPTIONS);
-      note.textContent = `Animated UR crypto-psbt · part ${frame + 1} of ${plan.parts.length} — Sparrow, SeedSigner and Coldcard Q scan these.`;
-      frame = (frame + 1) % plan.parts.length;
-    };
-    target.setAttribute("aria-label", "Edited PSBT as an animated UR crypto-psbt QR sequence");
-    draw();
-    qrTimer = setInterval(draw, 600);
   };
 
   // Marks the intact result panel as the last valid build — used when a
@@ -877,40 +827,42 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
   // and a disabled, readonly textarea's content is still selectable and
   // copyable in Firefox, so disabling alone is not a boundary (issue #320).
   const markResultStale = () => {
+    // The status line is rendered by render(), which a stale keystroke never
+    // reaches, so the red state is painted here instead of only in the template.
+    const status = document.getElementById("psbted-status");
+    if (status) {
+      status.className = "edge-note is-private";
+      status.textContent = "The fields do not build right now — see the error above; the result below is the last valid build.";
+    }
     const box = document.getElementById("psbted-result");
     if (!box || !resultBytes) return;
     box.classList.add("psbted-stale");
     const note = document.getElementById("psbted-stale-note");
     if (note) note.textContent = "The fields do not build right now — this is the last valid build. Export is unavailable until they build again.";
     else box.insertAdjacentHTML("afterbegin", '<p class="psbted-note-warn" id="psbted-stale-note">The fields do not build right now — this is the last valid build. Export is unavailable until they build again.</p>');
-    for (const id of ["psbted-copy-b64", "psbted-copy-hex", "psbted-download", "psbted-reload", "psbted-result-b64", "psbted-result-hex"]) {
+    for (const id of ["psbted-copy-b64", "psbted-copy-hex", "psbted-download"]) {
       document.getElementById(id)?.setAttribute("disabled", "");
     }
     for (const id of ["psbted-result-b64", "psbted-result-hex"]) {
       const area = document.getElementById(id);
       if (area) {
-        // value= alone leaves the bytes in the DOM text (textContent /
-        // defaultValue); both go, so no copy of the stale bytes stays in
-        // the document at all.
+        // The readout holds the bytes as node text; clearing value too keeps
+        // the wipe complete if these ever go back to being fields.
         area.value = "";
         area.textContent = "";
       }
     }
-    clearInterval(qrTimer);
-    qrTimer = null;
-    const qr = document.getElementById("psbted-qr-code");
-    const qrNote = document.getElementById("psbted-qr-note");
-    if (qr) {
-      qr.innerHTML = "";
-      qr.removeAttribute("aria-label");
+    // The QR button carries the payload in a data attribute, so a stale build
+    // must lose the button too — otherwise the old bytes stay both scannable
+    // and present in the document (issue #320's boundary).
+    for (const id of ["psbted-result-b64-label", "psbted-result-hex-label"]) {
+      document.getElementById(id)?.querySelector("[data-address-qr]")?.remove();
     }
-    if (qrNote) qrNote.textContent = "QR unavailable until the fields build again.";
   };
 
   // The mempool.space-style connectors: a bezier from every input box into
   // the transaction box and from there out to every output box, drawn into
   // the diagram's (initially empty) SVG layer once the boxes have layout.
-  // The selected box's line comes to the front, like its accent border.
   const drawViz = () => {
     const viz = out.querySelector(".psbted-viz");
     const svg = viz?.querySelector(".psbted-viz-svg");
@@ -923,23 +875,23 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
       y: rect.top - origin.y + rect.height / 2,
     });
     const paths = [];
-    const link = (from, to, cls, open) => {
+    const link = (from, to, cls) => {
       // Horizontal S-curve (the mempool.space flow look); the bend spans
       // half the gap so the line leaves and arrives level.
       const bend = Math.max(24, Math.abs(to.x - from.x) / 2);
       const d = `M ${from.x} ${from.y} C ${from.x + bend} ${from.y}, ${to.x - bend} ${to.y}, ${to.x} ${to.y}`;
-      paths.push(`<path class="psbted-viz-line ${cls}${open ? " is-open" : ""}" d="${d}"/>`);
+      paths.push(`<path class="psbted-viz-line ${cls}" d="${d}"/>`);
     };
     const boxFor = (kind, index) => viz.querySelector(`[data-viz="${kind}:${index}"]`)?.closest(".psbted-viz-box");
     const txIn = edge(txRect, "left");
     doc.tx.inputs.forEach((_, index) => {
       const rect = boxFor("input", index)?.getBoundingClientRect();
-      if (rect) link(edge(rect, "right"), txIn, "psbted-viz-line-in", selected?.kind === "input" && selected.index === index);
+      if (rect) link(edge(rect, "right"), txIn, "psbted-viz-line-in");
     });
     const txOut = edge(txRect, "right");
     doc.tx.outputs.forEach((_, index) => {
       const rect = boxFor("output", index)?.getBoundingClientRect();
-      if (rect) link(txOut, edge(rect, "left"), "psbted-viz-line-out", selected?.kind === "output" && selected.index === index);
+      if (rect) link(txOut, edge(rect, "left"), "psbted-viz-line-out");
     });
     svg.setAttribute("viewBox", `0 0 ${boxRect.width} ${boxRect.height}`);
     svg.innerHTML = paths.join("");
@@ -1039,7 +991,6 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
 
   const loadFromText = () => {
     setError("");
-    selected = null;
     clearCompareReport(); // a different editor PSBT invalidates an old report
     try {
       doc = psbtInspectDoc(psbtBytesFromText(text.value));
@@ -1143,7 +1094,6 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
     out.querySelectorAll("[data-tx-add]").forEach((button) =>
       button.addEventListener("click", () => {
         setError("");
-        selected = null;
         mutate((draft) => {
           if (button.dataset.txAdd === "input") {
             draft.tx.inputs.push({ txid: "0".repeat(64), vout: 0, scriptSig: "", sequence: 4294967295 });
@@ -1158,7 +1108,6 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
     out.querySelectorAll("[data-txin-del]").forEach((button) =>
       button.addEventListener("click", () => {
         const index = Number(button.dataset.txinDel);
-        selected = null;
         mutate((draft) => {
           draft.tx.inputs.splice(index, 1);
           draft.inputs.splice(index, 1);
@@ -1168,7 +1117,6 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
     out.querySelectorAll("[data-txout-del]").forEach((button) =>
       button.addEventListener("click", () => {
         const index = Number(button.dataset.txoutDel);
-        selected = null;
         mutate((draft) => {
           draft.tx.outputs.splice(index, 1);
           draft.outputs.splice(index, 1);
@@ -1201,29 +1149,21 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
       })
     );
 
-    // Flow-diagram boxes (and the middle transaction box) toggle the detail
-    // panel under the diagram; the part's fields render there (and out of
-    // the sections list) while open.
-    const vizTarget = (part) => (part.kind === "tx" ? "tx" : `${part.kind}:${part.index}`);
+    // Flow-diagram boxes are links into the sections below: the fields never
+    // move, the section is scrolled to, focused, and briefly highlighted so
+    // the eye lands on the part the box named.
     out.querySelectorAll("[data-viz]").forEach((button) =>
       button.addEventListener("click", () => {
-        const [kind, indexText] = button.dataset.viz.split(":");
-        const part = kind === "tx" ? { kind } : { kind, index: Number(indexText) };
-        const closing = selected && selected.kind === part.kind && (part.kind === "tx" || selected.index === part.index);
-        selected = closing ? null : part;
-        render();
-        renderResult();
-        // Keep focus on the control that reflects the new state.
-        (closing ? out.querySelector(`[data-viz="${vizTarget(part)}"]`) : out.querySelector("[data-viz-close]"))?.focus();
+        const section = out.querySelector(`[data-psbted-section="${button.dataset.viz}"]`);
+        if (!section) return;
+        clearTimeout(anchorTimer);
+        out.querySelectorAll(".is-anchored").forEach((el) => el.classList.remove("is-anchored"));
+        section.scrollIntoView({ behavior: "smooth", block: "start" });
+        section.classList.add("is-anchored");
+        section.focus({ preventScroll: true });
+        anchorTimer = setTimeout(() => section.classList.remove("is-anchored"), 2400);
       })
     );
-    out.querySelector("[data-viz-close]")?.addEventListener("click", () => {
-      const focusBack = selected ? `[data-viz="${vizTarget(selected)}"]` : null;
-      selected = null;
-      render();
-      renderResult();
-      if (focusBack) out.querySelector(focusBack)?.focus();
-    });
 
     out.querySelectorAll(".psbted-value").forEach((input) =>
       input.addEventListener("input", () => {
@@ -1321,7 +1261,6 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet" } = {}) => {
     resultBytes = null;
     stale = false;
     pristineTx = null;
-    selected = null;
     text.value = "";
     setError("");
     compareText.value = "";

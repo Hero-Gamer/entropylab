@@ -8,13 +8,13 @@
 // with Node alone. CI rebuilds them from the Rust sources (pinned by each
 // crate's rust-toolchain.toml and Cargo.lock) and runs the WASM test suites
 // against the fresh build, so a stale committed copy cannot survive; the
-// artifact job commits the runner's copy back after each merge. Builds are
-// path-independent (see the remaps below), so the reproduce CI job proves
-// byte identity across staging paths inside the dev image; across machines
-// the bytes still depend on the builder's clang (the C side of
-// secp256k1-sys), which is why the pinned dev image is the canonical build
-// environment. Build-host paths are remapped below so the binaries do not
-// carry the builder's home directory.
+// artifact job commits that image build back after each merge. Builds are
+// path-independent (see the remaps below). Release bytes are whatever the
+// pinned dev image's clang produces; a host clang is a different compiler
+// and is not those bytes. SOURCE_DATE_EPOCH is set to the commit time so a
+// compiler that reads the clock (clang's __DATE__/__TIME__) cannot put the
+// build time into the bytes; nothing in the locked crates reads it today.
+// Build-host paths are remapped below.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -22,6 +22,24 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
+
+// A root-owned checkout (the CI container) makes git refuse with "dubious
+// ownership" unless the invocation trusts the mount. Keep git's own error:
+// a missing timestamp must not be replaced with a guess.
+if (!process.env.SOURCE_DATE_EPOCH) {
+  try {
+    const epoch = execFileSync(
+      "git",
+      ["-c", "safe.directory=*", "log", "-1", "--format=%ct"],
+      { cwd: root, encoding: "utf8" },
+    ).trim();
+    if (!/^\d+$/.test(epoch)) throw new Error(`unusable commit timestamp: ${epoch}`);
+    process.env.SOURCE_DATE_EPOCH = epoch;
+  } catch (error) {
+    const detail = `${error.stderr ?? ""}`.trim() || error.message;
+    throw new Error(`SOURCE_DATE_EPOCH is unset and the commit timestamp could not be read: ${detail}`);
+  }
+}
 
 // Without a remap, rustc bakes the builder's absolute paths (e.g.
 // /home/<user>/.cargo/...) into panicking code of registry sources, which

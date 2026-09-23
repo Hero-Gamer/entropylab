@@ -34,3 +34,99 @@ test("all WASM crates and the dev image pin the same Rust channel", () => {
   assert.ok(image, "Dockerfile adds the wasm target for an explicit toolchain");
   assert.equal(image[1], channels[0]);
 });
+
+test("the dev image pins linux/amd64, one Ubuntu snapshot, and exact clang", () => {
+  const dockerfile = read("Dockerfile");
+  assert.match(dockerfile, /^FROM --platform=linux\/amd64 ubuntu:24\.04@sha256:496754492fb28b4d3049432f2ca787449331e23fb14f0dd3fffea86bf5a93eb4$/m);
+  assert.doesNotMatch(dockerfile, /sha256:69cecf4bbf72d2d44a9eef1b71fb98c7fb973d78af11399deccef19beb008ad9/, "the multi-arch index is not a clang pin");
+  assert.match(dockerfile, /^ARG UBUNTU_SNAPSHOT=20260916T000000Z$/m);
+  assert.match(dockerfile, /snapshot\.ubuntu\.com\/ubuntu\/\$\{UBUNTU_SNAPSHOT\}/);
+  assert.match(dockerfile, /^ARG CLANG_VERSION=1:18\.0-59~exp2$/m);
+  assert.match(dockerfile, /^ARG CLANG18_VERSION=1:18\.1\.3-1ubuntu1$/m);
+  assert.match(dockerfile, /"clang=\$\{CLANG_VERSION\}"/);
+  assert.match(dockerfile, /"clang-18=\$\{CLANG18_VERSION\}"/);
+  // clang-18 pins libllvm18 and friends with `=` but only lower-bounds
+  // libclang-cpp18, which the clang binary links.
+  assert.match(dockerfile, /"libclang-cpp18=\$\{CLANG18_VERSION\}"/);
+  assert.match(dockerfile, /snapshot="https:\/\/snapshot\.ubuntu\.com\/ubuntu\/\$\{UBUNTU_SNAPSHOT\}"/, "the snapshot is fetched over https");
+  assert.doesNotMatch(dockerfile, /http:\/\/snapshot\.ubuntu\.com/, "the snapshot service is served over https");
+});
+
+test("the snapshot bootstrap skips TLS peer checks for ca-certificates only, and fails loudly", () => {
+  const dockerfile = read("Dockerfile");
+  // The base image has no CA bundle. Only the first index fetch and the
+  // ca-certificates install may skip peer checks (apt's InRelease signature
+  // check still covers both); every later apt call verifies TLS.
+  const unverified = (dockerfile.match(/^.*Verify-Peer=false.*$/gm) ?? []).map((line) => line.trim());
+  assert.deepEqual(unverified, [
+    "apt-get -o Acquire::https::Verify-Peer=false update --error-on=any; \\",
+    "apt-get -o Acquire::https::Verify-Peer=false install -y --no-install-recommends \\",
+  ]);
+  assert.match(dockerfile, /Verify-Peer=false install -y --no-install-recommends \\\n\s+ca-certificates; \\\n\s+apt-get update --error-on=any; \\\n/);
+  assert.doesNotMatch(dockerfile, /apt\.conf/, "the bootstrap option must not persist into apt configuration");
+  // Without --error-on=any a failed index fetch is only a warning, and the
+  // build dies later on "Unable to locate package" (exit 100).
+  assert.match(dockerfile, /^\s+apt-get update --error-on=any; \\$/m);
+  // A sources file the sed does not fully rewrite must stop the build rather
+  // than install from the live archive.
+  assert.match(dockerfile, /pinned=\$\(grep -c "\^URIs: \$\{snapshot\}\/\*\$" "\$sources" \|\| true\)/);
+  assert.match(dockerfile, /if \[ "\$uris" -eq 0 \] \|\| \[ "\$pinned" -ne "\$uris" \]; then/);
+});
+
+test("build-wasm compiles inside that image and stamps the commit time", () => {
+  const workflow = read(".github/workflows/ci-cd.yml");
+  const job = workflow.match(/^  build-wasm:\n[\s\S]*?(?=^  [\w-]+:)/m)?.[0] ?? "";
+  assert.match(job, /platforms: linux\/amd64/);
+  // A real command line inside the container script, not a mention of it.
+  assert.match(job, /docker run --rm --platform linux\/amd64 [\s\S]*?entropylab-dev:local[\s\S]*?^ +npm run build:wasm$/m);
+  assert.match(job, /safe\.directory \/workspace/);
+  assert.doesNotMatch(job, /rm -rf/, "the runner must not delete root-owned target directories");
+  const source = read("scripts/build-wasm.mjs");
+  assert.match(source, /safe\.directory=\*/);
+  assert.match(source, /SOURCE_DATE_EPOCH/);
+  assert.match(source, /--format=%ct/);
+});
+
+test("reproduce compares a second in-image build with the bytes the candidate publishes", () => {
+  const workflow = read(".github/workflows/ci-cd.yml");
+  const reproduce = workflow.match(/^  reproduce:\n[\s\S]*?(?=^  [\w-]+:)/m)?.[0] ?? "";
+  assert.match(reproduce, /^    needs: \[build-wasm\]/m);
+  assert.match(reproduce, /name: entropylab-wasm/);
+  assert.match(reproduce, /diff \/tmp\/wasm-first\.hashes \/tmp\/wasm-published\.hashes/);
+  assert.match(reproduce, /--platform linux\/amd64/);
+});
+
+// upload-artifact roots a multi-file artifact at the least common ancestor of
+// its paths (actions/upload-artifact, src/shared/search.ts), and
+// download-artifact extracts a named artifact straight into `path`. This
+// models that layout so every job that downloads the WASM modules reads them
+// where they actually land, not where the upload found them.
+function artifactEntries(paths) {
+  const split = paths.map((path) => path.split("/"));
+  let depth = 0;
+  while (split.every((parts) => depth < parts.length - 1 && parts[depth] === split[0][depth])) depth += 1;
+  return split.map((parts) => parts.slice(depth).join("/"));
+}
+const workflowJob = (workflow, name) =>
+  workflow.match(new RegExp(`^  ${name}:\\n[\\s\\S]*?(?=^  [\\w-]+:|(?![\\s\\S]))`, "m"))?.[0] ?? "";
+const workflowSteps = (job) => job.match(/^      - [\s\S]*?(?=^      - |(?![\s\S]))/gm) ?? [];
+const artifactStep = (job, action) =>
+  workflowSteps(job).find((step) => step.includes(`actions/${action}@`) && /^\s+name: entropylab-wasm$/m.test(step)) ?? "";
+
+test("the uploaded WASM modules land where every downstream job reads them", () => {
+  const workflow = read(".github/workflows/ci-cd.yml");
+  const uploaded = artifactStep(workflowJob(workflow, "build-wasm"), "upload-artifact")
+    .match(/path: \|\n((?: {12}\S+\n)+)/)?.[1].trim().split(/\s+/) ?? [];
+  assert.deepEqual(uploaded, ["src/js/entropylab-wasm-b64.js", "src/js/psbt-wasm-b64.js", "src/js/vanity-wasm-b64.js"]);
+  const entries = artifactEntries(uploaded);
+  assert.deepEqual(entries, ["entropylab-wasm-b64.js", "psbt-wasm-b64.js", "vanity-wasm-b64.js"], "the artifact is rooted at src/js");
+  const downloadDir = (name) => artifactStep(workflowJob(workflow, name), "download-artifact").match(/^\s+path: (\S+)$/m)?.[1];
+  // The site build consumes the fresh modules in place of the committed ones.
+  assert.deepEqual(entries.map((entry) => `${downloadDir("build")}/${entry}`), uploaded);
+  // reproduce hashes them inside the container, through the /workspace mount.
+  const reproduce = workflowJob(workflow, "reproduce");
+  for (const entry of entries) {
+    const landed = `/workspace/${downloadDir("reproduce")}/${entry}`;
+    assert.ok(reproduce.includes(`${landed} `) || reproduce.includes(`${landed}\n`), `reproduce must hash ${landed}, where the download puts it`);
+  }
+});

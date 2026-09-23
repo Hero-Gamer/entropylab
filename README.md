@@ -363,6 +363,14 @@ sha256sum -c SHA256SUMS.txt
 gh attestation verify entropylab.html -R OogaBoogaX/entropylab
 ```
 
+The three WASM modules embedded in the HTML are committed as
+`src/js/*-wasm-b64.js`; their digests are in `WASM-SHA256SUMS.txt`, committed
+next to `SHA256SUMS.txt`. From a checkout of the release commit:
+
+```sh
+sha256sum -c WASM-SHA256SUMS.txt
+```
+
 The build is also **reproducible**: `entropylab.html` rebuilds byte-for-byte
 from the source commit stamped in its footer, so "CI built these bytes from
 that source" can be checked instead of trusted. Docker is the only
@@ -376,10 +384,11 @@ sha256sum entropylab.html       # compare with SHA256SUMS.txt
 ```
 
 This rebuilds the HTML from source using the committed WASM modules as fixed
-inputs. Rebuilding those modules themselves byte-for-byte (`npm run
-build:wasm`) additionally depends on the C compiler, which is what the pinned
-image fixes; CI proves the WASM build is at least path-independent on every
-pull request.
+inputs. Rebuilding those modules (`npm run build:wasm` inside the same image)
+uses the image's pinned clang. CI requires two such builds to match the
+modules it publishes: the artifact commit and the Pages deploy wait for that
+check. A host clang build is not those bytes, and a second machine has not
+yet been recorded as reproducing them.
 
 The checksum detects accidental corruption. The attestation (Sigstore) says
 this repository's CI built those bytes. OpenTimestamps says the digest
@@ -526,11 +535,12 @@ visualizer render script addresses through the WASM `addressFromScript`
 facade; the script builder's address-to-script conversion is the JavaScript
 exception described above. The compiled artifact is committed as `src/js/entropylab-wasm-b64.js`, so building the
 site needs only Node.js. CI
-rebuilds it from the Rust sources, runs its test suite against the fresh
-build, and commits the runner's copy back to `rock` after each merge (the
-same flow as the site artifact; byte identity across machines is not
-asserted, since the C side compiles with the builder's clang, and build-host
-paths are remapped out of the binary).
+rebuilds it inside the pinned dev image, runs its test suite against the
+fresh build, and commits that copy back to `rock` after each merge (the
+same flow as the site artifact). The image pins clang; a host clang build
+is not that copy. Build-host paths are remapped out of the binary.
+Cross-machine byte identity is not claimed until a second machine
+reproduces the published hashes in that image.
 
 PSBT parsing, typed field decoding, and re-serialization in the PSBT editor
 run on rust-bitcoin 0.32.102 compiled to WebAssembly from the pinned crate in

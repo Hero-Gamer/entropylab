@@ -48,9 +48,9 @@ const shortenMiddle = (text, head = 10, tail = 8) => {
 };
 
 // Digit grouping for the read-only amounts (a raw 9-digit sat count is
-// unscannable). Narrow no-break spaces keep a grouped number on one line.
+// unscannable). Commas, because any space renders full width in a mono font.
 // Editable fields (the output sats inputs) stay raw for typing.
-const groupSats = (value) => String(value).replace(/\B(?=(\d{3})+(?!\d))/g, "\u202f");
+const groupSats = (value) => String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
 // Well-known script templates, tagged like a block explorer would. Anything
 // else returns null and the box falls back to the raw script hex.
@@ -97,7 +97,7 @@ const signingStatus = (pairs) => {
   if (sigs) return { text: `${sigs} signature${sigs === 1 ? "" : "s"}`, tone: "" };
   const malformed = finals.length + pairs.filter((pair) => SIGNING_PAIR_NAMES.includes(pair.name)).length;
   if (malformed) return { text: "malformed signing field", tone: "psbted-note-bad" };
-  return { text: "unsigned", tone: "muted" };
+  return { text: "unsigned", tone: "psbted-note-bad" };
 };
 
 // sats null with every input claimed marks an invalid fee: the document's
@@ -140,7 +140,7 @@ const inputBox = (doc, index, network) => {
       <span class="psbted-viz-id psbted-viz-in"${address ? ` title="${escapeHtml(address)}"` : ""}>${escapeHtml(label)}</span>
     </button>
     <p class="psbted-viz-amount psbt-amount">${conflict ? `<span class="psbted-note-bad">conflicting claims: ${groupSats(conflict[0])} vs ${groupSats(conflict[1])} sats</span>` : claim ? `${groupSats(claim.value)} sats` : `<span class="muted">no amount claim</span>`}</p>
-    <p class="psbted-viz-sub" title="spends ${escapeHtml(input.txid)}:${escapeHtml(String(input.vout))}">${kind ? `<span class="psbted-viz-kind">${escapeHtml(kind)}</span> · ` : ""}<span class="${status.tone}">${escapeHtml(status.text)}</span></p>
+    <p class="psbted-viz-sub" title="spends ${escapeHtml(input.txid)}:${escapeHtml(String(input.vout))}">${kind ? `<span class="psbted-viz-kind">${escapeHtml(kind)}</span> · ` : ""}<span class="psbted-viz-status ${status.tone}">${escapeHtml(status.text)}</span></p>
   </div>`;
 };
 

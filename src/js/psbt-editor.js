@@ -586,14 +586,18 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = 
   };
 
   // Actions stay disabled until there is something to act on: Load waits on
-  // pasted text, End Session on anything loaded or typed.
+  // pasted text, End Session on anything loaded or typed, Compare on a loaded
+  // PSBT plus a pasted second one, Clear Comparison on any comparison input.
   const setEnabled = (button, on) => {
     button.disabled = !on;
     button.setAttribute("aria-disabled", String(!on));
   };
   const syncActions = () => {
+    const compareInput = $("psbted-compare-text").value.trim();
     setEnabled(load, Boolean(text.value.trim()));
-    setEnabled($("psbted-wipe"), Boolean(doc || text.value.trim() || $("psbted-compare-text").value.trim()));
+    setEnabled($("psbted-wipe"), Boolean(doc || text.value.trim() || compareInput));
+    setEnabled($("psbted-compare-go"), Boolean(doc && compareInput));
+    setEnabled($("psbted-compare-clear"), Boolean(compareInput || $("psbted-compare-out").innerHTML || $("psbted-compare-error").textContent));
   };
 
   const pairRows = (kind, map, mapIndex) => {
@@ -614,7 +618,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = 
           <td class="psbted-hex">${expandableHtml(pair.key, { label: `Key bytes for ${name} (hex)` })}</td>
           <td>${locked ? `<span class="muted">managed by the transaction section</span>` : valueCell}</td>
           <td${tone}>${expandableHtml(note.text, { label: `${name} — decoded` })}</td>
-          <td>${locked ? "" : `<button type="button" class="psbted-del" data-kind="${kind}" data-map="${mapIndex}" data-pair="${pairIndex}" aria-label="Delete ${escapeHtml(pair.name || "pair")}">×</button>`}</td>
+          <td>${locked ? "" : `<button type="button" class="btn red psbted-del" data-kind="${kind}" data-map="${mapIndex}" data-pair="${pairIndex}" aria-label="Delete ${escapeHtml(pair.name || "pair")}">×</button>`}</td>
         </tr>`;
       })
       .join("");
@@ -676,7 +680,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = 
           <td><input class="psbted-txid" data-txin="${index}" value="${escapeHtml(input.txid)}" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Input ${index} previous txid (hex)"></td>
           <td><input class="psbted-num" data-txin-vout="${index}" value="${escapeHtml(String(input.vout))}" inputmode="numeric" aria-label="Input ${index} prevout index"></td>
           <td><input class="psbted-num" data-txin-seq="${index}" value="${escapeHtml(String(input.sequence))}" inputmode="numeric" aria-label="Input ${index} sequence"></td>
-          <td>${tx.inputs.length > 1 ? `<button type="button" class="psbted-del" data-txin-del="${index}" aria-label="Delete input ${index}">×</button>` : ""}</td>
+          <td>${tx.inputs.length > 1 ? `<button type="button" class="btn red psbted-del" data-txin-del="${index}" aria-label="Delete input ${index}">×</button>` : ""}</td>
         </tr>`
       )
       .join("");
@@ -690,7 +694,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = 
           <td><input class="psbted-txid" data-txout-script="${index}" value="${escapeHtml(output.scriptPubKey)}" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Output ${index} scriptPubKey (hex)">
             <span class="${opret?.burn ? "psbted-note-warn" : "muted"} psbted-addr">${escapeHtml(addr || opret?.text || output.asm || "")}</span>
             <span class="psbted-build"><input data-build-script="${index}" placeholder="address · OP_… ASM · 0x raw hex · text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Build output ${index} scriptPubKey from an address, ASM, or OP_RETURN text"><select data-build-mode="${index}" aria-label="Output ${index} script builder mode"><option value="auto" selected>Auto-detect</option><option value="opreturn-text">OP_RETURN text</option><option value="opreturn-hex">OP_RETURN hex</option><option value="asm">Script ASM</option></select><button type="button" class="btn secondary" data-build-apply="${index}">Set Script</button></span></td>
-          <td><button type="button" class="psbted-del" data-txout-del="${index}" aria-label="Delete output ${index}">×</button></td>
+          <td><button type="button" class="btn red psbted-del" data-txout-del="${index}" aria-label="Delete output ${index}">×</button></td>
         </tr>`;
       })
       .join("");
@@ -701,7 +705,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = 
       const sub =
         kind === "input"
           ? `Spends <span class="psbt-address">${escapeHtml(tx.inputs[index].txid)}:${escapeHtml(String(tx.inputs[index].vout))}</span>`
-          : `Pays <span class="psbt-amount">${escapeHtml(String(tx.outputs[index].value))} sats</span>${addressFor(tx.outputs[index].scriptPubKey, network()) ? ` to <span class="psbt-address">${escapeHtml(addressFor(tx.outputs[index].scriptPubKey, network()))}</span>` : ""}`;
+          : `Pays <span class="psbt-amount">${escapeHtml(String(tx.outputs[index].value))} sats</span>${addressFor(tx.outputs[index].scriptPubKey, network()) ? ` to <span class="psbted-out-address">${escapeHtml(addressFor(tx.outputs[index].scriptPubKey, network()))}</span>` : ""}`;
       return `<section class="psbted-map" data-psbted-section="${kind}:${index}" tabindex="-1"><h3>${kind === "input" ? "Input" : "Output"} ${index} key-value map</h3><p class="muted label-description">${sub}</p>${pairRows(kind, map, index)}</section>`;
     };
     // The unsigned-transaction section, rendered either inline (the default)
@@ -1271,10 +1275,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = 
     psbtWasmReady
       .then(() => {
         clearCompareReport();
-        if (!doc) {
-          setCompareError("Load a PSBT above first.");
-          return;
-        }
+        if (!doc) return; // Compare is disabled until a PSBT is loaded
         let beforeDoc;
         try {
           // Both sides are compared as rust-bitcoin decodes of accepted

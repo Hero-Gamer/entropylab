@@ -3190,15 +3190,19 @@
     const box = await until(() => document.getElementById("psbted-text"), "PSBT editor input");
     const report = () => document.getElementById("psbted-compare-out").textContent;
     const compareError = () => document.getElementById("psbted-compare-error").textContent;
-    // Comparing with nothing in the editor is a plain error, not a crash.
+    // Compare waits on a loaded PSBT plus a pasted one; Clear Comparison on
+    // any comparison input.
+    const compareGo = document.getElementById("psbted-compare-go");
+    const compareClear = document.getElementById("psbted-compare-clear");
     document.getElementById("psbted-wipe").click();
+    assert(compareGo.disabled && compareClear.disabled, "comparison actions enabled with nothing entered");
     input(document.getElementById("psbted-compare-text"), vector);
-    document.getElementById("psbted-compare-go").click();
-    await until(() => compareError(), "compare with empty editor");
-    assert(compareError().includes("Load a PSBT"), "missing-editor error mismatch: " + compareError());
+    assert(compareGo.disabled, "Compare enabled with no PSBT loaded");
+    assert(!compareClear.disabled, "Clear Comparison disabled with a pasted comparison");
     input(box, vector);
     document.getElementById("psbted-load").click();
     await until(() => document.querySelector("#psbted-out .psbted-pairs"), "editor pair tables");
+    assert(!compareGo.disabled, "Compare disabled with both PSBTs supplied");
     // A fresh load clears any earlier comparison report.
     equal(report(), "", "stale comparison survived the load");
     const pristine = document.getElementById("psbted-result-b64").textContent;
@@ -3674,10 +3678,10 @@
     for (const target of ["input:0", "input:1", "output:0", "output:1"]) {
       assert(viz.querySelector(`[data-viz="${target}"]`), `diagram is missing box ${target}`);
     }
-    // Diagram amounts are digit-grouped (\u202f) for scanning; the field
+    // Diagram amounts are digit-grouped (commas) for scanning; the field
     // tables below keep raw digits for editing.
-    assert(viz.textContent.includes("100\u202f000\u202f000 sats"), "witness UTXO claim missing from the diagram");
-    assert(viz.textContent.includes("199\u202f909\u202f358 sats in total"), "outputs total missing from the diagram");
+    assert(viz.textContent.includes("100,000,000 sats"), "witness UTXO claim missing from the diagram");
+    assert(viz.textContent.includes("199,909,358 sats in total"), "outputs total missing from the diagram");
     assert(outText().includes("no amount claim"), "input without a UTXO pair must say so");
     assert(outText().includes("finalized"), "finalized input status missing");
     // One bezier connector per box: two into the transaction, two out.
@@ -3717,9 +3721,9 @@
     // LE): the live rebuild re-decodes the new claim into the diagram.
     const claim = section.querySelector('.psbted-value[data-kind="input"][data-map="1"][data-pair="0"]');
     input(claim, "60823b000000000017a9143545e6e33b832c47050f24d3eeb93c9c03948bc787");
-    await until(() => document.querySelector("#psbted-out .psbted-viz").textContent.includes("3\u202f900\u202f000 sats") || document.getElementById("psbted-error").textContent, "live rebuild of the claim");
+    await until(() => document.querySelector("#psbted-out .psbted-viz").textContent.includes("3,900,000 sats") || document.getElementById("psbted-error").textContent, "live rebuild of the claim");
     equal(document.getElementById("psbted-error").textContent, "", "live rebuild failed");
-    assert(document.querySelector("#psbted-out .psbted-viz").textContent.includes("3\u202f900\u202f000 sats"), "edited claim was not re-decoded into the diagram");
+    assert(document.querySelector("#psbted-out .psbted-viz").textContent.includes("3,900,000 sats"), "edited claim was not re-decoded into the diagram");
     // The output boxes edit the unsigned transaction inline (WYSIWYG).
     const sats = document.querySelector('.psbted-viz [data-txout-val="0"]');
     input(sats, "199902000");

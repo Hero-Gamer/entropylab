@@ -11,8 +11,10 @@
 // artifact job commits that image build back after each merge. Builds are
 // path-independent (see the remaps below). Release bytes are whatever the
 // pinned dev image's clang produces; a host clang is a different compiler
-// and is not those bytes. SOURCE_DATE_EPOCH is the commit time so the clock
-// is not in the binary. Build-host paths are remapped below.
+// and is not those bytes. SOURCE_DATE_EPOCH is set to the commit time so a
+// compiler that reads the clock (clang's __DATE__/__TIME__) cannot put the
+// build time into the bytes; nothing in the locked crates reads it today.
+// Build-host paths are remapped below.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";

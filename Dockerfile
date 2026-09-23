@@ -24,8 +24,9 @@
 #   (EDGE_BINARY selects a local Edge install; the image ships none)
 
 # linux/amd64 manifest of the previous index pin (sha256:69cecf4b…). An index
-# digest would select a different clang on another architecture. Apt is frozen
-# to one snapshot so the clang packages cannot move between image builds.
+# digest would select a different clang on another architecture. Ubuntu's
+# archive is frozen to one snapshot so the clang packages cannot move between
+# image builds (Google's Chrome repository below is not snapshotted).
 # Bump the digest, the snapshot, and the clang versions together.
 FROM --platform=linux/amd64 ubuntu:24.04@sha256:496754492fb28b4d3049432f2ca787449331e23fb14f0dd3fffea86bf5a93eb4
 
@@ -44,19 +45,43 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # System packages: git, compilers (the pinned clang builds libsecp256k1's
 # vendored C for wasm32), tarball tooling, fonts so the headless layout
-# checks measure real text metrics. clang-18's Depends pin libllvm18 and the
-# rest of that version, so one package version is the whole compiler.
-RUN sed -i \
-      -e "s|http://archive.ubuntu.com/ubuntu|http://snapshot.ubuntu.com/ubuntu/${UBUNTU_SNAPSHOT}|g" \
-      -e "s|http://security.ubuntu.com/ubuntu|http://snapshot.ubuntu.com/ubuntu/${UBUNTU_SNAPSHOT}|g" \
-      /etc/apt/sources.list.d/ubuntu.sources \
-    && apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl git gnupg xz-utils bzip2 sqlite3 python3 \
+# checks measure real text metrics. clang-18 pins libllvm18, libclang1-18,
+# libclang-common-18-dev and llvm-18-linker-tools to its own version but only
+# lower-bounds libclang-cpp18, which the clang binary links, so that one is
+# pinned here as well.
+#
+# snapshot.ubuntu.com is served over https and the base image has no CA
+# bundle, so the first index fetch and the ca-certificates install run with
+# TLS peer checks off. apt still checks the signed InRelease against the base
+# image's ubuntu-keyring, and every index and package hash under it — the
+# same guarantee the stock http:// archive relies on. Every apt call after
+# that verifies TLS. `--error-on=any` fails the build on a failed index fetch;
+# without it apt only warns and the build dies later on a missing package.
+RUN set -eu; \
+    sources=/etc/apt/sources.list.d/ubuntu.sources; \
+    snapshot="https://snapshot.ubuntu.com/ubuntu/${UBUNTU_SNAPSHOT}"; \
+    sed -i \
+      -e "s|http://archive.ubuntu.com/ubuntu|${snapshot}|g" \
+      -e "s|http://security.ubuntu.com/ubuntu|${snapshot}|g" \
+      "$sources"; \
+    uris=$(grep -c '^URIs:' "$sources" || true); \
+    pinned=$(grep -c "^URIs: ${snapshot}/*$" "$sources" || true); \
+    if [ "$uris" -eq 0 ] || [ "$pinned" -ne "$uris" ]; then \
+      echo "ubuntu.sources names a mirror other than ${snapshot}" >&2; \
+      exit 1; \
+    fi; \
+    apt-get -o Acquire::https::Verify-Peer=false update --error-on=any; \
+    apt-get -o Acquire::https::Verify-Peer=false install -y --no-install-recommends \
+      ca-certificates; \
+    apt-get update --error-on=any; \
+    apt-get install -y --no-install-recommends \
+      curl git gnupg xz-utils bzip2 sqlite3 python3 \
       build-essential \
       "clang=${CLANG_VERSION}" \
       "clang-18=${CLANG18_VERSION}" \
-      fontconfig fonts-liberation \
-    && rm -rf /var/lib/apt/lists/*
+      "libclang-cpp18=${CLANG18_VERSION}" \
+      fontconfig fonts-liberation; \
+    rm -rf /var/lib/apt/lists/*
 
 # Pinned Node.js (engines: >= 20.19; CI runs 22).
 RUN curl -fsSLO "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-linux-x64.tar.xz" \

@@ -27,7 +27,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const SKIP_DIR = new Set([".git", "node_modules", "target", "_site", ".cache"]);
 const SKIP_ROOT_FILE = (name) =>
   /^entropylab(?:-\d+(?:\.\d+)*)?\.html$/.test(name) ||
-  ["service-worker.js", "SHA256SUMS.txt", "CID.txt", "versions.json"].includes(name);
+  ["service-worker.js", "SHA256SUMS.txt", "WASM-SHA256SUMS.txt", "CID.txt", "versions.json"].includes(name);
 
 const filter = (src) => {
   const parts = relative(root, src).split(sep);

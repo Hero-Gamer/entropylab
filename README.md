@@ -352,8 +352,7 @@ file is still self-contained and never registers the hosted service worker.
 ### Verifying the download
 
 Every merge to `rock` publishes a `SHA256SUMS.txt` checksum manifest for
-`entropylab.html` and the three committed WASM modules (the same file,
-committed next to the HTML), a matching
+`entropylab.html` (committed next to it in this repository), a matching
 `CID.txt` (CIDv1 raw sha2-256 of those same bytes), a
 [GitHub artifact attestation](https://github.com/OogaBoogaX/entropylab/attestations)
 for the exact bytes built by CI, and an OpenTimestamps proof
@@ -364,8 +363,13 @@ sha256sum -c SHA256SUMS.txt
 gh attestation verify entropylab.html -R OogaBoogaX/entropylab
 ```
 
-`sha256sum -c` needs every file the manifest names: `entropylab.html` and the
-three WASM modules committed beside it.
+The three WASM modules embedded in the HTML are committed as
+`src/js/*-wasm-b64.js`; their digests are in `WASM-SHA256SUMS.txt`, committed
+next to `SHA256SUMS.txt`. From a checkout of the release commit:
+
+```sh
+sha256sum -c WASM-SHA256SUMS.txt
+```
 
 The build is also **reproducible**: `entropylab.html` rebuilds byte-for-byte
 from the source commit stamped in its footer, so "CI built these bytes from
@@ -382,8 +386,9 @@ sha256sum entropylab.html       # compare with SHA256SUMS.txt
 This rebuilds the HTML from source using the committed WASM modules as fixed
 inputs. Rebuilding those modules (`npm run build:wasm` inside the same image)
 uses the image's pinned clang. CI requires two such builds to match the
-modules it publishes. A host clang build is not those bytes, and a second
-machine has not yet been recorded as reproducing them.
+modules it publishes: the artifact commit and the Pages deploy wait for that
+check. A host clang build is not those bytes, and a second machine has not
+yet been recorded as reproducing them.
 
 The checksum detects accidental corruption. The attestation (Sigstore) says
 this repository's CI built those bytes. OpenTimestamps says the digest

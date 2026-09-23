@@ -75,8 +75,9 @@ browser test that asserts this must stay green.
   digests, and the `reproduce` CI job requires the same commit to build to
   identical bytes on the runner and inside the pinned dev image — including
   the WASM modules, built twice inside the image, and those builds must match
-  the modules the `build-wasm` job compiled in that same image. The image
-  pins one clang package. A host `npm run build:wasm` is not the release
+  the modules the `build-wasm` job compiled in that same image. The artifact
+  commit and the Pages deploy wait for that job. The image pins one clang
+  version. A host `npm run build:wasm` is not the release
   bytes. Cross-machine identity is not claimed until a second machine
   reproduces the published hashes in that image.
 

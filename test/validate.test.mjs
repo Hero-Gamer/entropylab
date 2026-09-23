@@ -199,7 +199,12 @@ test("the WASM boot chain has a failure path that kills the page", () => {
 test("the release build attests the wallet artifact and ships a checksum manifest (issue #58)", () => {
   const workflow = read(".github/workflows/ci-cd.yml");
   const build = workflow.match(/^  build:\n(?:.|\n)*?(?=^  [a-z-]+:)/m)?.[0] ?? "";
-  assert.match(build, /sha256sum[\s\S]*?entropylab\.html[\s\S]*?src\/js\/entropylab-wasm-b64\.js[\s\S]*?src\/js\/psbt-wasm-b64\.js[\s\S]*?src\/js\/vanity-wasm-b64\.js[\s\S]*?> SHA256SUMS\.txt/, "build must hash the HTML and the three WASM modules into SHA256SUMS.txt");
+  // SHA256SUMS.txt names only the HTML, so `sha256sum -c` passes for someone
+  // holding just the downloaded file. The modules get a manifest of their own.
+  const wasmSums = /sha256sum \\\n\s+src\/js\/entropylab-wasm-b64\.js \\\n\s+src\/js\/psbt-wasm-b64\.js \\\n\s+src\/js\/vanity-wasm-b64\.js \\\n\s+> WASM-SHA256SUMS\.txt\n/;
+  assert.match(build, /run: sha256sum entropylab\.html > SHA256SUMS\.txt\n/, "build must hash only the HTML into SHA256SUMS.txt");
+  assert.match(build, wasmSums, "build must hash exactly the three WASM modules into WASM-SHA256SUMS.txt");
+  assert.match(build, /name: entropylab-sha256sums\n\s+path: \|\n\s+SHA256SUMS\.txt\n\s+WASM-SHA256SUMS\.txt\n\s+CID\.txt\n/, "build must upload both manifests");
   assert.match(build, /node scripts\/cid\.mjs entropylab\.html > CID\.txt/, "build must generate CID.txt from the same HTML");
   assert.match(build, /actions\/attest-build-provenance@[0-9a-f]{40}/, "build must attest entropylab.html");
   assert.match(build, /subject-path: entropylab\.html/, "the attestation subject is the wallet HTML");
@@ -207,14 +212,16 @@ test("the release build attests the wallet artifact and ships a checksum manifes
   // Only merges to the default branch produce release attestations.
   assert.match(build, /if: github\.ref == 'refs\/heads\/rock' && github\.event_name == 'push'\n\s*uses: actions\/attest-build-provenance/);
   const artifact = workflow.match(/^  artifact:\n(?:.|\n)*?(?=^  [a-z-]+:)/m)?.[0] ?? "";
-  const artifactSums = artifact.match(/sha256sum[\s\S]*?> SHA256SUMS\.txt/);
-  assert.ok(artifactSums, "artifact must generate SHA256SUMS.txt");
-  for (const file of ["entropylab.html", "src/js/entropylab-wasm-b64.js", "src/js/psbt-wasm-b64.js", "src/js/vanity-wasm-b64.js"]) {
-    assert.match(artifactSums[0], new RegExp(file.replaceAll(".", "\\.")), `artifact checksum must include ${file}`);
+  assert.match(artifact, /run: sha256sum entropylab\.html > SHA256SUMS\.txt\n/, "artifact must hash only the HTML into SHA256SUMS.txt");
+  assert.match(artifact, wasmSums, "artifact must hash exactly the three WASM modules into WASM-SHA256SUMS.txt");
+  const commitLine = artifact.match(/^\s+git add -f ([^\n]+)$/m)?.[1].split(/\s+/) ?? [];
+  for (const file of ["entropylab.html", "SHA256SUMS.txt", "WASM-SHA256SUMS.txt", "CID.txt"]) {
+    assert.ok(commitLine.includes(file), `the committed artifact includes ${file}`);
   }
-  assert.match(artifact, /SHA256SUMS\.txt/, "the committed artifact includes the checksum manifest");
-  assert.match(artifact, /CID\.txt/, "the committed artifact includes the IPFS CID name");
-  assert.match(read("README.md"), /gh attestation verify entropylab\.html -R OogaBoogaX\/entropylab/);
+  const readme = read("README.md");
+  assert.match(readme, /^sha256sum -c SHA256SUMS\.txt$/m, "README verifies the download against the HTML-only manifest");
+  assert.match(readme, /^sha256sum -c WASM-SHA256SUMS\.txt/m, "README shows how to check the committed WASM modules");
+  assert.match(readme, /gh attestation verify entropylab\.html -R OogaBoogaX\/entropylab/);
   assert.match(read("README.md"), /ipfs block put --cid-codec=raw --allow-big-block/);
 });
 
@@ -396,8 +403,9 @@ test("every gate and publication path consumes the single tested candidate (issu
     assert.match(section, /sha256sum -c -/, `${job} must verify the candidate digest`);
     assert.doesNotMatch(section, /^\s+run: npm run build\s*$/m, `${job} must not rebuild the wallet HTML`);
   }
-  // The repository artifact cannot be committed when unit or browser tests fail.
-  for (const dependency of ["build", "verify", "test-ci", "test-browser", "build-wasm", "fuzz-lifehash", "fuzz-msig"]) {
+  // The repository artifact cannot be committed when unit or browser tests
+  // fail, or when a second in-image WASM build disagrees with the candidate.
+  for (const dependency of ["build", "verify", "test-ci", "test-browser", "build-wasm", "fuzz-lifehash", "fuzz-msig", "reproduce"]) {
     assert.ok(jobNeeds(workflowJob(workflow, "artifact")).includes(dependency), `artifact needs ${dependency}`);
   }
 });
@@ -408,28 +416,38 @@ test("third-party actions are immutable and deployment is test-gated", () => {
   for (const job of ["test-ci", "test-browser"]) {
     for (const dependency of ["build", "setup"]) assert.ok(jobNeeds(workflowJob(workflow, job)).includes(dependency), `${job} needs ${dependency}`);
   }
-  // The WASM gate must rebuild the bindings from the Rust sources, test the
-  // fresh build, and block both the artifact commit and the Pages deploy.
-  assert.match(workflowJob(workflow, "build-wasm"), /npm run build:wasm\n/);
-  assert.match(workflowJob(workflow, "build-wasm"), /docker run --rm --platform linux\/amd64[\s\S]*npm run build:wasm/);
+  // The WASM gate must rebuild the bindings from the Rust sources inside the
+  // pinned dev image, test the fresh build, and block both the artifact commit
+  // and the Pages deploy.
+  const rebuild = workflowSteps(workflowJob(workflow, "build-wasm")).find((step) => BUILD_WASM_COMMAND.test(step)) ?? "";
+  assert.match(rebuild, IN_IMAGE_BUILD, "build-wasm rebuilds the bindings inside the pinned dev image");
   assert.deepEqual(wasmGateProblems(workflow), []);
-  for (const dependency of ["build", "verify", "test-ci", "test-browser", "build-wasm", "fuzz-lifehash", "fuzz-msig"]) {
+  for (const dependency of ["build", "verify", "test-ci", "test-browser", "build-wasm", "fuzz-lifehash", "fuzz-msig", "reproduce"]) {
     assert.ok(jobNeeds(workflowJob(workflow, "deploy")).includes(dependency), `deploy needs ${dependency}`);
   }
 });
 
+// The rebuild only counts as `npm run build:wasm` alone on its own line — a
+// step's `run:` or a line of its script — never a comment or an argument that
+// merely mentions it. It must also run in the pinned dev image, whose clang
+// produces the release bytes, not on the runner.
+const BUILD_WASM_COMMAND = /^ +(?:run: )?npm run build:wasm$/m;
+const IN_IMAGE_BUILD = /docker run --rm --platform linux\/amd64 [\s\S]*?entropylab-dev:local[\s\S]*?^ +npm run build:wasm$/m;
+
 // The build-wasm gate only guards the crate if (a) the job rebuilds the
-// bindings before testing them, (b) the test step lives in the build-wasm job
-// itself, and (c) every suite that exercises the WASM boundary runs against
-// that fresh build. Returns the list of ways the gate is broken, so the same
-// check can be exercised against doctored workflows below.
+// bindings, in the pinned image, before testing them, (b) the test step lives
+// in the build-wasm job itself, and (c) every suite that exercises the WASM
+// boundary runs against that fresh build. Returns the list of ways the gate is
+// broken, so the same check can be exercised against doctored workflows below.
 function wasmGateProblems(workflow) {
   const problems = [];
   const job = workflowJob(workflow, "build-wasm");
   if (!job) return ["the build-wasm job is missing"];
-  const buildAt = job.search(/npm run build:wasm/);
+  const buildStep = workflowSteps(job).find((step) => BUILD_WASM_COMMAND.test(step));
+  const buildAt = buildStep ? job.indexOf(buildStep) : -1;
   const testAt = job.search(/^\s*run: node --test /m);
   if (buildAt === -1) problems.push("the build-wasm job never rebuilds the bindings from the Rust sources");
+  else if (!IN_IMAGE_BUILD.test(buildStep)) problems.push("the build-wasm rebuild does not run inside the pinned dev image");
   if (testAt === -1) {
     problems.push("the build-wasm job runs no test suites against the fresh build");
     return problems;
@@ -469,6 +487,25 @@ test("the WASM gate check detects its own failure modes", () => {
   assert.ok(
     wasmGateProblems(noTest).some((problem) => problem.includes("no test suites")),
     "deleting the fresh-build test step must be detected",
+  );
+  // A rebuild that survives only as a comment is no rebuild: the node suites
+  // would then test, and the job would upload, the committed modules.
+  const gateJob = workflowJob(workflow, "build-wasm");
+  const commented = workflow.replace(gateJob, gateJob.replace(/^( +)npm run build:wasm$/m, "$1true # npm run build:wasm"));
+  assert.notEqual(commented, workflow, "fixture: the in-image rebuild command must exist");
+  assert.ok(
+    wasmGateProblems(commented).some((problem) => problem.includes("never rebuilds")),
+    "a commented-out rebuild must be detected",
+  );
+  // A rebuild on the runner compiles with the runner's clang, not the image's.
+  const onRunner = workflow.replace(
+    /( {6}- name: Rebuild the WASM artifacts inside the pinned image\n)[\s\S]*?cargo test --locked --lib'\n/,
+    "$1        run: npm run build:wasm\n",
+  );
+  assert.notEqual(onRunner, workflow, "fixture: the in-image rebuild step must be replaceable");
+  assert.ok(
+    wasmGateProblems(onRunner).some((problem) => problem.includes("pinned dev image")),
+    "a rebuild outside the pinned image must be detected",
   );
   // test:ci also exercises the fresh modules delivered with the candidate.
   const ciScript = pkg.scripts["test:ci"];

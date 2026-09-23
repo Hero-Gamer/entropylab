@@ -74,14 +74,18 @@ jobs:
           path: src/js
       - name: Build static site
         run: npm run build
+      # SHA256SUMS.txt names only the HTML, so `sha256sum -c` works for anyone
+      # holding just the downloaded file. The WASM modules get their own
+      # manifest, checked from a checkout of the release commit.
       - name: Generate the SHA-256 checksum manifest
+        run: sha256sum entropylab.html > SHA256SUMS.txt
+      - name: Generate the WASM module checksum manifest
         run: |
           sha256sum \
-            entropylab.html \
             src/js/entropylab-wasm-b64.js \
             src/js/psbt-wasm-b64.js \
             src/js/vanity-wasm-b64.js \
-            > SHA256SUMS.txt
+            > WASM-SHA256SUMS.txt
       - name: Generate the IPFS CID name
         run: node scripts/cid.mjs entropylab.html > CID.txt
       - name: Attest the wallet artifact
@@ -95,6 +99,7 @@ jobs:
           name: entropylab-sha256sums
           path: |
             SHA256SUMS.txt
+            WASM-SHA256SUMS.txt
             CID.txt
           retention-days: 7
       - name: Record the candidate digest
@@ -136,8 +141,9 @@ jobs:
   # downstream consumer (including tests that import source modules or build
   # a hooks-enabled page). The post-merge job commits these same tested bytes,
   # not a second compilation. The compile runs in the pinned dev image so the
-  # clang is the image's clang, not the runner's. A second image build is
-  # checked by the reproduce job. Cross-machine identity is not claimed.
+  # clang is the image's clang, not the runner's. The reproduce job builds
+  # them again in that image, and the artifact commit and the Pages deploy
+  # wait for it to match. Cross-machine identity is not claimed.
   build-wasm:
     name: Build · WASM from Rust sources
     runs-on: ubuntu-latest
@@ -450,15 +456,16 @@ jobs:
         run: npm --prefix fuzzing run fuzz:msig
 
   # ── Artifact: commit the tested site after merges to rock ────────────────
-  # Gated on every behavioral job (unit, browser, structural, WASM), then
-  # commits the exact tested candidate — it never rebuilds the wallet HTML.
-  # The candidate also carries the exact WASM modules tested by build-wasm
-  # and embedded in the HTML; publication does not compile them again.
+  # Gated on every behavioral job (unit, browser, structural, WASM) and on the
+  # in-image WASM reproduction, then commits the exact tested candidate — it
+  # never rebuilds the wallet HTML. The candidate also carries the exact WASM
+  # modules tested by build-wasm and embedded in the HTML; publication does
+  # not compile them again.
 
   artifact:
     name: Artifact · commit tested site after merge
     if: github.ref == 'refs/heads/rock' && github.event_name == 'push'
-    needs: [build, verify, test-ci, test-browser, build-wasm, fuzz-lifehash, fuzz-msig]
+    needs: [build, verify, test-ci, test-browser, build-wasm, fuzz-lifehash, fuzz-msig, reproduce]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -478,20 +485,21 @@ jobs:
       - name: Verify the candidate digest
         run: echo "${{ needs.build.outputs.sha256 }}  entropylab.html" | sha256sum -c -
       - name: Generate the SHA-256 checksum manifest
+        run: sha256sum entropylab.html > SHA256SUMS.txt
+      - name: Generate the WASM module checksum manifest
         run: |
           sha256sum \
-            entropylab.html \
             src/js/entropylab-wasm-b64.js \
             src/js/psbt-wasm-b64.js \
             src/js/vanity-wasm-b64.js \
-            > SHA256SUMS.txt
+            > WASM-SHA256SUMS.txt
       - name: Generate the IPFS CID name
         run: node scripts/cid.mjs entropylab.html > CID.txt
       - name: Commit the generated artifact
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f entropylab.html src/js/entropylab-wasm-b64.js src/js/psbt-wasm-b64.js src/js/vanity-wasm-b64.js SHA256SUMS.txt CID.txt
+          git add -f entropylab.html src/js/entropylab-wasm-b64.js src/js/psbt-wasm-b64.js src/js/vanity-wasm-b64.js SHA256SUMS.txt WASM-SHA256SUMS.txt CID.txt
           if git diff --cached --quiet; then
             echo "Build output is unchanged; nothing to commit."
             exit 0
@@ -592,7 +600,8 @@ jobs:
   # image (those are the bytes the candidate publishes). A fresh image build
   # differing from the modules already committed on the branch stays a
   # warning: the artifact job writes the image bytes on the next rock merge,
-  # and that commit skips CI. Nothing that gates a merge `needs` this job.
+  # and that commit skips CI. The artifact commit and the Pages deploy `need`
+  # this job, so a mismatch stops publication.
 
   reproduce:
     name: Reproduce · byte-identical builds across environments
@@ -634,11 +643,14 @@ jobs:
               npm run build
               sha256sum entropylab.html service-worker.js | tee image.sums'
           diff runner.sums image.sums
+      # upload-artifact roots a multi-file upload at the paths' common parent
+      # (src/js), so the artifact holds bare file names; download them into
+      # published-wasm/src/js so they sit where the hash step reads them.
       - name: Download the modules build-wasm compiled in this image
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: entropylab-wasm
-          path: published-wasm
+          path: published-wasm/src/js
       # scripts/build-wasm.mjs needs no node_modules (node + cargo only), so
       # the second staging path is a bare clone. Hash-only diffs, because the
       # published copy lives at a different path than the fresh build.
@@ -699,12 +711,12 @@ jobs:
           FILES=$(git diff --name-only "origin/$PR_BASE"...HEAD | tr '\n' ' ')
           node scripts/i18n-gate.mjs --author "$PR_AUTHOR" --app-slug "$APP_SLUG" --base "$PR_BASE" --head "$PR_HEAD" --files $FILES
 
-  # ── Deploy: gated on a good build and a clean verify ──
+  # ── Deploy: gated on a good build, a clean verify, and the reproduction ──
 
   deploy:
     name: Deploy to GitHub Pages
     if: github.ref == 'refs/heads/rock' && github.event_name != 'pull_request'
-    needs: [build, verify, test-ci, test-browser, build-wasm, fuzz-lifehash, fuzz-msig]
+    needs: [build, verify, test-ci, test-browser, build-wasm, fuzz-lifehash, fuzz-msig, reproduce]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

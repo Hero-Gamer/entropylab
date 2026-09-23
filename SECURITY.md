@@ -53,8 +53,10 @@ material. Its security posture rests on the following model:
   publication does not compile a second WASM copy.
    CI compiles these modules inside the pinned dev image (one linux/amd64
    rootfs, one Ubuntu snapshot, clang 18.1.3) and requires a second build in
-   that image to match the bytes it publishes. A host clang is a different
-   compiler. Cross-machine byte identity is not claimed until those published
+   that image to match the bytes it publishes; the artifact commit and the
+   Pages deploy wait for that check. Their digests are published in
+   `WASM-SHA256SUMS.txt`. A host clang is a different compiler. Cross-machine
+   byte identity is not claimed until those published
    hashes are reproduced in that same image on a second machine. Build-host
    paths are remapped out of the binary.
   iOS/macOS Lockdown Mode disables WebAssembly. Exclude the site in Safari

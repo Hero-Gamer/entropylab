@@ -26,11 +26,15 @@ const escapeHtml = (text) =>
 // names the address ("Address #3") for the overlay title and the aria-label.
 // Addresses are public data, so the button is also shown in tables that
 // include a WIF column — but it only ever encodes the address.
-export const addressQrButtonHtml = (address, label) => {
+export const addressQrButtonHtml = (address, label, { animate = "" } = {}) => {
   const value = String(address ?? "");
   if (!value) return "";
   const caption = String(label ?? "") || value;
-  return `<button type="button" class="addr-qr no-print" data-address-qr="${escapeHtml(value)}" data-address-qr-label="${escapeHtml(caption)}" aria-label="${escapeHtml(t("Show QR code for {label}", { label: caption }))}">${escapeHtml(t("QR"))}</button>`;
+  // `animate` names a payload kind the overlay can ask its frames provider to
+  // split — a PSBT past a single code's capacity becomes a UR sequence rather
+  // than losing bytes or losing its button.
+  const animated = animate ? ` data-address-qr-animate="${escapeHtml(animate)}"` : "";
+  return `<button type="button" class="addr-qr no-print" data-address-qr="${escapeHtml(value)}" data-address-qr-label="${escapeHtml(caption)}"${animated} aria-label="${escapeHtml(t("Show QR code for {label}", { label: caption }))}">${escapeHtml(t("QR"))}</button>`;
 };
 
 // One shared overlay for every address table. `renderQr` is injected by the
@@ -38,7 +42,7 @@ export const addressQrButtonHtml = (address, label) => {
 // colors, size — stay defined next to every other QR the app renders. The
 // copy and copied icons come in the same way, so the address copy control
 // wears the glyphs every other copy button in the app does.
-export const initAddressQr = (renderQr, icons = {}) => {
+export const initAddressQr = (renderQr, icons = {}, { frames = null } = {}) => {
   if (typeof renderQr !== "function" || document.getElementById("addr-qr-overlay")) return;
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay addr-qr-overlay no-print";
@@ -52,6 +56,7 @@ export const initAddressQr = (renderQr, icons = {}) => {
     <div class="modal-card addr-qr-card" role="dialog" aria-modal="true" aria-labelledby="addr-qr-title">
       <p class="modal-title addr-qr-title" id="addr-qr-title"></p>
       <div class="qr addr-qr-image" id="addr-qr-image"></div>
+      <p class="field-note addr-qr-note" id="addr-qr-note" aria-live="polite"></p>
       <p class="addr-qr-address-row">
         <button type="button" class="mono addr-qr-address" id="addr-qr-address" tabindex="-1"></button>
         <button type="button" class="copy-button addr-qr-copy" id="addr-qr-copy"></button>
@@ -64,6 +69,7 @@ export const initAddressQr = (renderQr, icons = {}) => {
   document.body.append(overlay);
   const title = overlay.querySelector("#addr-qr-title"),
     image = overlay.querySelector("#addr-qr-image"),
+    note = overlay.querySelector("#addr-qr-note"),
     text = overlay.querySelector("#addr-qr-address"),
     copyButton = overlay.querySelector("#addr-qr-copy"),
     copiedNote = overlay.querySelector("#addr-qr-copied"),
@@ -76,6 +82,7 @@ export const initAddressQr = (renderQr, icons = {}) => {
   image.title = copyLabel;
   let button = null,
     payload = "", // the full value; the line above may show it shortened
+    frameTimer = 0, // cycling a UR sequence, when the payload needs one
     copiedTimer = 0;
 
   const resetCopied = () => {
@@ -122,6 +129,9 @@ export const initAddressQr = (renderQr, icons = {}) => {
 
   const close = () => {
     overlay.hidden = true;
+    clearInterval(frameTimer);
+    frameTimer = 0;
+    note.textContent = "";
     image.replaceChildren(); // drop the rendered QR so a closed overlay holds no stale address
     payload = "";
     resetCopied();
@@ -132,10 +142,33 @@ export const initAddressQr = (renderQr, icons = {}) => {
     const value = target.dataset.addressQr ?? "";
     if (!value) return;
     button = target;
+    clearInterval(frameTimer);
+    frameTimer = 0;
     title.textContent = target.dataset.addressQrLabel || value;
-    image.innerHTML = renderQr(value);
     payload = value;
     text.textContent = value.length > DISPLAY_LIMIT ? shortenMiddle(value) : value;
+    // A payload the provider splits is scanned as a sequence: one code could
+    // not hold it, and a truncated code would hand the signer a broken file.
+    const kind = target.dataset.addressQrAnimate || "";
+    const parts = kind && typeof frames === "function" ? frames(value, kind) : null;
+    if (Array.isArray(parts) && parts.length > 1) {
+      let frame = 0;
+      const draw = () => {
+        image.innerHTML = renderQr(parts[frame]);
+        note.textContent = t("Animated UR · part {n} of {total}. Keep scanning until your signer has every part.", { n: frame + 1, total: parts.length });
+        frame = (frame + 1) % parts.length;
+      };
+      draw();
+      frameTimer = setInterval(draw, 600);
+    } else {
+      note.textContent = "";
+      try {
+        image.innerHTML = renderQr(value);
+      } catch {
+        image.replaceChildren();
+        note.textContent = t("This value is too large for a single QR code.");
+      }
+    }
     resetCopied();
     overlay.hidden = false;
     closeButton.focus();

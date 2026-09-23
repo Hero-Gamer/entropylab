@@ -110,3 +110,26 @@ test("the rebuild verdict names the gate that actually ran: rust-bitcoin for v0,
   const editor = read("src/js/psbt-editor.js");
   assert.match(editor, /doc\.psbtVersion === 2\s*\?\s*"Rebuilt PSBT v2 round-trips through EntropyLab's own BIP-370 reader \(rust-bitcoin checks v0 only\)"\s*:\s*"Rebuilt PSBT parses under rust-bitcoin"/);
 });
+
+test("a PSBT too large for one code is scanned as a UR sequence, not truncated", () => {
+  // The plan itself is pinned above; this is the wiring that carries it to
+  // the shared overlay after the inline QR block was removed.
+  const editor = read("src/js/psbt-editor.js");
+  for (const label of ["Edited PSBT (base64)", "Edited PSBT (hex)"]) {
+    assert.ok(
+      editor.includes(`addressQrButtonHtml(${label.includes("base64") ? "b64" : "hex"}, "${label}", { animate: "psbt" })`),
+      `${label} does not ask the overlay for a sequence`,
+    );
+  }
+  // No size gate on the button any more: the sequence covers any size, and a
+  // missing button would be a silent export failure.
+  assert.doesNotMatch(editor, /QR_LIMIT/);
+
+  const app = read("src/js/app.js");
+  assert.match(app, /hodlInitAddressQr\(hodlQrSvg, \{ copy: hodlClipboardIconMarkup, copied: hodlCopiedIconMarkup \}, \{ frames: hodlPsbtQrFrames \}\)/);
+  assert.match(app, /plan\.mode === "ur" \? plan\.parts : null/);
+
+  const overlay = read("src/js/address-qr.js");
+  assert.match(overlay, /frameTimer = setInterval\(draw, 600\)/);
+  assert.match(overlay, /clearInterval\(frameTimer\)/);
+});

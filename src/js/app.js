@@ -47,7 +47,7 @@ import { entropyToMnemonic as hodlEntropyToMnemonic, mnemonicToEntropy as hodlMn
 import { wordlist as bip39English } from "./bip39-english.js";
 // The PSBT editor (its own workspace tab) drives the rust-bitcoin WASM
 // bindings in psbt-wasm.js; heavy lifting lives in psbt-editor.js.
-import { initPsbtEditor, psbtBytesFromUpload } from "./psbt-editor.js";
+import { initPsbtEditor, psbtBytesFromText as hodlPsbtBytesFromText, psbtBytesFromUpload, psbtQrPlan as hodlPsbtQrPlan } from "./psbt-editor.js";
 // The Lightning node key tool (its own workspace tab): aezeed deciphering
 // and the LND/LDK node identity derivations live in lightning.js/aezeed.js.
 import { hodlInitLn, hodlLnWipeMem } from "./lightning.js";
@@ -792,6 +792,18 @@ function hodlWatchOnlyMultipathDescriptor(receiveDescriptor, branches = [0, 1]) 
   let first = selected[0], pattern = new RegExp(`/${first}/\\*`, "g");
   if (!pattern.test(body)) return "";
   return hodlDescriptorWithChecksum(body.replace(pattern, `/<${selected.join(";")}>/*`));
+}
+// A PSBT past a single code's capacity is scanned as a ur:crypto-psbt
+// sequence — the same plan the editor used inline before the overlay took
+// the job. Anything else (an address, an xpub, a descriptor) has no frames
+// and stays one static code.
+function hodlPsbtQrFrames(value) {
+  try {
+    let plan = hodlPsbtQrPlan(hodlPsbtBytesFromText(value));
+    return plan.mode === "ur" ? plan.parts : null;
+  } catch {
+    return null;
+  }
 }
 function hodlDescriptorQrSvg(payload) {
   return hodlUqrRenderSvg(payload, { ecc: "M", border: 4, pixelSize: 4, blackColor: "#111111", whiteColor: "#ffffff" });
@@ -15940,7 +15952,7 @@ function hodlApplyLocale() {
 }
 async function hodlBoot() {
   hodlInitWorkspace();
-  hodlInitAddressQr(hodlQrSvg, { copy: hodlClipboardIconMarkup, copied: hodlCopiedIconMarkup });
+  hodlInitAddressQr(hodlQrSvg, { copy: hodlClipboardIconMarkup, copied: hodlCopiedIconMarkup }, { frames: hodlPsbtQrFrames });
   hodlLowEntropyConfirm = initLowEntropyConfirm();
   hodlInitDefaultTabStates();
   if (__ENTROPYLAB_TEST_HOOKS__) await hodlLoadTestKeys();

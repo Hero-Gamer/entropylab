@@ -1725,7 +1725,7 @@ test("one PSBT workspace contains PSBT Inspector, PSBT Editor and Nonce Inspecto
     // button rows keep their compact, text-sized buttons.
     assert.match(markup, /<div class="row psbt-actions psbted-actions tool-actions">/);
   }
-  assert.match(appSource, /import \{ initPsbtEditor, psbtBytesFromUpload \} from "\.\/psbt-editor\.js"/);
+  assert.match(appSource, /import \{ initPsbtEditor, psbtBytesFromText as hodlPsbtBytesFromText, psbtBytesFromUpload, psbtQrPlan as hodlPsbtQrPlan \} from "\.\/psbt-editor\.js"/);
   // The editor reads the header picker's network through the passed getter.
   assert.match(appSource, /initPsbtEditor\(\{ networkDefault: \(\) => hodlNetworkDefault, copiedIcon: hodlCopiedIconMarkup \}\)/);
 });

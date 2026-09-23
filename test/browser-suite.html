@@ -3015,6 +3015,8 @@
     document.querySelector("#psbted-result-b64-label .addr-qr").click();
     const psbtQrOverlay = await until(() => !document.getElementById("addr-qr-overlay").hidden ? document.getElementById("addr-qr-overlay") : null, "PSBT QR overlay");
     assert(psbtQrOverlay.querySelector("#addr-qr-image svg"), "the overlay drew no QR for the export");
+    // This vector fits one code, so it stays static and says nothing.
+    equal(document.getElementById("addr-qr-note").textContent, "", "a small PSBT was split into a sequence");
     document.getElementById("addr-qr-close").click();
     await until(() => document.getElementById("addr-qr-overlay").hidden, "PSBT QR overlay did not close");
     // The consensus layer reports on the loaded file (this vector is clean),
@@ -3624,6 +3626,37 @@
     document.getElementById("psbted-wipe").click();
     document.querySelector('#workspace [data-workspace="calc"]').click();
     await until(() => !document.getElementById("calc-card").hidden, "key workspace");
+  });
+
+  await test("a PSBT past one code's capacity is exported as a UR sequence", async () => {
+    // Same BIP-174 valid vector 2, grown past PSBT_QR_STATIC_MAX_BYTES with a
+    // 1 KB proprietary pair. One static code could not hold the result: it
+    // would hand the signer a truncated file, and gating the button on size
+    // would lose the export altogether.
+    const vector = "cHNidP8BAKACAAAAAqsJSaCMWvfEm4IS9Bfi8Vqz9cM9zxU4IagTn4d6W3vkAAAAAAD+////qwlJoIxa98SbghL0F+LxWrP1wz3PFTghqBOfh3pbe+QBAAAAAP7///8CYDvqCwAAAAAZdqkUdopAu9dAy+gdmI5x3ipNXHE5ax2IrI4kAAAAAAAAGXapFG9GILVT+glechue4O/p+gOcykWXiKwAAAAAAAEHakcwRAIgR1lmF5fAGwNrJZKJSGhiGDR9iYZLcZ4ff89X0eURZYcCIFMJ6r9Wqk2Ikf/REf3xM286KdqGbX+EhtdVRs7tr5MZASEDXNxh/HupccC1AaZGoqg7ECy0OIEhfKaC3Ibi1z+ogpIAAQEgAOH1BQAAAAAXqRQ1RebjO4MsRwUPJNPuuTycA5SLx4cBBBYAFIXRNTfy4mVAWjTbr6nj3aAfuCMIAAAA";
+    document.querySelector('#workspace [data-workspace="psbt"]').click();
+    document.querySelector('#psbt-tool-tabs [data-psbt-tool="editor"]').click();
+    await until(() => !document.getElementById("psbted-card").hidden, "PSBT editor tab");
+    input(document.getElementById("psbted-text"), vector);
+    document.getElementById("psbted-load").click();
+    await until(() => document.querySelector("#psbted-out .psbted-pairs"), "editor pair tables");
+    document.querySelector('[data-add-type="output:0"]').value = "fc"; // PSBT_OUT_PROPRIETARY
+    input(document.querySelector('[data-add-key="output:0"]'), "016d01");
+    input(document.querySelector('[data-add-val="output:0"]'), "cd".repeat(1000));
+    document.querySelector('[data-add="output:0"]').click();
+    await until(() => document.getElementById("psbted-result-b64").textContent.length > 1400, "the PSBT did not grow past one code's capacity");
+    document.querySelector("#psbted-result-b64-label .addr-qr").click();
+    const seqOverlay = await until(() => !document.getElementById("addr-qr-overlay").hidden ? document.getElementById("addr-qr-overlay") : null, "QR overlay for the grown PSBT");
+    const seqNote = document.getElementById("addr-qr-note");
+    assert(/part 1 of \d+/.test(seqNote.textContent), `the grown PSBT is not a sequence: ${seqNote.textContent}`);
+    const firstFrame = seqOverlay.querySelector("#addr-qr-image svg").outerHTML;
+    await until(() => /part 2 of \d+/.test(seqNote.textContent), "the sequence did not advance");
+    assert(seqOverlay.querySelector("#addr-qr-image svg").outerHTML !== firstFrame, "the code did not change with the part");
+    document.getElementById("addr-qr-close").click();
+    await until(() => document.getElementById("addr-qr-overlay").hidden, "sequence overlay did not close");
+    equal(seqNote.textContent, "", "the sequence caption survived the close");
+    input(document.getElementById("psbted-text"), "");
+    document.getElementById("psbted-wipe").click();
   });
 
   await test("PSBT editor flow diagram opens, edits, and re-decodes a map", async () => {

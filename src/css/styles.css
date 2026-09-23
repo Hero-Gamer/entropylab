@@ -1825,6 +1825,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    fields do not build, the last valid build (text and QR) stays, dimmed. */
 /* The edited PSBT is a readout, not a field: a square bordered block sized
    by its own bytes, rather than an input that invites typing. */
+/* The sequence caption under an animated code; silent for a static one. */
+.addr-qr-note { margin-top: var(--space-control); text-align: center; }
+.addr-qr-note:empty { display: none; }
 .psbted-result-value {
   margin-top: var(--space-control); padding: 10px 12px;
   border: 1px solid var(--border); background: var(--bg);

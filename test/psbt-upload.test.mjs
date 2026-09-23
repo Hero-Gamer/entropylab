@@ -78,7 +78,7 @@ test("the PSBT / Nonce inspector also uploads and downloads the file", () => {
   assert.match(shell, /<button class="btn secondary" id="psbt-upload" type="button">Upload \.psbt File<\/button>/);
   assert.match(shell, /<input type="file" id="psbt-file" accept="\.psbt,\.txn,\.txt,\.hex" hidden>/);
   assert.match(shell, /<button class="btn secondary" id="psbt-download" type="button"[^>]*>Download \.psbt<\/button>/);
-  assert.match(app, /import \{ initPsbtEditor, psbtBytesFromUpload \} from "\.\/psbt-editor\.js"/);
+  assert.match(app, /import \{[^}]*psbtBytesFromUpload[^}]*\} from "\.\/psbt-editor\.js"/);
   assert.match(app, /getElementById\("psbt-upload"\)/);
   assert.match(app, /getElementById\("psbt-file"\)/);
   assert.match(app, /getElementById\("psbt-download"\)/);

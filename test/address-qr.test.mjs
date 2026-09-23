@@ -35,3 +35,13 @@ test("markup from a hostile value stays inert", () => {
   assert.ok(html.includes("&lt;img"), "value was not escaped");
   assert.ok(html.includes("key &quot;quoted&quot;"), "label was not escaped");
 });
+
+test("a payload can ask the overlay for an animated sequence", () => {
+  // A PSBT is larger than one code can hold, so its button opts in; an
+  // address does not, and must not gain the attribute by default.
+  assert.ok(!addressQrButtonHtml(ADDRESS, "Address #3").includes("data-address-qr-animate"), "an address asked to animate");
+  const psbt = addressQrButtonHtml("cHNidP8BAHE", "Edited PSBT (base64)", { animate: "psbt" });
+  assert.ok(psbt.includes('data-address-qr-animate="psbt"'), "the PSBT button does not ask for a sequence");
+  // The kind is attribute data like any other: it escapes.
+  assert.ok(addressQrButtonHtml("x", "y", { animate: '"><img src=x>' }).includes("&quot;&gt;&lt;img"), "animate kind was not escaped");
+});

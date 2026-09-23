@@ -88,9 +88,6 @@ export const psbtQrPlan = (bytes) => {
   return { mode: "ur", parts: hodlUrEncodePsbt(bytes, { maxBytes: 200 }).map((part) => part.toUpperCase()) };
 };
 
-// Byte-mode capacity at ECC M is 2331 bytes, so a longer export offers no
-// QR button at all — the rule every other long value in the app follows.
-const QR_LIMIT = 2300;
 
 const escapeHtml = (text) =>
   String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -777,9 +774,9 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = 
     box.innerHTML = `
       ${stale ? `<p class="psbted-note-warn" id="psbted-stale-note">The fields do not build right now — this is the last valid build. Export is unavailable until they build again.</p>` : ""}
       ${verdictLine}
-      <p class="label copy-field-label" id="psbted-result-b64-label">Edited PSBT (base64)${stale || b64.length > QR_LIMIT ? "" : addressQrButtonHtml(b64, "Edited PSBT (base64)")}<span class="copy-status copy-field-status" id="psbted-copied-b64" aria-live="polite"></span></p>
+      <p class="label copy-field-label" id="psbted-result-b64-label">Edited PSBT (base64)${stale ? "" : addressQrButtonHtml(b64, "Edited PSBT (base64)", { animate: "psbt" })}<span class="copy-status copy-field-status" id="psbted-copied-b64" aria-live="polite"></span></p>
       <div class="psbted-result-value" id="psbted-result-b64" aria-labelledby="psbted-result-b64-label">${stale ? "" : escapeHtml(b64)}</div>
-      <p class="label copy-field-label" id="psbted-result-hex-label">Edited PSBT (hex)${stale || hex.length > QR_LIMIT ? "" : addressQrButtonHtml(hex, "Edited PSBT (hex)")}<span class="copy-status copy-field-status" id="psbted-copied-hex" aria-live="polite"></span></p>
+      <p class="label copy-field-label" id="psbted-result-hex-label">Edited PSBT (hex)${stale ? "" : addressQrButtonHtml(hex, "Edited PSBT (hex)", { animate: "psbt" })}<span class="copy-status copy-field-status" id="psbted-copied-hex" aria-live="polite"></span></p>
       <div class="psbted-result-value" id="psbted-result-hex" aria-labelledby="psbted-result-hex-label">${stale ? "" : escapeHtml(hex)}</div>
       <div class="row psbt-actions tool-actions">
         <button class="btn secondary" id="psbted-copy-b64" type="button"${gated}>Copy Edited Base64</button>

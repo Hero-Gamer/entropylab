@@ -12,6 +12,13 @@
 import { t } from "./i18n.js";
 import { trapModalFocus } from "./modal-focus.js";
 
+// An address or an xpub reads in full; a PSBT export does not, so anything
+// past this length shows head and tail around an ellipsis. The code and the
+// copy control still carry every byte.
+const DISPLAY_LIMIT = 256;
+const shortenMiddle = (value, head = 32, tail = 20) =>
+  value.length > head + tail + 1 ? `${value.slice(0, head)}\u2026${value.slice(-tail)}` : value;
+
 const escapeHtml = (text) =>
   String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
@@ -68,6 +75,7 @@ export const initAddressQr = (renderQr, icons = {}) => {
   text.title = copyLabel;
   image.title = copyLabel;
   let button = null,
+    payload = "", // the full value; the line above may show it shortened
     copiedTimer = 0;
 
   const resetCopied = () => {
@@ -88,7 +96,7 @@ export const initAddressQr = (renderQr, icons = {}) => {
     copiedTimer = setTimeout(resetCopied, 1600);
   };
   const copy = () => {
-    const value = text.textContent;
+    const value = payload;
     if (!value) return;
     // Inside the dialog, so focus returns to the copy icon rather than
     // falling out of the overlay when the helper field is removed.
@@ -115,6 +123,7 @@ export const initAddressQr = (renderQr, icons = {}) => {
   const close = () => {
     overlay.hidden = true;
     image.replaceChildren(); // drop the rendered QR so a closed overlay holds no stale address
+    payload = "";
     resetCopied();
     button?.focus({ preventScroll: true });
     button = null;
@@ -125,7 +134,8 @@ export const initAddressQr = (renderQr, icons = {}) => {
     button = target;
     title.textContent = target.dataset.addressQrLabel || value;
     image.innerHTML = renderQr(value);
-    text.textContent = value;
+    payload = value;
+    text.textContent = value.length > DISPLAY_LIMIT ? shortenMiddle(value) : value;
     resetCopied();
     overlay.hidden = false;
     closeButton.focus();

@@ -1351,7 +1351,7 @@
       const journalGlobalClear = document.getElementById("journal-global-clear");
       assert(journalGlobalDownload.disabled && journalGlobalClear.disabled, "Journal-wide actions should be disabled before a journal is opened");
       equal(Math.round(introToTabsGap(journalIntro, journalManager.querySelector(":scope > .key-tab-strip"))), Math.round(singleIntroGap), "Journal intro-to-tabs spacing differs from a single-intro tool");
-      const documentTop = (element) => element.getBoundingClientRect().top + scrollY;
+      const documentTop = (element) => Math.round(element.getBoundingClientRect().top + scrollY);
       const journalManagerTop = documentTop(journalManager);
       journalTabs.forEach((tab) => assert(tab.classList.contains("key-tab"), "Journal stations should use folder-style Key Station tabs"));
       journalTabs.forEach((tab) => {
@@ -3008,9 +3008,15 @@
     document.getElementById("network-picker-button").click();
     document.querySelector('#network-picker-menu [data-network="mainnet"]').click();
     await until(() => outText().includes("1BonMcawnmL4XMxEcofTWqTXxtk9K7hEWe"), "mainnet re-decode on picker change");
-    // The loaded PSBT builds at once: result text and QR without a click.
-    assert((document.getElementById("psbted-result-b64") || {}).value.startsWith("cHNidP8B"), "result did not follow the load");
-    assert(document.querySelector("#psbted-qr-code svg"), "QR did not follow the load");
+    // The loaded PSBT builds at once: both readouts without a click, each
+    // titled by a label that carries its QR button.
+    assert((document.getElementById("psbted-result-b64") || {}).textContent.startsWith("cHNidP8B"), "result did not follow the load");
+    assert(document.querySelector("#psbted-result-b64-label .addr-qr"), "the base64 export has no QR button");
+    document.querySelector("#psbted-result-b64-label .addr-qr").click();
+    const psbtQrOverlay = await until(() => !document.getElementById("addr-qr-overlay").hidden ? document.getElementById("addr-qr-overlay") : null, "PSBT QR overlay");
+    assert(psbtQrOverlay.querySelector("#addr-qr-image svg"), "the overlay drew no QR for the export");
+    document.getElementById("addr-qr-close").click();
+    await until(() => document.getElementById("addr-qr-overlay").hidden, "PSBT QR overlay did not close");
     // The consensus layer reports on the loaded file (this vector is clean),
     // and the Insane editing switch sits at the top of the card, off.
     const insaneToggle = document.getElementById("psbted-insane");
@@ -3029,7 +3035,7 @@
     // Live editing: the input event itself rebuilds — there is no Re-serialize.
     await until(() => outText().includes("199901000") || document.getElementById("psbted-error").textContent, "live rebuild");
     equal(document.getElementById("psbted-error").textContent, "", "live rebuild failed");
-    const edited = document.getElementById("psbted-result-b64").value;
+    const edited = document.getElementById("psbted-result-b64").textContent;
     assert(edited.startsWith("cHNidP8B") && edited !== vector, "edited PSBT missing or unchanged");
     assert(!document.getElementById("psbted-build"), "the Re-serialize button is gone");
     assert(outText().includes("199901000"), "edited amount was not re-decoded");
@@ -3039,19 +3045,18 @@
     // lists the field name, so the signal is the diagram's status line.)
     assert(!vizText().includes("finalized"), "stale final scriptSig survived a transaction edit");
     // Issue #320: a valid edit followed by an invalid pending value leaves the
-    // last valid build visible but must disable every export boundary (copy,
-    // download, reload, QR) until the fields build again.
+    // last valid build visible but must close every export boundary (copy,
+    // download, QR) until the fields build again.
     input(document.querySelector("[data-txout-val='0']"), "not-a-number");
     await until(() => document.getElementById("psbted-error").textContent, "stale rebuild error");
-    for (const id of ["psbted-copy-b64", "psbted-copy-hex", "psbted-download", "psbted-reload", "psbted-result-b64", "psbted-result-hex"]) {
+    for (const id of ["psbted-copy-b64", "psbted-copy-hex", "psbted-download"]) {
       assert(document.getElementById(id).disabled, `${id} stayed enabled while stale`);
     }
-    assert(!document.querySelector("#psbted-qr-code svg"), "stale bytes still animated as QR");
+    // No QR button either: a stale build must not be scannable off the screen.
+    assert(!document.querySelector("#psbted-result-b64-label .addr-qr"), "stale bytes still offered a QR");
     assert(outText().includes("last valid build"), "stale note missing");
     // The byte text itself leaves the screen: a disabled, readonly textarea's
     // content is still selectable and copyable in Firefox.
-    equal(document.getElementById("psbted-result-b64").value, "", "stale base64 stayed selectable on screen");
-    equal(document.getElementById("psbted-result-hex").value, "", "stale hex stayed selectable on screen");
     // Nor does the DOM keep a copy: value= alone leaves the bytes in the
     // textarea's textContent/defaultValue.
     equal(document.getElementById("psbted-result-b64").textContent, "", "stale base64 stayed in the DOM text");
@@ -3069,10 +3074,10 @@
     equal(copied, null, "a synthetic click exported the stale bytes");
     // Typing back to a buildable value re-enables every export control.
     input(document.querySelector("[data-txout-val='0']"), "199902000");
-    await until(() => document.getElementById("psbted-error").textContent === "" && document.getElementById("psbted-result-b64").value.includes("cHNidP8B"), "rebuild after stale");
+    await until(() => document.getElementById("psbted-error").textContent === "" && document.getElementById("psbted-result-b64").textContent.includes("cHNidP8B"), "rebuild after stale");
     assert(!document.getElementById("psbted-copy-b64").disabled, "copy stayed disabled after a clean rebuild");
     assert(!document.getElementById("psbted-download").disabled, "download stayed disabled after a clean rebuild");
-    assert(document.querySelector("#psbted-qr-code svg"), "QR did not resume after a clean rebuild");
+    assert(document.querySelector("#psbted-result-b64-label .addr-qr"), "the QR button did not return after a clean rebuild");
     // The consensus layer gates an edit the transaction cannot survive (an
     // output past MAX_MONEY), and Insane editing is the explicit bypass:
     // the build then proceeds — and every surface says the gate was off.
@@ -3080,13 +3085,13 @@
     await until(() => document.getElementById("psbted-error").textContent, "consensus gate rejection");
     assert(document.getElementById("psbted-error").textContent.includes("consensus-invalid"), "unexpected gate message");
     insaneToggle.click();
-    await until(() => document.getElementById("psbted-error").textContent === "" && document.getElementById("psbted-result-b64").value.includes("cHNidP8B"), "insane rebuild");
+    await until(() => document.getElementById("psbted-error").textContent === "" && document.getElementById("psbted-result-b64").textContent.includes("cHNidP8B"), "insane rebuild");
     assert(outText().includes("insane editing is on"), "the header does not name the disabled gate");
     assert(document.getElementById("psbted-result").textContent.includes("Insane editing on"), "the result does not name the disabled gate");
     insaneToggle.click();
     await until(() => document.getElementById("psbted-error").textContent, "re-rejection once the gate is back");
     input(document.querySelector("[data-txout-val='0']"), "199904000");
-    await until(() => document.getElementById("psbted-error").textContent === "" && document.getElementById("psbted-result-b64").value.includes("cHNidP8B"), "rebuild after the insane dance");
+    await until(() => document.getElementById("psbted-error").textContent === "" && document.getElementById("psbted-result-b64").textContent.includes("cHNidP8B"), "rebuild after the insane dance");
     // Structural edits round-trip too: add an input and an output, delete
     // them again. The row delete buttons share the psbted-del styling class
     // with the pair deletes; the pair handler must not fire for them (it
@@ -3105,7 +3110,7 @@
     await until(() => document.querySelectorAll("[data-txin]").length === 2, "deleted input row");
     equal(document.getElementById("psbted-error").textContent, "", "input delete raised a spurious error");
     assert(!document.getElementById("psbted-stale-note"), "a clean delete was marked stale");
-    assert(document.getElementById("psbted-result-b64").value.startsWith("cHNidP8B"), "result missing after structural edits");
+    assert(document.getElementById("psbted-result-b64").textContent.startsWith("cHNidP8B"), "result missing after structural edits");
     // Focus stays in the table's sats field while typing: the diagram's sats
     // field shares the data-txout-val attribute, so the restore selector
     // must be qualified by the edited element, not resolve to the diagram.
@@ -3124,9 +3129,9 @@
     const signedOneOut = "cHNidP8BAFICAAAAARERERERERERERERERERERERERERERERERERERERERERAAAAAAD/////AcBcFQAAAAAAFgAUBq/Ua839Iu+UrBIqoR8kEkSjfswAAAAATwEEiLIeAhI0VngAAACAzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMwCeb5mfvncu6xVoGKVzocLBwKb/NstzijZWfKBWxb4F5gMEjRWeFQAAIAAAACAAAEBHwA/FwAAAAAAFgAUdR526BmRltRUlBxF0bOjI/FDO9YiAgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmEcwRAIgERERERERERERERERERERERERERERERERERERERERERECICIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAQEDBAEAAAAiBgJ5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmBgSNFZ4VAAAgAAAAIAAAACAAAAAAAAAAAAAAA==";
     input(box, signedOneOut);
     document.getElementById("psbted-load").click();
-    await until(() => document.getElementById("psbted-result-b64")?.value.startsWith("cHNidP8B"), "signed one-output PSBT loads and builds");
+    await until(() => document.getElementById("psbted-result-b64").textContent.startsWith("cHNidP8B"), "signed one-output PSBT loads and builds");
     assert(vizText().includes("1 signature"), "partial signature missing after load");
-    const signedBuild = document.getElementById("psbted-result-b64").value;
+    const signedBuild = document.getElementById("psbted-result-b64").textContent;
     // Deleting the only output is rejected (bad-txns-vout-empty); the
     // rollback restores the building document, its pairs, and its anchor.
     document.querySelector("[data-txout-del='0']").click();
@@ -3136,11 +3141,11 @@
     assert(vizText().includes("1 signature"), "signing pairs lost on rollback");
     assert(!document.getElementById("psbted-stale-note"), "the restored, building document was marked stale");
     assert(!document.getElementById("psbted-copy-b64").disabled, "export disabled on the restored, building document");
-    equal(document.getElementById("psbted-result-b64").value, signedBuild, "the restored document is not the last valid build");
+    equal(document.getElementById("psbted-result-b64").textContent, signedBuild, "the restored document is not the last valid build");
     // The anchor survived the rollback: an accepted transaction edit drops
     // the pairs that committed to the pre-edit transaction.
     input(document.getElementById("psbted-tx-locktime"), "500000");
-    await until(() => document.getElementById("psbted-error").textContent === "" && document.getElementById("psbted-result-b64").value !== signedBuild, "locktime rebuild after rollback");
+    await until(() => document.getElementById("psbted-error").textContent === "" && document.getElementById("psbted-result-b64").textContent !== signedBuild, "locktime rebuild after rollback");
     assert(!vizText().includes("signature"), "stale partial signature survived a transaction edit after a rejected structural edit");
     assert(!document.getElementById("psbted-stale-note"), "stale note after a clean rebuild");
     input(box, '<img src=x onerror="window.__browserTestInjected=true">');
@@ -3157,7 +3162,7 @@
     assert(outText().includes("PSBT v2 (BIP-370)"), "v2 verdict missing");
     assert(outText().includes("PSBT_GLOBAL_TX_VERSION"), "v2 typed field names missing");
     assert(outText().includes("PSBT_IN_PREVIOUS_TXID"), "v2 input field names missing");
-    assert(document.getElementById("psbted-result-b64").value === v2, "v2 rebuild was not byte-identical");
+    assert(document.getElementById("psbted-result-b64").textContent === v2, "v2 rebuild was not byte-identical");
     // Every finding in a check family renders as its own dash-marked list
     // item, never one "; "-joined run-in line: the 2-of-3 P2WSH fixture
     // (test/fixtures/psbt/multisig-2of3-p2wsh.b64) carries three origin
@@ -3194,16 +3199,16 @@
     await until(() => document.querySelector("#psbted-out .psbted-pairs"), "editor pair tables");
     // A fresh load clears any earlier comparison report.
     equal(report(), "", "stale comparison survived the load");
-    const pristine = document.getElementById("psbted-result-b64").value;
+    const pristine = document.getElementById("psbted-result-b64").textContent;
     input(document.querySelector("[data-txout-val='0']"), "199901000");
     await until(() => document.getElementById("psbted-out").textContent.includes("199901000") || document.getElementById("psbted-error").textContent, "live rebuild for compare");
     equal(document.getElementById("psbted-error").textContent, "", "live rebuild failed");
-    const edited = document.getElementById("psbted-result-b64").value;
+    const edited = document.getElementById("psbted-result-b64").textContent;
     assert(edited !== pristine, "edited PSBT did not change");
     // Reload the pristine vector as the editor's "before", then compare.
     input(box, vector);
     document.getElementById("psbted-load").click();
-    await until(() => (document.getElementById("psbted-result-b64") || { value: "" }).value === pristine, "reload of the pristine vector");
+    await until(() => (document.getElementById("psbted-result-b64") || { textContent: "" }).textContent === pristine, "reload of the pristine vector");
     input(document.getElementById("psbted-compare-text"), edited);
     document.getElementById("psbted-compare-go").click();
     await until(() => report().includes("transaction") || compareError(), "comparison report");
@@ -3220,7 +3225,7 @@
     await until(() => report().includes("Semantically identical"), "identical comparison");
     // Loading another PSBT clears the rendered comparison report.
     document.getElementById("psbted-load").click();
-    await until(() => (document.getElementById("psbted-result-b64") || { value: "" }).value === pristine, "second reload of the pristine vector");
+    await until(() => (document.getElementById("psbted-result-b64") || { textContent: "" }).textContent === pristine, "second reload of the pristine vector");
     equal(report(), "", "a fresh load did not clear the comparison report");
     // Markup in the compare box is rejected as a PSBT, never executed.
     input(document.getElementById("psbted-compare-text"), '<img src=x onerror="window.__browserTestInjected=true">');
@@ -3593,9 +3598,9 @@
     assert(overlay.hidden, "Apply did not close the overlay");
     // Applying the overlay edit rebuilds live; wait for the result hex to
     // carry the edited value.
-    await until(() => (document.getElementById("psbted-result-hex") || { value: "" }).value.includes(longValue.slice(0, -2) + "cd") || document.getElementById("psbted-error").textContent, "editor rebuild");
+    await until(() => (document.getElementById("psbted-result-hex") || { textContent: "" }).textContent.includes(longValue.slice(0, -2) + "cd") || document.getElementById("psbted-error").textContent, "editor rebuild");
     equal(document.getElementById("psbted-error").textContent, "", "editor rebuild failed");
-    assert(document.getElementById("psbted-result-hex").value.includes(longValue.slice(0, -2) + "cd"), "overlay edit did not reach the rebuilt PSBT");
+    assert(document.getElementById("psbted-result-hex").textContent.includes(longValue.slice(0, -2) + "cd"), "overlay edit did not reach the rebuilt PSBT");
     // A long key truncates read-only and Escape closes the overlay. The table
     // re-rendered after each structural edit, so the add controls are fresh
     // elements — re-query them.
@@ -3664,46 +3669,37 @@
       assert(x1 < x2, `output ${i} connector does not flow right`);
       assert(Math.abs(y2 - (boxRect.top - vizRect.top + boxRect.height / 2)) < 1, `output ${i} connector does not end at its box`);
     }
-    // Activating a box opens its key-value map in the detail panel (and out
-    // of the sections list below).
-    const openBox = viz.querySelector('[data-viz="input:1"]');
-    equal(openBox.getAttribute("aria-expanded"), "false", "box starts expanded");
-    openBox.click();
-    const panel = await until(() => document.getElementById("psbted-viz-detail"), "detail panel");
-    assert(panel.textContent.includes("PSBT_IN_WITNESS_UTXO"), "panel does not show the input's pairs");
-    equal(outText().match(/Input 1 key-value map/g).length, 1, "the open map renders twice");
-    equal(document.querySelector('[data-viz="input:1"]').getAttribute("aria-expanded"), "true", "open box not marked expanded");
-    // The open box's connector comes to the front, like its accent border.
-    const lit = document.querySelectorAll("#psbted-out .psbted-viz-line.is-open");
-    equal(lit.length, 1, "open box's connector not highlighted");
-    assert(lit[0].classList.contains("psbted-viz-line-in"), "wrong connector highlighted");
-    // Edit the witness UTXO's claimed amount in the panel (3,900,000 sats
+    // A box is a link to its own section: nothing moves, the section is
+    // focused and lit for a moment, and the map still renders exactly once.
+    const jumpBox = viz.querySelector('[data-viz="input:1"]');
+    assert(!jumpBox.hasAttribute("aria-expanded"), "a link must not claim to expand anything");
+    jumpBox.click();
+    const section = await until(() => document.querySelector('[data-psbted-section="input:1"]'), "input 1 section");
+    assert(section.classList.contains("is-anchored"), "the jumped-to section is not highlighted");
+    equal(document.activeElement, section, "focus did not follow the jump");
+    equal(outText().match(/Input 1 key-value map/g).length, 1, "the map renders twice");
+    assert(section.textContent.includes("PSBT_IN_WITNESS_UTXO"), "the section does not show the input's pairs");
+    equal(document.querySelectorAll("#psbted-out .psbted-viz-line.is-open").length, 0, "no connector keeps a selected state");
+    // Edit the witness UTXO's claimed amount in that section (3,900,000 sats
     // LE): the live rebuild re-decodes the new claim into the diagram.
-    const claim = panel.querySelector('.psbted-value[data-kind="input"][data-map="1"][data-pair="0"]');
+    const claim = section.querySelector('.psbted-value[data-kind="input"][data-map="1"][data-pair="0"]');
     input(claim, "60823b000000000017a9143545e6e33b832c47050f24d3eeb93c9c03948bc787");
     await until(() => document.querySelector("#psbted-out .psbted-viz").textContent.includes("3\u202f900\u202f000 sats") || document.getElementById("psbted-error").textContent, "live rebuild of the claim");
     equal(document.getElementById("psbted-error").textContent, "", "live rebuild failed");
     assert(document.querySelector("#psbted-out .psbted-viz").textContent.includes("3\u202f900\u202f000 sats"), "edited claim was not re-decoded into the diagram");
-    assert(document.getElementById("psbted-viz-detail"), "panel did not stay open across the rebuild");
     // The output boxes edit the unsigned transaction inline (WYSIWYG).
     const sats = document.querySelector('.psbted-viz [data-txout-val="0"]');
     input(sats, "199902000");
     await until(() => document.getElementById("psbted-error").textContent === "" && document.querySelector('.psbted-viz [data-txout-val="0"]').value === "199902000" ? true : document.getElementById("psbted-error").textContent, "inline amount rebuild");
     equal(document.getElementById("psbted-error").textContent, "", "inline amount rebuild failed");
-    // × puts the map back into the sections list.
-    document.querySelector("[data-viz-close]").click();
-    await until(() => !document.getElementById("psbted-viz-detail"), "panel did not close");
-    equal(outText().match(/Input 1 key-value map/g).length, 1, "map did not return to the sections list");
-    // The middle transaction box opens the unsigned-transaction fields the
-    // same way (and they come back on ×).
+    // The middle transaction box links to the unsigned-transaction fields the
+    // same way, and they never leave the sections list.
     document.querySelector('[data-viz="tx"]').click();
-    const txPanel = await until(() => document.getElementById("psbted-viz-detail"), "tx detail panel");
-    assert(txPanel.querySelector("#psbted-tx-version"), "tx fields did not move into the panel");
+    const txSection = await until(() => document.querySelector('[data-psbted-section="tx"]'), "tx section");
+    assert(txSection.classList.contains("is-anchored"), "the tx section is not highlighted");
+    assert(txSection.querySelector("#psbted-tx-version"), "tx fields are not in their section");
     equal(outText().match(/Unsigned transaction/g).length, 1, "the tx section renders twice");
-    equal(document.querySelector('[data-viz="tx"]').getAttribute("aria-expanded"), "true", "tx box not marked expanded");
-    txPanel.querySelector("[data-viz-close]").click();
-    await until(() => !document.getElementById("psbted-viz-detail"), "tx panel did not close");
-    assert(document.querySelector("#psbted-out #psbted-tx-version"), "tx fields did not return to the sections list");
+    equal(document.querySelectorAll("#psbted-out .is-anchored").length, 1, "an earlier highlight was left behind");
     input(box, "");
     document.getElementById("psbted-wipe").click();
     document.querySelector('#workspace [data-workspace="calc"]').click();

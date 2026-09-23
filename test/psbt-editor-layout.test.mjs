@@ -47,7 +47,7 @@ test("the script builder input gets the column's room and stays visible", () => 
 
 test("the Add input / Add output actions are not the pair-add grid", () => {
   const editor = read("src/js/psbt-editor.js");
-  assert.match(editor, /<div class="psbted-add-el"><button type="button" class="btn secondary" data-tx-add="input">Add input<\/button><\/div>/);
-  assert.match(editor, /<div class="psbted-add-el"><button type="button" class="btn secondary" data-tx-add="output">Add output<\/button><\/div>/);
+  assert.match(editor, /<div class="psbted-add-el"><button type="button" class="btn secondary" data-tx-add="input">Add Input<\/button><\/div>/);
+  assert.match(editor, /<div class="psbted-add-el"><button type="button" class="btn secondary" data-tx-add="output">Add Output<\/button><\/div>/);
   const css = read("src/css/styles.css");
 });

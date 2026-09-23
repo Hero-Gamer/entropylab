@@ -70,18 +70,20 @@ test("the editor is live: no Re-serialize button, rebuild on every input event",
 
 test("stale builds disable every export boundary, not just the styling (issue #320)", () => {
   const editor = read("src/js/psbt-editor.js");
-  // renderResult gates copy/download/reload, both textareas, and the QR.
+  // renderResult gates copy/download and both readouts.
   assert.match(editor, /const gated = stale \? " disabled" : ""/);
-  for (const id of ["psbted-copy-b64", "psbted-copy-hex", "psbted-download", "psbted-reload"]) {
+  for (const id of ["psbted-copy-b64", "psbted-copy-hex", "psbted-download"]) {
     assert.ok(editor.includes(`id="${id}"`), `${id} must exist`);
   }
-  assert.match(editor, /if \(stale\) return;/); // no handlers, no QR, when stale
+  assert.match(editor, /if \(stale\) return;/); // no handlers run while stale
   // The keystroke path applies the same gating to the already-rendered panel.
-  assert.match(editor, /for \(const id of \["psbted-copy-b64", "psbted-copy-hex", "psbted-download", "psbted-reload", "psbted-result-b64", "psbted-result-hex"\]\)/);
-  assert.match(editor, /qr\.removeAttribute\("aria-label"\)/);
-  // And the byte text itself leaves the screen in both paths: disabling is
-  // not a boundary, since Firefox lets a disabled, readonly textarea's
-  // content be selected and copied.
+  // Only the controls can be disabled; the readouts are emptied below, which
+  // is the boundary that matters for a div that cannot be disabled at all.
+  assert.match(editor, /for \(const id of \["psbted-copy-b64", "psbted-copy-hex", "psbted-download"\]\)/);
+  assert.match(editor, /for \(const id of \["psbted-result-b64", "psbted-result-hex"\]\)/);
+  // And the byte text itself leaves the screen in both paths: disabling was
+  // never a boundary, since Firefox lets a disabled, readonly field's content
+  // be selected and copied.
   assert.match(editor, /\$\{stale \? "" : escapeHtml\(b64\)\}/);
   assert.match(editor, /\$\{stale \? "" : escapeHtml\(hex\)\}/);
   assert.match(editor, /area\.value = ""/);
@@ -89,10 +91,10 @@ test("stale builds disable every export boundary, not just the styling (issue #3
   // must go too, so no copy of the stale bytes stays in the document.
   assert.match(editor, /area\.textContent = ""/);
   // Disabled only blocks user activation — a synthetic dispatchEvent still
-  // fires a disabled button's handlers, so all four export handlers guard
-  // on stale themselves instead of trusting the attribute.
-  const guarded = editor.match(/\$\("psbted-(?:copy-b64|copy-hex|download|reload)"\)\.onclick = \(\) => \{\s*\n\s*if \(stale\) return;/g) || [];
-  assert.equal(guarded.length, 4, "every export handler must refuse to run while stale");
+  // fires a disabled button's handlers, so every export handler guards on
+  // stale itself instead of trusting the attribute.
+  const guarded = editor.match(/\$\("psbted-(?:copy-b64|copy-hex|download)"\)\.onclick = \(\) => \{\s*\n\s*if \(stale\) return;/g) || [];
+  assert.equal(guarded.length, 3, "every export handler must refuse to run while stale");
 });
 
 test("the rebuild verdict names the gate that actually ran: rust-bitcoin for v0, the BIP-370 reader for v2 (issue #358)", () => {
@@ -108,18 +110,3 @@ test("the rebuild verdict names the gate that actually ran: rust-bitcoin for v0,
   const editor = read("src/js/psbt-editor.js");
   assert.match(editor, /doc\.psbtVersion === 2\s*\?\s*"Rebuilt PSBT v2 round-trips through EntropyLab's own BIP-370 reader \(rust-bitcoin checks v0 only\)"\s*:\s*"Rebuilt PSBT parses under rust-bitcoin"/);
 });
-
-test("the result panel renders the QR block and its animation plumbing", () => {
-  const editor = read("src/js/psbt-editor.js");
-  assert.match(editor, /import \{ renderSVG as renderQrSvg \} from "uqr"/);
-  assert.match(editor, /import \{ hodlUrEncodePsbt \} from "\.\/psbt-ur\.js"/);
-  assert.match(editor, /id="psbted-qr-code"/);
-  assert.match(editor, /renderQrSvg\(plan\.text, QR_OPTIONS\)/);
-  assert.match(editor, /renderQrSvg\(plan\.parts\[frame\], QR_OPTIONS\)/);
-  assert.match(editor, /qrTimer = setInterval\(draw, 600\)/);
-  // The animation timer dies with every re-render and with the wipe.
-  const clears = editor.match(/clearInterval\(qrTimer\)/g) || [];
-  assert.ok(clears.length >= 2, "render and renderResult both clear the QR timer");
-  const css = read("src/css/styles.css");
-});
-

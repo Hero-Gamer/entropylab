@@ -13369,7 +13369,6 @@ var hodlJournalAuditedClicks = {
   "psbted-copy-b64": ["psbt", "copy", "edited-psbt-base64"],
   "psbted-copy-hex": ["psbt", "copy", "edited-psbt-hex"],
   "psbted-download": ["psbt", "download", "edited-psbt"],
-  "psbted-reload": ["psbt", "load", "edited-psbt"],
   "journal-notes-copy": ["journal", "copy", "notepad-page"],
   "journal-notes-download": ["journal", "download", "notebook"],
   "journal-notes-upload": ["journal", "upload", "notebook"],
@@ -15458,7 +15457,7 @@ function hodlInitWorkspace() {
   hodlInitJournalNotebook();
   hodlInitMsig();
   hodlInitPsbt();
-  initPsbtEditor({ networkDefault: () => hodlNetworkDefault });
+  initPsbtEditor({ networkDefault: () => hodlNetworkDefault, copiedIcon: hodlCopiedIconMarkup });
   hodlInitBip85();
   hodlInitVanity();
   hodlInitSp();

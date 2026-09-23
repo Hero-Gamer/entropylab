@@ -1726,7 +1726,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* The overall verdict is a <strong>, which the browser sets at 700; the
    report's headings sit at 600. */
 .psbt-analysis-summary > p > strong { font-weight: 600; }
-.psbt-analysis-summary > p:is(.psbt-ok, .psbt-warn, .psbt-bad) { font-size: 15px; }
+.psbt-analysis-summary > p:is(.psbt-ok, .psbt-warn, .psbt-bad, .psbted-note-ok, .psbted-note-warn, .psbted-note-bad) { font-size: 15px; }
 /* The report's sections — the analysis, where the coins go, what they spend —
    are parted by the same hairline the rest of the app uses. */
 .result-divider { height: 0; margin: var(--space-section) 0; border: 0; border-top: 1px solid var(--border); }
@@ -1749,9 +1749,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .psbt-analysis-summary li > .label { margin: 0; }
 /* A verdict is a live status, so it takes the bright set the status notes use
    rather than the muted text tones the rest of the report reads in. */
-:is(.psbt-analysis-summary, #nonce-out, #psbt-nonce-history-result) :is(.psbt-ok, .psbted-note-ok) { color: var(--ok-bright); }
-:is(.psbt-analysis-summary, #nonce-out, #psbt-nonce-history-result) :is(.psbt-warn, .psbted-note-warn) { color: var(--warn-bright); }
-:is(.psbt-analysis-summary, #nonce-out, #psbt-nonce-history-result) :is(.psbt-bad, .psbted-note-bad) { color: var(--danger-bright); }
+:is(.psbt-analysis-summary, #nonce-out, #psbt-nonce-history-result, #psbted-result) :is(.psbt-ok, .psbted-note-ok) { color: var(--ok-bright); }
+:is(.psbt-analysis-summary, #nonce-out, #psbt-nonce-history-result, #psbted-result) :is(.psbt-warn, .psbted-note-warn) { color: var(--warn-bright); }
+:is(.psbt-analysis-summary, #nonce-out, #psbt-nonce-history-result, #psbted-result) :is(.psbt-bad, .psbted-note-bad) { color: var(--danger-bright); }
 .psbt-analysis-summary li + li { margin-top: 12px; }
 /* A check family's findings nest as a dash-marked sublist, one line each. */
 .psbt-analysis-summary li ul { margin: 4px 0 2px; padding-left: 18px; list-style-type: "- "; }
@@ -1760,15 +1760,33 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    stretched to the row's full height. (.psbt-actions alone is shared with the
    other cards' button rows, so scope by the editor's own class.) */
 .psbted-actions { align-items: flex-end; }
-.psbted-actions .btn, .psbted-actions .custom-select-button { min-height: 36px; padding: 6px 10px; border-radius: 8px; }
+/* Insane editing only means something once there is a build to break, so the
+   switch rides with the editor's output instead of standing over an empty card. */
+#psbted-insane-row, #psbted-editor-label { display: none; }
+#psbted-card:has(#psbted-out > *) > :is(#psbted-insane-row, #psbted-editor-label) { display: block; }
+/* The label opens the output, a step clear of the switch and its warning. */
 .psbted-map { margin-top: var(--space-component); }
-.psbted-map > h3 { margin: 0 0 4px; font-size: 15px; }
+#psbted-out :is([data-psbted-section="input:0"], [data-psbted-section="output:0"]) { margin-top: var(--space-major); }
+/* A diagram box jumps to its section and lights it for a moment. The halo
+   is painted as a spread shadow so the highlight costs no layout. */
+.psbted-map { border-radius: 4px; transition: background-color .45s ease, box-shadow .45s ease; }
+.psbted-map:focus { outline: none; }
+.psbted-map.is-anchored {
+  background: color-mix(in oklab, var(--accent) 16%, transparent);
+  box-shadow: 0 0 0 10px color-mix(in oklab, var(--accent) 16%, transparent);
+}
+/* Section titles in the editor read as the shared label, not as headings. */
+.psbted-map > h3 { margin: 0 0 4px; font: inherit; font-size: 14px; font-weight: 600; letter-spacing: normal; }
 .psbted-txhead { display: flex; flex-wrap: wrap; gap: 0 16px; margin-bottom: 4px; }
 .psbted-txhead label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .psbted-txhead input { width: 11em; }
 .psbted-pairs { width: 100%; border-collapse: collapse; margin: 6px 0 10px; font-size: 13px; table-layout: fixed; }
-.psbted-pairs th, .psbted-pairs td { text-align: left; padding: 4px 8px 4px 0; vertical-align: top; overflow-wrap: anywhere; }
+.psbted-pairs th, .psbted-pairs td { text-align: left; padding: 8px 8px 8px 0; vertical-align: top; overflow-wrap: anywhere; }
+#psbted-out :is(.psbted-pairs, .psbted-add) input { margin-top: 0; }
 .psbted-pairs th { font-weight: 600; color: var(--muted); }
+/* One rule under every entry, so a row's fields read as one row in tables
+   this dense. */
+.psbted-pairs tbody td { border-bottom: 1px solid var(--border); }
 /* The tables are fixed-layout, so the header row sets the column widths and
    every unspecified column shares what is left. Keep the utility columns
    (row index, delete button) snug and size the numeric columns near their
@@ -1794,23 +1812,38 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* The output-script builder sits inside the scriptPubKey cell under the hex
    field: the text input takes the column's room, the mode select and the Set
    button stay compact at its right. */
-.psbted-build { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; margin-top: 4px; }
+/* align-items keeps each control at its own height: stretching them to the
+   tallest cell pushed the row past the shared 44px control height. */
+:is(.psbted-build, .psbted-add) > .btn { font-family: var(--sans); font-size: 14px; }
+.psbted-build { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; margin-top: 4px; align-items: center; }
 .psbted-build input, .psbted-build select { margin-top: 0; padding: 6px 8px; border-radius: 6px; font-size: 12px; min-height: 0; }
+/* The picker's stacking margin belongs to stacked forms; in these one-line
+   rows it only knocks the controls out of alignment. */
+:is(.psbted-build, .psbted-add) > .custom-select { margin-top: 0; }
 .psbted-build select { width: auto; }
-.psbted-build .btn { min-height: 0; padding: 6px 10px; }
 /* The edited PSBT as a QR follows every successful rebuild; while the
    fields do not build, the last valid build (text and QR) stays, dimmed. */
+/* The edited PSBT is a readout, not a field: a square bordered block sized
+   by its own bytes, rather than an input that invites typing. */
+.psbted-result-value {
+  margin-top: var(--space-control); padding: 10px 12px;
+  border: 1px solid var(--border); background: var(--bg);
+  font-family: var(--mono); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere;
+}
 .psbted-qr-block { margin: 12px 0 4px; }
 .psbted-qr { padding: 12px; }
 .psbted-qr svg { width: 240px; height: 240px; }
 .psbted-stale { opacity: 0.55; }
 .psbted-map > p { overflow-wrap: anywhere; }
-.psbted-del { background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--danger); cursor: pointer; padding: 4px 10px; font-size: 14px; line-height: 1; }
+.psbted-del { width: 30px; height: 30px; padding: 0; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--danger); cursor: pointer; font-size: 18px; line-height: 1; }
 .psbted-add { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) minmax(0, 2fr) auto; gap: 8px; align-items: center; margin: 4px 0 14px; }
+/* The add row closes its map, so it carries the gap to the next one. */
+.psbted-map > .psbted-add:last-child { margin-bottom: var(--space-section); }
 /* The Add input / Add output controls are single natural-width buttons, not
    the pair grid, so they read as actions rather than a form row. */
-.psbted-add-el { margin: 4px 0 14px; }
-.psbted-add-el .btn { min-height: 0; padding: 6px 12px; }
+.psbted-add-el { margin: 4px 0 var(--space-component); }
+/* The add row that closes a section carries the gap to the next one. */
+.psbted-map > .psbted-add-el:last-child { margin-bottom: var(--space-intro); }
 @media (max-width: 720px) {
   .psbted-add { grid-template-columns: minmax(0, 1fr); }
 }
@@ -1821,8 +1854,18 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* Semantic comparison: the section sits below the editor output and reuses
    the editor's table density; the diff mark column stays snug like the other
    utility columns. */
-.psbted-compare { margin-top: var(--space-component); }
-.psbted-compare > h3 { margin: 0 0 4px; font-size: 15px; }
+.psbted-compare { margin-top: var(--space-major); }
+/* The editor runs long, so each block opens on its own rule: the analysis
+   after the maps, the export after the analysis, the comparison last. */
+#psbted-out .psbted-map + .psbted-sanitize,
+#psbted-result-b64-label,
+#psbted-editor-label,
+.psbted-compare {
+  margin-top: var(--space-major); padding-top: var(--space-major); border-top: 1px solid var(--border);
+}
+/* The comparison is a separate tool below the report, so its rule opens it
+   at the component step rather than the report's wider section step. */
+.psbted-compare { padding-top: var(--space-component); }
 .psbted-pairs .psbted-col-mark { width: 1.8em; }
 .psbted-diff-mark { font-weight: 700; text-align: center; }
 #psbted-result textarea { font-family: var(--mono); font-size: 12px; min-height: 90px; }
@@ -1839,10 +1882,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .psbted-viz-line { fill: none; stroke-width: 2; opacity: 0.55; }
 .psbted-viz-line-in { stroke: var(--blue); }
 .psbted-viz-line-out { stroke: var(--ok); }
-.psbted-viz-line.is-open { opacity: 1; stroke-width: 2.5; }
 .psbted-viz-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.psbted-viz-heading { margin: 0; font-size: 13px; font-weight: 600; color: var(--muted); }
-.psbted-viz-hint { margin: -4px 0 0; font-size: 11px; }
+.psbted-viz-heading { margin: 0; font: inherit; font-size: 14px; font-weight: 600; letter-spacing: normal; color: var(--fg); }
+.psbted-viz-hint { margin: -4px 0 0; font-size: 12px; }
 .psbted-viz-mid { display: flex; align-items: center; justify-content: center; gap: 8px; }
 .psbted-viz-arrow { display: none; position: relative; flex: none; width: 30px; height: 2px; background: var(--faint); }
 .psbted-viz-arrow::after {
@@ -1851,34 +1893,32 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .psbted-viz-tx {
   min-height: 0; margin: 0; max-width: 230px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px;
-  background: var(--surface-2); color: inherit; font-size: 12px; text-align: center;
+  background: var(--surface-2); color: inherit; font-size: 13px; text-align: center;
 }
 .psbted-viz-tx:hover { border-color: var(--muted); }
-.psbted-viz-tx.is-open, .psbted-viz-tx.is-open:hover { border-color: var(--accent); }
-.psbted-viz-txline { display: block; margin: 2px 0; overflow-wrap: anywhere; }
+/* A greyed line in the tx box is the same line in a quieter colour, so it
+   keeps the box's type size instead of taking .muted's 14px. */
+.psbted-viz-txline { display: block; margin: 2px 0; font-size: inherit; overflow-wrap: anywhere; }
 .psbted-viz-feenum { font-family: var(--mono); }
-.psbted-viz-box { border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); padding: 8px 10px; font-size: 12px; }
+.psbted-viz-box { border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); padding: 8px 10px; font-size: 13px; }
 .psbted-viz-box:hover { border-color: var(--muted); }
-.psbted-viz-box.is-open, .psbted-viz-box.is-open:hover { border-color: var(--accent); }
 .psbted-viz-open {
   display: flex; gap: 8px; align-items: baseline; width: 100%; min-height: 0; margin: 0; padding: 0;
-  border: none; border-radius: 4px; background: none; color: inherit; font-size: 12px; text-align: left;
+  border: none; border-radius: 4px; background: none; color: inherit; font-size: 13px; text-align: left;
 }
-.psbted-viz-idx { flex: none; color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.psbted-viz-idx { flex: none; font-family: var(--mono); font-size: 13px; }
 .psbted-viz-id { font-family: var(--mono); overflow-wrap: anywhere; }
 .psbted-viz-in { color: var(--blue); }
 .psbted-viz-out { color: var(--ok); }
 .psbted-viz-tag { color: var(--warn); }
 .psbted-viz-kind { color: var(--muted); }
-.psbted-viz-amount { margin: 6px 0 0; font-family: var(--mono); font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.psbted-viz-amount { margin: 6px 0 0; font-family: var(--mono); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
 /* Specificity matches the global text-input rule (two classes + element,
    later in the file) so the in-box field stays compact and inline. */
 .psbted-viz input.psbted-viz-sats { width: 12ch; min-width: 0; min-height: 0; margin-top: 0; padding: 4px 8px; border-radius: 6px; font-size: 13px; font-weight: 600; }
-.psbted-viz-sub { margin: 4px 0 0; font-size: 11px; overflow-wrap: anywhere; }
-.psbted-viz-detail { margin-top: 12px; padding: 6px 14px 12px; border: 1px solid var(--accent); border-radius: 12px; background: var(--surface-2); }
-.psbted-viz-detail-bar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.psbted-viz-detail-bar p { margin: 6px 0 0; font-size: 12px; }
-.psbted-viz-detail-bar .psbted-del { flex: none; margin-top: 2px; }
+.psbted-viz-sub { margin: 4px 0 0; font-size: 13px; overflow-wrap: anywhere; }
+/* Quiet lines inside a box are still box text: one size for all of them. */
+:is(.psbted-viz-box, .psbted-viz-tx) .muted { font-size: 13px; }
 @media (max-width: 720px) {
   .psbted-viz-cols { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .psbted-viz-svg { display: none; }
@@ -1987,6 +2027,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* A toggle's title does the same job as a label, so a description written to
    sit under it sits the same way. */
 .label + .label-description,
+.psbted-map > h3 + .label-description,
 :is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary + :is(.label-description, .field-note) { margin-top: 0; margin-bottom: 0; }
 /* The exception: a checkbox's own text is not a heading over content. It sits
    inside the control, on one line with the box, so it owns no gap either side.
@@ -2100,10 +2141,13 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .tool-result > .tool-result-empty { margin: 0; }
 .tool-result:has(> .tool-result-body:not(:empty)) > .tool-result-empty { display: none; }
 .tool-result-body > :first-child { margin-top: 0; }
-.tool-result-body > :last-child { margin-bottom: 0; }
+/* The frame closes on its content: the chain of last children that ends the
+   report carries no trailing margin, however deeply it nests. */
+.tool-result-body > :last-child,
+.tool-result-body > :last-child :last-child { margin-bottom: 0; }
 /* The nonce report is all verdict lines and r values: prose takes the 14px
    body size, the mono r values keep the report's own 13px. */
-:is(#nonce-out, #psbt-nonce-history-result) { font-size: 14px; }
+:is(#nonce-out, #psbt-nonce-history-result, #psbted-result) { font-size: 14px; }
 #nonce-out strong { font-weight: 600; }
 /* A run of toggles is fenced top and bottom. Each toggle draws the rule below
    itself, so only the first in a run draws one above: a second would stack

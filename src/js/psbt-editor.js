@@ -600,6 +600,16 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = 
     setEnabled($("psbted-compare-clear"), Boolean(compareInput || $("psbted-compare-out").innerHTML || $("psbted-compare-error").textContent));
   };
 
+  // Narrow screens stack each table row into a block, so every cell carries
+  // its column's name as a label that only shows there (the header row is
+  // what sighted desktop readers use; the label is aria-hidden to avoid a
+  // double announcement). Explicit table roles keep the semantics when the
+  // stacked layout drops the table display.
+  const cellLabel = (text) => `<span class="psbted-cell-label" aria-hidden="true">${text}</span>`;
+  const KV_COLUMNS = { field: "Field", key: "Key (hex)", value: "Value (hex)", decoded: "Decoded" };
+  const TXIN_COLUMNS = { txid: "Previous txid", vout: "vout", seq: "sequence" };
+  const TXOUT_COLUMNS = { value: "Value (sats)", script: "scriptPubKey" };
+
   const pairRows = (kind, map, mapIndex) => {
     const rows = map
       .map((pair, pairIndex) => {
@@ -613,21 +623,21 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = 
         const valueCell = pair.value.length > EXPAND_LIMIT
           ? expandableHtml(pair.value, { label: `Value bytes for ${name} (hex)`, editAttrs: `data-kind="${kind}" data-map="${mapIndex}" data-pair="${pairIndex}"` })
           : `<input class="psbted-value" data-kind="${kind}" data-map="${mapIndex}" data-pair="${pairIndex}" value="${escapeHtml(pair.value)}" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Value bytes for ${escapeHtml(name)} (hex)">`;
-        return `<tr>
-          <td class="psbted-name">${escapeHtml(pair.name || "Unvalidated pair")}<br><span class="muted">type 0x${escapeHtml(pair.key.slice(0, 2))}</span></td>
-          <td class="psbted-hex">${expandableHtml(pair.key, { label: `Key bytes for ${name} (hex)` })}</td>
-          <td>${locked ? `<span class="muted">managed by the transaction section</span>` : valueCell}</td>
-          <td${tone}>${expandableHtml(note.text, { label: `${name} — decoded` })}</td>
-          <td>${locked ? "" : `<button type="button" class="btn red psbted-del" data-kind="${kind}" data-map="${mapIndex}" data-pair="${pairIndex}" aria-label="Delete ${escapeHtml(pair.name || "pair")}">×</button>`}</td>
+        return `<tr role="row">
+          <td role="cell" class="psbted-name">${escapeHtml(pair.name || "Unvalidated pair")}<br><span class="muted">type 0x${escapeHtml(pair.key.slice(0, 2))}</span></td>
+          <td role="cell" class="psbted-hex">${cellLabel(KV_COLUMNS.key)}${expandableHtml(pair.key, { label: `Key bytes for ${name} (hex)` })}</td>
+          <td role="cell">${cellLabel(KV_COLUMNS.value)}${locked ? `<span class="muted">managed by the transaction section</span>` : valueCell}</td>
+          <td role="cell"${tone}>${cellLabel(KV_COLUMNS.decoded)}${expandableHtml(note.text, { label: `${name} — decoded` })}</td>
+          <td role="cell" class="psbted-del-cell">${locked ? "" : `<button type="button" class="btn red psbted-del" data-kind="${kind}" data-map="${mapIndex}" data-pair="${pairIndex}" aria-label="Delete ${escapeHtml(pair.name || "pair")}">×</button>`}</td>
         </tr>`;
       })
       .join("");
     const options = PAIR_TYPES[kind]
       .map(([type, name, hint]) => `<option value="${type}" title="keydata: ${escapeHtml(hint)}">${name}</option>`)
       .join("");
-    return `<table class="psbted-pairs psbted-kv">
-      <thead><tr><th class="psbted-col-field">Field</th><th>Key (hex)</th><th>Value (hex)</th><th>Decoded</th><th class="psbted-col-del"></th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="5" class="muted">No pairs in this map.</td></tr>`}</tbody>
+    return `<table class="psbted-pairs psbted-kv psbted-stack" role="table">
+      <thead role="rowgroup"><tr role="row"><th role="columnheader" class="psbted-col-field">${KV_COLUMNS.field}</th><th role="columnheader">${KV_COLUMNS.key}</th><th role="columnheader">${KV_COLUMNS.value}</th><th role="columnheader">${KV_COLUMNS.decoded}</th><th role="columnheader" class="psbted-col-del"></th></tr></thead>
+      <tbody role="rowgroup">${rows || `<tr role="row"><td role="cell" colspan="5" class="muted">No pairs in this map.</td></tr>`}</tbody>
     </table>
     <div class="psbted-add">
       <select data-add-type="${kind}:${mapIndex}" aria-label="New pair type">${options}<option value="" title="keydata field takes the full key: one type byte, then keydata">Custom type…</option></select>
@@ -675,12 +685,12 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = 
     // so rust-bitcoin would reject the rebuild.
     const inputRows = tx.inputs
       .map(
-        (input, index) => `<tr>
-          <td>${index}</td>
-          <td><input class="psbted-txid" data-txin="${index}" value="${escapeHtml(input.txid)}" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Input ${index} previous txid (hex)"></td>
-          <td><input class="psbted-num" data-txin-vout="${index}" value="${escapeHtml(String(input.vout))}" inputmode="numeric" aria-label="Input ${index} prevout index"></td>
-          <td><input class="psbted-num" data-txin-seq="${index}" value="${escapeHtml(String(input.sequence))}" inputmode="numeric" aria-label="Input ${index} sequence"></td>
-          <td>${tx.inputs.length > 1 ? `<button type="button" class="btn red psbted-del" data-txin-del="${index}" aria-label="Delete input ${index}">×</button>` : ""}</td>
+        (input, index) => `<tr role="row">
+          <td role="cell">${cellLabel("Input")}${index}</td>
+          <td role="cell">${cellLabel(TXIN_COLUMNS.txid)}<input class="psbted-txid" data-txin="${index}" value="${escapeHtml(input.txid)}" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Input ${index} previous txid (hex)"></td>
+          <td role="cell">${cellLabel(TXIN_COLUMNS.vout)}<input class="psbted-num" data-txin-vout="${index}" value="${escapeHtml(String(input.vout))}" inputmode="numeric" aria-label="Input ${index} prevout index"></td>
+          <td role="cell">${cellLabel(TXIN_COLUMNS.seq)}<input class="psbted-num" data-txin-seq="${index}" value="${escapeHtml(String(input.sequence))}" inputmode="numeric" aria-label="Input ${index} sequence"></td>
+          <td role="cell" class="psbted-del-cell">${tx.inputs.length > 1 ? `<button type="button" class="btn red psbted-del" data-txin-del="${index}" aria-label="Delete input ${index}">×</button>` : ""}</td>
         </tr>`
       )
       .join("");
@@ -688,13 +698,13 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = 
       .map((output, index) => {
         const addr = addressFor(output.scriptPubKey, network());
         const opret = addr ? null : opReturnSummary(output.scriptPubKey, output.value);
-        return `<tr>
-          <td>${index}</td>
-          <td><input class="psbted-num" data-txout-val="${index}" value="${escapeHtml(String(output.value))}" inputmode="numeric" aria-label="Output ${index} value in sats"></td>
-          <td><input class="psbted-txid" data-txout-script="${index}" value="${escapeHtml(output.scriptPubKey)}" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Output ${index} scriptPubKey (hex)">
+        return `<tr role="row">
+          <td role="cell">${cellLabel("Output")}${index}</td>
+          <td role="cell">${cellLabel(TXOUT_COLUMNS.value)}<input class="psbted-num" data-txout-val="${index}" value="${escapeHtml(String(output.value))}" inputmode="numeric" aria-label="Output ${index} value in sats"></td>
+          <td role="cell">${cellLabel(TXOUT_COLUMNS.script)}<input class="psbted-txid" data-txout-script="${index}" value="${escapeHtml(output.scriptPubKey)}" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Output ${index} scriptPubKey (hex)">
             <span class="${opret?.burn ? "psbted-note-warn" : "muted"} psbted-addr">${escapeHtml(addr || opret?.text || output.asm || "")}</span>
             <span class="psbted-build"><input data-build-script="${index}" placeholder="address · OP_… ASM · 0x raw hex · text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Build output ${index} scriptPubKey from an address, ASM, or OP_RETURN text"><select data-build-mode="${index}" aria-label="Output ${index} script builder mode"><option value="auto" selected>Auto-detect</option><option value="opreturn-text">OP_RETURN text</option><option value="opreturn-hex">OP_RETURN hex</option><option value="asm">Script ASM</option></select><button type="button" class="btn secondary" data-build-apply="${index}">Set Script</button></span></td>
-          <td><button type="button" class="btn red psbted-del" data-txout-del="${index}" aria-label="Delete output ${index}">×</button></td>
+          <td role="cell" class="psbted-del-cell"><button type="button" class="btn red psbted-del" data-txout-del="${index}" aria-label="Delete output ${index}">×</button></td>
         </tr>`;
       })
       .join("");
@@ -706,20 +716,20 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = 
         kind === "input"
           ? `Spends <span class="psbt-address">${escapeHtml(tx.inputs[index].txid)}:${escapeHtml(String(tx.inputs[index].vout))}</span>`
           : `Pays <span class="psbt-amount">${escapeHtml(String(tx.outputs[index].value))} sats</span>${addressFor(tx.outputs[index].scriptPubKey, network()) ? ` to <span class="psbted-out-address">${escapeHtml(addressFor(tx.outputs[index].scriptPubKey, network()))}</span>` : ""}`;
-      return `<section class="psbted-map" data-psbted-section="${kind}:${index}" tabindex="-1"><h3>${kind === "input" ? "Input" : "Output"} ${index} key-value map</h3><p class="muted label-description">${sub}</p>${pairRows(kind, map, index)}</section>`;
+      return `<section class="psbted-map" data-psbted-section="${kind}:${index}" tabindex="-1"><h3 class="psbted-section-label">${kind === "input" ? "Input" : "Output"} ${index} key-value map</h3><p class="muted label-description">${sub}</p>${pairRows(kind, map, index)}</section>`;
     };
     // The unsigned-transaction section, rendered either inline (the default)
     // or inside the detail panel when the diagram's transaction box is open.
-    const txSection = () => `<section class="psbted-map" data-psbted-section="tx" tabindex="-1"><h3>Unsigned transaction</h3>
+    const txSection = () => `<section class="psbted-map" data-psbted-section="tx" tabindex="-1"><p class="label psbted-section-label">Unsigned transaction</p>
         <div class="psbted-txhead">
           <label>Version <input class="psbted-num" id="psbted-tx-version" value="${escapeHtml(String(tx.version))}" inputmode="numeric"></label>
           <label>Locktime <input class="psbted-num" id="psbted-tx-locktime" value="${escapeHtml(String(tx.locktime))}" inputmode="numeric"></label>
         </div>
-        <p class="label">Inputs</p>
-        <table class="psbted-pairs psbted-txins"><thead><tr><th class="psbted-idx">#</th><th>Previous txid</th><th class="psbted-col-vout">vout</th><th class="psbted-col-seq">sequence</th><th class="psbted-col-del"></th></tr></thead><tbody>${inputRows}</tbody></table>
+        <p class="label psbted-section-label">Inputs</p>
+        <table class="psbted-pairs psbted-txins psbted-stack" role="table"><thead role="rowgroup"><tr role="row"><th role="columnheader" class="psbted-idx">#</th><th role="columnheader">${TXIN_COLUMNS.txid}</th><th role="columnheader" class="psbted-col-vout">${TXIN_COLUMNS.vout}</th><th role="columnheader" class="psbted-col-seq">${TXIN_COLUMNS.seq}</th><th role="columnheader" class="psbted-col-del"></th></tr></thead><tbody role="rowgroup">${inputRows}</tbody></table>
         <div class="psbted-add-el"><button type="button" class="btn secondary" data-tx-add="input">Add Input</button></div>
-        <p class="label">Outputs</p>
-        <table class="psbted-pairs psbted-txouts"><thead><tr><th class="psbted-idx">#</th><th class="psbted-col-val">Value (sats)</th><th>scriptPubKey</th><th class="psbted-col-del"></th></tr></thead><tbody>${outputRows}</tbody></table>
+        <p class="label psbted-section-label">Outputs</p>
+        <table class="psbted-pairs psbted-txouts psbted-stack" role="table"><thead role="rowgroup"><tr role="row"><th role="columnheader" class="psbted-idx">#</th><th role="columnheader" class="psbted-col-val">${TXOUT_COLUMNS.value}</th><th role="columnheader">${TXOUT_COLUMNS.script}</th><th role="columnheader" class="psbted-col-del"></th></tr></thead><tbody role="rowgroup">${outputRows}</tbody></table>
         <div class="psbted-add-el"><button type="button" class="btn secondary" data-tx-add="output">Add Output</button></div>
       </section>`;
     const inputSections = doc.inputs.map((_, index) => mapSection("input", index)).join("");
@@ -734,7 +744,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = 
 
       ${txSection()}
 
-      <section class="psbted-map"><h3>Global key-value map</h3>${pairRows("global", doc.globals, 0)}</section>
+      <section class="psbted-map"><h3 class="psbted-section-label">Global key-value map</h3>${pairRows("global", doc.globals, 0)}</section>
       ${inputSections}
       ${outputSections}
 

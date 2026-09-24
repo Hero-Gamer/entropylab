@@ -1786,6 +1786,13 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 /* Section titles in the editor read as the shared label, not as headings. */
 .psbted-map > h3 { margin: 0 0 4px; font: inherit; font-size: 14px; font-weight: 600; letter-spacing: normal; }
+/* The editor runs long, so every section label sits on a faint full-width
+   band that marks where the section begins. The band reaches 8px past the
+   content on each side so the label's text stays on the content edge. */
+.psbted-section-label, .psbted-map > .psbted-section-label {
+  margin-inline: -8px; padding: 6px 8px;
+  background: color-mix(in oklab, var(--fg) 5%, transparent);
+}
 .psbted-txhead { display: flex; flex-wrap: wrap; gap: 0 16px; margin-bottom: 4px; }
 .psbted-txhead label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .psbted-txhead input { width: 11em; }
@@ -1857,8 +1864,49 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .psbted-add-el { margin: 4px 0 var(--space-component); }
 /* The add row that closes a section carries the gap to the next one. */
 .psbted-map > .psbted-add-el:last-child { margin-bottom: var(--space-intro); }
+.psbted-cell-label { display: none; }
 @media (max-width: 720px) {
   .psbted-add { grid-template-columns: minmax(0, 1fr); }
+  /* Stacked, the Add Input / Add Output actions go full width like Add Pair. */
+  .psbted-add-el > .btn { width: 100%; }
+  /* The edited PSBT readouts grow with their bytes on desktop; on a phone a
+     large PSBT would run for screens, so they cap at about twelve lines and
+     scroll inside. */
+  .psbted-result-value { max-height: 240px; overflow-y: auto; }
+  /* Stacked tables: each row becomes a block under the existing divider. The
+     first cell heads it with the delete button pinned beside it; every other
+     cell is a line of its own, its column's name on the left. The header row
+     stays for screen readers only. */
+  .psbted-stack, .psbted-stack > tbody { display: block; }
+  .psbted-stack { border-collapse: separate; border-spacing: 0; }
+  .psbted-stack > thead {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap;
+  }
+  .psbted-stack tr {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-control);
+    padding: var(--space-control) 0; border-bottom: 1px solid var(--border);
+  }
+  .psbted-stack tbody td {
+    display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); column-gap: var(--space-control); align-items: baseline;
+    grid-column: 1 / -1; padding: 4px 0; border: 0;
+  }
+  .psbted-stack tbody td:first-child, .psbted-stack tbody td[colspan] { display: block; grid-column: 1; padding-top: 0; }
+  .psbted-stack tbody td.psbted-del-cell { display: block; grid-column: 2; grid-row: 1; padding: 0; }
+  .psbted-stack tbody td.psbted-del-cell:empty { display: none; }
+  /* A cell holding several parts (the scriptPubKey field, its address, the
+     builder) keeps them all in the value column. */
+  .psbted-stack tbody td > :not(.psbted-cell-label) { grid-column: 2; }
+  .psbted-cell-label { display: block; font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--muted); }
+  /* The transaction tables' first cell is a bare row index; stacked, it reads
+     "Input 0" / "Output 0" as the block's heading. */
+  .psbted-stack tbody td:first-child > .psbted-cell-label { display: inline; margin-right: 0.35em; font-size: inherit; color: inherit; }
+  /* The script builder spans the whole block under its scriptPubKey (the
+     value column is too narrow for the picker's label): the text field on a
+     line of its own, the mode picker and Set Script sharing the line below. */
+  .psbted-stack tbody td > .psbted-build { grid-column: 1 / -1; }
+  .psbted-build { grid-template-columns: minmax(0, 1fr) auto; }
+  .psbted-build > input { grid-column: 1 / -1; }
+  .psbted-build .custom-select-button { white-space: nowrap; }
 }
 .psbted-note-muted { color: var(--muted); }
 .psbted-note-ok { color: var(--ok); }
@@ -1912,6 +1960,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    keeps the box's type size instead of taking .muted's 14px. */
 .psbted-viz-txline { display: block; margin: 2px 0; font-size: inherit; overflow-wrap: anywhere; }
 .psbted-viz-feenum { font-family: var(--mono); }
+.psbted-viz-fee { font-weight: 600; }
 .psbted-viz-box { position: relative; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); padding: 8px 10px; font-size: 13px; }
 /* The whole box is the link: the button's overlay stretches over it, and the
    output amount field sits above the overlay so it stays editable. The box

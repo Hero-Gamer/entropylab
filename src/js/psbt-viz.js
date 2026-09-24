@@ -106,7 +106,7 @@ const feeHtml = (doc) => {
   if (doc.fee?.known) {
     return doc.fee.sats === null
       ? `<span class="psbted-note-bad">${escapeHtml(doc.fee?.error || "outputs exceed claimed inputs")}</span>`
-      : `<span class="psbted-viz-feenum">${groupSats(doc.fee.sats)} sats</span>`;
+      : `<span class="psbted-viz-feenum psbt-amount">${groupSats(doc.fee.sats)} sats</span>`;
   }
   return doc.fee?.error
     ? `<span class="psbted-note-bad">${escapeHtml(doc.fee.error)}</span>`
@@ -188,7 +188,7 @@ export const psbtVizHtml = (doc, network) => {
       <button type="button" class="psbted-viz-tx" data-viz="tx" aria-label="Unsigned transaction: go to the version and locktime fields">
         <span class="psbted-viz-txline"><strong>PSBT v${escapeHtml(String(doc.psbtVersion))}</strong> · unsigned tx</span>
         <span class="psbted-viz-txline muted">version ${escapeHtml(String(doc.tx.version))} · locktime ${escapeHtml(String(doc.tx.locktime))}</span>
-        <span class="psbted-viz-txline psbt-amount">fee ${feeHtml(doc)}</span>
+        <span class="psbted-viz-txline psbted-viz-fee">fee ${feeHtml(doc)}</span>
         <span class="psbted-viz-txline">${costHtml(doc)}</span>
       </button>
       <div class="psbted-viz-arrow" aria-hidden="true"></div>

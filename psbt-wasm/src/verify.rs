@@ -184,6 +184,49 @@ fn classify(index: usize, map: &[RawPair], claim: &TxOut, problems: &mut Vec<Pro
     Spend::Legacy
 }
 
+/// The legacy scriptCode with OP_CODESEPARATOR opcodes removed, the way
+/// Bitcoin Core's SignatureHash serializes it
+/// (CTransactionSignatureSerializer::SerializeScriptCode). Pushed data is
+/// copied verbatim, separators inside it included. A truncated push ends the
+/// walk; Core's preimage differs in that case, but a script with a truncated
+/// push fails EvalScript, so no signature over it is ever valid.
+/// rust-bitcoin's legacy_signature_hash documents that it does NOT attempt
+/// to support OP_CODESEPARATOR, so the stripping happens here.
+///
+/// The verifier does not execute scripts, so a separator that would execute
+/// before the signature's CHECKSIG is stripped too, where Core hashes only
+/// the suffix after the last executed separator. For those scripts the
+/// verdict can still differ from Core; that is a property of verifying
+/// without execution, not of this function.
+fn strip_codeseparators(script: &[u8]) -> Vec<u8> {
+    const OP_CODESEPARATOR: u8 = 0xab;
+    let mut out = Vec::with_capacity(script.len());
+    let mut pc = 0;
+    while pc < script.len() {
+        let op = script[pc];
+        let (data_len, header) = match op {
+            0x01..=0x4b => (op as usize, 1),
+            0x4c if pc + 2 <= script.len() => (script[pc + 1] as usize, 2),
+            0x4d if pc + 3 <= script.len() => (u16::from_le_bytes([script[pc + 1], script[pc + 2]]) as usize, 3),
+            0x4e if pc + 5 <= script.len() => (u32::from_le_bytes(script[pc + 1..pc + 5].try_into().unwrap()) as usize, 5),
+            0x4c | 0x4d | 0x4e => break, // truncated PUSHDATA header
+            _ => (0, 1),
+        };
+        // Compare against the bytes left instead of summing: on wasm32 a
+        // PUSHDATA4 length near 2^32 would wrap pc + header + data_len and
+        // hang or trap the module. The guards above give pc + header <= len.
+        if data_len > script.len() - pc - header {
+            break; // truncated push
+        }
+        let end = pc + header + data_len;
+        if op != OP_CODESEPARATOR {
+            out.extend_from_slice(&script[pc..end]);
+        }
+        pc = end;
+    }
+    out
+}
+
 /// The BIP-143 or legacy sighash one ECDSA signature commits to, by spend
 /// kind. `script_code`/`amount` come from the claim (or the redeem/witness
 /// script inside it). None when the sighash cannot be computed (a P2WSH spend
@@ -202,8 +245,8 @@ fn ecdsa_sighash(
         Spend::P2wsh(Some(ws)) => cache.p2wsh_signature_hash(index, ws, value, sighash_type).ok()?.to_byte_array(),
         Spend::WrappedP2wsh(_, Some(ws)) => cache.p2wsh_signature_hash(index, ws, value, sighash_type).ok()?.to_byte_array(),
         Spend::P2wsh(None) | Spend::WrappedP2wsh(_, None) => return None,
-        Spend::LegacyP2sh(redeem) => cache.legacy_signature_hash(index, redeem, sighash_type.to_u32()).ok()?.to_byte_array(),
-        Spend::Legacy => cache.legacy_signature_hash(index, &claim.script_pubkey, sighash_type.to_u32()).ok()?.to_byte_array(),
+        Spend::LegacyP2sh(redeem) => cache.legacy_signature_hash(index, Script::from_bytes(&strip_codeseparators(redeem.as_bytes())), sighash_type.to_u32()).ok()?.to_byte_array(),
+        Spend::Legacy => cache.legacy_signature_hash(index, Script::from_bytes(&strip_codeseparators(claim.script_pubkey.as_bytes())), sighash_type.to_u32()).ok()?.to_byte_array(),
         // Taproot inputs sign with Schnorr; an ECDSA partial signature there
         // is reported by the caller instead of hashed. Future witness
         // versions have no sighash here yet.
@@ -994,6 +1037,27 @@ mod tests {
         let badmap = vec![pair("01", &witness_utxo_value(&claim)), pair(&format!("02{key_hex}"), &hex_encode(&bad))];
         let problems = analyze(&tx, &[badmap]);
         assert!(problems.iter().any(|p| p.code == "partial_sig_invalid" && p.severity == WARNING));
+    }
+
+    #[test]
+    fn strip_codeseparators_removes_opcodes_but_keeps_pushed_data() {
+        // Bare opcodes go, everything else stays.
+        assert_eq!(strip_codeseparators(&[0x51, 0xab, 0x52]), vec![0x51, 0x52]);
+        // Separators inside a push are data, not opcodes: the push is copied
+        // verbatim, and only the trailing real opcode is removed.
+        assert_eq!(strip_codeseparators(&[0x02, 0xab, 0xab, 0xab]), vec![0x02, 0xab, 0xab]);
+        // PUSHDATA1 payloads are copied with their header.
+        assert_eq!(
+            strip_codeseparators(&[0x4c, 0x03, 0xab, 0x51, 0xab, 0x51]),
+            vec![0x4c, 0x03, 0xab, 0x51, 0xab, 0x51]
+        );
+        // A truncated push ends the walk, as Core's GetOp failure does.
+        assert_eq!(strip_codeseparators(&[0x51, 0x05, 0x52]), vec![0x51]);
+        // No separators: a real P2PKH scriptPubKey comes back unchanged.
+        let mut plain = vec![0x76, 0xa9, 0x14];
+        plain.extend_from_slice(&[0x11; 20]);
+        plain.extend_from_slice(&[0x88, 0xac]);
+        assert_eq!(strip_codeseparators(&plain), plain);
     }
 
     #[test]

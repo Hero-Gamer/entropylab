@@ -12,6 +12,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Worker } from "node:worker_threads";
 import { psbtInspectDoc, psbtBuildBytes, psbtWasmReady } from "../src/js/psbt-wasm.js";
 import { psbtBytesFromText, psbtEditorBuildDoc, satsToBtc } from "../src/js/psbt-editor.js";
 
@@ -841,4 +842,67 @@ test("satsToBtc formats like the inspector", () => {
   assert.equal(satsToBtc(199900000), "1.99900000");
   assert.equal(satsToBtc("2100000000000000"), "21000000.00000000");
   assert.equal(satsToBtc(1), "0.00000001");
+});
+
+// #525 review: strip_codeseparators runs for any legacy input that carries a
+// partial signature, before the signature itself is parsed. A PUSHDATA4
+// length near 2^32 must not overflow the 32-bit module's bounds check:
+// "4efbffffff" made the walk never advance (hang), and "51 x10 4ef6ffffff"
+// wrapped the slice end below its start (trap). Each PSBT below has one
+// input spending a bare legacy output with that script, plus a partial
+// signature, and psbtInspectDoc must return. A wasm infinite loop cannot be
+// interrupted by node:test's timeout, so each run happens in a worker with
+// its own deadline; without the fix the first case stalls the worker and the
+// second aborts it.
+const hostileLegacyPsbt = (scriptHex) => {
+  const le32 = (n) => [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255];
+  const compactSize = (n) => (n < 0xfd ? [n] : n <= 0xffff ? [0xfd, n & 255, (n >>> 8) & 255] : [0xfe, ...le32(n)]);
+  const kv = (key, value) => [key.length, ...key, ...compactSize(value.length), ...value];
+  const prev = prevTx([1000, unhex(scriptHex)]);
+  const unsigned = new Uint8Array([
+    ...le32(2), 1, ...unhex(prev.txid).reverse(), ...le32(0), 0, ...le32(0xffffffff),
+    1, ...[244, 1, 0, 0, 0, 0, 0, 0], 1, 0x51,
+    ...le32(0),
+  ]);
+  const pubkey = unhex("02" + "11".repeat(32));
+  const sig = new Uint8Array(72).fill(0x30); // not DER: the sighash runs first
+  return new Uint8Array([
+    ...unhex("70736274ff"),
+    ...kv([0x00], unsigned), 0x00,
+    ...kv([0x00], unhex(prev.hex)),
+    ...kv([0x02, ...pubkey], sig), 0x00,
+    0x00,
+  ]);
+};
+
+const inspectInWorker = (psbt, timeoutMs = 15000) =>
+  new Promise((resolve, reject) => {
+    const worker = new Worker(
+      `const { parentPort, workerData } = require("node:worker_threads");
+       import(workerData.moduleUrl).then((m) => {
+         const doc = m.psbtInspectDoc(new Uint8Array(workerData.psbt));
+         parentPort.postMessage({ codes: doc.problems.map((p) => p.code) });
+       }).catch((error) => parentPort.postMessage({ error: String(error) }));`,
+      { eval: true, workerData: { moduleUrl: new URL("../src/js/psbt-wasm.js", import.meta.url).href, psbt } }
+    );
+    const deadline = setTimeout(() => {
+      worker.terminate();
+      reject(new Error("psbtInspectDoc did not return within " + timeoutMs + "ms (module hung)"));
+    }, timeoutMs);
+    worker.once("message", (msg) => { clearTimeout(deadline); worker.terminate(); msg.error ? reject(new Error(msg.error)) : resolve(msg.codes); });
+    worker.once("error", (error) => { clearTimeout(deadline); worker.terminate(); reject(error); });
+  });
+
+test("crafted PUSHDATA4 scripts can neither hang nor trap the module (#525)", async () => {
+  for (const [name, script] of [
+    ["hang (PUSHDATA4 len 2^32-5)", "4efbffffff"],
+    ["trap (slice end wraps below start)", "51515151515151515151" + "4ef6ffffff"],
+  ]) {
+    const codes = await inspectInWorker(hostileLegacyPsbt(script));
+    // partial_sig_invalid proves the sighash ran to completion (the stripping
+    // is inside it): check_ecdsa computes the digest before the DER parse
+    // that rejects this dummy signature. sighash_nonstandard would also
+    // appear, but it is added before the sighash is computed.
+    assert.ok(codes.includes("partial_sig_invalid"), `${name}: the sighash ran to completion, got [${codes}]`);
+  }
 });

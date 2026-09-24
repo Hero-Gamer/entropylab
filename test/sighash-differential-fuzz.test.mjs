@@ -47,23 +47,6 @@ import { wasmExports, withInput, withOutput } from "../src/js/entropylab-wasm.js
 
 const FUZZ_SEED = 0x5eed0341;
 const CASES = 64;
-// Known mismatches, tracked in #523: legacy P2SH inputs whose redeem script
-// contains a raw OP_CODESEPARATOR. rust-bitcoin's legacy_signature_hash
-// hashes the scriptCode as-is ("Does NOT attempt to support
-// OP_CODESEPARATOR"); Bitcoin Core's SignatureHash and scure strip the
-// separators. The fixing PR must delete this set, which turns the per-case
-// assertion below back into a plain "no mismatches" check.
-const KNOWN_CODESEPARATOR_MISMATCHES = new Set([9, 21, 42, 51]);
-// True when the script has an OP_CODESEPARATOR as an opcode, not inside a
-// push. Only the minimal push parsing the generator produces.
-const hasRawCodeseparator = (script) => {
-  for (let pc = 0; pc < script.length;) {
-    const op = script[pc];
-    if (op === OP_CODESEPARATOR) return true;
-    pc += op >= 0x01 && op <= 0x4b ? 1 + op : 1;
-  }
-  return false;
-};
 const mulberry32 = (seed) => {
   let a = seed >>> 0;
   return () => {
@@ -233,21 +216,8 @@ test(`rust-bitcoin (WASM) and @scure/btc-signer sign the same legacy, BIP143, an
     const c = buildCase(i);
     seen.add(c.family);
     const verdict = signatureProblems(c.signed, c.idx);
-    if (KNOWN_CODESEPARATOR_MISMATCHES.has(i)) {
-      // #523: pin the bug's exact shape so it cannot drift silently. Each
-      // known case must be a legacy P2SH input with a raw OP_CODESEPARATOR,
-      // and the app must still be rejecting the Core-valid signature. The
-      // fix deletes the case from the set, which flips this to the strict
-      // assertion below.
-      assert.equal(c.family, "legacy", `${c.label}: known mismatch is no longer a legacy case — re-triage #523`);
-      assert.ok(c.spend.fields.redeemScript && hasRawCodeseparator(c.spend.fields.redeemScript),
-        `${c.label}: known mismatch has no raw OP_CODESEPARATOR in its redeem script — re-triage #523`);
-      assert.ok(verdict.length > 0,
-        `${c.label}: the app now verifies this signature — if the #523 fix landed, remove case ${i} from KNOWN_CODESEPARATOR_MISMATCHES`);
-    } else {
-      assert.deepEqual(verdict, [],
-        `${c.label}: the app does not verify a signature over scure's digest ${hex(c.digest)}\n  ${verdict.map((problem) => `${problem.code}: ${problem.message}`).join("\n  ")}`);
-    }
+    assert.deepEqual(verdict, [],
+      `${c.label}: the app does not verify a signature over scure's digest ${hex(c.digest)}\n  ${verdict.map((problem) => `${problem.code}: ${problem.message}`).join("\n  ")}`);
     const relabelled = signatureProblems(c.relabelled, c.idx).filter((problem) => /_sig_invalid$/.test(problem.code));
     assert.ok(relabelled.length > 0, `${c.label}: relabelled as 0x${c.otherType.toString(16).padStart(2, "0")}, the signature still verifies, so the app did not check this input`);
     if (c.family === "bip143") {

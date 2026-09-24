@@ -15227,7 +15227,7 @@ function hodlRunVanity() {
   hodlVanityFound = 0;
   // The run's key, method, and passphrase are fixed at start; snapshot them
   // so the results (and Update key) cannot drift if the form changes mid-grind.
-  hodlVanityRun = { method: inputs.method, script: inputs.script, sourceId: inputs.sourceId, sourceLabel: inputs.sourceLabel, sourceKind: hodlVanitySourceState()?.isBip85Child ? "bip85" : "key", passphrase: inputs.passphrase, accountHardened: inputs.accountHardened, pathText: vanityPathString([...inputs.pathPrefix, ...inputs.path]) };
+  hodlVanityRun = { method: inputs.method, script: inputs.script, sourceId: inputs.sourceId, sourceLabel: inputs.sourceLabel, sourceKind: hodlVanitySourceState()?.isBip85Child ? "bip85" : "key", passphrase: inputs.passphrase, accountHardened: inputs.accountHardened, path: [...inputs.pathPrefix, ...inputs.path], pathText: vanityPathString([...inputs.pathPrefix, ...inputs.path]) };
   hodlRenderVanityOut();
   hodlVanityRunning = true;
   hodlVanitySyncControls();
@@ -15296,6 +15296,24 @@ async function hodlVanityApplyMatch(index) {
   }
   if (hodlActiveDerivation) {
     if (error) error.textContent = hodlTText("A derivation is already running on the Keys tab — wait for it to finish.");
+    return;
+  }
+  // The key can be re-derived in place since the grind (same fingerprint,
+  // same tab). Plan it as it is now: a passphrase match needs its seed words,
+  // and every path component the match does not set must be the one the run
+  // ground at, or the updated key would not derive this address.
+  let path;
+  try {
+    let plan = hodlVanityPlan(state, run.method, run.script);
+    plan.node?.fill(0);
+    path = [...plan.pathPrefix, ...plan.path];
+  } catch (exception) {
+    if (error) error.textContent = exception.message || String(exception);
+    return;
+  }
+  let counterSlot = run.method === "derivation" ? 2 : -1;
+  if (path.length !== run.path.length || path.some((component, slot) => slot !== counterSlot && component !== run.path[slot])) {
+    if (error) error.textContent = hodlTText("Key {key} now derives at {now}, but this match was ground at {then}. Set the path back on the Keys tab, or grind again.", { key: hodlVanityKeyLabel(state), now: hodlDisplayDerivationPath(vanityPathString(path)), then: hodlDisplayDerivationPath(run.pathText) });
     return;
   }
   hodlVanityApplying = true;

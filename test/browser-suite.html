@@ -1893,6 +1893,102 @@
     await until(() => [...document.querySelectorAll("#key-tabs .key-tab")].every((tab) => !tab.textContent.includes("c55401c7")), "the derived key to be deleted");
     input(document.getElementById("pass"), "");
   });
+  await test("Update key refuses a match its key no longer derives, and applies it once the key is back as ground", async () => {
+    // Contract (#399 F3): Update key writes a match only onto a key that still
+    // derives it. A key can be re-derived in place after the grind (same
+    // fingerprint, same tab). If a path component the match does not set has
+    // moved, or a passphrase match's key no longer carries seed words, Update
+    // key is refused and the key stays as the user left it. Put back as it
+    // was ground, the same match applies.
+    // Counter 0 of "correct horse battery staple" is
+    // bc1qylthc2drk6x5q0czdljal99vqwed9tja80z06d at m/84'/0'/0'/0/0 (scure
+    // re-derivation in test/vanity-wasm.test.mjs; the Vanity test above).
+    const words = Array(23).fill("abandon").join(" ") + " art", pass = "correct horse battery staple";
+    const vanityAddress = "bc1qylthc2drk6x5q0czdljal99vqwed9tja80z06d";
+    const keyTabs = () => [...document.querySelectorAll("#key-tabs > *")].map((tab) => tab.textContent.trim()).join(",");
+    const openKeys = async () => {
+      document.querySelector('#workspace [data-workspace="calc"]').click();
+      await until(() => !document.getElementById("key-manager").hidden, "key workspace");
+    };
+    const openVanity = async () => {
+      document.querySelector('#workspace [data-workspace="vanity"]').click();
+      await until(() => !document.getElementById("vanity-card").hidden, "Vanity tool to open");
+    };
+    // The Keys tab's own in-place edit: Edit Input, change the lab, Derive.
+    const rederive = async (edit, what) => {
+      await openKeys();
+      document.getElementById("key-edit-inputs").click();
+      await until(() => document.getElementById("key-summary").hidden, "the key's inputs to open in the lab");
+      edit();
+      await until(() => !document.getElementById("go").disabled, "Derive Key to enable");
+      document.getElementById("go").click();
+      await until(() => !document.getElementById("key-summary").hidden, what, 60000);
+      equal(keyTabs(), "Key Station,ef94d090", "an in-place edit keeps the key's fingerprint and tab");
+    };
+    const refused = async (what) => {
+      await openVanity();
+      document.querySelector("#vanity-out [data-vanity-apply]").click();
+      await until(() => document.getElementById("vanity-error").textContent.trim(), what);
+      assert(document.querySelector("#vanity-out [data-vanity-apply]"), "a refused match stays unsaved");
+      equal(keyTabs(), "Key Station,ef94d090", "a refused Update key leaves the key's fingerprint alone");
+    };
+    await openKeys();
+    await chooseMode("Seed phrase");
+    input(document.getElementById("seed"), words);
+    input(document.getElementById("pass"), pass);
+    await until(() => !document.getElementById("go").disabled, "Derive Key to enable");
+    document.getElementById("go").click();
+    await until(() => keyTabs() === "Key Station,ef94d090", "the derived key tab ef94d090");
+    await openVanity();
+    await until(() => document.querySelector("#vanity-session-keys [data-key-id]"), "the Key Station chip to appear");
+    document.querySelector("#vanity-session-keys [data-key-id]").click();
+    await wait(0);
+    document.querySelector('#vanity-script-tabs [data-vanity-script="p2wpkh"]').click();
+    document.querySelector('#vanity-method-tabs [data-vanity-method-option="passphrase"]').click();
+    await wait(0);
+    input(document.getElementById("vanity-prefix"), "bc1qyl");
+    input(document.getElementById("vanity-length"), "1");
+    input(document.getElementById("vanity-start"), "0");
+    input(document.getElementById("vanity-count"), "62");
+    document.getElementById("vanity-go").click();
+    await until(() => document.getElementById("vanity-status").textContent.includes("Range complete"), "the range to complete", 60000);
+    assert(document.querySelector("#vanity-out table tbody tr").children[3].textContent.includes(vanityAddress), "the hit address is the pinned vector");
+    // The reported case: the key's address start moves 0 → 7 in place.
+    await rederive(() => input(document.getElementById("address-start"), "7"), "the key to re-derive from address 7");
+    await refused("Update key to refuse a key whose address start moved");
+    await openKeys();
+    assert(firstAcctAddress()?.path.endsWith("/0/7"), "a refused Update key leaves the edited path alone");
+    equal(document.getElementById("pass").value, pass, "a refused Update key leaves the passphrase alone");
+    // The same wallet re-imported as its root xprv: same fingerprint, but no
+    // seed words for the match's passphrase to extend.
+    await rederive(() => input(document.getElementById("address-start"), "0"), "the key to re-derive from address 0");
+    const rootXprv = crypto.masterXprv(words, pass);
+    await rederive(() => {
+      input(document.getElementById("pass"), "");
+      input(document.getElementById("seed"), rootXprv);
+    }, "the key to re-derive from its root xprv");
+    await refused("Update key to refuse a passphrase match on a key without seed words");
+    // Back as it was ground: the same match now applies.
+    await rederive(() => {
+      input(document.getElementById("seed"), words);
+      input(document.getElementById("pass"), pass);
+    }, "the key to re-derive from its seed words");
+    await openVanity();
+    document.querySelector("#vanity-out [data-vanity-apply]").click();
+    await until(() => keyTabs() === "Key Station,c55401c7", "Update key to apply the match", 60000);
+    equal(document.getElementById("vanity-error").textContent.trim(), "", "the applied match raises no error");
+    await openKeys();
+    await until(() => firstAcctAddress()?.address === vanityAddress, "the updated key to show the vanity address first");
+    // Leave Key Station as the tests that follow expect it.
+    await openVanity();
+    document.getElementById("vanity-wipe").click();
+    await openKeys();
+    [...document.querySelectorAll("#key-tabs > *")].find((tab) => tab.textContent.includes("c55401c7")).click();
+    await until(() => !document.getElementById("delete-key").disabled, "Delete current key to enable");
+    document.getElementById("delete-key").click();
+    await until(() => keyTabs() === "Key Station", "the derived key to be deleted");
+    input(document.getElementById("pass"), "");
+  });
   await test("Journal notepad stamps notes, session state stays live, and the log omits secrets", async () => {
     document.querySelector('#workspace [data-workspace="journal"]').click();
     // Earlier tests can leave Journal on Session state or Session log; pick

@@ -165,6 +165,10 @@ for UI testing only and must never receive funds. The loader and its
   failing-then-passing command in the pull request. See `AGENTS.md` for the
   full rule. Never weaken, skip, or delete an existing test to make CI pass —
   if it is wrong, say why.
+- **External findings:** a finding from an audit, a red team, or an outside
+  report is not closed until its pull request adds a regression test that
+  fails on the old bytes and passes on the fix. Name that test in the pull
+  request.
 - **Translations:** user-facing text is written in English and translated
   content-keyed — the English string at the call site is the catalog key
   (`t("Save watch-only sheet")`), and a content sweep translates static markup

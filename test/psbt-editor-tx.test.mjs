@@ -101,7 +101,7 @@ test("the last input cannot be deleted: a zero-input unsigned tx does not round-
   assert.throws(() => psbtBuildBytes(psbtEditorBuildDoc(doc)));
   // …which is why the delete control is withheld when one input remains.
   const editor = read("src/js/psbt-editor.js");
-  assert.match(editor, /tx\.inputs\.length > 1 \? `<button type="button" class="psbted-del" data-txin-del=/);
+  assert.match(editor, /tx\.inputs\.length > 1 \? `<button [^>]*data-txin-del=/);
 });
 
 test("the editor renders the structural controls for inputs and outputs", () => {

@@ -114,13 +114,16 @@ button, select, textarea, input { font: inherit; }
 button { cursor: pointer; }
 /* Every enabled button uses the same momentary press feedback. The disabled
    state is intentionally excluded so controls that become unavailable after
-   their click transition directly from orange to their disabled treatment. */
-button:not(:disabled):active {
+   their click transition directly from orange to their disabled treatment.
+   A flow-diagram box is pressed as a whole, since its button covers it. */
+button:not(:disabled):active,
+.psbted-viz-box:has(> .psbted-viz-open:active) {
   background: var(--selection-accent) !important;
   color: var(--selection-fg) !important;
   border-color: var(--selection-accent) !important;
 }
-button:not(:disabled):active * { color: inherit !important; }
+button:not(:disabled):active *,
+.psbted-viz-box:has(> .psbted-viz-open:active) :not(input) { color: inherit !important; }
 /* No bottom padding: the closing footer supplies the page's last band of
    space itself, so it sits flush with the bottom of the document. */
 .wrap { max-width: 1000px; margin: 0 auto; padding: calc(var(--site-header-height) + 20px) 16px 0; }
@@ -219,7 +222,7 @@ button:not(:disabled):active * { color: inherit !important; }
 .btn, .segmented-control > .tab, .dice-input-pad button, .card-suit-pad button, .card-undo-button,
 .seed-keyboard-key, .seed-keyboard-space, .seed-keyboard-mode,
 .theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button, .addr-qr,
-.beta-warning-dismiss, .intro-dismiss {
+.beta-warning-dismiss, .intro-dismiss, .psbted-viz-box:has(> .psbted-viz-open), .psbted-viz-tx, .exp-cell {
   --hover-edge: var(--selection-accent); --hover-ink: var(--selection-accent-ink);
   cursor: pointer; transition: background-color .14s ease, border-color .14s ease, color .14s ease;
 }
@@ -229,7 +232,8 @@ button:not(:disabled):active * { color: inherit !important; }
 .btn:not(:disabled):hover,
 .segmented-control > .tab:not(:disabled):not(.active):not([aria-pressed="true"]):hover,
 :is(.dice-input-pad button, .card-suit-pad button, .card-undo-button, .seed-keyboard-key, .seed-keyboard-space, .seed-keyboard-mode):not(:disabled):not(.active):hover,
-:is(.theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button, .addr-qr, .beta-warning-dismiss, .intro-dismiss):hover {
+:is(.theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button, .addr-qr, .beta-warning-dismiss, .intro-dismiss, .psbted-viz-tx, .exp-cell):hover,
+.psbted-viz-box:has(> .psbted-viz-open):not(:has(input:hover)):hover {
   border-color: var(--hover-edge); background: var(--bg); color: var(--hover-ink);
 }
 /* A suit keeps its own colour through the inversion, since that is what names
@@ -237,11 +241,16 @@ button:not(:disabled):active * { color: inherit !important; }
    the colour it already wears; currentColor would resolve against the pad. */
 .card-suit-pad button { --hover-ink: var(--fg); }
 .card-suit-pad button.is-red { --hover-ink: var(--danger); }
+/* The flow-diagram boxes hold coloured addresses and amounts of their own, so
+   only the fill and the edge answer; the unstyled text stays white. An
+   expandable cell's value keeps whatever colour it inherits. */
+.psbted-viz-box, .psbted-viz-tx { --hover-ink: var(--fg); }
+.exp-cell { --hover-ink: currentColor; }
 @media (prefers-reduced-motion: reduce) {
   .btn, .segmented-control > .tab, .dice-input-pad button, .card-suit-pad button, .card-undo-button,
   .seed-keyboard-key, .seed-keyboard-space, .seed-keyboard-mode,
   .theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button, .addr-qr,
-  .beta-warning-dismiss, .intro-dismiss { transition: none; }
+  .beta-warning-dismiss, .intro-dismiss, .psbted-viz-box:has(> .psbted-viz-open), .psbted-viz-tx, .exp-cell { transition: none; }
 }
 /* The colour variants carry their rest colours and their three tokens, and
    nothing else: green saves to disk, red destroys, blue leaves the page. Each
@@ -1777,6 +1786,13 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 /* Section titles in the editor read as the shared label, not as headings. */
 .psbted-map > h3 { margin: 0 0 4px; font: inherit; font-size: 14px; font-weight: 600; letter-spacing: normal; }
+/* The editor runs long, so every section label sits on a faint full-width
+   band that marks where the section begins. The band reaches 8px past the
+   content on each side so the label's text stays on the content edge. */
+.psbted-section-label, .psbted-map > .psbted-section-label {
+  margin-inline: -8px; padding: 6px 8px;
+  background: color-mix(in oklab, var(--fg) 5%, transparent);
+}
 .psbted-txhead { display: flex; flex-wrap: wrap; gap: 0 16px; margin-bottom: 4px; }
 .psbted-txhead label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .psbted-txhead input { width: 11em; }
@@ -1838,7 +1854,8 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .psbted-qr svg { width: 240px; height: 240px; }
 .psbted-stale { opacity: 0.55; }
 .psbted-map > p { overflow-wrap: anywhere; }
-.psbted-del { width: 30px; height: 30px; padding: 0; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--danger); cursor: pointer; font-size: 18px; line-height: 1; }
+/* The shared red button (.btn.red) at the size of a table row. */
+.psbted-del { width: 30px; height: 30px; min-height: 0; padding: 0; border-radius: 6px; font-size: 18px; }
 .psbted-add { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) minmax(0, 2fr) auto; gap: 8px; align-items: center; margin: 4px 0 14px; }
 /* The add row closes its map, so it carries the gap to the next one. */
 .psbted-map > .psbted-add:last-child { margin-bottom: var(--space-section); }
@@ -1847,8 +1864,49 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .psbted-add-el { margin: 4px 0 var(--space-component); }
 /* The add row that closes a section carries the gap to the next one. */
 .psbted-map > .psbted-add-el:last-child { margin-bottom: var(--space-intro); }
+.psbted-cell-label { display: none; }
 @media (max-width: 720px) {
   .psbted-add { grid-template-columns: minmax(0, 1fr); }
+  /* Stacked, the Add Input / Add Output actions go full width like Add Pair. */
+  .psbted-add-el > .btn { width: 100%; }
+  /* The edited PSBT readouts grow with their bytes on desktop; on a phone a
+     large PSBT would run for screens, so they cap at about twelve lines and
+     scroll inside. */
+  .psbted-result-value { max-height: 240px; overflow-y: auto; }
+  /* Stacked tables: each row becomes a block under the existing divider. The
+     first cell heads it with the delete button pinned beside it; every other
+     cell is a line of its own, its column's name on the left. The header row
+     stays for screen readers only. */
+  .psbted-stack, .psbted-stack > tbody { display: block; }
+  .psbted-stack { border-collapse: separate; border-spacing: 0; }
+  .psbted-stack > thead {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap;
+  }
+  .psbted-stack tr {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-control);
+    padding: var(--space-control) 0; border-bottom: 1px solid var(--border);
+  }
+  .psbted-stack tbody td {
+    display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); column-gap: var(--space-control); align-items: baseline;
+    grid-column: 1 / -1; padding: 4px 0; border: 0;
+  }
+  .psbted-stack tbody td:first-child, .psbted-stack tbody td[colspan] { display: block; grid-column: 1; padding-top: 0; }
+  .psbted-stack tbody td.psbted-del-cell { display: block; grid-column: 2; grid-row: 1; padding: 0; }
+  .psbted-stack tbody td.psbted-del-cell:empty { display: none; }
+  /* A cell holding several parts (the scriptPubKey field, its address, the
+     builder) keeps them all in the value column. */
+  .psbted-stack tbody td > :not(.psbted-cell-label) { grid-column: 2; }
+  .psbted-cell-label { display: block; font-family: var(--sans); font-size: 12px; font-weight: 600; color: var(--muted); }
+  /* The transaction tables' first cell is a bare row index; stacked, it reads
+     "Input 0" / "Output 0" as the block's heading. */
+  .psbted-stack tbody td:first-child > .psbted-cell-label { display: inline; margin-right: 0.35em; font-size: inherit; color: inherit; }
+  /* The script builder spans the whole block under its scriptPubKey (the
+     value column is too narrow for the picker's label): the text field on a
+     line of its own, the mode picker and Set Script sharing the line below. */
+  .psbted-stack tbody td > .psbted-build { grid-column: 1 / -1; }
+  .psbted-build { grid-template-columns: minmax(0, 1fr) auto; }
+  .psbted-build > input { grid-column: 1 / -1; }
+  .psbted-build .custom-select-button { white-space: nowrap; }
 }
 .psbted-note-muted { color: var(--muted); }
 .psbted-note-ok { color: var(--ok); }
@@ -1879,7 +1937,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    in an SVG layer under the columns; psbt-editor.js draws the paths once
    the boxes have layout. In the stacked (narrow) layout the SVG layer
    hides and plain arrows carry the flow cue instead. */
-.psbted-viz { position: relative; margin-top: var(--space-component); }
+.psbted-viz { position: relative; margin: var(--space-component) 0 var(--space-major); }
 .psbted-viz-svg { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
 .psbted-viz-cols { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); column-gap: 44px; row-gap: 12px; }
 .psbted-viz-line { fill: none; stroke-width: 2; opacity: 0.55; }
@@ -1898,23 +1956,30 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   min-height: 0; margin: 0; max-width: 230px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px;
   background: var(--surface-2); color: inherit; font-size: 13px; text-align: center;
 }
-.psbted-viz-tx:hover { border-color: var(--muted); }
 /* A greyed line in the tx box is the same line in a quieter colour, so it
    keeps the box's type size instead of taking .muted's 14px. */
 .psbted-viz-txline { display: block; margin: 2px 0; font-size: inherit; overflow-wrap: anywhere; }
 .psbted-viz-feenum { font-family: var(--mono); }
-.psbted-viz-box { border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); padding: 8px 10px; font-size: 13px; }
-.psbted-viz-box:hover { border-color: var(--muted); }
+.psbted-viz-fee { font-weight: 600; }
+.psbted-viz-box { position: relative; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); padding: 8px 10px; font-size: 13px; }
+/* The whole box is the link: the button's overlay stretches over it, and the
+   output amount field sits above the overlay so it stays editable. The box
+   stands down while the pointer is on that field, which answers for itself. */
+.psbted-viz-open::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.psbted-viz input.psbted-viz-sats { position: relative; z-index: 1; cursor: text; }
 .psbted-viz-open {
   display: flex; gap: 8px; align-items: baseline; width: 100%; min-height: 0; margin: 0; padding: 0;
   border: none; border-radius: 4px; background: none; color: inherit; font-size: 13px; text-align: left;
 }
 .psbted-viz-idx { flex: none; font-family: var(--mono); font-size: 13px; }
 .psbted-viz-id { font-family: var(--mono); overflow-wrap: anywhere; }
-.psbted-viz-in { color: var(--blue); }
-.psbted-viz-out { color: var(--ok); }
+.psbted-viz-in { color: var(--blue-ink); } /* the text blue the input map rows use */
+/* An output address is green wherever the editor names it: the diagram box
+   and the output map's "Pays … to" line. */
+.psbted-viz-out, .psbted-out-address { color: var(--ok); }
 .psbted-viz-tag { color: var(--warn); }
 .psbted-viz-kind { color: var(--muted); }
+.psbted-viz-status { font-weight: 600; }
 .psbted-viz-amount { margin: 6px 0 0; font-family: var(--mono); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
 /* Specificity matches the global text-input rule (two classes + element,
    later in the file) so the in-box field stays compact and inline. */
@@ -1935,7 +2000,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   color: inherit; font-family: var(--mono); font-size: 12px; line-height: 1.55;
   text-align: left; overflow-wrap: anywhere; cursor: pointer;
 }
-.exp-cell:hover { background: var(--surface-2); border-color: var(--muted); }
 .exp-len { color: var(--muted); font-size: 11px; white-space: nowrap; }
 /* The overlay mirrors the disclaimer gate: dimmed page, one centered card. */
 .exp-meta { margin: 4px 0 0; }

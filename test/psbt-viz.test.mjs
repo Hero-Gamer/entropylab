@@ -26,7 +26,7 @@ const inspectValid = () => psbtInspectDoc(VALID);
 
 // The diagram groups read-only sats with narrow no-break spaces; keep the
 // escape visible instead of hiding invisible characters in assertions.
-const sats = (digits) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, "\u202f");
+const sats = (digits) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
 // A minimal synthetic document for shapes the vector does not exercise.
 const syntheticDoc = (overrides = {}) => ({

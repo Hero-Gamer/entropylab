@@ -69,18 +69,25 @@ export const SCENARIOS = [
   {
     name: "psbt-garbage-paste",
     description:
-      "Paste non-PSBT garbage into the PSBT inspector textarea and run it; the app must surface its own error UI.",
+      "Paste non-PSBT garbage into the PSBT inspector textarea. Undecodable text must disable Inspect — since the tool split, that disabled button is the app's refusal. Base64 that decodes to bytes but is not a PSBT must re-enable it and surface the app's error UI.",
     actions: [
       `(() => { ok = click("#psbt-editor-tab"); if (!ok) ok = click('[data-psbt-tool]'); return "switched=" + ok; })()`,
       `(() => { const el = first(["#psbt-text", "textarea"]); if (!el) return "no-psbt-textarea"; put(el, "not a psbt at all \\x00\\x01\\x01 " + "{}".repeat(200) + " <script>alert(1)<\\/script>"); return "garbage-pasted len=" + el.value.length; })()`,
-      `(() => { const ok = click("#psbt-go") || click("#psbted-load"); if (!ok) return "no-go-button"; return "go-clicked"; })()`,
+      // Undecodable garbage disables Inspect (hodlSyncPsbtControls), so the
+      // click is a no-op. Record the refusal where the assert can read it.
+      `(() => { const go = first(["#psbt-go"]); if (!go) return "no-go-button"; window.__garbageGoDisabled = go.disabled; go.click(); return "garbage-go-disabled=" + go.disabled; })()`,
+      // "QUJD" repeated is valid base64 ("ABCABC…") but not a PSBT: the
+      // button must re-enable, and Inspect must surface the decoder's error.
+      `(() => { const el = first(["#psbt-text", "textarea"]); put(el, "QUJD".repeat(200)); const go = first(["#psbt-go"]); return "invalid-b64-pasted len=" + el.value.length + " go-disabled=" + (go && go.disabled); })()`,
+      `(() => { const go = first(["#psbt-go"]); if (!go || go.disabled) return "go-did-not-reenable"; go.click(); return "go-clicked"; })()`,
       `(async () => { await sleep(800); const err = first(["#psbt-error", "#psbted-error", "#error"]); return "error-ui=" + (err ? (err.textContent || "").slice(0, 120) : "(none)"); })()`,
     ],
     assert: `
       (() => {
         const failures = [];
+        if (window.__garbageGoDisabled !== true) failures.push("undecodable garbage did not disable the Inspect button");
         const err = first(["#psbt-error", "#psbted-error", "#error"]);
-        if (!err || !err.textContent) failures.push("no error surfaced for garbage PSBT");
+        if (!err || !err.textContent) failures.push("decodable-but-invalid base64 surfaced no error text");
         return { failures, info: { errorText: err ? err.textContent.slice(0, 160) : null } };
       })()
     `,

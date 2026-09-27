@@ -13,6 +13,11 @@
 // nothing, so the card stays on its standard spec and refuses it with the
 // reason, unless the user chooses Custom. A wallet follows BIP45 or BIP87 only
 // when every co-signer follows that spec; any Custom co-signer makes it Custom.
+// Co-signers on a spec share one, and BIP45 never shares a wallet with Custom:
+// BIP45 derives every co-signer through its co-signer branch, so a Custom card
+// would silently change how the BIP45 cards derive. The summary says paths
+// vary only when a card is Custom; a standard wallet's differing accounts read
+// as accounts that vary.
 //
 // Expected paths are the published ones: BIP48, BIP87, BIP45, BIP44, BIP49,
 // BIP84 and BIP86, independent of the app.
@@ -21,8 +26,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadAppFunctions } from "./app-slice-harness.mjs";
 
-const { hodlMsigSpecsFor, hodlMsigSpec, hodlMsigSpecFromOrigin, hodlMsigSpecComponents, hodlMsigSpecStepLabels, hodlMsigForeignSpecNote, hodlMsigWalletStandard } = await loadAppFunctions([
-  "hodlMsigSpecsFor", "hodlMsigSpec", "hodlMsigSpecFromOrigin", "hodlMsigSpecComponents", "hodlMsigSpecStepLabels", "hodlMsigForeignSpecNote", "hodlMsigWalletStandard",
+const { hodlMsigSpecsFor, hodlMsigSpec, hodlMsigSpecFromOrigin, hodlMsigSpecComponents, hodlMsigSpecStepLabels, hodlMsigForeignSpecNote, hodlMsigWalletStandard, hodlMsigSpecMixError, hodlMsigSummaryPath } = await loadAppFunctions([
+  "hodlMsigSpecsFor", "hodlMsigSpec", "hodlMsigSpecFromOrigin", "hodlMsigSpecComponents", "hodlMsigSpecStepLabels", "hodlMsigForeignSpecNote", "hodlMsigWalletStandard", "hodlMsigSpecMixError", "hodlMsigSummaryPath",
 ]);
 
 const ALL = { purpose: true, coinType: true, account: true, address: false };
@@ -113,4 +118,32 @@ test("a wallet follows BIP45 or BIP87 only when every co-signer does; any Custom
   // Mixed specs are refused before this is asked; they are never a standard.
   assert.equal(hodlMsigWalletStandard(["bip45", "bip87"]), "custom");
   assert.equal(hodlMsigWalletStandard([]), "custom");
+});
+
+test("co-signer specs that cannot share one wallet are refused, and those that can are not", () => {
+  // One spec, or one spec beside Custom cards (BIP45 aside), is a wallet.
+  for (const specs of [["bip48", "bip48"], ["bip87"], ["custom", "custom"], ["bip48", "custom"], ["bip87", "custom", "bip87"], ["bip45", "bip45"]]) {
+    assert.equal(hodlMsigSpecMixError(specs), "", specs.join(" + "));
+  }
+  // Two specs never are; neither is BIP45 beside Custom, which would drop
+  // BIP45's co-signer branch from the BIP45 cards.
+  for (const specs of [["bip48", "bip87"], ["bip45", "bip87"], ["bip84", "bip48", "custom"], ["bip45", "custom"], ["custom", "bip45", "bip45"]]) {
+    const error = hodlMsigSpecMixError(specs);
+    assert.ok(typeof error === "string" && error && !error.includes("[object"), `${specs.join(" + ")}: ${error}`);
+  }
+});
+
+test("the summary says paths vary only when a card is Custom", () => {
+  const order = (...paths) => paths.map((path, index) => ({ position: index + 1, fingerprint: "73c5da0a", path }));
+  // A standard BIP48 wallet on two accounts: rock's placeholder standard for
+  // it is "custom", which must not read as custom paths.
+  const standard = { scriptStandard: "custom", specCustom: false, accountMixed: true, scriptOrder: order("48h/0h/0h/2h", "48h/0h/1h/2h") };
+  assert.equal(hodlMsigSummaryPath(standard), "m/48'/0'/0'/2' \xB7 accounts vary");
+  // A wallet restored from before cards had specs reads the same way.
+  assert.equal(hodlMsigSummaryPath({ ...standard, specCustom: undefined }), "m/48'/0'/0'/2' \xB7 accounts vary");
+  // A Custom card with a different path says so.
+  const custom = { scriptStandard: "custom", specCustom: true, accountMixed: false, scriptOrder: order("48h/0h/0h/2h", "0h") };
+  assert.equal(hodlMsigSummaryPath(custom), "m/48'/0'/0'/2' \xB7 paths vary");
+  // Custom cards on one shared path have nothing to add.
+  assert.equal(hodlMsigSummaryPath({ ...custom, scriptOrder: order("0h", "0h") }), "m/0'");
 });

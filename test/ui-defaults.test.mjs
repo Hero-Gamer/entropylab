@@ -901,7 +901,7 @@ test("multisig separates script type from purpose and keeps the Legacy BIP87 sho
   assert.match(app, /legacyBip87:!1/);
   assert.match(app, /purpose:"48"/);
   // Co-signers on a spec must share one; mixed exports are refused.
-  assert.match(appSource, /if \(standardSpecs\.size > 1\) throw hodlError\(/);
+  assert.match(appSource, /let mixError = hodlMsigSpecMixError\(specs\);\s*if \(mixError\) throw new Error\(mixError\);/);
 });
 
 test("Native SegWit multisig uses the imported Bitcoin address encoder", () => {
@@ -1020,7 +1020,7 @@ test("multisig consistently uses derive for its heading and action", () => {
   assert.match(app, /function hodlValidatedMsigInputs\(\)/);
   assert.match(appSource, /hodlValidatedMsigInputs\(\);\s*ready = true/);
   assert.match(app, /button\.disabled=!ready/);
-  assert.match(app, /let\{network,coinType,count,addressStart,branchStart,branchRange,n,m,kind,purpose,hardening,legacyStandard,nodes,xpubs,keyTokens,accountSummary,accountWarning,customWarning\}=hodlValidatedMsigInputs\(\)/);
+  assert.match(app, /let\{network,coinType,count,addressStart,branchStart,branchRange,n,m,kind,purpose,hardening,legacyStandard,nodes,xpubs,keyTokens,accountSummary,accountWarning,customWarning,specCustom\}=hodlValidatedMsigInputs\(\)/);
 });
 
 test("Station tabs stay pinned left while add controls stay pinned right", () => {

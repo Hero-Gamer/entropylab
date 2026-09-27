@@ -7007,6 +7007,17 @@ function hodlMsigForeignSpecNote(origin, kind) {
   if (!spec) return "";
   return hodlTText("A {spec} key belongs to {scripts} multisig; this wallet is {script}.", { spec: hodlTText(hodlMsigSpecLabels[spec.id]), scripts: spec.kinds.map(hodlMultisigScriptLabel).join(" or "), script: hodlMultisigScriptLabel(kind) });
 }
+function hodlMsigSpecMixError(specs) {
+  // Why these co-signer specs cannot make one wallet, or "". Co-signers on a
+  // spec share one: mixed exports are refused, not blended. BIP45 derives
+  // every co-signer through its co-signer branch, so beside a Custom card —
+  // which makes the wallet Custom and drops that branch — the BIP45 cards
+  // would silently derive as something other than BIP45.
+  let standard = [...new Set(specs.filter((spec) => spec !== "custom"))];
+  if (standard.length > 1) return hodlTText("Co-signers follow different specs ({specs}). Choose one spec for every co-signer, or Custom for the odd one out.", { specs: standard.map((id) => hodlTText(hodlMsigSpecLabels[id])).join(", ") });
+  if (standard[0] === "bip45" && specs.includes("custom")) return hodlTText("BIP45 derives every co-signer through co-signer branch 0, so it cannot share a wallet with Custom co-signers. Set every co-signer to BIP45, or every one to Custom.");
+  return "";
+}
 function hodlMsigWalletStandard(specs) {
   // The wallet-wide standard its co-signers' specs define: BIP45 or BIP87 only
   // when every co-signer follows it, and Custom otherwise — so a BIP45
@@ -8907,7 +8918,7 @@ function hodlValidatedMsigInputs() {
   if (hardening.branch) throw new Error("Hardened address branches cannot be derived from the supplied multisig extended public keys. Turn off Harden for Starting address branch index.");
   if (hardening.address) throw new Error("Hardened address indexes cannot be derived from multisig extended public keys. Turn off Harden for Starting address index.");
   if (!(m >= 1 && n >= 1 && m <= n && n <= 15)) throw new Error("Pick how many signatures out of how many keys.");
-  let kind = hodlScriptKind(), purpose = hodlReadMsigPurpose(), nodes = [], xpubs = [], keyTokens = [], accountNumbers = [], specs = [], standardSpecs = new Set(), customCosigners = [];
+  let kind = hodlScriptKind(), purpose = hodlReadMsigPurpose(), nodes = [], xpubs = [], keyTokens = [], accountNumbers = [], specs = [], customCosigners = [];
   if (kind === "mixed") throw hodlError("Co-signer keys indicate different script types. Export every key for the same multisig script type before deriving.");
   for (let index = 0; index < n; index++) {
     let field = document.getElementById("msig-x-" + index), row = field?.closest(".msig-key-row"), raw = row ? hodlMsigRowValue(row, true) : "";
@@ -8929,7 +8940,6 @@ function hodlValidatedMsigInputs() {
       if (foreign) throw new Error(`Co-signer ${index + 1}: ${foreign}`);
       let departure = hodlMsigCustomPathReason(parsed, kind, network, specPurpose, coinType, hardening);
       if (departure) throw new Error(`Co-signer ${index + 1}: ${departure}`);
-      standardSpecs.add(spec);
       let accountNumber = hodlMultisigAccountNumber(parsed.origin, kind, specPurpose, hodlMsigOriginHardening(parsed.origin, hardening).account);
       if (accountNumber != null) accountNumbers.push(accountNumber);
     }
@@ -8939,15 +8949,15 @@ function hodlValidatedMsigInputs() {
     xpubs.push(canonical);
     keyTokens.push(hodlMultisigKeyToken(parsed, network));
   }
-  // Co-signers on a spec share one: mixed exports are refused, not blended.
-  if (standardSpecs.size > 1) throw hodlError("Co-signers follow different specs ({specs}). Choose one spec for every co-signer, or Custom for the odd one out.", { specs: [...standardSpecs].map((id) => hodlTText(hodlMsigSpecLabels[id])).join(", ") });
+  let mixError = hodlMsigSpecMixError(specs);
+  if (mixError) throw new Error(mixError);
   let accountSummary = hodlSummarizeMultisigAccounts(accountNumbers), accountWarning = hodlMultisigAccountWarning(accountSummary);
   // The co-signers' specs define the wallet's standard: a Custom one derives
   // every co-signer at plain /branch/index below its key, and no standard's
   // convention, such as BIP45's co-signer branch, applies.
   let legacyStandard = hodlMsigWalletStandard(specs);
   let customWarning = customCosigners.length ? hodlTText("Custom spec: co-signer paths not checked against a spec ({list}). Keep the descriptor with every seed backup: a wallet restoring from the seeds alone will not find these addresses.", { list: customCosigners.join(", ") }) : "";
-  return { network, coinType, count, addressStart, branchStart, branchRange, hardening, n, m, kind, purpose, legacyStandard, nodes, xpubs, keyTokens, accountSummary, accountWarning, customWarning };
+  return { network, coinType, count, addressStart, branchStart, branchRange, hardening, n, m, kind, purpose, legacyStandard, nodes, xpubs, keyTokens, accountSummary, accountWarning, customWarning, specCustom: customCosigners.length > 0 };
 }
 async function hodlBuildMsig(progress) {
   let generation = hodlDerivationGeneration, control = hodlActiveDerivation;
@@ -8972,7 +8982,8 @@ async function hodlBuildMsig(progress) {
       keyTokens,
       accountSummary,
       accountWarning,
-      customWarning
+      customWarning,
+      specCustom
     } = hodlValidatedMsigInputs(), bip45 = kind === "p2sh" && legacyStandard === "bip45";
     let sorted = hodlMsigKeysSorted(), addressBranches = [];
     progress.setTotal(count * branchRange);
@@ -9004,6 +9015,7 @@ async function hodlBuildMsig(progress) {
       sorted,
       scriptOrder: hodlMsigScriptOrder(keyTokens),
       scriptStandard: legacyStandard,
+      specCustom,
       account: accountSummary.account,
       accountMixed: accountSummary.mixed,
       addressStart,
@@ -13020,11 +13032,11 @@ function hodlMsigPolicyName(result) {
 // The origin path the co-signers share. Validation forces the purpose, coin
 // type and script step to match the selection, so one line is true of every
 // key; only the account may differ, and that is said rather than papered over.
-// A custom spec has no such guarantee, so differing paths are said too.
+// A Custom card has no such guarantee, so differing paths are said too.
 function hodlMsigSummaryPath(result) {
   let path = result?.scriptOrder?.find((entry) => entry.path)?.path || "";
   if (!path) return "";
-  let pathsVary = result.scriptStandard === "custom" && new Set(result.scriptOrder.map((entry) => entry.path)).size > 1;
+  let pathsVary = result.specCustom === true && new Set(result.scriptOrder.map((entry) => entry.path)).size > 1;
   // Origins are stored with h; a path is read with the apostrophe, the way
   // every other path in the app is shown.
   path = path.replace(/h/g, "'");

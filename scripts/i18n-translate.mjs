@@ -106,7 +106,12 @@ export async function chat({ url, key, model, name, schema, messages }) {
     if (response.ok) {
       const data = await response.json();
       let content = data?.choices?.[0]?.message?.content;
-      if (typeof content !== "string") throw new Error("LLM response carried no message content");
+      if (typeof content !== "string") {
+        // An empty choice (provider cut the stream to nothing) is the same
+        // transient class as a truncated one — retry it, don't fail the run.
+        lastError = new Error("LLM response carried no message content");
+        continue;
+      }
       // Providers sometimes wrap the JSON in markdown fences, and a slow or
       // rate-limited stream can truncate it mid-response: strip fences, and
       // retry a parse failure rather than failing the whole language on a

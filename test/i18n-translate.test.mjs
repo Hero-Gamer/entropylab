@@ -227,3 +227,22 @@ test("chat strips markdown fences and retries a truncated response", async () =>
     globalThis.fetch = realFetch;
   }
 });
+
+test("chat(): an empty response retries like a truncated one", async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    const calls = [];
+    globalThis.fetch = async () => {
+      calls.push(1);
+      // First call: no message content at all (provider cut the stream).
+      // Second: a good payload.
+      return { ok: true, status: 200, json: async () => (calls.length === 1
+        ? { choices: [{ message: {} }] }
+        : { choices: [{ message: { content: "{\"ok\": true}" } }] }) };
+    };
+    assert.deepEqual(await chat({ url: "https://x", key: "k", model: "m", name: "n", schema: {}, messages: [] }), { ok: true });
+    assert.equal(calls.length, 2, "an empty response was not retried");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});

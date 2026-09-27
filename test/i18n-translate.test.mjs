@@ -26,8 +26,8 @@ const stubClient = ({ failKeys = [], auditFail = [] } = {}) => {
     async chat(request) {
       calls.push(request);
       if (request.name === "translate") {
-        const keys = request.schema.required;
-        return Object.fromEntries(keys.filter((k) => !failKeys.includes(k)).map((k) => [k, `${k} [translated]`]));
+        const keys = request.messages[1] ? JSON.parse(request.messages[1].content).strings : [];
+        return { translations: keys.filter((k) => !failKeys.includes(k)).map((k) => ({ key: k, translation: `${k} [translated]` })) };
       }
       if (request.name === "audit") {
         const pairs = JSON.parse(request.messages[1].content).pairs;
@@ -60,10 +60,14 @@ test("translation requests are schema-constrained to exactly the requested keys"
     await translateLanguage({ root, lang: "es", outDir, client, limit: 5, log: quiet });
     const translateCall = client.calls.find((c) => c.name === "translate");
     assert.equal(translateCall.schema.additionalProperties, false);
-    assert.equal(translateCall.schema.required.length, 5);
-    for (const key of translateCall.schema.required) {
-      assert.deepEqual(translateCall.schema.properties[key], { type: "string" });
-    }
+    assert.deepEqual(translateCall.schema.required, ["translations"]);
+    const item = translateCall.schema.properties.translations.items;
+    assert.deepEqual(item.required, ["key", "translation"]);
+    assert.equal(item.additionalProperties, false);
+    // Key coverage is enforced on arrival, not by property names: providers
+    // escape string fields correctly, and quoted keys no longer break JSON.
+    const requested = JSON.parse(translateCall.messages[1].content).strings;
+    assert.equal(requested.length, 5);
     const auditCall = client.calls.find((c) => c.name === "audit");
     assert.equal(auditCall.schema.additionalProperties, false);
   } finally {
@@ -111,7 +115,8 @@ test("validator-rejected values are dropped on arrival, never audited or written
       calls,
       async chat(request) {
         calls.push(request);
-        return Object.fromEntries(request.schema.required.map((k) => [k, `${k} {bogus}`]));
+        const keys = JSON.parse(request.messages[1].content).strings;
+        return { translations: keys.map((k) => ({ key: k, translation: `${k} {bogus}` })) };
       },
     };
     const report = await translateLanguage({ root, lang: "es", outDir, client, limit: 3, log: quiet });
@@ -132,7 +137,7 @@ test("a missing model response key is dropped, not invented", async () => {
   try {
     const client = {
       async chat(request) {
-        if (request.name === "translate") return {}; // model returned nothing usable
+        if (request.name === "translate") return { translations: [] }; // model returned nothing usable
         return { verdicts: [] };
       },
     };
@@ -173,7 +178,8 @@ test("chat(): wire format carries the strict JSON schema and bearer auth, and re
     assert.equal(sent.body.response_format.type, "json_schema");
     assert.equal(sent.body.response_format.json_schema.strict, true);
     assert.equal(sent.body.response_format.json_schema.schema.additionalProperties, false);
-    assert.deepEqual(sent.body.response_format.json_schema.schema.required, ["Save", "Cancel"]);
+    assert.deepEqual(sent.body.response_format.json_schema.schema.required, ["translations"]);
+    assert.deepEqual(sent.body.response_format.json_schema.schema.properties.translations.items.required, ["key", "translation"]);
   } finally {
     server.close();
   }

@@ -39,12 +39,25 @@ const DEFAULT_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 // compact key set, and a failed call wastes less work.
 const BATCH_SIZE = 20;
 
-// Exactly the requested keys, nothing else — a model that invents or drops
-// keys fails the provider's own schema check.
+// An array of {key, translation} pairs, not an object keyed by the English
+// strings: providers escape string FIELDS correctly, but gemini's
+// json_schema mode emits property NAMES containing quotes unescaped, which
+// produced invalid JSON whenever a UI string carried a quote. Key coverage
+// is enforced below, on arrival.
 export const translationSchema = (keys) => ({
   type: "object",
-  properties: Object.fromEntries(keys.map((key) => [key, { type: "string" }])),
-  required: [...keys],
+  properties: {
+    translations: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { key: { type: "string" }, translation: { type: "string" } },
+        required: ["key", "translation"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["translations"],
   additionalProperties: false,
 });
 
@@ -111,7 +124,7 @@ const translateMessages = (languageName, glossary, keys) => [
       "- Preserve every HTML tag and attribute byte-for-byte; translate only the text between tags.",
       "- Never translate URLs, or Bitcoin terms of art such as PSBT, BIP39, xpub, seed phrase, or the word EntropyLab.",
       "- Match the terminology of the supplied existing translations.",
-      "- Return JSON only: an object mapping each English string to its translation.",
+      "- Return JSON only: an object with a \"translations\" array of {\"key\", \"translation\"} pairs, one per requested string.",
     ].join(" "),
   },
   {
@@ -177,14 +190,15 @@ export async function translateLanguage({ root, lang, outDir, client, limit, log
         .slice(0, 40),
     );
     for (const batch of chunks(missing, BATCH_SIZE)) {
-      const proposals = await client.chat({
+      const result = await client.chat({
         name: "translate",
         schema: translationSchema(batch),
         messages: translateMessages(languageName, glossary, batch),
       });
+      const proposals = new Map((result?.translations ?? []).map((pair) => [pair.key, pair.translation]));
       const accepted = {};
       for (const key of batch) {
-        const value = proposals?.[key];
+        const value = proposals.get(key);
         if (typeof value !== "string" || !value.trim()) {
           dropped.push({ key, problem: "the model returned no translation" });
           continue;

@@ -4797,7 +4797,7 @@
     assert(rowOption(rows[1]).classList.contains("unavailable") && rowOption(rows[1]).disabled, "The reselected key was not faded on another row while reuse was off");
 
     // Opting into reuse keeps the key selectable on every row. Picking it
-    // again offers a derivation path so its descriptor public keys differ.
+    // again brings it in as exported; the co-signer's own path sets it apart.
     reuseToggle.click();
     rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
     const second = document.getElementById("msig-x-1");
@@ -4805,22 +4805,99 @@
     assert(secondOption && !secondOption.classList.contains("unavailable") && !secondOption.disabled, "Enabling reuse did not restore the assigned key on another co-signer row");
     const secondFingerprint = secondOption.dataset.fingerprint;
     secondOption.click();
-    assert(second.value.trim(), "The second co-signer row did not populate the reused key");
     const secondPath = rows[1].querySelector(".msig-full-path");
-    assert(/\/1$/.test(secondPath.value) && !second.value.includes("/"), "Reusing a key did not keep its distinct child in the separate full path");
+    const exportedPath = rows[0].querySelector(".msig-full-path").value;
+    assert(second.value === first.value && secondPath.value === exportedPath, "Reusing a key did not bring it in exactly as exported, without an invented path step");
+    assert(second.nextElementSibling.classList.contains("bad"), "A reused key on an unchanged path was not refused as a duplicate");
     assert(rows[1].querySelector(".msig-master-fingerprint").value === secondFingerprint, "The reused key's separate master fingerprint changed");
     const secondAdvanced = rows[1].querySelector(".msig-cosigner-advanced");
     secondAdvanced.open = true;
-    const childComponent = [...secondAdvanced.querySelectorAll(".msig-path-component")].at(-1);
-    assert(childComponent?.textContent.includes("Extended child 1"), "The reused key's appended child was not represented in Advanced entry");
-    const childInput = childComponent.querySelector(".msig-path-component-input");
-    childInput.focus();
-    childInput.setSelectionRange(1, 1);
-    input(childInput, "2");
-    assert(/\/2$/.test(secondPath.value) && second.nextElementSibling.textContent.includes("/2"), "Changing an Advanced path component did not update the full path and effective key expression");
-    assert(document.activeElement === childInput && childInput.selectionStart === 1, "Changing an Advanced path component lost its focus or cursor position");
-    input(secondPath, secondPath.value.replace(/\/2$/, ""));
-    assert(!second.nextElementSibling.textContent.includes("/2"), "Changing the full path did not update the effective co-signer key expression");
+    // Editing a session key's path re-derives its extended public key from the
+    // seed, hardened steps included, and the row validates as its own co-signer.
+    const accountStep = (row) => row.querySelector('.msig-cosigner-advanced [data-path-index="2"]');
+    input(accountStep(rows[1]), "1'");
+    const accountOneKey = second.value;
+    assert(/^m\/\d+'\/\d+'\/1'/.test(secondPath.value) && accountOneKey !== first.value && /^[A-Za-z]pub/.test(accountOneKey), `Changing the account step did not re-derive the co-signer key (${secondPath.value})`);
+    assert(second.nextElementSibling.classList.contains("ok"), `The re-derived co-signer did not validate: ${second.nextElementSibling.textContent}`);
+    const accountHarden = accountStep(rows[1]).closest("label").querySelector('input[type="checkbox"]');
+    const specSelect = rows[1].querySelector("[data-msig-spec]"), standardSpec = specSelect.value;
+    const setSpec = (id) => {
+      specSelect.value = id;
+      specSelect.dispatchEvent(new Event("change"));
+    };
+    accountHarden.click();
+    assert(/^m\/\d+'\/\d+'\/1(?:\/|$)/.test(secondPath.value) && second.value !== accountOneKey && second.value !== first.value, `Unhardening the account step did not re-derive the co-signer key (${secondPath.value})`);
+    // An unhardened account is not BIP48: the spec card refuses it with a
+    // readable reason, and only a Custom card (which warns) accepts it.
+    assert(second.nextElementSibling.classList.contains("bad") && !second.nextElementSibling.textContent.includes("[object"), `A spec card accepted an off-spec account hardening: ${second.nextElementSibling.textContent}`);
+    setSpec("custom");
+    assert(!second.nextElementSibling.classList.contains("bad") && second.nextElementSibling.textContent.includes("Custom"), `A Custom co-signer with its own account hardening did not validate: ${second.nextElementSibling.textContent}`);
+    // The spec change re-rendered the path fields: take the live checkbox.
+    accountStep(rows[1]).closest("label").querySelector('input[type="checkbox"]').click();
+    assert(second.value === accountOneKey, "Re-hardening the account step did not return to the same derived key");
+    // An extra step deepens a session key itself: the xpub is re-derived at the
+    // whole path, hardened or not, rather than taking a step after it.
+    input(secondPath, secondPath.value + "/2");
+    const deepKey = second.value;
+    assert(deepKey !== accountOneKey && !second.nextElementSibling.classList.contains("bad") && !second.nextElementSibling.textContent.includes("/2"), `An extra path step did not re-derive the session key at the deeper path: ${second.nextElementSibling.textContent}`);
+    const extraStep = rows[1].querySelector('.msig-cosigner-advanced [data-path-index="4"]');
+    assert(extraStep, "The extra path step was not represented in Advanced entry");
+    extraStep.focus();
+    extraStep.setSelectionRange(1, 1);
+    input(extraStep, "3");
+    assert(/\/3$/.test(secondPath.value) && second.value !== deepKey && !second.nextElementSibling.classList.contains("bad"), "Changing an Advanced path component did not update the full path and re-derive the key");
+    assert(document.activeElement === extraStep && extraStep.selectionStart === 1, "Changing an Advanced path component lost its focus or cursor position");
+    const shallowKey = second.value;
+    extraStep.closest("label").querySelector('input[type="checkbox"]').click();
+    assert(/\/3'$/.test(secondPath.value) && second.value !== shallowKey && !second.nextElementSibling.classList.contains("bad"), "Hardening an extra path step did not re-derive the key");
+    input(secondPath, secondPath.value.replace(/\/3'$/, ""));
+    assert(second.value === accountOneKey, "Removing the extra step did not return to the account key");
+    setSpec(standardSpec);
+    assert(second.value === accountOneKey && second.nextElementSibling.classList.contains("ok"), "Returning to the spec did not keep the standard account key");
+    // Each card follows a derivation spec, offered from the specs its script
+    // type serves. A path off the card's spec — an unhardened account without
+    // its script step, or a lone m/0' — is refused with a readable reason;
+    // on a Custom card it is accepted, still explained. Choosing the spec
+    // again moves the session key back to the spec's path, keeping its account.
+    const accountOnePath = secondPath.value;
+    const offered = [...specSelect.options].map((option) => option.value);
+    assert(standardSpec !== "custom" && offered.includes("custom") && offered.includes("bip87") && !offered.includes("bip45"), `A SegWit card did not offer its script type's specs: ${offered.join(", ")}`);
+    for (const customPath of ["m/48'/0'/1", "m/0'"]) {
+      input(secondPath, customPath);
+      const hint = second.nextElementSibling;
+      assert(second.value !== accountOneKey && hint.classList.contains("bad") && hint.textContent.trim() && !hint.textContent.includes("[object"), `A path off the card's spec was not refused with a readable reason (${customPath}): ${hint.textContent}`);
+      setSpec("custom");
+      assert(!hint.classList.contains("bad") && hint.textContent.trim() && !hint.textContent.includes("[object") && secondPath.value === customPath, `A Custom card did not accept an explained custom path (${customPath}): ${hint.textContent}`);
+      const customSteps = rows[1].querySelectorAll(".msig-cosigner-advanced [data-path-index]").length;
+      equal(customSteps, customPath.split("/").length - 1, `A Custom card's Advanced entry did not show one field per path step (${customPath})`);
+      setSpec(standardSpec);
+    }
+    // The last round left the key at m/0', account 0: its spec path is the
+    // exported account-0 key, which the first card already holds.
+    assert(secondPath.value === exportedPath && second.value === first.value, `Choosing the spec again did not move the session key to the spec's path (${secondPath.value})`);
+    input(secondPath, "m/48'/0'/1");
+    setSpec("custom");
+    setSpec(standardSpec);
+    assert(secondPath.value === accountOnePath && second.value === accountOneKey, `Choosing the spec again did not keep the card's account (${secondPath.value})`);
+    assert(second.nextElementSibling.classList.contains("ok"), "Returning from a custom path did not restore the standard account key");
+    // A key the session does not derive at its stated origin is never
+    // re-derived, even under the session's own fingerprint: here the account-1
+    // key is pasted bare onto the default account-0 path.
+    const pastedKey = second.value;
+    input(second, "");
+    input(second, pastedKey);
+    input(rows[1].querySelector(".msig-master-fingerprint"), secondFingerprint);
+    input(accountStep(rows[1]), "2'");
+    assert(second.value === pastedKey, "A key that no session key derives at its origin was replaced on a path edit");
+    // Such a key keeps its depth and takes a public step after it instead.
+    input(secondPath, secondPath.value + "/2");
+    assert(second.value === pastedKey && second.nextElementSibling.textContent.includes("/2"), "A pasted key did not take a public step after it");
+    // A spec change never rewrites what a pasted key claims: its origin stays,
+    // and the key is held to the chosen spec instead.
+    const pastedPath = secondPath.value;
+    setSpec("bip87");
+    assert(second.value === pastedKey && secondPath.value === pastedPath && second.nextElementSibling.classList.contains("bad"), "A spec change rewrote a pasted key's origin, or accepted it under a spec it does not follow");
+    setSpec(standardSpec);
 
     const firstPath = rows[0].querySelector(".msig-full-path").value;
     const importedKey = `[${rows[0].querySelector(".msig-master-fingerprint").value}/${firstPath.slice(2).replace(/'/g, "h")}]${first.value.trim()}`;
@@ -4840,6 +4917,29 @@
     assert(document.getElementById("msig-threshold-control").disabled, "The imported range controls were not locked");
     assert(document.getElementById("msig-m-number").disabled && document.getElementById("msig-n-number").disabled, "The imported numeric m-of-n controls were not locked");
     assert(document.getElementById("msig-threshold-lock").textContent.includes("1-of-1"), "The imported quorum lock was not explained");
+    // The descriptor's branch step becomes the form's branch window exactly.
+    equal(`${document.getElementById("msig-branch-start").value}/${document.getElementById("msig-branch-range").value}`, "0/1", "A /0/* import did not set a one-branch window at receive");
+    // Public steps ahead of the branch stay on the key, in its full path.
+    document.getElementById("msig-wipe").click();
+    // Clearing restores the default network; the session key is tpub on testnet.
+    input(document.getElementById("msig-network"), /\]tpub/.test(importedKey) ? "1" : "0");
+    importPanel.open = true;
+    input(document.getElementById("msig-descriptor"), `wsh(sortedmulti(1,${importedKey}/7/5/*))`);
+    document.getElementById("msig-descriptor-import").click();
+    equal(`${document.getElementById("msig-branch-start").value}/${document.getElementById("msig-branch-range").value}`, "5/1", "A /7/5/* import did not set the window to branch 5");
+    assert(document.querySelector("#msig-keys .msig-full-path").value.endsWith(`${firstPath.slice(1)}/7`), `A /7/5/* import did not keep the public step on the key (${document.querySelector("#msig-keys .msig-full-path").value})`);
+    assert(!document.getElementById("msig-go").disabled, `An imported wallet with a public step did not validate: ${document.getElementById("msig-go").title}`);
+    document.getElementById("msig-wipe").click();
+    // A known spec's key on the wrong script type is never silently Custom:
+    // a BIP44 origin on a Native SegWit card keeps the card's spec and is
+    // refused, and is accepted only when the user chooses Custom.
+    input(document.getElementById("msig-network"), /\]tpub/.test(importedKey) ? "1" : "0");
+    const foreignField = document.getElementById("msig-x-0"), foreignSpec = foreignField.closest(".msig-key-row").querySelector("[data-msig-spec]");
+    input(foreignField, importedKey.replace("/48h/", "/44h/"));
+    assert(foreignSpec.value !== "custom" && foreignField.nextElementSibling.classList.contains("bad") && !foreignField.nextElementSibling.textContent.includes("[object"), `A BIP44 key on a Native SegWit card was not refused with a reason: ${foreignSpec.value} ${foreignField.nextElementSibling.textContent}`);
+    foreignSpec.value = "custom";
+    foreignSpec.dispatchEvent(new Event("change"));
+    assert(!foreignField.nextElementSibling.classList.contains("bad"), `Choosing Custom did not accept the BIP44 key: ${foreignField.nextElementSibling.textContent}`);
     document.getElementById("msig-wipe").click();
     assert(!document.getElementById("msig-threshold-control").disabled, "Clearing the multisig did not unlock manual quorum selection");
     equal(document.getElementById("msig-m").value, "2", "Clearing the imported multisig did not restore default m");

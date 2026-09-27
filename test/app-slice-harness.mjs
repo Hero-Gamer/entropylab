@@ -1,0 +1,203 @@
+// Loads named top-level functions from src/js/app.js as a real ES module, for
+// tests that must run the app's own code rather than a copy of it.
+//
+// app.js boots the whole page on import, so it cannot be imported directly.
+// Instead this assembles a module from the requested functions plus every
+// top-level hodl* function or declaration they reach, and app.js's own import
+// statements for the names that closure uses, pointed at src/js/. Nothing is
+// re-implemented: every line in the generated module is app.js source. A name
+// passed in `stubs` is supplied by the test instead of taken from app.js.
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const root = dirname(dirname(fileURLToPath(import.meta.url)));
+const app = readFileSync(join(root, "src/js/app.js"), "utf8");
+
+
+// Index just past the literal or comment starting at `index`, or -1 when none
+// starts there. Braces inside strings, templates, regexes and comments must
+// not count toward a declaration's extent.
+function skipLiteral(index) {
+  const char = app[index], next = app[index + 1];
+  if (char === "/" && next === "/") return app.indexOf("\n", index);
+  if (char === "/" && next === "*") return app.indexOf("*/", index) + 2;
+  if (char === '"' || char === "'") {
+    for (let i = index + 1; i < app.length; i++) {
+      if (app[i] === "\\") i++;
+      else if (app[i] === char) return i + 1;
+    }
+  }
+  if (char === "`") {
+    for (let i = index + 1; i < app.length; i++) {
+      if (app[i] === "\\") i++;
+      else if (app[i] === "`") return i + 1;
+      else if (app[i] === "$" && app[i + 1] === "{") {
+        let depth = 1;
+        for (i += 2; depth; i++) {
+          const skipped = skipLiteral(i);
+          if (skipped > i) i = skipped - 1;
+          else if (app[i] === "{") depth++;
+          else if (app[i] === "}") depth--;
+        }
+        i--;
+      }
+    }
+  }
+  if (char === "/") {
+    // A regex literal follows an operator or an opening bracket, never a value.
+    let before = index - 1;
+    while (before >= 0 && /\s/.test(app[before])) before--;
+    if (before < 0 || /[(,=:[!&|?{};+\-*%<>~^]/.test(app[before]) || /\b(?:return|typeof|case|in|of)$/.test(app.slice(Math.max(0, before - 6), before + 1))) {
+      let inClass = false;
+      for (let i = index + 1; i < app.length; i++) {
+        if (app[i] === "\\") i++;
+        else if (app[i] === "[") inClass = true;
+        else if (app[i] === "]") inClass = false;
+        else if (app[i] === "/" && !inClass) {
+          i++;
+          while (/[a-z]/i.test(app[i])) i++;
+          return i;
+        }
+      }
+    }
+  }
+  return -1;
+}
+
+// A declaration's full source: a function through its closing brace, a
+// variable statement through its terminating semicolon or line.
+function sourceAt(kind, start) {
+  let depth = 0, opened = false;
+  // A function body opens at ") {", past any braces in default parameters.
+  for (let index = kind === "function" ? app.indexOf(") {", start) + 2 : start; index < app.length; index++) {
+    const skipped = skipLiteral(index);
+    if (skipped > index) {
+      index = skipped - 1;
+      opened = opened || kind === "variable";
+      continue;
+    }
+    const char = app[index];
+    if ("{[(".includes(char)) {
+      depth++;
+      opened = true;
+    } else if ("}])".includes(char)) {
+      depth--;
+      if (kind === "function" && opened && depth === 0) return app.slice(start, index + 1);
+    } else if (kind === "variable" && depth === 0 && (char === ";" || (char === "\n" && opened))) return app.slice(start, index + (char === ";" ? 1 : 0));
+  }
+  throw new Error(`unterminated declaration at ${start}`);
+}
+
+// Top-level declarations, by name. One variable statement may declare several
+// names (var a = 1, b = 2); each maps to that whole statement.
+const declarations = new Map();
+for (const match of app.matchAll(/^(?:async )?function (hodl\w+)\(/gm)) declarations.set(match[1], { kind: "function", start: match.index });
+for (const match of app.matchAll(/^(?:const|let|var) (?=hodl)/gm)) {
+  const statement = sourceAt("variable", match.index);
+  // Declarator names sit at bracket depth 0, after the keyword or a comma.
+  let depth = 0, expectName = true;
+  for (let i = match[0].length; i < statement.length; i++) {
+    const skipped = skipLiteral(match.index + i);
+    if (skipped > match.index + i) {
+      i = skipped - match.index - 1;
+      continue;
+    }
+    const char = statement[i];
+    if ("{[(".includes(char)) depth++;
+    else if ("}])".includes(char)) depth--;
+    else if (depth === 0 && char === ",") expectName = true;
+    else if (depth === 0 && expectName && /[A-Za-z_$]/.test(char)) {
+      const name = statement.slice(i).match(/^[\w$]+/)[0];
+      if (!declarations.has(name)) declarations.set(name, { kind: "variable", start: match.index });
+      expectName = false;
+      i += name.length - 1;
+    }
+  }
+}
+const declarationSource = (name) => sourceAt(declarations.get(name).kind, declarations.get(name).start);
+
+// Top-level statements that fill a declared variable at load, such as a loop
+// pushing rows into a lookup table. One travels with any variable it names.
+function statementAt(start) {
+  let depth = 0;
+  for (let index = start; index < app.length; index++) {
+    const skipped = skipLiteral(index);
+    if (skipped > index) {
+      index = skipped - 1;
+      continue;
+    }
+    const char = app[index];
+    if ("{[(".includes(char)) depth++;
+    else if ("}])".includes(char)) depth--;
+    else if (depth === 0 && char === ";") return app.slice(start, index + 1);
+    else if (depth === 0 && char === "\n" && /[})]\s*$/.test(app.slice(start, index)) && /^\S/.test(app.slice(index + 1))) return app.slice(start, index);
+  }
+  throw new Error(`unterminated statement at ${start}`);
+}
+const loadStatements = [...app.matchAll(/^(?:for|if|while) \(|^hodl\w+(?:\.\w+\(|\[| = )/gm)].map((match) => {
+  const source = statementAt(match.index);
+  return { start: match.index, source, names: new Set(source.match(/\bhodl\w+/g)) };
+});
+
+// app.js's import statements, keyed by each local name they bind.
+const imports = new Map();
+for (const match of app.matchAll(/^import \{([^}]*)\} from "\.\/([\w.-]+)";$/gm)) {
+  const statement = match[0].replace(`"./${match[2]}"`, JSON.stringify(pathToFileURL(join(root, "src/js", match[2])).href));
+  for (const binding of match[1].split(",").map((part) => part.trim()).filter(Boolean)) imports.set(binding.split(/\s+as\s+/).pop(), statement);
+}
+
+let loads = 0;
+export async function loadAppFunctions(names, { stubs = {} } = {}) {
+  const included = new Set(), queue = [...names];
+  while (queue.length) {
+    const name = queue.pop();
+    if (included.has(name) || name in stubs || !declarations.has(name)) continue;
+    included.add(name);
+    for (const reference of declarationSource(name).matchAll(/\bhodl\w+/g)) queue.push(reference[0]);
+  }
+  // Pull in the load-time statements that fill an included variable, and
+  // whatever they reference in turn, until nothing new is reached.
+  const statements = new Set();
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const statement of loadStatements) {
+      if (statements.has(statement) || ![...statement.names].some((name) => included.has(name) && declarations.get(name).kind === "variable")) continue;
+      statements.add(statement);
+      grew = true;
+      queue.push(...statement.names);
+      while (queue.length) {
+        const name = queue.pop();
+        if (included.has(name) || name in stubs || !declarations.has(name)) continue;
+        included.add(name);
+        for (const reference of declarationSource(name).matchAll(/\bhodl\w+/g)) queue.push(reference[0]);
+      }
+    }
+  }
+  for (const name of names) if (!included.has(name)) throw new Error(`app.js has no top-level ${name}`);
+  // Declarations in source order, so top-level constants are initialized
+  // before anything that reads them at load.
+  const starts = [...new Set([...included].map((name) => declarations.get(name).start))].sort((a, b) => a - b);
+  const bodies = [
+    ...starts.map((start) => ({ start, source: sourceAt(app.startsWith("function", start) || app.startsWith("async function", start) ? "function" : "variable", start) })),
+    ...statements,
+  ].sort((a, b) => a.start - b.start).map((entry) => entry.source);
+  const words = new Set(bodies.join("\n").match(/\b[A-Za-z_$][\w$]*\b/g));
+  const importStatements = new Set([...imports].filter(([local]) => words.has(local) && !(local in stubs)).map(([, statement]) => statement));
+  const source = [
+    ...importStatements,
+    ...Object.keys(stubs).map((name) => `const ${name} = globalThis.__appSliceStubs[${JSON.stringify(name)}];`),
+    ...bodies,
+    `export { ${names.join(", ")} };`,
+  ].join("\n");
+  globalThis.__appSliceStubs = stubs;
+  // Outside test/, so suites that list that directory never see it.
+  const directory = mkdtempSync(join(tmpdir(), "entropylab-app-slice-")), modulePath = join(directory, `slice-${loads++}.mjs`);
+  writeFileSync(modulePath, source);
+  try {
+    return await import(pathToFileURL(modulePath).href);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}

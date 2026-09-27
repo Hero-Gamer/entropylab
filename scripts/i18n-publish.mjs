@@ -135,6 +135,13 @@ const enableAutoMerge = async (ctx, pr, headSha) => {
       return name;
     } catch (error) {
       if (/already enabled/i.test(error.message)) return `${name} (already enabled)`;
+      // Nothing to wait for: with no required checks pending, GitHub refuses
+      // auto-merge on an immediately mergeable PR ("clean status"). Merge it
+      // directly, pinned to the same exact head SHA.
+      if (/clean status/i.test(error.message)) {
+        await githubRequest({ ...ctx, method: "PUT", path: `/repos/${ctx.repo}/pulls/${pr.number}/merge`, body: { merge_method: name, sha: headSha } });
+        return `${name} (merged directly — nothing pending)`;
+      }
       lastError = error;
     }
   }

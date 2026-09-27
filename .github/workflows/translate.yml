@@ -58,7 +58,12 @@ jobs:
       - name: Validate proposed catalogs
         run: |
           shopt -s nullglob
-          files=(out/i18n/*.json)
+          files=()
+          for f in out/i18n/*.json; do
+            # Only language catalogs (de.json, zh-hant.json…): the run's
+            # report.json is not a catalog and fails validation.
+            [[ $(basename "$f") =~ ^[a-z]{2}(-[a-z0-9]+)?\.json$ ]] && files+=("$f")
+          done
           if [ ${#files[@]} -gt 0 ]; then node scripts/i18n-validate.mjs "${files[@]}"; fi
       - name: Upload proposals
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -92,7 +97,12 @@ jobs:
       - name: Independently re-validate proposals
         run: |
           shopt -s nullglob
-          files=(out/i18n/*.json)
+          files=()
+          for f in out/i18n/*.json; do
+            # Only language catalogs (de.json, zh-hant.json…): the run's
+            # report.json is not a catalog and fails validation.
+            [[ $(basename "$f") =~ ^[a-z]{2}(-[a-z0-9]+)?\.json$ ]] && files+=("$f")
+          done
           if [ ${#files[@]} -eq 0 ]; then echo "no proposals — nothing to publish"; exit 0; fi
           node scripts/i18n-validate.mjs "${files[@]}"
       - name: Mint the translation App token

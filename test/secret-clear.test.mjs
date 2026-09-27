@@ -5,6 +5,16 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
+import { HDKey as ScureHDKey } from "@scure/bip32";
+import { createBase58check, hex } from "@scure/base";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { loadAppFunctions } from "./app-slice-harness.mjs";
+import { HDKey } from "../src/js/hdkey.js";
+
+// The helpers that zero address-row key bytes (#546 B2). The lifecycle
+// harness loads whichever of them app.js defines, so a source without them
+// fails the byte-wiping tests on the bytes, not on a missing function.
+const rowWipeHelpers = ["hodlZeroWalletRows", "hodlLiveWalletResults", "hodlWipeUnsharedWalletRows"];
 
 function deferred() {
   let resolve, reject;
@@ -35,7 +45,7 @@ function raceHarness() {
     addEventListener: (type, callback) => { events[type] = callback; },
     hodlActiveDerivation: { kind: "key", cancelled: false }, hodlDerivationGeneration: 0,
     hodlJournalGeneration: 0, hodlJournalKeys: {}, hodlJournal: {},
-    hodlKeys: [{ id: 1, number: 1, fields: {}, result: null }], hodlActiveKey: 0,
+    hodlKeys: [{ id: 1, number: 1, fields: {}, result: null }], hodlActiveKey: 0, hodlKeyManagerPending: [],
     hodlKeyMode: "hex", hodlTargetWordCount: 24, hodlNetworkChoice: "mainnet",
     hodlWalletResult: null, hodlOutEl: { innerHTML: "" }, hodlLastWordCache: new Map(),
     hodlBip85Note: "", hodlSpNote: "",
@@ -65,7 +75,8 @@ function raceHarness() {
     context[name] = (...args) => { effects.push([name, ...args]); };
   vm.runInContext('class HodlDerivationCancelledError extends Error {}', context);
   for (const name of ["hodlInvalidateDerivation", "hodlAssertDerivationActive", "hodlCalculateKey",
-    "hodlWipeActiveKey", "hodlJournalImportFile", "hodlKeyManagerImportFile", "hodlInitSecretFieldAutoClear"])
+    "hodlWipeActiveKey", "hodlJournalImportFile", "hodlKeyManagerImportFile", "hodlInitSecretFieldAutoClear",
+    "hodlAccountAddressBranches", ...rowWipeHelpers.filter((name) => app.includes(`function ${name}(`))])
     vm.runInContext(functionSource(name), context);
   context.hodlInitSecretFieldAutoClear();
   return { context, pending, decryptStarted, events, effects, mirrors, fields };
@@ -335,8 +346,125 @@ test("the key Wipe button drops the cached partial mnemonics", () => {
       hodlNewLabState: () => ({}),
       hodlRestoreKey() {},
       hodlJournalLog() {},
+      hodlWipeUnsharedWalletRows() {},
     });
     vm.runInContext(`${functionSource("hodlWipeActiveKey")}\nhodlWipeActiveKey();`, context);
     assert.equal(cache.size, 0, `Wipe (active key ${activeKey}) left partial mnemonics in the last-word cache`);
   }
+});
+
+// #546 B2: an address row keeps its private key as wipeable bytes, and the
+// WIF text exists only while it is shown, copied or exported. Strings cannot
+// be erased, so no string in a derived row may carry the key. Expected keys
+// come from @scure/bip32 on BIP32 test vector 1 and the WIFs from an
+// independent Base58Check encoder, not from app.js.
+const vectorSeed = hex.decode("000102030405060708090a0b0c0d0e0f");
+const wifOf = (key, network) => createBase58check(sha256).encode(Uint8Array.from([network === "testnet" ? 0xef : 0x80, ...key, 0x01]));
+const stringsIn = (value, out = []) => {
+  if (typeof value === "string") out.push(value);
+  else if (value && typeof value === "object" && !ArrayBuffer.isView(value)) Object.values(value).forEach((entry) => stringsIn(entry, out));
+  return out;
+};
+const vectorRows = (hodlDeriveAddressRows, network, role, count = 3) => {
+  const coin = network === "testnet" ? 1 : 0, branch = role === "receive" ? 0 : 1;
+  const account = HDKey.fromMasterSeed(vectorSeed).derive(`m/84'/${coin}'/0'`);
+  return hodlDeriveAddressRows(account, `m/84h/${coin}h/0h`, "p2wpkh", network, count, role, 0).map((row, index) => ({
+    row, key: ScureHDKey.fromMasterSeed(vectorSeed).derive(`m/84'/${coin}'/0'/${branch}/${index}`).privateKey,
+  }));
+};
+
+test("derived address rows hold their private keys as bytes, never as text", async () => {
+  const { hodlDeriveAddressRows } = await loadAppFunctions(["hodlDeriveAddressRows"]);
+  for (const network of ["mainnet", "testnet"]) for (const role of ["receive", "change"]) {
+    for (const [index, { row, key }] of vectorRows(hodlDeriveAddressRows, network, role).entries()) {
+      const secrets = [wifOf(key, network), hex.encode(key)];
+      assert.ok(!stringsIn(row).some((text) => secrets.some((secret) => text.includes(secret))), `${network} ${role}/${index}: the row holds its private key as text`);
+      assert.deepEqual(row.privateKey, key, `${network} ${role}/${index}: the row's key bytes`);
+    }
+  }
+});
+
+test("a row's WIF is encoded only on request and matches an independent encoder", async () => {
+  const { hodlDeriveAddressRows, hodlRowWif, hodlCompressedWifLength } = await loadAppFunctions(["hodlDeriveAddressRows", "hodlRowWif", "hodlCompressedWifLength"]);
+  for (const network of ["mainnet", "testnet"]) for (const role of ["receive", "change"]) {
+    for (const { row, key } of vectorRows(hodlDeriveAddressRows, network, role)) assert.equal(hodlRowWif(row), wifOf(key, network));
+  }
+  assert.equal(hodlRowWif({ privateKey: null, network: "mainnet" }), null, "a watch-only row has no WIF");
+  // The hidden table masks a row's WIF by its fixed length instead of encoding
+  // it: every compressed WIF, at the smallest and largest keys, on both
+  // networks, is that long.
+  const n1 = hex.decode("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140"), one = new Uint8Array(32);
+  one[31] = 1;
+  for (const key of [one, n1]) for (const network of ["mainnet", "testnet"]) assert.equal(wifOf(key, network).length, hodlCompressedWifLength);
+});
+
+// A result's rows, the shape key results carry (accounts → addressBranches →
+// rows); receive/change alias the same row objects.
+const walletWithRows = (Bytes = Uint8Array) => {
+  const rows = [0, 1].map((index) => ({ index, privateKey: new Bytes(32).fill(index + 7) }));
+  return { rows, result: { accounts: [{ addressBranches: [{ branch: 0, rows }], receive: rows, change: [] }] } };
+};
+const zeroed = (rows) => rows.every((row) => row.privateKey.every((byte) => byte === 0));
+
+test("Wipe zeroes a wallet's row key bytes unless another key tab still shows the wallet", () => {
+  for (const shared of [false, true]) {
+    const { rows, result } = walletWithRows();
+    const active = { name: "Key 1", id: 1, number: 1, isLab: false, result };
+    const context = vm.createContext({
+      hodlLastWordCache: new Map(), hodlInvalidateDerivation() {}, hodlActiveKey: 0,
+      hodlKeys: shared ? [active, { isLab: true, result }] : [active], hodlKeyManagerPending: [], hodlWalletResult: result,
+      hodlNewKeyState: () => ({ result: null }), hodlNewLabState: () => ({ result: null }),
+      hodlRestoreKey() { context.hodlWalletResult = context.hodlKeys[context.hodlActiveKey]?.result ?? null; }, hodlJournalLog() {},
+    });
+    for (const name of ["hodlAccountAddressBranches", ...rowWipeHelpers.filter((name) => app.includes(`function ${name}(`))]) vm.runInContext(functionSource(name), context);
+    vm.runInContext(`${functionSource("hodlWipeActiveKey")}\nhodlWipeActiveKey();`, context);
+    if (shared) assert.ok(rows.every((row) => row.privateKey.some((byte) => byte !== 0)), "Wipe zeroed keys another tab still shows");
+    else assert.ok(zeroed(rows), "Wipe left the wallet's row key bytes in memory");
+  }
+});
+
+test("pagehide and persisted pageshow zero every derived wallet's row key bytes", () => {
+  for (const event of ["pagehide", "pageshow"]) {
+    const { context, events } = raceHarness();
+    context.hodlNewLabState = () => ({ fields: {}, result: null });
+    const station = walletWithRows(), lab = walletWithRows(), pending = walletWithRows(), shown = walletWithRows();
+    context.hodlKeys = [{ id: 1, number: 1, fields: {}, result: station.result }, { id: 2, number: 2, isLab: true, fields: {}, result: lab.result }];
+    context.hodlKeyManagerPending = [{ result: pending.result }];
+    context.hodlWalletResult = shown.result;
+    events[event]({ persisted: true });
+    for (const [name, wallet] of Object.entries({ station, lab, pending, shown })) assert.ok(zeroed(wallet.rows), `${event}: the ${name} wallet's row key bytes survived`);
+  }
+});
+
+test("an ignored key's saved copy carries no key bytes", async () => {
+  const { rows, result } = walletWithRows();
+  result.masterFingerprint = "73c5da0a";
+  const { hodlKeyManagerEntry } = await loadAppFunctions(["hodlKeyManagerEntry"]);
+  const entry = hodlKeyManagerEntry({ id: 1, name: "Key 1", isLab: false, fields: {}, result });
+  const copied = entry.result.accounts[0].addressBranches[0].rows;
+  assert.ok(copied.every((row) => row.privateKey === undefined), "the copy kept the rows' key bytes");
+  assert.equal(entry.result.masterFingerprint, "73c5da0a", "the copy keeps what identifies the key");
+  assert.ok(rows.every((row) => row.privateKey instanceof Uint8Array), "copying must not touch the live rows");
+});
+
+// A key detached from a station moves, result and all, into the Key Manager's
+// pending list, and the Key Station can still show that same result. The Key
+// Manager's reset (Journal lock, unlock, create, wipe) zeroes every byte array
+// its pending keys reach; it must not reach rows a station still shows.
+test("a Key Manager reset leaves the row key bytes of a wallet a station still shows", () => {
+  const context = vm.createContext({
+    hodlKeyManagerIgnored: [], hodlKeyManagerIds: new Set(), hodlKeyManagerActiveId: "",
+    document: { getElementById: () => null }, hodlKeyManagerStatus() {}, hodlKeyManagerRender() {},
+  });
+  // The wipe tests bytes with instanceof, so they must come from the context's
+  // own realm, as they do in the page.
+  const Bytes = vm.runInContext("Uint8Array", context), shared = walletWithRows(Bytes), alone = walletWithRows(Bytes);
+  Object.assign(context, {
+    hodlKeyManagerPending: [{ id: 1, result: shared.result }, { id: 2, result: alone.result }],
+    hodlKeys: [{ isLab: true, result: shared.result }], hodlWalletResult: shared.result,
+  });
+  for (const name of ["hodlKeyManagerWipeValue", "hodlKeyManagerReset", ...["hodlLiveWalletResults"].filter((name) => app.includes(`function ${name}(`))]) vm.runInContext(functionSource(name), context);
+  vm.runInContext("hodlKeyManagerReset();", context);
+  assert.ok(shared.rows.every((row) => row.privateKey.some((byte) => byte !== 0)), "the reset zeroed keys the Key Station still shows");
+  assert.ok(zeroed(alone.rows), "the reset left a pending-only wallet's row key bytes in memory");
 });

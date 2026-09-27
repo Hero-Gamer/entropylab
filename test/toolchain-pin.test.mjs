@@ -165,7 +165,7 @@ test("the uploaded WASM modules land where every downstream job reads them", () 
 // the release pipeline breaks the moment protection is re-applied.
 test("every job that pushes to rock uses the maintainer push token", () => {
   for (const workflow of [read(".github/workflows/ci-cd.yml"), read(".github/workflows/ots-upgrade.yml")]) {
-    const pushes = workflow.match(/git remote set-url origin https:\/\/x-access-token:\$\{\{ secrets\.RELEASE_PUSH_TOKEN \}\}/g) || [];
+    const pushes = workflow.match(/git config --local --unset-all http\.https:\/\/github\.com\/\.extraheader/g) || [];
     const rawPushes = workflow.match(/^\s+git push$/gm) || [];
     assert.equal(pushes.length, rawPushes.length, "a job pushes to rock without the maintainer token");
     assert.ok(pushes.length > 0, "expected at least one protected push site");

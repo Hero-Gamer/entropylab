@@ -509,7 +509,10 @@ jobs:
           git commit -m "Rebuild site artifact [skip ci]"
           # Push with the maintainer token: rock is protected, and required
           # status checks reject direct pushes from GITHUB_TOKEN (an admin
-          # token bypasses while enforce_admins is off).
+          # token bypasses while enforce_admins is off). The checkout's
+          # extraheader persists GITHUB_TOKEN and would override the URL's
+          # credentials, so it must be unset first.
+          git config --local --unset-all http.https://github.com/.extraheader || true
           git remote set-url origin https://x-access-token:${{ secrets.RELEASE_PUSH_TOKEN }}@github.com/${{ github.repository }}.git
           git push
 
@@ -571,7 +574,10 @@ jobs:
           git commit -m "OpenTimestamps pending proof for entropylab.html [skip ci]"
           # Push with the maintainer token: rock is protected, and required
           # status checks reject direct pushes from GITHUB_TOKEN (an admin
-          # token bypasses while enforce_admins is off).
+          # token bypasses while enforce_admins is off). The checkout's
+          # extraheader persists GITHUB_TOKEN and would override the URL's
+          # credentials, so it must be unset first.
+          git config --local --unset-all http.https://github.com/.extraheader || true
           git remote set-url origin https://x-access-token:${{ secrets.RELEASE_PUSH_TOKEN }}@github.com/${{ github.repository }}.git
           git push
 

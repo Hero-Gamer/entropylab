@@ -14,10 +14,15 @@
 //     tr(NUMS, multi_a/sortedmulti_a) with the BIP341 unspendable internal key,
 //     carrying a valid BIP380 checksum; the multipath wallet descriptor
 //     expands back to each branch descriptor;
+//   - the wallet descriptor re-imports through the station's own descriptor
+//     import and rebuilds byte-identical branch descriptors;
 //   - every address is the script built from the co-signers' public keys at
 //     that branch and index, sorted per BIP67 for sortedmulti (by x-only key
 //     for sortedmulti_a) and in input order for multi;
-//   - unsafe inputs are refused or neutralized: a repeated public key throws,
+//   - BIP45's co-signer branch applies exactly when every co-signer follows
+//     BIP45, as the station's own wallet-standard rule decides;
+//   - unsafe inputs are refused or neutralized: a repeated public key throws
+//     (for Taproot, a repeated x-only key, since multi_a compares those),
 //     an extended private key is flagged and only its public half reaches
 //     the descriptor, a hardened step after a public key is rejected, and an
 //     origin that does not match its key is reported.
@@ -56,6 +61,9 @@ const app = await loadAppFunctions([
   "hodlMsigAddressRow",
   "hodlDescriptorWithChecksum",
   "hodlWatchOnlyMultipathDescriptor",
+  "hodlMsigWalletStandard",
+  "hodlMsigInnerDescriptor",
+  "hodlParseMsigDescriptor",
 ]);
 
 // --- co-signer fixtures (public test material, nothing secret) -------------
@@ -139,6 +147,7 @@ function expectedAddress(wallet, branch, index) {
 const STANDARD_HARDENING = { purpose: true, coinType: true, account: true, script: true, branch: false, address: false };
 function appWallet(wallet) {
   const coinType = wallet.network === "mainnet" ? 0 : 1;
+  const specs = [];
   const tokens = wallet.cosigners.map((entry, position) => {
     const parsed = app.hodlParseMultisigCosigner(entry.input), where = `co-signer ${position + 1} (${entry.input.slice(0, 40)}…)`;
     assert.equal(parsed.isPrivate, false, `${where} parsed as private`);
@@ -146,14 +155,20 @@ function appWallet(wallet) {
     const spec = wallet.spec === "detect" ? app.hodlMsigSpecFromOrigin(parsed.origin, wallet.kind) : wallet.spec, specPurpose = app.hodlMsigSpec(spec)?.purpose ?? null;
     assert.ok(app.hodlMultisigPrefixCompatible(parsed, wallet.kind, specPurpose), `${where}: ${parsed.prefix} refused for ${wallet.kind}`);
     assert.equal(app.hodlOriginMatchesParsedKey(parsed.origin, parsed), "", `${where}: origin does not match its key`);
+    assert.ok(spec, `${where}: no spec serves its origin on ${wallet.kind}`);
+    specs.push(spec);
     if (spec !== "custom") assert.equal(app.hodlMsigCustomPathReason(parsed, wallet.kind, wallet.network, specPurpose, coinType, STANDARD_HARDENING), "", `${where} departs from ${spec}`);
     return { parsed, token: app.hodlMultisigKeyToken(parsed, wallet.network) };
   });
   const canonical = tokens.map(({ parsed }) => app.hodlCanonicalMultisigKey(parsed));
   assert.equal(new Set(canonical).size, canonical.length, "two co-signers share an identity");
+  // The station decides BIP45's co-signer branch from the co-signers' specs,
+  // exactly as hodlBuildMsig does; the case states what BIP45 requires.
+  const bip45 = wallet.kind === "p2sh" && app.hodlMsigWalletStandard(specs) === "bip45";
+  assert.equal(bip45, wallet.bip45, `the station ${bip45 ? "applied" : "skipped"} BIP45's co-signer branch`);
   const branches = wallet.branches.map((branch) => {
-    const descriptor = app.hodlMsigBranchDescriptor(tokens.map(({ token }) => token), wallet.kind, wallet.m, wallet.sorted, branch, wallet.bip45);
-    const rows = wallet.indexes.map((index) => app.hodlMsigAddressRow(descriptor, wallet.kind, wallet.network, branch, index, wallet.bip45));
+    const descriptor = app.hodlMsigBranchDescriptor(tokens.map(({ token }) => token), wallet.kind, wallet.m, wallet.sorted, branch, bip45);
+    const rows = wallet.indexes.map((index) => app.hodlMsigAddressRow(descriptor, wallet.kind, wallet.network, branch, index, bip45));
     return { branch, publicDescriptor: app.hodlDescriptorWithChecksum(descriptor), rows };
   });
   return { branches, walletDescriptor: app.hodlWatchOnlyMultipathDescriptor(branches[0].publicDescriptor, wallet.branches) };
@@ -238,6 +253,22 @@ test("sortedmulti wallets ignore input order; multi wallets are defined by it", 
   }
 });
 
+test("every generated wallet re-imports through the station's own descriptor import, unchanged", () => {
+  for (const [label, entry] of FIXED) {
+    const output = appWallet(entry), imported = app.hodlParseMsigDescriptor(output.walletDescriptor);
+    assert.deepEqual([imported.kind, imported.m, imported.n, imported.sorted], [entry.kind, entry.m, entry.cosigners.length, entry.sorted], `${label}: policy`);
+    const window = Array.from({ length: imported.branchRange }, (_, step) => imported.branchStart + step);
+    assert.deepEqual(window, [...entry.branches].sort((a, b) => a - b), `${label}: branch window`);
+    const parsed = imported.keys.map((key) => app.hodlParseMultisigCosigner(key));
+    const specs = parsed.map((key) => app.hodlMsigSpecFromOrigin(key.origin, imported.kind) || "custom");
+    const bip45 = imported.kind === "p2sh" && app.hodlMsigWalletStandard(specs) === "bip45";
+    const tokens = parsed.map((key) => app.hodlMultisigKeyToken(key, entry.network));
+    for (const { branch, publicDescriptor } of output.branches) {
+      assert.equal(app.hodlDescriptorWithChecksum(app.hodlMsigBranchDescriptor(tokens, imported.kind, imported.m, imported.sorted, branch, bip45)), publicDescriptor, `${label}, branch ${branch}: the re-imported wallet differs`);
+    }
+  }
+});
+
 // --- unsafe inputs ----------------------------------------------------------
 
 test("a repeated public key is refused, however the key is encoded", () => {
@@ -246,14 +277,29 @@ test("a repeated public key is refused, however the key is encoded", () => {
   assert.equal(app.hodlCanonicalMultisigKey(app.hodlParseMultisigCosigner(same.input)), app.hodlCanonicalMultisigKey(app.hodlParseMultisigCosigner(reencoded.input)));
   // And the last defense: a script whose public keys repeat is never emitted.
   const tokens = [same, reencoded].map((entry) => app.hodlMultisigKeyToken(app.hodlParseMultisigCosigner(entry.input), network));
-  for (const kind of ["p2wsh", "p2sh-p2wsh", "p2sh"]) {
-    const descriptor = app.hodlMsigBranchDescriptor(tokens, kind, 1, true, 0, false);
-    assert.throws(() => app.hodlMsigAddressRow(descriptor, kind, network, 0, 0, false), /same public key|duplicate/i, kind);
+  for (const kind of ["p2wsh", "p2sh-p2wsh", "p2sh", "p2tr"]) {
+    for (const sorted of [true, false]) {
+      const descriptor = app.hodlMsigBranchDescriptor(tokens, kind, 1, sorted, 0, false);
+      assert.throws(() => app.hodlMsigAddressRow(descriptor, kind, network, 0, 0, false), undefined, `${kind} ${sorted ? "sorted" : "listed"}`);
+    }
   }
   // The same seed under a different path, or with a public step after it, is
   // a distinct co-signer.
   const reused = cosigner(0, "m/48'/0'/0'/2'", network, { extra: [1] });
   assert.notEqual(app.hodlCanonicalMultisigKey(app.hodlParseMultisigCosigner(reused.input)), app.hodlCanonicalMultisigKey(app.hodlParseMultisigCosigner(same.input)));
+});
+
+test("Taproot refuses two keys that share an x-only key, in either key order", () => {
+  // multi_a checks x-only keys, so 02‖x and 03‖x are one signer: a signature
+  // from that key would fill two slots and lower the threshold.
+  const x = Buffer.from(cosignerRoot(0).derive("m/87'/0'/0'/0/0").publicKey.slice(1)).toString("hex");
+  const other = Buffer.from(cosignerRoot(1).derive("m/87'/0'/0'/0/0").publicKey).toString("hex");
+  for (const sorted of [true, false]) {
+    const descriptor = app.hodlMsigInnerDescriptor("p2tr", 2, [`02${x}`, `03${x}`, other].join(","), sorted);
+    assert.throws(() => app.hodlMsigAddressRow(descriptor, "p2tr", "mainnet", 0, 0, false), undefined, sorted ? "sortedmulti_a" : "multi_a");
+  }
+  // The station's own guard names the problem when the engine lets it through.
+  assert.throws(() => app.hodlMsigAddressRow(app.hodlMsigInnerDescriptor("p2tr", 2, [`02${x}`, `03${x}`, other].join(","), false), "p2tr", "mainnet", 0, 0, false), /same public key/);
 });
 
 test("an extended private key is flagged and only its public half reaches the descriptor", () => {

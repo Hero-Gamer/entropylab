@@ -6985,10 +6985,34 @@ function hodlMsigSpecsFor(kind) {
 function hodlMsigSpec(id) {
   return hodlMsigSpecs.find((spec) => spec.id === id) || null;
 }
+function hodlMsigOriginPurpose(origin) {
+  let match = hodlNormalizeOriginPath(origin?.path).split("/")[0]?.match(/^(\d+)h?$/);
+  return match ? Number(match[1]) : null;
+}
 function hodlMsigSpecFromOrigin(origin, kind) {
-  // The spec a pasted origin's purpose names, when it serves this script type.
-  let match = hodlNormalizeOriginPath(origin?.path).split("/")[0]?.match(/^(\d+)h?$/), purpose = match ? Number(match[1]) : null;
-  return hodlMsigSpecsFor(kind).find((spec) => spec.purpose != null && spec.purpose === purpose)?.id || "custom";
+  // The spec a pasted origin's purpose names, when it serves this script type;
+  // Custom for a purpose no spec uses. A known spec's key on the wrong script
+  // type pre-selects nothing (null), so the card keeps its spec and refuses
+  // the key with the reason — a wrong export is never silently Custom.
+  let purpose = hodlMsigOriginPurpose(origin);
+  let served = hodlMsigSpecsFor(kind).find((spec) => spec.purpose != null && spec.purpose === purpose);
+  if (served) return served.id;
+  return hodlMsigSpecs.some((spec) => spec.purpose != null && spec.purpose === purpose) ? null : "custom";
+}
+function hodlMsigForeignSpecNote(origin, kind) {
+  // Names a known spec's key that belongs to another script type, or "".
+  let purpose = hodlMsigOriginPurpose(origin);
+  if (purpose == null || hodlMsigSpecsFor(kind).some((spec) => spec.purpose === purpose)) return "";
+  let spec = hodlMsigSpecs.find((entry) => entry.purpose != null && entry.purpose === purpose);
+  if (!spec) return "";
+  return hodlTText("A {spec} key belongs to {scripts} multisig; this wallet is {script}.", { spec: hodlTText(hodlMsigSpecLabels[spec.id]), scripts: spec.kinds.map(hodlMultisigScriptLabel).join(" or "), script: hodlMultisigScriptLabel(kind) });
+}
+function hodlMsigWalletStandard(specs) {
+  // The wallet-wide standard its co-signers' specs define: BIP45 or BIP87 only
+  // when every co-signer follows it, and Custom otherwise — so a BIP45
+  // co-signer branch, say, applies only to a wallet that is BIP45 throughout.
+  let unique = [...new Set(specs)];
+  return unique.length === 1 && (unique[0] === "bip45" || unique[0] === "bip87") ? unique[0] : "custom";
 }
 function hodlMsigSpecComponents(id, kind, coinType, account, hardening) {
   // The spec's template path; Custom has none.
@@ -7207,31 +7231,33 @@ function hodlMsigDescriptorKeyText(expr, index) {
   }
   let parsed = hodlParseMultisigCosigner(key);
   if (parsed.isPrivate) throw new Error(label + "this descriptor carries an extended private key. This tool is watch-only — export the public descriptor from the wallet instead.");
-  // The form derives only <branch>/<index> below each imported key, so the
-  // descriptor tail must be exactly that one branch step. Anything else — a
-  // deeper path like /0/20/*, a bare /*, or a branch outside receive/change —
-  // would import silently as a different wallet than the descriptor names
-  // (issue #389). Refuse it with directions instead of dropping the steps.
+  // The form derives <branch>/<index> below each imported key, after any
+  // public steps the co-signer field carries on the key itself. So the tail's
+  // last step before * is the branch, and the steps ahead of it stay on the
+  // key; whatever the form cannot reproduce exactly — a bare /*, a hardened or
+  // multipath step anywhere but the branch — would import as a different
+  // wallet (issue #389), and is refused with directions instead.
   if (!steps.length) throw new Error(label + "the descriptor fixes this key with no derivation to import. The tool always derives the receive and change branches below each co-signer key, so it cannot reproduce this descriptor.");
-  let tail = steps.slice(0, -1);
+  let tail = steps.slice(0, -1), reproducible = "which the form cannot reproduce: it derives public steps on the key, then one branch step (/0/*, /1/*, /<0;1>/*, or another branch) below it. Importing it would change the wallet.";
   // BIP45 keys carry their cosigner index (always 0 here) ahead of the branch
   // step, and the BIP45 compose ALWAYS re-adds it: a 45-purpose key rebuilds
   // as key/0/<branch>/*. So the cosigner step is required, not optional —
   // treating a bare /0/* as branch 0 accepted sh(sortedmulti(2,A/0/*,B/0/0/*))
   // and rebuilt A as A/0/0/*, a different wallet (issue #389).
   if (/^45h?$/.test(parsed.origin?.path.split("/")[0] || "")) {
-    if (tail.length !== 2 || tail[0] !== "0") throw new Error(label + "the descriptor derives this BIP45 key through /" + steps.join("/") + ", which the form cannot reproduce: it derives BIP45 keys through co-signer index 0 and then the receive and change branches (/0/0/*, /0/1/*, or /0/<0;1>/*). Importing it would change the wallet.");
-    tail = tail.slice(1);
+    if (tail.length < 2 || tail[tail.length - 2] !== "0") throw new Error(label + "the descriptor derives this BIP45 key through /" + steps.join("/") + ", which the form cannot reproduce: it derives BIP45 keys through co-signer index 0 and then the receive and change branches (/0/0/*, /0/1/*, or /0/<0;1>/*). Importing it would change the wallet.");
+    tail = [...tail.slice(0, -2), tail[tail.length - 1]];
   }
-  let branches = tail.length === 1 ? (tail[0].startsWith("<") ? tail[0].slice(1, -1).split(";") : [tail[0]]) : null;
-  if (!branches || branches.some((branch) => Number(branch) > 1)) throw new Error(label + "the descriptor derives this key through /" + steps.join("/") + ", which the form cannot reproduce: it derives only the receive and change branches (/0/*, /1/*, or /<0;1>/*) below each key. Importing it would change the wallet.");
+  let publicSteps = tail.slice(0, -1), branchStep = tail[tail.length - 1];
+  let branches = branchStep === undefined ? null : branchStep.startsWith("<") ? branchStep.slice(1, -1).split(";") : [branchStep];
+  if (!branches || publicSteps.some((step) => !/^\d+$/.test(step) || Number(step) > 2147483647) || branches.some((branch) => !/^\d+$/.test(branch) || Number(branch) > 2147483647)) throw new Error(label + "the descriptor derives this key through /" + steps.join("/") + ", " + reproducible);
   // The branch choice, canonicalized for the cross-key check in
   // hodlParseMsigDescriptor: a sole step and a one-element multipath are the
   // same branch. Multipath element ORDER is preserved — BIP-389 expands
   // multipath wildcards positionally, so <0;1> beside <1;0> pairs the
   // branches differently (A/0 with B/1, A/1 with B/0), not a shared branch
   // the form can reproduce (issue #389).
-  return { key, branch: branches.map((branch) => Number(branch)).join(";") };
+  return { key: key + publicSteps.map((step) => "/" + step).join(""), branch: branches.map((branch) => Number(branch)).join(";") };
 }
 function hodlParseMsigDescriptor(raw) {
   let text = String(raw ?? "").trim();
@@ -7277,7 +7303,11 @@ function hodlParseMsigDescriptor(raw) {
   // descriptor whose keys name different branches (/0/* beside /1/*) imports
   // as a different wallet under either shared branch (issue #389 follow-up).
   if (new Set(parsedKeys.map((entry) => entry.branch)).size > 1) throw new Error("The descriptor derives its co-signer keys through different branches, but the form derives one shared receive/change branch below every key — importing it would change the wallet.");
-  return { m, n: exprs.length, sorted, kind, keys: parsedKeys.map((entry) => entry.key) };
+  // The shared branches become the form's branch window: one branch, or two
+  // adjacent ones, which is all the window derives.
+  let branches = [...new Set(parsedKeys[0].branch.split(";").map(Number))].sort((a, b) => a - b), branchStart = branches[0], branchRange = branches.length;
+  if (branchRange > 2 || branches[branchRange - 1] !== branchStart + branchRange - 1) throw new Error("The descriptor derives the branches " + branches.join(", ") + ", but the form derives one branch or two adjacent ones below every key — importing it would change the wallet.");
+  return { m, n: exprs.length, sorted, kind, keys: parsedKeys.map((entry) => entry.key), branchStart, branchRange };
 }
 // The Import button only runs on a fresh form: it stays disabled while any
 // co-signer field holds text (importing would have to overwrite it) or the
@@ -7319,6 +7349,15 @@ function hodlImportMsigDescriptor() {
     }
     hodlChangeMsigThreshold("n", String(imported.n), true);
     hodlChangeMsigThreshold("m", String(imported.m), true);
+    // The descriptor's branches, exactly: the window the wallet derives.
+    for (let [id, value] of [["msig-branch-start", imported.branchStart], ["msig-branch-range", imported.branchRange]]) {
+      let input = document.getElementById(id);
+      if (!input) continue;
+      input.value = String(value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    let branchHarden = document.getElementById("msig-branch-start-harden");
+    if (branchHarden?.checked) branchHarden.click();
     hodlFillKeys(imported.keys);
     hodlSetMsigThresholdLock(true);
     // A co-signer whose fingerprint matches a Key Lab session key shows its
@@ -8072,7 +8111,7 @@ function hodlMsigSpecForValue(value) {
   // A new key's origin pre-selects its spec; a bare key takes the standard.
   try {
     let origin = hodlMsigKeyParts(value).origin;
-    if (origin) return hodlMsigSpecFromOrigin(origin, hodlScriptKind());
+    if (origin) return hodlMsigSpecFromOrigin(origin, hodlScriptKind()) || hodlMsigStandardSpec();
   } catch {
   }
   return hodlMsigStandardSpec();
@@ -8484,8 +8523,9 @@ function hodlFillKeys(values, specs) {
         hodlSyncMsigRowPathFromKey(row);
       }
       hodlUpdateMsigScriptDetection();
-      if (arrived) {
-        hodlSyncMsigRowSpec(row, hodlMsigSpecFromOrigin(arrived, hodlScriptKind()));
+      let arrivedSpec = arrived ? hodlMsigSpecFromOrigin(arrived, hodlScriptKind()) : null;
+      if (arrivedSpec) {
+        hodlSyncMsigRowSpec(row, arrivedSpec);
         hodlUpdateMsigScriptDetection();
       }
       document.querySelectorAll("#msig-keys textarea").forEach(hodlCheckXpub);
@@ -8651,6 +8691,8 @@ function hodlCheckXpub(ta) {
       hodlHint(ta, null, hodlTText("{prefix} origin and checksum look valid · Custom path, not checked against a spec. Keep the descriptor with every seed backup: a wallet restoring from the seed alone will not find these addresses.", { prefix: parsed.prefix }));
       return;
     }
+    let foreign = hodlMsigForeignSpecNote(parsed.origin, kind);
+    if (foreign) throw new Error(hodlTText("{reason} To use it here anyway, choose Custom.", { reason: foreign }));
     let departure = hodlMsigCustomPathReason(parsed, kind, network, specPurpose, coinType, hardening);
     if (departure) throw new Error(hodlTText("{reason} This key does not follow {spec}: choose the spec it was exported under, or Custom.", { reason: departure, spec: hodlTText(hodlMsigSpecLabels[spec]) }));
     hodlHint(ta, true, parsed.derivationPath ? `${parsed.prefix} origin, checksum, and derivation path look valid · branches and indexes derive below the path /${parsed.derivationPath}` : `${parsed.prefix} origin, checksum, and derivation path look valid`);
@@ -8847,8 +8889,9 @@ function hodlMsigAddressRow(descriptor, kind, network, branch, index, bip45) {
   let derived = descriptorDerive(descriptor, index, network), publicKeys = derived.pubkeys.map((key) => hodlHex.decode(key));
   if (!derived.address) throw new Error("Could not derive a multisig address");
   // Final defense behind the co-signer identity check: never emit a script
-  // whose public keys repeat, whatever the supplied encodings were.
-  if (new Set(publicKeys.map(hodlHex.encode)).size !== publicKeys.length) throw new Error("Two co-signers derive the same public key. Every co-signer must use a distinct extended public key.");
+  // whose public keys repeat, whatever the supplied encodings were. Taproot's
+  // multi_a checks x-only keys, so there 02‖x and 03‖x are the same signer.
+  if (new Set(publicKeys.map((key) => hodlHex.encode(kind === "p2tr" ? hodlXOnlyPubkey(key) : key))).size !== publicKeys.length) throw new Error("Two co-signers derive the same public key. Every co-signer must use a distinct extended public key.");
   return { index, branch, role: hodlAddressBranchRole(branch), path: (bip45 ? `/0/${branch}/` : `/${branch}/`) + index, address: derived.address, scriptHex: derived.scriptHex, kind };
 }
 function hodlMsigAddr(pubkeys, m, network, kind, sorted = !0) {
@@ -8864,7 +8907,7 @@ function hodlValidatedMsigInputs() {
   if (hardening.branch) throw new Error("Hardened address branches cannot be derived from the supplied multisig extended public keys. Turn off Harden for Starting address branch index.");
   if (hardening.address) throw new Error("Hardened address indexes cannot be derived from multisig extended public keys. Turn off Harden for Starting address index.");
   if (!(m >= 1 && n >= 1 && m <= n && n <= 15)) throw new Error("Pick how many signatures out of how many keys.");
-  let kind = hodlScriptKind(), purpose = hodlReadMsigPurpose(), legacyStandard = hodlSelectedLegacyMultisigStandard(), nodes = [], xpubs = [], keyTokens = [], accountNumbers = [], standardSpecs = new Set(), customCosigners = [];
+  let kind = hodlScriptKind(), purpose = hodlReadMsigPurpose(), nodes = [], xpubs = [], keyTokens = [], accountNumbers = [], specs = [], standardSpecs = new Set(), customCosigners = [];
   if (kind === "mixed") throw hodlError("Co-signer keys indicate different script types. Export every key for the same multisig script type before deriving.");
   for (let index = 0; index < n; index++) {
     let field = document.getElementById("msig-x-" + index), row = field?.closest(".msig-key-row"), raw = row ? hodlMsigRowValue(row, true) : "";
@@ -8879,8 +8922,11 @@ function hodlValidatedMsigInputs() {
     if (originError) throw new Error(`Co-signer ${index + 1}: ${hodlFormatNote(originError)}`);
     // Each co-signer is held to its card's spec. A Custom card makes the
     // wallet a custom spec; only a spec path has an account number to compare.
+    specs.push(spec);
     if (spec === "custom") customCosigners.push(index + 1);
     else {
+      let foreign = hodlMsigForeignSpecNote(parsed.origin, kind);
+      if (foreign) throw new Error(`Co-signer ${index + 1}: ${foreign}`);
       let departure = hodlMsigCustomPathReason(parsed, kind, network, specPurpose, coinType, hardening);
       if (departure) throw new Error(`Co-signer ${index + 1}: ${departure}`);
       standardSpecs.add(spec);
@@ -8896,9 +8942,10 @@ function hodlValidatedMsigInputs() {
   // Co-signers on a spec share one: mixed exports are refused, not blended.
   if (standardSpecs.size > 1) throw hodlError("Co-signers follow different specs ({specs}). Choose one spec for every co-signer, or Custom for the odd one out.", { specs: [...standardSpecs].map((id) => hodlTText(hodlMsigSpecLabels[id])).join(", ") });
   let accountSummary = hodlSummarizeMultisigAccounts(accountNumbers), accountWarning = hodlMultisigAccountWarning(accountSummary);
-  // A custom spec derives every co-signer at plain /branch/index below its key:
-  // no standard's convention, such as BIP45's co-signer branch, applies.
-  if (customCosigners.length) legacyStandard = "custom";
+  // The co-signers' specs define the wallet's standard: a Custom one derives
+  // every co-signer at plain /branch/index below its key, and no standard's
+  // convention, such as BIP45's co-signer branch, applies.
+  let legacyStandard = hodlMsigWalletStandard(specs);
   let customWarning = customCosigners.length ? hodlTText("Custom spec: co-signer paths not checked against a spec ({list}). Keep the descriptor with every seed backup: a wallet restoring from the seeds alone will not find these addresses.", { list: customCosigners.join(", ") }) : "";
   return { network, coinType, count, addressStart, branchStart, branchRange, hardening, n, m, kind, purpose, legacyStandard, nodes, xpubs, keyTokens, accountSummary, accountWarning, customWarning };
 }

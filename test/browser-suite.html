@@ -4909,6 +4909,29 @@
     assert(document.getElementById("msig-threshold-control").disabled, "The imported range controls were not locked");
     assert(document.getElementById("msig-m-number").disabled && document.getElementById("msig-n-number").disabled, "The imported numeric m-of-n controls were not locked");
     assert(document.getElementById("msig-threshold-lock").textContent.includes("1-of-1"), "The imported quorum lock was not explained");
+    // The descriptor's branch step becomes the form's branch window exactly.
+    equal(`${document.getElementById("msig-branch-start").value}/${document.getElementById("msig-branch-range").value}`, "0/1", "A /0/* import did not set a one-branch window at receive");
+    // Public steps ahead of the branch stay on the key, in its full path.
+    document.getElementById("msig-wipe").click();
+    // Clearing restores the default network; the session key is tpub on testnet.
+    input(document.getElementById("msig-network"), /\]tpub/.test(importedKey) ? "1" : "0");
+    importPanel.open = true;
+    input(document.getElementById("msig-descriptor"), `wsh(sortedmulti(1,${importedKey}/7/5/*))`);
+    document.getElementById("msig-descriptor-import").click();
+    equal(`${document.getElementById("msig-branch-start").value}/${document.getElementById("msig-branch-range").value}`, "5/1", "A /7/5/* import did not set the window to branch 5");
+    assert(document.querySelector("#msig-keys .msig-full-path").value.endsWith(`${firstPath.slice(1)}/7`), `A /7/5/* import did not keep the public step on the key (${document.querySelector("#msig-keys .msig-full-path").value})`);
+    assert(!document.getElementById("msig-go").disabled, `An imported wallet with a public step did not validate: ${document.getElementById("msig-go").title}`);
+    document.getElementById("msig-wipe").click();
+    // A known spec's key on the wrong script type is never silently Custom:
+    // a BIP44 origin on a Native SegWit card keeps the card's spec and is
+    // refused, and is accepted only when the user chooses Custom.
+    input(document.getElementById("msig-network"), /\]tpub/.test(importedKey) ? "1" : "0");
+    const foreignField = document.getElementById("msig-x-0"), foreignSpec = foreignField.closest(".msig-key-row").querySelector("[data-msig-spec]");
+    input(foreignField, importedKey.replace("/48h/", "/44h/"));
+    assert(foreignSpec.value !== "custom" && foreignField.nextElementSibling.classList.contains("bad") && !foreignField.nextElementSibling.textContent.includes("[object"), `A BIP44 key on a Native SegWit card was not refused with a reason: ${foreignSpec.value} ${foreignField.nextElementSibling.textContent}`);
+    foreignSpec.value = "custom";
+    foreignSpec.dispatchEvent(new Event("change"));
+    assert(!foreignField.nextElementSibling.classList.contains("bad"), `Choosing Custom did not accept the BIP44 key: ${foreignField.nextElementSibling.textContent}`);
     document.getElementById("msig-wipe").click();
     assert(!document.getElementById("msig-threshold-control").disabled, "Clearing the multisig did not unlock manual quorum selection");
     equal(document.getElementById("msig-m").value, "2", "Clearing the imported multisig did not restore default m");

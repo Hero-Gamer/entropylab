@@ -111,3 +111,53 @@ test(`src/js/hdkey.js and @scure/bip32 derive identical nodes (seed 0x${FUZZ_SEE
   }
   assert.equal(ran, ITERATIONS, "every iteration ran to the end");
 });
+
+// BIP32's two derivation functions, fuzzed against each other. CKDpriv takes
+// any mix of hardened and unhardened steps: holding the private key, a path
+// may move between them freely. CKDpub takes unhardened steps only, and must
+// land on the same key the private walk reaches; a hardened step from a
+// public-only node must be refused by both implementations, never computed.
+// A second fixed seed keeps the corpus above unchanged.
+const PUBLIC_FUZZ_SEED = 0x5eed0033;
+test(`public derivation matches private derivation and refuses hardened steps (seed 0x${PUBLIC_FUZZ_SEED.toString(16)}, ${ITERATIONS} iterations)`, () => {
+  const prng = mulberry32(PUBLIC_FUZZ_SEED), n = (limit) => Math.floor(prng() * limit);
+  const index = () => (n(8) === 0 ? [0, 1, HARDENED_OFFSET - 1][n(3)] : n(HARDENED_OFFSET));
+  const refused = (fn) => {
+    try {
+      fn();
+    } catch {
+      return true;
+    }
+    return false;
+  };
+  let hardenedRefusals = 0, publicSteps = 0;
+  for (let i = 0; i < ITERATIONS; i++) {
+    const seed = Uint8Array.from({ length: 32 }, () => n(256));
+    const steps = Array.from({ length: 1 + n(10) }, () => index() + (n(2) ? HARDENED_OFFSET : 0));
+    const where = `iteration ${i}, seed ${hex(seed)}, children ${steps.join("/")}`;
+    let privateNode = HDKey.fromMasterSeed(seed, VERSIONS), scurePrivate = ScureHDKey.fromMasterSeed(seed, VERSIONS);
+    steps.forEach((child, depth) => {
+      // Public-only views of the current node, rebuilt from its xpub.
+      const publicNode = HDKey.fromExtendedKey(privateNode.publicExtendedKey, VERSIONS), scurePublic = ScureHDKey.fromExtendedKey(scurePrivate.publicExtendedKey, VERSIONS);
+      assert.equal(publicNode.privateKey, null, `${where}: an xpub produced a private key`);
+      const nextPrivate = privateNode.deriveChild(child), nextScure = scurePrivate.deriveChild(child);
+      assertSameNode(nextPrivate, nextScure, `${where}, private step ${depth + 1}`);
+      if (child >= HARDENED_OFFSET) {
+        assert.ok(refused(() => publicNode.deriveChild(child)), `${where}, step ${depth + 1}: src/js/hdkey.js derived a hardened child from an xpub`);
+        assert.ok(refused(() => scurePublic.deriveChild(child)), `${where}, step ${depth + 1}: @scure/bip32 derived a hardened child from an xpub`);
+        hardenedRefusals++;
+      } else {
+        const publicChild = publicNode.deriveChild(child), scurePublicChild = scurePublic.deriveChild(child);
+        for (const [label, node] of [["src/js/hdkey.js", publicChild], ["@scure/bip32", scurePublicChild]]) {
+          assert.equal(node.privateKey, null, `${where}, step ${depth + 1}: ${label} public derivation produced a private key`);
+          assert.equal(node.publicExtendedKey, nextScure.publicExtendedKey, `${where}, step ${depth + 1}: ${label} CKDpub differs from CKDpriv`);
+        }
+        publicSteps++;
+      }
+      privateNode = nextPrivate;
+      scurePrivate = nextScure;
+    });
+  }
+  // Both branches must actually have been exercised.
+  assert.ok(hardenedRefusals > ITERATIONS && publicSteps > ITERATIONS, `corpus too narrow: ${hardenedRefusals} hardened, ${publicSteps} unhardened steps`);
+});

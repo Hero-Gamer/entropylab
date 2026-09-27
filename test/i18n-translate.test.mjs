@@ -3,7 +3,7 @@
 // sidecar bookkeeping are all deterministic and must hold on every run.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -38,6 +38,31 @@ const stubClient = ({ failKeys = [], auditFail = [] } = {}) => {
   };
 };
 
+// The committed catalog can be nearly complete. These tests need a known
+// number of missing keys, so they punch holes in a copy instead of assuming
+// the live Spanish file still has a backlog.
+const gappedRoot = async (gaps) => {
+  const dir = tmp();
+  mkdirSync(join(dir, "src/locales/.sources"), { recursive: true });
+  symlinkSync(join(root, "src/js"), join(dir, "src/js"));
+  symlinkSync(join(root, "src/shell.html"), join(dir, "src/shell.html"));
+  symlinkSync(join(root, "src/index.html"), join(dir, "src/index.html"));
+  const { sources, catalog } = await languageWorkload(root, "es");
+  const removable = Object.keys(catalog).filter((key) => sources.has(key));
+  assert.ok(removable.length >= gaps, "need translated keys to punch out");
+  const next = { ...catalog };
+  const punched = removable.slice(0, gaps);
+  for (const key of punched) delete next[key];
+  writeFileSync(join(dir, "src/locales/es.json"), JSON.stringify(next, null, 2) + "\n");
+  const sidecarPath = join(root, "src/locales/.sources/es.json");
+  if (existsSync(sidecarPath)) {
+    const sidecar = JSON.parse(readFileSync(sidecarPath, "utf8"));
+    for (const key of punched) delete sidecar[key];
+    writeFileSync(join(dir, "src/locales/.sources/es.json"), JSON.stringify(sidecar, null, 2) + "\n");
+  }
+  return dir;
+};
+
 test("the workload derives from the same extraction as the sync check", async () => {
   const { sources, catalog, keep, dead, missing } = await languageWorkload(root, "es");
   // The committed es catalog is partial by design; the invariants that must
@@ -55,9 +80,10 @@ test("the workload derives from the same extraction as the sync check", async ()
 
 test("translation requests are schema-constrained to exactly the requested keys", async () => {
   const outDir = tmp();
+  const tree = await gappedRoot(5);
   try {
     const client = stubClient();
-    await translateLanguage({ root, lang: "es", outDir, client, limit: 5, log: quiet });
+    await translateLanguage({ root: tree, lang: "es", outDir, client, limit: 5, log: quiet });
     const translateCall = client.calls.find((c) => c.name === "translate");
     assert.equal(translateCall.schema.additionalProperties, false);
     assert.deepEqual(translateCall.schema.required, ["translations"]);
@@ -72,17 +98,19 @@ test("translation requests are schema-constrained to exactly the requested keys"
     assert.equal(auditCall.schema.additionalProperties, false);
   } finally {
     rmSync(outDir, { recursive: true, force: true });
+    rmSync(tree, { recursive: true, force: true });
   }
 });
 
 test("translated catalogs and sidecars are written consistently; audit-flagged keys stay missing", async () => {
   const outDir = tmp();
+  const tree = await gappedRoot(5);
   try {
-    const { missing } = await languageWorkload(root, "es", 4);
+    const { missing } = await languageWorkload(tree, "es", 4);
     assert.ok(missing.length >= 4, "fixture needs at least 4 missing keys");
     const flagged = missing[1];
     const client = stubClient({ auditFail: [flagged] });
-    const report = await translateLanguage({ root, lang: "es", outDir, client, limit: 4, log: quiet });
+    const report = await translateLanguage({ root: tree, lang: "es", outDir, client, limit: 4, log: quiet });
 
     assert.equal(report.requested, 4);
     assert.equal(report.translated, 3);
@@ -102,11 +130,13 @@ test("translated catalogs and sidecars are written consistently; audit-flagged k
     for (const key of Object.keys(catalog)) assert.equal(sidecar[key], hashSource(key));
   } finally {
     rmSync(outDir, { recursive: true, force: true });
+    rmSync(tree, { recursive: true, force: true });
   }
 });
 
 test("validator-rejected values are dropped on arrival, never audited or written", async () => {
   const outDir = tmp();
+  const tree = await gappedRoot(3);
   try {
     // Corrupt every translation with an invented placeholder: valueProblems
     // rejects them before the audit call.
@@ -119,7 +149,7 @@ test("validator-rejected values are dropped on arrival, never audited or written
         return { translations: keys.map((k) => ({ key: k, translation: `${k} {bogus}` })) };
       },
     };
-    const report = await translateLanguage({ root, lang: "es", outDir, client, limit: 3, log: quiet });
+    const report = await translateLanguage({ root: tree, lang: "es", outDir, client, limit: 3, log: quiet });
     assert.equal(report.translated, 0);
     assert.equal(report.dropped.length, 3);
     assert.ok(report.dropped.every((d) => d.problem.includes("placeholders")));
@@ -129,11 +159,13 @@ test("validator-rejected values are dropped on arrival, never audited or written
     assert.equal(existsSync(join(outDir, "es.json")), report.changed);
   } finally {
     rmSync(outDir, { recursive: true, force: true });
+    rmSync(tree, { recursive: true, force: true });
   }
 });
 
 test("a missing model response key is dropped, not invented", async () => {
   const outDir = tmp();
+  const tree = await gappedRoot(2);
   try {
     const client = {
       async chat(request) {
@@ -141,11 +173,12 @@ test("a missing model response key is dropped, not invented", async () => {
         return { verdicts: [] };
       },
     };
-    const report = await translateLanguage({ root, lang: "es", outDir, client, limit: 2, log: quiet });
+    const report = await translateLanguage({ root: tree, lang: "es", outDir, client, limit: 2, log: quiet });
     assert.equal(report.translated, 0);
     assert.equal(report.dropped.length, 2);
   } finally {
     rmSync(outDir, { recursive: true, force: true });
+    rmSync(tree, { recursive: true, force: true });
   }
 });
 

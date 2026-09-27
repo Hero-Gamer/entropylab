@@ -128,12 +128,13 @@ const tapscriptLeafPsbt = (leaf) => {
   return psbt.toPSBT();
 };
 
-// #539: two per-signature costs remain after #538. Every script-path
-// signature re-hashes every tapscript leaf to find the one it names
-// (verify.rs:419), and the analysis memo holds one script, so signatures
-// alternating leaves re-walk and re-copy the whole leaf each time
-// (verify.rs:60-68). The leaves below carry no separators: the cost being
-// measured is the hashing and the memo copies, not the walk.
+// #539: two per-signature costs #538 left. Every script-path signature
+// re-hashed every tapscript leaf to find the one it names, and the analysis
+// memo held one script, so signatures alternating leaves re-walked and
+// re-copied the whole leaf each time. verify.rs now hashes each leaf once per
+// input and keys the tapscript memo by leaf hash. The leaves below carry no
+// separators: the cost being measured is the hashing and the memo, not the
+// walk.
 const bigLeafPsbt = (leafSize, sigCount, alternate) => {
   const cat = (...parts) => { const out = new Uint8Array(parts.reduce((sum, x) => sum + x.length, 0)); let i = 0; for (const x of parts) { out.set(x, i); i += x.length; } return out; };
   const u8 = (a) => Uint8Array.from(a);
@@ -232,14 +233,13 @@ for (const [name, psbt] of [
 }
 
 // #539: per-signature costs #538 did not touch. Every script-path signature
-// re-hashes every leaf to find its match, and the one-slot analysis memo
-// thrashes when signatures alternate leaves. { todo: "#539" }: these fail
-// until the memoization fix lands, then the marker comes off.
+// re-hashed every leaf to find its match, and the one-slot analysis memo
+// thrashed when signatures alternated leaves.
 // The deadline alone cannot catch the single-leaf case: 12-16 s of
-// per-signature rehashing slides under 20 s and would pass unfixed once the
-// marker came off. A ratio is machine-independent: today 255 signatures cost
-// ~8.5x one signature on the same leaf; a memoized fix lands near 1.
-test("per-signature cost stays flat per signature (#539)", { todo: "#539" }, async () => {
+// per-signature rehashing slides under 20 s. A ratio is machine-independent:
+// unfixed, 255 signatures cost ~3-8x one signature on the same leaf; the fix
+// lands near 1.
+test("per-signature cost stays flat per signature (#539)", async () => {
   const one = await outcome(bigLeafPsbt(4_000_000, 1, false), 8000, "#539");
   const many = await outcome(bigLeafPsbt(4_000_000, 255, false), 8000, "#539");
   const ratio = many.ms / one.ms;
@@ -249,7 +249,7 @@ test("per-signature cost stays flat per signature (#539)", { todo: "#539" }, asy
 // (leaf-hash map without the memo keyed by leaf) from the full one — the
 // half fix still misses the memo every signature but lands under 20 s. A
 // half fix shows ~x9; the full fix lands near 1.
-test("per-signature cost stays flat across alternating leaves (#539)", { todo: "#539" }, async () => {
+test("per-signature cost stays flat across alternating leaves (#539)", async () => {
   const one = await outcome(bigLeafPsbt(2_000_000, 1, true), 8000, "#539");
   const many = await outcome(bigLeafPsbt(2_000_000, 255, true), 8000, "#539");
   const ratio = many.ms / one.ms;

@@ -85,3 +85,12 @@ test("the operator runbook documents the App, secrets, label, and branch protect
   }
 });
 
+
+test("the validate steps filter to language catalogs, so the run's report.json is not validated as a catalog", () => {
+  // Run 36285617009 translated and validated all four languages, then failed
+  // only because the glob caught out/i18n/report.json, which is not a
+  // catalog. Both validate steps must use the language-file pattern.
+  assert.ok(!translate.includes("files=(out/i18n/*.json)"), "a bare *.json glob would catch report.json");
+  const pattern = (translate.match(/\^\[a-z\]\{2\}\(-\[a-z0-9\]\+\)\?\\.json\$/g) || []).length;
+  assert.ok(pattern >= 2, "both validate steps need the language-file pattern");
+});

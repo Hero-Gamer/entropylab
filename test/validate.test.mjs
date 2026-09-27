@@ -2,10 +2,11 @@
 // Run with `npm run test:validate` or `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const read = (path) => readFileSync(join(root, path), "utf8");
@@ -256,6 +257,92 @@ test("OpenTimestamps stamps the tested HTML off the Pages/test critical path", (
   for (const path of ["src/js/app.js", "src/js/online.js", "src/shell.html"]) {
     assert.doesNotMatch(read(path), /opentimestamps|\.ots\b/i, `${path} must not talk to OTS calendars`);
   }
+});
+
+// Rock only ever carries a site built from the sources beneath it. A merge
+// that lands while a run tests starts its own run, which builds and publishes
+// the newer sources, so the older build is superseded: it is not pushed over
+// them, and the timestamp job does not stamp it onto rock. Commits that start
+// no run (the bot's own [skip ci] proof upgrades) change no sources, so the
+// build rebases over them rather than going unpublished. The step's own script
+// runs here against a scratch rock, one commit deep like the job's checkout.
+const shellTools = ["bash", "git"].every((tool) => spawnSync(tool, ["--version"], { stdio: "ignore" }).status === 0);
+test("the artifact commit rebases over [skip ci] commits and steps aside for newer sources", { skip: !shellTools && "needs bash and git" }, () => {
+  const workflow = read(".github/workflows/ci-cd.yml");
+  const artifact = workflowJob(workflow, "artifact");
+  const step = workflowSteps(artifact).find((entry) => /name: Commit the generated artifact\n/.test(entry)) ?? "";
+  const script = step.split(/\n +run: \|\n/)[1]?.replace(/^ {10}/gm, "").replace(/\$\{\{ secrets\.RELEASE_PUSH_TOKEN \}\}/g, "test-token");
+  assert.ok(script, "the artifact commit step runs a script");
+
+  const home = mkdtempSync(join(tmpdir(), "artifact-push-"));
+  const env = { ...process.env, HOME: home, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: join(home, "gitconfig") };
+  delete env.GITHUB_OUTPUT;
+  const git = (cwd, ...args) => execFileSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  const commit = (cwd, file, subject) => {
+    writeFileSync(join(cwd, file), `${subject}\n`);
+    git(cwd, "add", file);
+    git(cwd, "-c", "user.name=seed", "-c", "user.email=seed@example.invalid", "commit", "--quiet", "-m", subject);
+    git(cwd, "push", "--quiet", "origin", "rock");
+    return git(cwd, "rev-parse", "HEAD");
+  };
+  const run = (name, landed) => {
+    const dir = join(home, name), remote = join(dir, "rock.git"), seed = join(dir, "seed"), work = join(dir, "work");
+    mkdirSync(dir);
+    git(dir, "init", "--quiet", "--bare", remote);
+    git(remote, "symbolic-ref", "HEAD", "refs/heads/rock");
+    git(dir, "init", "--quiet", seed);
+    git(seed, "checkout", "--quiet", "-b", "rock");
+    git(seed, "remote", "add", "origin", remote);
+    const tested = commit(seed, "source.js", "Merge pull request #1");
+    git(dir, "clone", "--quiet", "--depth", "1", "--branch", "rock", pathToFileURL(remote).href, work);
+    for (const file of ["entropylab.html", ...wasmModulePaths, "SHA256SUMS.txt", "WASM-SHA256SUMS.txt", "CID.txt"]) {
+      mkdirSync(dirname(join(work, file)), { recursive: true });
+      writeFileSync(join(work, file), `built from ${tested}\n`);
+    }
+    const before = landed ? commit(seed, landed.file, landed.subject) : tested;
+    const output = join(dir, "github-output");
+    writeFileSync(output, "");
+    const result = spawnSync("bash", ["-e", "-c", script], { cwd: work, env: { ...env, GITHUB_SHA: tested, GITHUB_OUTPUT: output }, encoding: "utf8" });
+    const tip = git(remote, "rev-parse", "rock");
+    return {
+      tested, before, tip, status: result.status, log: `${result.stdout}${result.stderr}`,
+      parent: git(remote, "rev-parse", "rock^"),
+      subject: git(remote, "log", "-1", "--format=%s", "rock"),
+      html: spawnSync("git", ["show", "rock:entropylab.html"], { cwd: remote, env, encoding: "utf8" }).stdout.trim(),
+      superseded: /^superseded=true$/m.test(readFileSync(output, "utf8")),
+    };
+  };
+  try {
+    // Nothing landed: the build goes on top of the commit it was built from.
+    const quiet = run("quiet");
+    assert.equal(quiet.status, 0, quiet.log);
+    assert.equal(quiet.parent, quiet.tested, "the artifact sits on the tested commit");
+    assert.equal(quiet.subject, "Rebuild site artifact [skip ci]");
+    assert.equal(quiet.html, `built from ${quiet.tested}`);
+    assert.equal(quiet.superseded, false);
+
+    // A [skip ci] proof upgrade landed: no run will follow it, so the build
+    // rebases over it and is published.
+    const upgrade = run("upgrade", { file: "entropylab.html.ots", subject: "Upgrade OpenTimestamps proof for entropylab.html [skip ci]" });
+    assert.equal(upgrade.status, 0, upgrade.log);
+    assert.equal(upgrade.parent, upgrade.before, "the artifact rebases over the [skip ci] commit");
+    assert.equal(upgrade.subject, "Rebuild site artifact [skip ci]");
+    assert.equal(upgrade.html, `built from ${upgrade.tested}`);
+    assert.equal(upgrade.superseded, false);
+
+    // A merge landed: its run publishes the newer sources. This build is not
+    // pushed over them, the step still succeeds, and it says it was superseded.
+    const merged = run("merged", { file: "source.js", subject: "Merge pull request #2" });
+    assert.equal(merged.status, 0, merged.log);
+    assert.equal(merged.tip, merged.before, "a superseded build must not land on rock");
+    assert.equal(merged.superseded, true, "the step records that its build was superseded");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+  // The timestamp job stamps this run's candidate onto rock, so it must not
+  // run for a superseded build: rock would carry a proof for HTML it does not.
+  assert.match(artifact, /^    outputs:\n      superseded: \$\{\{ steps\.commit\.outputs\.superseded \}\}\n/m, "the artifact job exposes whether its build was superseded");
+  assert.match(workflowJob(workflow, "timestamp"), /^    if: .*needs\.artifact\.outputs\.superseded != 'true'/m, "the timestamp job skips a superseded build");
 });
 
 test("repository links follow the Team Ooga Booga ownership", () => {

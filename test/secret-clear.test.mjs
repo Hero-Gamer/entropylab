@@ -10,11 +10,12 @@ import { createBase58check, hex } from "@scure/base";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { loadAppFunctions } from "./app-slice-harness.mjs";
 import { HDKey } from "../src/js/hdkey.js";
+import { hex as appHex } from "../src/js/coders.js";
 
 // The helpers that zero address-row key bytes (#546 B2). The lifecycle
 // harness loads whichever of them app.js defines, so a source without them
 // fails the byte-wiping tests on the bytes, not on a missing function.
-const rowWipeHelpers = ["hodlZeroWalletRows", "hodlLiveWalletResults", "hodlWipeUnsharedWalletRows"];
+const rowWipeHelpers = ["hodlZeroWalletRows", "hodlLiveWalletResults", "hodlWipeUnsharedWalletRows", "hodlSettleDerivationKeys"];
 
 function deferred() {
   let resolve, reject;
@@ -467,4 +468,171 @@ test("a Key Manager reset leaves the row key bytes of a wallet a station still s
   vm.runInContext("hodlKeyManagerReset();", context);
   assert.ok(shared.rows.every((row) => row.privateKey.some((byte) => byte !== 0)), "the reset zeroed keys the Key Station still shows");
   assert.ok(zeroed(alone.rows), "the reset left a pending-only wallet's row key bytes in memory");
+});
+
+// A derivation that never commits must not leave the row keys it made in
+// memory either: stopped, wiped, hidden, failed, or declined at the
+// fingerprint confirmation, before or after its rows are complete (Astra's
+// review of #588). This runs the real derivation controller, progress
+// tracker and address-row builder on BIP32 test vector 1, holding each
+// progress pause until the test releases it. The stubbed wallet builder only
+// strings the real rows together. Every key the row builder takes from a
+// child node is recorded, so the assertions read the exact buffers the rows
+// kept, and the expected keys come from @scure/bip32.
+const vectorRowKey = (branch, index) => ScureHDKey.fromMasterSeed(vectorSeed).derive(`m/84'/0'/0'/${branch}/${index}`).privateKey;
+const vectorRowKeys = [[0, 0], [0, 1], [1, 0], [1, 1]].map(([branch, index]) => vectorRowKey(branch, index));
+const allZero = (keys) => keys.every((key) => key.every((byte) => byte === 0));
+const noneZero = (keys) => keys.every((key) => key.some((byte) => byte !== 0));
+
+async function derivationHarness({ failAtAddress = 0 } = {}) {
+  const harness = raceHarness(), { context } = harness, keys = [], pauses = [];
+  const real = await loadAppFunctions(["hodlPathComponent", "hodlAddressBranchRole", "hodlAddressOrThrow"]);
+  let clock = 0, addresses = 0;
+  Object.assign(context, {
+    hodlActiveDerivation: null, hodlDerivationProgressTimers: {}, hodlHex: appHex,
+    hodlPathComponent: real.hodlPathComponent, hodlAddressBranchRole: real.hodlAddressBranchRole,
+    hodlAddressOrThrow(...args) {
+      if (++addresses === failAtAddress) throw new Error("address failure");
+      return real.hodlAddressOrThrow(...args);
+    },
+    // Every progress step yields, and each yield waits for the test.
+    performance: { now: () => (clock += 20) }, setTimeout: () => 0, clearTimeout() {},
+    hodlDerivationPause() { const gate = deferred(); pauses.push(gate); return gate.promise; },
+    hodlResetDerivationProgress() {}, hodlSetDerivationButtonState() {}, hodlSyncDeriveButton() {}, hodlSyncMsigDeriveButton() {},
+    async hodlEntropyWalletWithProgress(entropy, passphrase, network, count, accountIndex, addressStart, tracker) {
+      const account = HDKey.fromMasterSeed(vectorSeed).derive("m/84'/0'/0'"), watched = {
+        derive(path) {
+          const child = account.derive(path);
+          return { get publicKey() { return child.publicKey; }, get privateKey() { const key = child.privateKey; keys.push(key); return key; }, wipePrivateData: () => child.wipePrivateData() };
+        },
+      }, addressBranches = [];
+      for (const branch of [0, 1]) addressBranches.push({ branch, rows: await context.hodlAddressRowsWithProgress(watched, "m/84h/0h/0h", "p2wpkh", "mainnet", 2, branch, 0, tracker) });
+      account.wipePrivateData();
+      return { kind: "hd", network: "mainnet", masterFingerprint: "3442193e", accounts: [{ addressBranches }] };
+    },
+  });
+  for (const name of ["hodlDeriveWithProgress", "hodlCreateDerivationTracker", "hodlStopDerivation", "hodlAddressRowsWithProgress", "hodlDerivedAddressRow"])
+    vm.runInContext(functionSource(name), context);
+  // Releases held pauses until `done` holds; fails if the derivation stalls.
+  const driveUntil = async (done) => {
+    for (let spins = 0; !done(); spins++) {
+      assert.ok(spins < 1000, "the derivation stalled");
+      if (pauses.length) pauses.shift().resolve();
+      else await new Promise((resolve) => setImmediate(resolve));
+    }
+  };
+  const start = () => {
+    const run = { settled: false };
+    run.promise = context.hodlDeriveWithProgress("key", context.hodlCalculateKey).finally(() => { run.settled = true; });
+    return run;
+  };
+  return { ...harness, keys, pauses, driveUntil, start };
+}
+
+for (const teardown of ["Wipe", "pagehide", "persisted pageshow", "Stop"]) {
+  test(`${teardown} during a derivation's progress pause zeroes the rows it has built`, async () => {
+    const { context, events, keys, pauses, driveUntil, start } = await derivationHarness();
+    const run = start();
+    await driveUntil(() => keys.length === 1 && pauses.length === 1);
+    assert.deepEqual(keys[0], vectorRowKeys[0], "the first row holds its real key");
+    if (teardown === "Wipe") context.hodlWipeActiveKey();
+    else if (teardown === "Stop") context.hodlStopDerivation("key");
+    else events[teardown.split(" ").pop()]({ persisted: true });
+    // A hidden page can stay suspended mid-derivation: Wipe and page teardown
+    // must not wait for it to unwind. Stop lets it unwind at the next pause.
+    if (teardown !== "Stop") assert.ok(allZero(keys), `${teardown} left the partial rows' key bytes in memory`);
+    await driveUntil(() => run.settled);
+    await run.promise;
+    assert.equal(context.hodlWalletResult, null, `${teardown}: the stopped derivation committed`);
+    assert.equal(keys.length, 1, `${teardown}: the derivation kept deriving`);
+    assert.ok(allZero(keys), `${teardown} left the partial rows' key bytes in memory`);
+  });
+}
+
+test("a derivation that fails part-way zeroes the rows it had built", async () => {
+  const { context, keys, driveUntil, start } = await derivationHarness({ failAtAddress: 3 });
+  const run = start();
+  await driveUntil(() => run.settled);
+  assert.equal(await run.promise, undefined);
+  assert.equal(context.hodlWalletResult, null);
+  assert.equal(keys.length, 3, "the third row failed after taking its key");
+  assert.ok(allZero(keys), "a failed derivation left its rows' key bytes in memory");
+});
+
+test("declining the fingerprint confirmation zeroes the finished result's row keys", async () => {
+  const { context, keys, driveUntil, start } = await derivationHarness(), confirm = deferred();
+  let asked = false;
+  context.hodlConfirmKeyFingerprint = () => { asked = true; return confirm.promise; };
+  const run = start();
+  await driveUntil(() => asked);
+  assert.deepEqual(keys, vectorRowKeys, "the finished result holds its real keys");
+  confirm.resolve(false);
+  await driveUntil(() => run.settled);
+  await run.promise;
+  assert.equal(context.hodlWalletResult, null, "the declined result committed");
+  assert.ok(allZero(keys), "the declined result's row key bytes stayed in memory");
+});
+
+test("pagehide while the fingerprint confirmation is open zeroes the pending result's row keys", async () => {
+  const { context, events, keys, driveUntil, start } = await derivationHarness(), confirm = deferred();
+  let asked = false;
+  context.hodlConfirmKeyFingerprint = () => { asked = true; return confirm.promise; };
+  const run = start();
+  await driveUntil(() => asked);
+  assert.ok(noneZero(keys));
+  events.pagehide({});
+  assert.ok(allZero(keys), "pagehide left the pending result's row key bytes in memory");
+  // Confirming after the page comes back must not revive the result.
+  confirm.resolve(true);
+  await driveUntil(() => run.settled);
+  await run.promise;
+  assert.equal(context.hodlWalletResult, null, "the confirmation committed a result the page had already wiped");
+  assert.ok(allZero(keys));
+});
+
+test("a committed derivation keeps its row keys, and a later stopped one zeroes only its own", async () => {
+  const { context, keys, pauses, driveUntil, start } = await derivationHarness();
+  const first = start();
+  await driveUntil(() => first.settled);
+  await first.promise;
+  const committed = keys.splice(0);
+  assert.ok(context.hodlWalletResult, "the derivation committed");
+  assert.deepEqual(committed, vectorRowKeys, "committing zeroed the keys the station now shows");
+  const second = start();
+  await driveUntil(() => keys.length === 1 && pauses.length === 1);
+  context.hodlStopDerivation("key");
+  await driveUntil(() => second.settled);
+  await second.promise;
+  assert.ok(allZero(keys), "the stopped derivation left its row key bytes in memory");
+  assert.deepEqual(committed, vectorRowKeys, "stopping a derivation zeroed the keys of the wallet the station shows");
+});
+
+// The account node a wallet derives its rows from holds the account private
+// key. A derivation that stops part-way must wipe it as a finished one does.
+test("a stopped derivation wipes the account nodes it derived", async () => {
+  const { hodlRootWalletWithProgress } = await loadAppFunctions(["hodlRootWalletWithProgress"]);
+  const root = HDKey.fromMasterSeed(vectorSeed), derive = root.derive.bind(root), nodes = [];
+  root.derive = (path) => { const node = derive(path); nodes.push(node); return node; };
+  let steps = 0;
+  const tracker = { setTotal() {}, step() { if (++steps === 3) throw new Error("stopped"); return null; } };
+  await assert.rejects(hodlRootWalletWithProgress(root, "mainnet", 2, {}, 0, 0, tracker, 84, 0), /stopped/);
+  assert.equal(nodes.length, 1);
+  assert.ok(nodes.every((node) => node.privateKey === null), "the stopped derivation left the account private key in memory");
+});
+
+test("a stopped import of an account key wipes the imported node", async () => {
+  // BIP32 test vector 1, chain m/0H/1/2H: a depth-3 extended private key.
+  const xprv = "xprv9z4pot5VBttmtdRTWfWQmoH1taj2axGVzFqSb8C9xaxKymcFzXBDptWmT7FwuEzG3ryjH4ktypQSAewRiNMjANTtpgP4mLTj34bhnZX7UiM";
+  const { hodlParseExtendedKey } = await loadAppFunctions(["hodlParseExtendedKey"]), nodes = [];
+  const { hodlImportedWalletWithProgress } = await loadAppFunctions(["hodlImportedWalletWithProgress"], {
+    stubs: {
+      hodlParseExtendedKey(value) { const parsed = hodlParseExtendedKey(value); nodes.push(parsed.node); return parsed; },
+      hodlSelectedScriptType: () => "bip84",
+    },
+  });
+  let steps = 0;
+  const tracker = { setTotal() {}, step() { if (++steps === 3) throw new Error("stopped"); return null; } };
+  await assert.rejects(hodlImportedWalletWithProgress(xprv, "mainnet", 2, 0, 0, tracker, 84, 0), /stopped/);
+  assert.equal(nodes.length, 1);
+  assert.ok(nodes[0].privateKey === null, "the stopped import left the imported private key in memory");
 });

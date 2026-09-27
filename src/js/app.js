@@ -449,9 +449,14 @@ function hodlDerivedAddressRow(node, accountPath, script, network, branchOrRole,
   // never as text: strings cannot be erased, so the WIF is encoded only while
   // it is shown, copied or exported (hodlRowWif; #546 B2).
   let privateKey = child.privateKey;
-  let row = { index, role: hodlAddressBranchRole(chain), branch: chain, branchHardened, path: `${accountPath}/${branchStep}/${indexStep}`, address: hodlAddressOrThrow(script, publicKey, network), pubkey: hodlHex.encode(publicKey), network, privateKey: privateKey || null };
-  child.wipePrivateData();
-  return row;
+  // Until a derivation commits, no station reaches its rows: it records each
+  // key so it can zero the ones it leaves behind when it ends.
+  if (privateKey) hodlActiveDerivation?.rowKeys?.push(privateKey);
+  try {
+    return { index, role: hodlAddressBranchRole(chain), branch: chain, branchHardened, path: `${accountPath}/${branchStep}/${indexStep}`, address: hodlAddressOrThrow(script, publicKey, network), pubkey: hodlHex.encode(publicKey), network, privateKey: privateKey || null };
+  } finally {
+    child.wipePrivateData();
+  }
 }
 // Every compressed WIF (mainnet K/L, testnet c) is 52 Base58 characters, so
 // the hidden table masks that many without encoding the key.
@@ -477,6 +482,14 @@ function hodlLiveWalletResults() {
 function hodlWipeUnsharedWalletRows(result) {
   if (!result || hodlLiveWalletResults().has(result) || hodlKeyManagerPending.some((state) => state.result === result)) return;
   hodlZeroWalletRows(result);
+}
+// Zeroes the row keys a derivation made that no station shows: all of them
+// when it stopped, failed or was declined, none once it has committed.
+function hodlSettleDerivationKeys(control) {
+  if (!control?.rowKeys?.length) return;
+  let shown = new Set();
+  for (let result of [...hodlLiveWalletResults(), ...hodlKeyManagerPending.map((state) => state.result)]) for (let account of result?.accounts || []) for (let branch of hodlAccountAddressBranches(account)) for (let row of branch.rows) shown.add(row.privateKey);
+  for (let key of control.rowKeys) if (!shown.has(key)) key.fill(0);
 }
 function hodlDeriveAddressRows(node, accountPath, script, network, count, branchOrRole, startIndex = 0, addressHardened = false, branchHardened = false) {
   let rows = [];
@@ -1034,8 +1047,12 @@ async function hodlRootWalletWithProgress(root, network, count, source, accountI
   tracker.setTotal(addressCount * hodlScriptTypes.length * branchRange);
   for (let definition of hodlScriptTypes) {
     let derivedDefinition = { ...definition, purpose: purposeIndex, purposeHardened: hardening.purpose }, accountPath = derivationPlan?.accountPath || hodlAccountPath(derivedDefinition, coinType, accountIndex, hardening), node = root.derive(accountPath), originPath = derivationPlan?.originPath ?? `${hodlOriginPathComponent(purposeIndex, hardening.purpose)}/${hodlOriginPathComponent(coinType, hardening.coinType)}/${hodlOriginPathComponent(accountIndex, hardening.account)}`;
-    let account = await hodlAccountResultWithProgress(node, derivedDefinition, network, addressCount, { accountPath, accountIndex, masterFingerprint, originFingerprint: masterFingerprint, originPath, addressStart, branchHardened: hardening.branch, addressHardened: hardening.address, branchStart, branchRange }, tracker);
-    node.wipePrivateData(); // the account keeps its extended-key strings, not the node
+    let account;
+    try {
+      account = await hodlAccountResultWithProgress(node, derivedDefinition, network, addressCount, { accountPath, accountIndex, masterFingerprint, originFingerprint: masterFingerprint, originPath, addressStart, branchHardened: hardening.branch, addressHardened: hardening.address, branchStart, branchRange }, tracker);
+    } finally {
+      node.wipePrivateData(); // the account keeps its extended-key strings, not the node; a stopped one keeps neither
+    }
     accounts.push(account);
   }
   return hodlRootWalletResult(root, network, source, accountIndex, masterFingerprint, accounts, coinType);
@@ -1083,8 +1100,12 @@ async function hodlImportedWalletWithProgress(value, network, count, accountInde
   if ((hardening.branch || hardening.address) && !parsed.isPrivate) throw hodlError(hardening.branch ? "Hardened address branches cannot be derived from an account extended public key. Turn off Harden or import the matching extended private key offline." : "Hardened address indexes cannot be derived from an account extended public key. Turn off Harden or import the matching extended private key offline.");
   let definition = hodlImportedScriptDefinition(parsed), addressCount = Math.min(Math.max(count, 1), hodlMaxAddressRange), parentFingerprint = hodlFingerprintHex(node.parentFingerprint), nodeFingerprint = hodlFingerprintHex(node.fingerprint);
   tracker.setTotal(addressCount * branchRange);
-  let account = await hodlAccountResultWithProgress(node, definition, network, addressCount, { accountPath: "Imported account key", accountIndex: null, imported: true, importedFamily: parsed.family, importedValue, parentFingerprint, nodeFingerprint, addressStart, branchHardened: hardening.branch, addressHardened: hardening.address, branchStart, branchRange }, tracker);
-  node.wipePrivateData(); // the account result keeps its strings, not the imported node
+  let account;
+  try {
+    account = await hodlAccountResultWithProgress(node, definition, network, addressCount, { accountPath: "Imported account key", accountIndex: null, imported: true, importedFamily: parsed.family, importedValue, parentFingerprint, nodeFingerprint, addressStart, branchHardened: hardening.branch, addressHardened: hardening.address, branchStart, branchRange }, tracker);
+  } finally {
+    node.wipePrivateData(); // the account result keeps its strings, not the imported node; a stopped import keeps neither
+  }
   return {
     kind: "hd",
     network,
@@ -2306,7 +2327,10 @@ var hodlActiveDerivation = null;
 var hodlDerivationGeneration = 0;
 function hodlInvalidateDerivation() {
   hodlDerivationGeneration++;
-  if (hodlActiveDerivation) hodlActiveDerivation.cancelled = true;
+  if (!hodlActiveDerivation) return;
+  hodlActiveDerivation.cancelled = true;
+  // It can no longer commit, and a hidden page may never resume it to unwind.
+  hodlSettleDerivationKeys(hodlActiveDerivation);
 }
 function hodlAssertDerivationActive(generation, control) {
   if (generation !== hodlDerivationGeneration || control?.cancelled) throw new HodlDerivationCancelledError();
@@ -2437,7 +2461,7 @@ function hodlHandleDerivationButton(kind, derive) {
 async function hodlDeriveWithProgress(kind, derive) {
   if (hodlActiveDerivation) return;
   let multisig = kind === "msig", progress = document.getElementById(multisig ? "msig-derive-progress" : "derive-progress");
-  let control = { kind, cancelled: false };
+  let control = { kind, cancelled: false, rowKeys: [] };
   hodlActiveDerivation = control;
   hodlResetDerivationProgress(kind, false);
   hodlSetDerivationButtonState(kind, "running");
@@ -2458,6 +2482,7 @@ async function hodlDeriveWithProgress(kind, derive) {
     if (error instanceof HodlDerivationCancelledError) hodlResetDerivationProgress(kind);
     else throw error;
   } finally {
+    hodlSettleDerivationKeys(control);
     if (hodlActiveDerivation === control) hodlActiveDerivation = null;
     hodlSetDerivationButtonState(kind, "idle");
     hodlSyncDeriveButton();

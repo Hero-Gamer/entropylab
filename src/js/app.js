@@ -8835,6 +8835,22 @@ function hodlXOnlyPubkey(pubkey) {
 // sortedmulti_a/multi_a under a BIP341 NUMS internal key for Taproot) and the
 // crate derives the output. Sorting is the descriptor's job, as BIP67 and
 // BIP386 intend — multi keeps the listed order, sortedmulti ignores it.
+function hodlMsigBranchDescriptor(keyTokens, kind, m, sorted, branch, bip45) {
+  // One address branch's descriptor: every co-signer key token below the
+  // branch step, after BIP45's co-signer branch 0 where that standard applies.
+  return hodlMsigInnerDescriptor(kind, m, keyTokens.map((key) => key + (bip45 ? `/0/${branch}/*` : `/${branch}/*`)).join(","), sorted);
+}
+function hodlMsigAddressRow(descriptor, kind, network, branch, index, bip45) {
+  // The branch descriptor is the source of truth: rust-miniscript derives the
+  // address from it, so what is shown cannot drift from the watch-only
+  // descriptor exported with it.
+  let derived = descriptorDerive(descriptor, index, network), publicKeys = derived.pubkeys.map((key) => hodlHex.decode(key));
+  if (!derived.address) throw new Error("Could not derive a multisig address");
+  // Final defense behind the co-signer identity check: never emit a script
+  // whose public keys repeat, whatever the supplied encodings were.
+  if (new Set(publicKeys.map(hodlHex.encode)).size !== publicKeys.length) throw new Error("Two co-signers derive the same public key. Every co-signer must use a distinct extended public key.");
+  return { index, branch, role: hodlAddressBranchRole(branch), path: (bip45 ? `/0/${branch}/` : `/${branch}/`) + index, address: derived.address, scriptHex: derived.scriptHex, kind };
+}
 function hodlMsigAddr(pubkeys, m, network, kind, sorted = !0) {
   let op = kind === "p2tr" ? sorted ? "sortedmulti_a" : "multi_a" : sorted ? "sortedmulti" : "multi";
   let inner = `${op}(${m},${pubkeys.map((key) => hodlHex.encode(kind === "p2tr" ? hodlXOnlyPubkey(key) : key)).join(",")})`;
@@ -8914,17 +8930,9 @@ async function hodlBuildMsig(progress) {
     let sorted = hodlMsigKeysSorted(), addressBranches = [];
     progress.setTotal(count * branchRange);
     for (let branch = branchStart; branch < branchStart + branchRange; branch++) {
-      let suffix = bip45 ? `/0/${branch}/*` : `/${branch}/*`, path = bip45 ? `m/0/${branch}/` : `m/${branch}/`, inner = keyTokens.map(key => key + suffix).join(","), descriptor = hodlMsigInnerDescriptor(kind, m, inner, sorted), rows = [];
+      let descriptor = hodlMsigBranchDescriptor(keyTokens, kind, m, sorted, branch, bip45), rows = [];
       for (let index = addressStart; index < addressStart + count; index++) {
-        // The branch descriptor is the source of truth: rust-miniscript
-        // derives the address from it, so what is shown here cannot drift
-        // from the watch-only descriptor exported below.
-        let derived = descriptorDerive(descriptor, index, network), publicKeys = derived.pubkeys.map((key) => hodlHex.decode(key));
-        if (!derived.address) throw new Error("Could not derive a multisig address");
-        // Final defense behind the co-signer identity check: never emit a
-        // script whose public keys repeat, whatever the supplied encodings were.
-        if (new Set(publicKeys.map(hodlHex.encode)).size !== publicKeys.length) throw new Error("Two co-signers derive the same public key. Every co-signer must use a distinct extended public key.");
-        rows.push(Object.assign({ index, branch, role: hodlAddressBranchRole(branch), path: path.slice(1) + index }, { address: derived.address, scriptHex: derived.scriptHex, kind }));
+        rows.push(hodlMsigAddressRow(descriptor, kind, network, branch, index, bip45));
         let pause = progress.step();
         if (pause) await pause;
       }

@@ -18,12 +18,10 @@
 // Run with `npm run test:wallet-export` or `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { createServer } from "node:net";
 import { HDKey } from "@scure/bip32";
 import { mnemonicToSeedSync } from "@scure/bip39";
 import { canonicalizeWatchDescriptor } from "../src/js/core-importdescriptors.js";
@@ -70,6 +68,7 @@ import {
   sqliteReadBack,
   unserPub,
 } from "./wallet-export-harness.mjs";
+import { BITCOIND, CHAIN_FIXTURES, waitForChainNodeExit, withChainNode } from "./bitcoind-harness.mjs";
 
 const sqliteSrc = read("src/js/sqlite-writer.js");
 const walletSrc = read("src/js/wallet-export.js");
@@ -843,11 +842,6 @@ test("binding attaches the download to #download-wallet-dat and tolerates missin
 // chain-specific (issue #329). A file carrying another chain's metadata must
 // be refused. CI runners and the dev image skip this; run it where Bitcoin
 // Core is installed (verified with v31.1.0).
-const BITCOIND = (() => {
-  const daemon = spawnSync("bitcoind", ["--version"], { stdio: "pipe" });
-  const cli = spawnSync("bitcoin-cli", ["--version"], { stdio: "pipe" });
-  return daemon.status === 0 && cli.status === 0;
-})();
 
 // Re-version every extended key in a descriptor (tpub<->xpub and tprv<->xprv
 // payloads have the same layout) and re-checksum it — what the app does when
@@ -867,12 +861,6 @@ const reversionDescriptor = (descriptor, publicVersion, privateVersion) => {
   return `${body}#${descriptorChecksum(body)}`;
 };
 
-const CHAIN_FIXTURES = {
-  mainnet: { flag: "", subdir: ".", bech32Prefix: "bc1q" },
-  testnet: { flag: "-testnet", subdir: "testnet3", bech32Prefix: "tb1q" },
-  signet: { flag: "-signet", subdir: "signet", bech32Prefix: "tb1q" },
-  regtest: { flag: "-regtest", subdir: "regtest", bech32Prefix: "bcrt1q" },
-};
 
 // The wallet the app exports for each chain: the reference key material,
 // versioned the way that chain's encoding family versions it.
@@ -885,30 +873,7 @@ const chainWallets = (network) => {
   };
 };
 
-// An OS-assigned localhost port keeps parallel or repeated runs from
-// colliding with a real node.
-const freePort = () =>
-  new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address();
-      server.close(() => resolve(port));
-    });
-  });
 
-const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-
-// Boots a fresh node for the chain, runs `body(cli)` where
-// cli(...rpcArgs) returns the parsed JSON result (asserting success), and
-// always shuts the node down again.
-const waitForChainNodeExit = (pidFile, exists = existsSync, sleep = sleepSync, attempts = 300) => {
-  for (let waited = 0; waited < attempts; waited++) {
-    if (!exists(pidFile)) return true;
-    sleep(100);
-  }
-  return !exists(pidFile);
-};
 
 test("Core fixture cleanup stops at the PID-file boundary", () => {
   let checks = 0, sleeps = 0;
@@ -917,31 +882,6 @@ test("Core fixture cleanup stops at the PID-file boundary", () => {
   assert.equal(waitForChainNodeExit("fixture.pid", () => true, () => {}, 2), false);
 });
 
-const withChainNode = async (network, body) => {
-  const fixture = CHAIN_FIXTURES[network];
-  const port = await freePort();
-  const datadir = mkdtempSync(join(tmpdir(), `entropylab-bitcoind-${network}-`));
-  const pidFile = join(datadir, "bitcoind.pid");
-  const flagArgs = fixture.flag ? [fixture.flag] : [];
-  const cliArgs = [...flagArgs, `-datadir=${datadir}`, "-rpcuser=el", "-rpcpassword=el", `-rpcport=${port}`];
-  const cli = (args, { check = true } = {}) => {
-    const run = spawnSync("bitcoin-cli", [...cliArgs, ...args], { encoding: "utf8", maxBuffer: 1 << 22 });
-    if (check && run.status !== 0) throw new Error(`bitcoin-cli ${args[0]} failed on ${network}: ${run.stderr.trim()}`);
-    return run;
-  };
-  try {
-    execFileSync("bitcoind", [...flagArgs, `-datadir=${datadir}`, `-pid=${pidFile}`, "-listen=0", "-connect=0", "-server", "-rpcuser=el", "-rpcpassword=el", `-rpcport=${port}`, "-daemon"], { stdio: "pipe" });
-    cli(["-rpcwait", "getblockchaininfo"]);
-    await body((args, options) => cli(args, options), join(datadir, fixture.subdir, "wallets"));
-  } finally {
-    spawnSync("bitcoin-cli", [...cliArgs, "stop"], { stdio: "pipe" });
-    // RPC can go quiet before the final chain-state flush. Core removes its
-    // PID file at the real shutdown boundary, so never delete the temporary
-    // datadir while that PID marker says the process may still be alive.
-    if (!waitForChainNodeExit(pidFile)) throw new Error(`bitcoind did not exit within 30 seconds; left its temporary datadir intact at ${datadir}`);
-    rmSync(datadir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-  }
-};
 
 for (const network of Object.keys(CHAIN_FIXTURES)) {
   test(`bitcoind on ${network} loads the generated wallet.dat`, { skip: !BITCOIND, timeout: 120000 }, async () => {

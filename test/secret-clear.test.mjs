@@ -114,6 +114,8 @@ test("Multisig Clear prevents a suspended derivation from committing", async () 
     hodlDescriptorWithChecksum: value => value,
   });
   vm.runInContext(functionSource("hodlBuildMsig"), context);
+  vm.runInContext(functionSource("hodlMsigBranchDescriptor"), context);
+  vm.runInContext(functionSource("hodlMsigAddressRow"), context);
   vm.runInContext(functionSource("hodlWipeActiveMsig"), context);
   const operation = context.hodlBuildMsig({ setTotal() {}, step: () => pending.promise });
   const rejected = assert.rejects(operation, error => error.constructor.name === "HodlDerivationCancelledError");

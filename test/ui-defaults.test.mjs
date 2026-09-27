@@ -830,7 +830,7 @@ test("key derivation shows the relevant paste-ready multisig co-signer exports",
   assert.match(app, /\$\{hodlSlip132WatchFields\(account,hodlWalletResult\)\}\s*\$\{hodlImportedCoreRecoveryExport\(hodlWalletResult,account\)\}\s*\$\{hodlRenderMultisigCosignerExport\(hodlWalletResult.multisigCosignerExports,account\.def\.id\)\}/);
   assert.doesNotMatch(`${app}\n${css}`, /account-multisig-exports/);
   assert.match(app, /Legacy P2SH requires the depth-1 BIP45 purpose key at m\/45h/);
-  assert.match(app, /suffix=bip45\?`\/0\/\$\{branch\}\/\*`:`\/\$\{branch\}\/\*`/);
+  assert.match(app, /key\+\(bip45\?`\/0\/\$\{branch\}\/\*`:`\/\$\{branch\}\/\*`\)/);
   assert.match(app, /Legacy BIP45 addresses use co-signer branch 0/);
   assert.match(app, /Legacy P2SH uses the selected BIP87 account paths/);
   assert.match(app, /function hodlMsigInnerDescriptor\(kind,m,inner,sorted\)/);

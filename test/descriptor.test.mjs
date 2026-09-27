@@ -191,8 +191,9 @@ test("origin path must match key depth and script", () => {
   assert.match(specText(hodlOriginScriptError({ fingerprint: "73c5da0a", path: "48h/0h/0h/2h" }, "p2wsh", "testnet", 48)), /1h/);
   assert.equal(hodlOriginMatchesParsedKey({ fingerprint: "73c5da0a", path: "45h" }, { depth: 1, childNumber: 0x8000002d }), "");
   assert.equal(hodlOriginScriptError({ fingerprint: "73c5da0a", path: "45h" }, "p2sh", "mainnet", 45), "");
-  // A key may sit below the BIP45 purpose key; a wrong purpose is still refused.
-  assert.equal(hodlOriginScriptError({ fingerprint: "73c5da0a", path: "45h/0" }, "p2sh", "mainnet", 45), "");
+  // A BIP45 card holds the depth-1 purpose key only; anything deeper is a
+  // Custom path (which warns), and a wrong purpose is refused.
+  assert.match(specText(hodlOriginScriptError({ fingerprint: "73c5da0a", path: "45h/0" }, "p2sh", "mainnet", 45)), /without an account/);
   assert.match(specText(hodlOriginScriptError({ fingerprint: "73c5da0a", path: "46h/0" }, "p2sh", "mainnet", 45)), /45h/);
   const bip87 = { fingerprint: "73c5da0a", path: "87h/0h/7h" };
   assert.equal(hodlOriginMatchesParsedKey(bip87, { depth: 3, childNumber: 0x80000007 }), "");
@@ -205,8 +206,8 @@ test("origin path must match key depth and script", () => {
   assert.equal(hodlOriginScriptError({ fingerprint: "73c5da0a", path: "48h/69420h/0h/2h" }, "p2wsh", "mainnet", 48, 69420), "");
   assert.match(hodlOriginScriptError({ fingerprint: "73c5da0a", path: "48h/0h/0h/2h" }, "p2wsh", "mainnet", 48, 69420), /selected coin type/);
   assert.match(hodlOriginScriptError({ fingerprint: "73c5da0a", path: "84h/0h/0h" }, "p2tr", "mainnet", 86), /selected Purpose is 86h/);
-  // A key may sit below the Taproot account, never above it.
-  assert.equal(hodlOriginScriptError({ fingerprint: "73c5da0a", path: "86h/0h/0h/0h" }, "p2tr", "mainnet", 86), "");
+  // A spec card holds the account key itself: neither above nor below it.
+  assert.match(hodlOriginScriptError({ fingerprint: "73c5da0a", path: "86h/0h/0h/0h" }, "p2tr", "mainnet", 86), /purpose, coin type, and account/);
   assert.match(hodlOriginScriptError({ fingerprint: "73c5da0a", path: "86h/0h" }, "p2tr", "mainnet", 86), /purpose, coin type, and account/);
   assert.match(hodlOriginScriptError({ fingerprint: "73c5da0a", path: "86h/1h/0h" }, "p2tr", "mainnet", 86), /0h/);
   assert.equal(hodlOriginPathIndexes("48h/1h/0h/2h").at(-1), 0x80000002);

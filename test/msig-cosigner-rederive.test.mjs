@@ -4,15 +4,15 @@
 // when a loaded session root reproduces that exact key (public key and chain
 // code) at the row's previous origin; the replacement is the root's key at the
 // new origin, hardened steps included. A key no session root reproduces is
-// never replaced. Each co-signer's purpose, coin-type and account steps carry
-// their own hardening, while wrong indexes and a non-standard BIP48 script
-// step are still refused. A key may sit deeper than its standard path — the
-// origin then begins with the standard steps and ends at the key — but never
-// shallower.
+// never replaced. Re-derivation itself follows any path, hardened or not and
+// at any depth; whether the result is accepted is the card's spec's call.
 //
-// A co-signer that departs from its script type's standard — m/0h, say, or an
-// unhardened BIP48 account step — is refused unless the user turns on Custom
-// derivation spec, which then accepts it with a warning (browser suite).
+// A spec card holds its co-signer to that spec exactly: the spec's depth and
+// the policy's hardening (every published spec hardens each of its steps).
+// A co-signer that departs from it — m/0h, an unhardened account, a key
+// deeper than the spec's path such as an exported receive-branch xpub — is
+// refused unless the user chooses the Custom spec, which accepts it with the
+// restore-needs-the-descriptor warning (browser suite).
 // hodlMsigCustomPathReason names the departure as display text (never a note
 // object, which rendered as "[object Object]") and is empty for a standard
 // path; which paths depart is pinned by the tests above.
@@ -99,25 +99,18 @@ test("a key the session root does not reproduce at the previous origin is never 
   assert.equal(hodlMsigRederivedKey(sessionRoot(), forged, "m/48'/0'/0'/2'", "m/48'/0'/1'/2'", "mainnet"), "");
 });
 
-test("each co-signer origin carries its own purpose, coin-type and account hardening", () => {
-  const accept = (path, kind, purpose, coinType = 0) => {
-    const origin = { fingerprint: "73c5da0a", path }, hardening = hodlMsigOriginHardening(origin, STANDARD);
-    assert.equal(hodlOriginScriptError(origin, kind, "mainnet", purpose, coinType, hardening), "", path);
-    return hardening;
+test("a spec card holds each step to the policy hardening, not the key's own", () => {
+  const reason = (path, kind, purpose) => {
+    const key = HDKey.fromMasterSeed(seed).derive("m/" + path.replace(/h/g, "'"));
+    return hodlMsigCustomPathReason({ depth: key.depth, childNumber: key.index, origin: { fingerprint: "73c5da0a", path } }, kind, "mainnet", purpose, 0, STANDARD);
   };
-  accept("48/0h/0h/2h", "p2wsh", 48);
-  accept("48h/0/0h/1h", "p2sh-p2wsh", 48);
-  let hardening = accept("48h/0h/5/2h", "p2wsh", 48);
-  assert.equal(hodlMultisigAccountNumber({ path: "48h/0h/5/2h" }, "p2wsh", 48, hardening.account), 5);
-  hardening = accept("87h/0h/3", "p2tr", 87);
-  assert.equal(hodlMultisigAccountNumber({ path: "87h/0h/3" }, "p2tr", 87, hardening.account), 3);
-  // The depth-3 account key itself is checked against the same hardening.
-  const bip87 = HDKey.fromMasterSeed(seed).derive("m/87'/0'/3");
-  assert.equal(hodlMultisigAccountKeyError({ depth: bip87.depth, childNumber: bip87.index }, "p2tr", 87, hardening), "");
-  // BIP45's single purpose step.
-  hardening = accept("45", "p2sh", 45);
-  const bip45 = HDKey.fromMasterSeed(seed).derive("m/45");
-  assert.equal(hodlMultisigAccountKeyError({ depth: bip45.depth, childNumber: bip45.index }, "p2sh", 45, hardening), "");
+  // Unhardened purpose, coin type or account steps are not BIP48/87/45.
+  for (const [path, kind, purpose] of [["48/0h/0h/2h", "p2wsh", 48], ["48h/0/0h/1h", "p2sh-p2wsh", 48], ["48h/0h/5/2h", "p2wsh", 48], ["87h/0h/3", "p2tr", 87], ["45", "p2sh", 45]]) {
+    const text = reason(path, kind, purpose);
+    assert.ok(text && !text.includes("[object"), `${path} was accepted on its spec card: ${text}`);
+  }
+  // The account number still reads each origin's own hardening (Custom cards).
+  assert.equal(hodlMultisigAccountNumber({ path: "48h/0h/5/2h" }, "p2wsh", 48, hodlMsigOriginHardening({ path: "48h/0h/5/2h" }, STANDARD).account), 5);
 });
 
 test("per-row hardening still refuses wrong indexes and a non-standard script step", () => {
@@ -136,21 +129,26 @@ test("per-row hardening still refuses wrong indexes and a non-standard script st
   assert.notEqual(hodlMultisigAccountKeyError({ depth: unhardenedScript.depth, childNumber: unhardenedScript.index }, "p2wsh", 48, hodlMsigOriginHardening(origin, STANDARD)), "");
 });
 
-test("a co-signer key may sit deeper than its standard path, never shallower", () => {
+test("a spec card holds the spec's key itself, never one above or below it", () => {
   const check = (path, kind, purpose) => {
     const origin = { fingerprint: "73c5da0a", path }, hardening = hodlMsigOriginHardening(origin, STANDARD);
     const key = HDKey.fromMasterSeed(seed).derive("m/" + path.replace(/h/g, "'"));
     return [hodlMultisigAccountKeyError({ depth: key.depth, childNumber: key.index }, kind, purpose, hardening), hodlOriginScriptError(origin, kind, "mainnet", purpose, 0, hardening)];
   };
   for (const [path, kind, purpose] of [
-    ["48h/0h/0h/2h/1", "p2wsh", 48],
-    ["48h/0h/0h/2h/1h/7", "p2wsh", 48],
-    ["48h/0h/0h/1h/3h", "p2sh-p2wsh", 48],
-    ["87h/0h/0h/3h", "p2tr", 87],
-    ["87h/0h/0h/2", "p2sh", 87],
-    ["45h/0", "p2sh", 45],
+    ["48h/0h/0h/2h", "p2wsh", 48],
+    ["48h/0h/0h/1h", "p2sh-p2wsh", 48],
+    ["87h/0h/0h", "p2tr", 87],
+    ["45h", "p2sh", 45],
   ]) assert.deepEqual(check(path, kind, purpose), ["", ""], path);
   for (const [path, kind, purpose] of [
+    // Below the spec's key: an exported receive-branch xpub, or any extra step.
+    ["48h/0h/0h/2h/0", "p2wsh", 48],
+    ["48h/0h/0h/2h/1h/7", "p2wsh", 48],
+    ["48h/0h/0h/1h/3h", "p2sh-p2wsh", 48],
+    ["87h/0h/0h/0", "p2tr", 87],
+    ["87h/0h/0h/2", "p2sh", 87],
+    ["45h/0", "p2sh", 45],
     ["48h/0h/0h", "p2wsh", 48], // no script step
     ["48h/0h/0h/1h/1", "p2wsh", 48], // wrong script step under the extra one
     ["48h/0h/0h/2/1", "p2wsh", 48], // unhardened script step under the extra one
@@ -168,7 +166,6 @@ test("a non-standard co-signer path is named as custom in display text, a standa
   for (const [path, kind, purpose] of [
     ["48h/0h/0h/2h", "p2wsh", 48],
     ["48h/0h/1h/1h", "p2sh-p2wsh", 48],
-    ["48h/0h/0h/2h/1", "p2wsh", 48],
     ["87h/0h/0h", "p2tr", 87],
     ["45h", "p2sh", 45],
   ]) assert.equal(reason(path, kind, purpose), "", path);
@@ -177,6 +174,7 @@ test("a non-standard co-signer path is named as custom in display text, a standa
     ["48h/0h/1", "p2wsh", 48], // the account edited without its script step
     ["48h/0h/0h/1h", "p2wsh", 48], // another script type's step
     ["48h/0h/0h/2", "p2wsh", 48], // unhardened script step
+    ["48h/0h/0h/2h/1", "p2wsh", 48], // below the script-account key
     ["87h/0h", "p2tr", 87], // stops short of the account
     ["46h", "p2sh", 46],
   ]) {

@@ -7041,7 +7041,7 @@ function hodlOriginScriptError(origin, kind, network, purpose, coinType = hodlCo
   if (kind === "p2tr" || purpose === 87) {
     let coin = `${coinType}${hardening.coinType ? "h" : ""}`;
     if (steps[1] !== coin) return `This key origin should use ${coin} as the selected coin type.`;
-    if (steps.length < 3) return `${purpose === 87 ? "A BIP87" : "A Taproot"} origin must contain purpose, coin type, and account.`;
+    if (steps.length !== 3) return `${purpose === 87 ? "A BIP87" : "A Taproot"} origin must contain purpose, coin type, and account.`;
     if (!new RegExp(`^\\d+${hardening.account ? "h" : ""}$`).test(steps[2])) return `The account index must be ${hardening.account ? "hardened" : "unhardened"}.`;
     return ""
   }
@@ -7060,7 +7060,7 @@ function hodlOriginScriptError(origin, kind, network, purpose, coinType = hodlCo
   if (kind === "p2wsh" || kind === "p2sh-p2wsh") {
     let coin = `${coinType}${hardening.coinType ? "h" : ""}`;
     if (steps[1] !== coin) return `This key origin should use ${coin} as the selected coin type.`;
-    if (steps.length < 4) return "SegWit multisig origin must contain purpose, coin type, account, and script type.";
+    if (steps.length !== 4) return "SegWit multisig origin must contain purpose, coin type, account, and script type.";
     if (!new RegExp(`^\\d+${hardening.account ? "h" : ""}$`).test(steps[2])) return `The account index must be ${hardening.account ? "hardened" : "unhardened"}.`;
     let last = kind === "p2wsh" ? "2h" : "1h";
     if (steps[3] !== last) return hodlNote("This script type's origin must end in {last}.", { last });
@@ -7069,10 +7069,11 @@ function hodlOriginScriptError(origin, kind, network, purpose, coinType = hodlCo
   if (purpose !== 45) {
     let coin = `${coinType}${hardening.coinType ? "h" : ""}`;
     if (steps[1] !== coin) return `This key origin should use ${coin} as the selected coin type.`;
-    if (steps.length < 3) return "Account-based Legacy origin must contain purpose, coin type, and account.";
+    if (steps.length !== 3) return "Account-based Legacy origin must contain purpose, coin type, and account.";
     if (!new RegExp(`^\\d+${hardening.account ? "h" : ""}$`).test(steps[2])) return `The account index must be ${hardening.account ? "hardened" : "unhardened"}.`;
     return "";
   }
+  if (steps.length !== 1) return `Legacy purpose 45 uses the BIP45 purpose key at m/${expectedPurpose} without an account.`;
   return "";
 }
 function hodlMsigOriginHardening(origin, hardening) {
@@ -7086,8 +7087,7 @@ function hodlMsigCustomPathReason(parsed, kind, network, purpose, coinType, hard
   // How this co-signer departs from its script type's derivation standard, as
   // display text, or "" when it follows it. A departure is allowed — the
   // wallet is then a custom spec — but it is said, never silently accepted.
-  let originHardening = hodlMsigOriginHardening(parsed.origin, hardening);
-  return hodlFormatNote(hodlMultisigAccountKeyError(parsed, kind, purpose, originHardening) || hodlOriginScriptError(parsed.origin, kind, network, purpose, coinType, originHardening));
+  return hodlFormatNote(hodlMultisigAccountKeyError(parsed, kind, purpose, hardening) || hodlOriginScriptError(parsed.origin, kind, network, purpose, coinType, hardening));
 }
 function hodlMultisigAccountNumber(origin, kind, purpose, accountHardened = true) {
   let steps = hodlNormalizeOriginPath(origin?.path).split("/");
@@ -8576,24 +8576,24 @@ function hodlMultisigPrefixCompatible(parsed, kind, purpose) {
 function hodlMultisigAccountKeyError(parsed, kind, purpose, hardening = { purpose: true, coinType: true, account: true, address: false }) {
   if (kind === "p2tr" || purpose === 87 || ((purpose === 44 || purpose === 49 || purpose === 84) && parsed.depth === 3)) {
     let standard = purpose === 87 ? "BIP87" : kind === "p2tr" ? "Taproot" : `BIP${purpose}`;
-    if (parsed.depth < 3) return `${standard} requires a depth-3 account key at m/purposeh/coinh/accounth, or a key below it; this key is depth ${parsed.depth}.`;
-    if (parsed.depth === 3 && (parsed.childNumber >= 0x80000000) !== hardening.account) return `The account index must be ${hardening.account ? "hardened" : "unhardened"}.`;
+    if (parsed.depth !== 3) return `${standard} requires a depth-3 account key at m/purposeh/coinh/accounth; this key is depth ${parsed.depth}.`;
+    if ((parsed.childNumber >= 0x80000000) !== hardening.account) return `The account index must be ${hardening.account ? "hardened" : "unhardened"}.`;
     return ""
   }
   if (kind === "p2wsh" || kind === "p2sh-p2wsh") {
     let scriptIndex = kind === "p2wsh" ? 2 : 1, label = kind === "p2wsh" ? "Native SegWit" : "Nested SegWit", expected = 2147483648 + scriptIndex;
-    if (parsed.depth < 4) return hodlNote("{label} requires a depth-4 script-account key ending in /{script}h, or a key below it; this key is depth {depth}.", { label, script: scriptIndex, depth: parsed.depth });
-    if (parsed.depth === 4 && parsed.childNumber !== expected) return hodlNote("{label} requires a script-account key whose final hardened child is {script}h.", { label, script: scriptIndex });
+    if (parsed.depth !== 4) return hodlNote("{label} requires a depth-4 script-account key ending in /{script}h; this key is depth {depth}.", { label, script: scriptIndex, depth: parsed.depth });
+    if (parsed.childNumber !== expected) return hodlNote("{label} requires a script-account key whose final hardened child is {script}h.", { label, script: scriptIndex });
     return "";
   }
   if (purpose !== 45) {
-    if (parsed.depth < 3) return `Account-based Legacy derivation requires a depth-3 key at m/purposeh/coinh/accounth, or a key below it; this key is depth ${parsed.depth}.`;
-    if (parsed.depth === 3 && (parsed.childNumber >= 2147483648) !== hardening.account) return `The account index must be ${hardening.account ? "hardened" : "unhardened"}.`;
+    if (parsed.depth !== 3) return `Account-based Legacy derivation requires a depth-3 key at m/purposeh/coinh/accounth; this key is depth ${parsed.depth}.`;
+    if ((parsed.childNumber >= 2147483648) !== hardening.account) return `The account index must be ${hardening.account ? "hardened" : "unhardened"}.`;
     return "";
   }
-  if (parsed.depth < 1) return `Legacy P2SH requires the depth-1 BIP45 purpose key at m/45h, or a key below it; this key is depth ${parsed.depth}.`;
+  if (parsed.depth !== 1) return `Legacy P2SH requires the depth-1 BIP45 purpose key at m/45h; this key is depth ${parsed.depth}.`;
   let expected = hardening.purpose ? 2147483648 + 45 : 45; // 45h when hardened
-  if (parsed.depth === 1 && parsed.childNumber !== expected) return `Legacy P2SH requires the ${hardening.purpose ? "hardened" : "unhardened"} BIP45 purpose child at m/${hodlPathComponent(45, hardening.purpose)}.`;
+  if (parsed.childNumber !== expected) return `Legacy P2SH requires the ${hardening.purpose ? "hardened" : "unhardened"} BIP45 purpose child at m/${hodlPathComponent(45, hardening.purpose)}.`;
   return "";
 }
 function hodlMsigDerivedNode(parsed) {

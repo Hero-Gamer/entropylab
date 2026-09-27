@@ -4820,38 +4820,46 @@
     assert(/^m\/\d+'\/\d+'\/1'/.test(secondPath.value) && accountOneKey !== first.value && /^[A-Za-z]pub/.test(accountOneKey), `Changing the account step did not re-derive the co-signer key (${secondPath.value})`);
     assert(second.nextElementSibling.classList.contains("ok"), `The re-derived co-signer did not validate: ${second.nextElementSibling.textContent}`);
     const accountHarden = accountStep(rows[1]).closest("label").querySelector('input[type="checkbox"]');
+    const specSelect = rows[1].querySelector("[data-msig-spec]"), standardSpec = specSelect.value;
+    const setSpec = (id) => {
+      specSelect.value = id;
+      specSelect.dispatchEvent(new Event("change"));
+    };
     accountHarden.click();
     assert(/^m\/\d+'\/\d+'\/1(?:\/|$)/.test(secondPath.value) && second.value !== accountOneKey && second.value !== first.value, `Unhardening the account step did not re-derive the co-signer key (${secondPath.value})`);
-    assert(second.nextElementSibling.classList.contains("ok"), `A co-signer with its own account hardening did not validate: ${second.nextElementSibling.textContent}`);
-    accountHarden.click();
+    // An unhardened account is not BIP48: the spec card refuses it with a
+    // readable reason, and only a Custom card (which warns) accepts it.
+    assert(second.nextElementSibling.classList.contains("bad") && !second.nextElementSibling.textContent.includes("[object"), `A spec card accepted an off-spec account hardening: ${second.nextElementSibling.textContent}`);
+    setSpec("custom");
+    assert(!second.nextElementSibling.classList.contains("bad") && second.nextElementSibling.textContent.includes("Custom"), `A Custom co-signer with its own account hardening did not validate: ${second.nextElementSibling.textContent}`);
+    // The spec change re-rendered the path fields: take the live checkbox.
+    accountStep(rows[1]).closest("label").querySelector('input[type="checkbox"]').click();
     assert(second.value === accountOneKey, "Re-hardening the account step did not return to the same derived key");
     // An extra step deepens a session key itself: the xpub is re-derived at the
     // whole path, hardened or not, rather than taking a step after it.
     input(secondPath, secondPath.value + "/2");
     const deepKey = second.value;
-    assert(deepKey !== accountOneKey && second.nextElementSibling.classList.contains("ok") && !second.nextElementSibling.textContent.includes("/2"), `An extra path step did not re-derive the session key at the deeper path: ${second.nextElementSibling.textContent}`);
+    assert(deepKey !== accountOneKey && !second.nextElementSibling.classList.contains("bad") && !second.nextElementSibling.textContent.includes("/2"), `An extra path step did not re-derive the session key at the deeper path: ${second.nextElementSibling.textContent}`);
     const extraStep = rows[1].querySelector('.msig-cosigner-advanced [data-path-index="4"]');
     assert(extraStep, "The extra path step was not represented in Advanced entry");
     extraStep.focus();
     extraStep.setSelectionRange(1, 1);
     input(extraStep, "3");
-    assert(/\/3$/.test(secondPath.value) && second.value !== deepKey && second.nextElementSibling.classList.contains("ok"), "Changing an Advanced path component did not update the full path and re-derive the key");
+    assert(/\/3$/.test(secondPath.value) && second.value !== deepKey && !second.nextElementSibling.classList.contains("bad"), "Changing an Advanced path component did not update the full path and re-derive the key");
     assert(document.activeElement === extraStep && extraStep.selectionStart === 1, "Changing an Advanced path component lost its focus or cursor position");
     const shallowKey = second.value;
     extraStep.closest("label").querySelector('input[type="checkbox"]').click();
-    assert(/\/3'$/.test(secondPath.value) && second.value !== shallowKey && second.nextElementSibling.classList.contains("ok"), "Hardening an extra path step did not re-derive the key");
+    assert(/\/3'$/.test(secondPath.value) && second.value !== shallowKey && !second.nextElementSibling.classList.contains("bad"), "Hardening an extra path step did not re-derive the key");
     input(secondPath, secondPath.value.replace(/\/3'$/, ""));
     assert(second.value === accountOneKey, "Removing the extra step did not return to the account key");
+    setSpec(standardSpec);
+    assert(second.value === accountOneKey && second.nextElementSibling.classList.contains("ok"), "Returning to the spec did not keep the standard account key");
     // Each card follows a derivation spec, offered from the specs its script
     // type serves. A path off the card's spec — an unhardened account without
     // its script step, or a lone m/0' — is refused with a readable reason;
     // on a Custom card it is accepted, still explained. Choosing the spec
     // again moves the session key back to the spec's path, keeping its account.
-    const accountOnePath = secondPath.value, specSelect = rows[1].querySelector("[data-msig-spec]"), standardSpec = specSelect.value;
-    const setSpec = (id) => {
-      specSelect.value = id;
-      specSelect.dispatchEvent(new Event("change"));
-    };
+    const accountOnePath = secondPath.value;
     const offered = [...specSelect.options].map((option) => option.value);
     assert(standardSpec !== "custom" && offered.includes("custom") && offered.includes("bip87") && !offered.includes("bip45"), `A SegWit card did not offer its script type's specs: ${offered.join(", ")}`);
     for (const customPath of ["m/48'/0'/1", "m/0'"]) {

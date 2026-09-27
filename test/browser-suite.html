@@ -4973,6 +4973,9 @@
       assert(note.hidden, "the spec refusal note showed while every co-signer shares one spec");
       setSpec(selects()[1], "bip87");
       assert(!note.hidden && note.textContent.includes("BIP87"), "co-signers on different specs left no visible reason");
+      // The majority decides the odd card: only Co-signer 2 names its purpose.
+      const flagged = [...document.querySelectorAll("#msig-keys [data-msig-purpose-warning]")].map((warning) => !warning.hidden);
+      equal(flagged.join(), "false,true,false", "the purpose mismatch was not named on the odd card alone");
       assert(go.disabled, "Derive stayed available across different specs");
       setSpec(selects()[1], standard);
       assert(note.hidden && !note.textContent, "the note stayed after the specs agreed again");
@@ -5190,7 +5193,12 @@
     input(document.getElementById("msig-x-0"), bip87Export);
     input(document.getElementById("msig-x-1"), bip48Export);
     equal(msigScript(), "p2wsh", "script type was not detected from the co-signer origins");
-    assert(document.getElementById("msig-purpose-warning").textContent.includes("do not match"), "Mixed co-signer purposes did not show a warning");
+    // The purpose mismatch is named on the odd card. Two co-signers tie, so
+    // Co-signer 1 is the reference and only Co-signer 2 is flagged.
+    const purposeWarnings = [...document.querySelectorAll("#msig-keys [data-msig-purpose-warning]")];
+    equal(purposeWarnings.filter((warning) => !warning.hidden).length, 1, "a tie flagged more than the card off the reference");
+    assert(purposeWarnings[0].hidden, "the reference co-signer was flagged");
+    assert(!purposeWarnings[1].hidden && purposeWarnings[1].textContent.includes("48h") && purposeWarnings[1].textContent.includes("87h"), "the odd co-signer did not name the purpose mismatch");
     assert(
       document.getElementById("msig-go").disabled,
       "A BIP87 co-signer mixed with a BIP48 export was allowed to derive",

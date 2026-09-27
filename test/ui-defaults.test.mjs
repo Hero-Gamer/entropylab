@@ -810,7 +810,7 @@ test("multisig script type and placeholders follow detected co-signer exports", 
   assert.match(app, /function hodlUpdateMsigPurposeDetection\(\)/);
   assert.doesNotMatch(app, /or BIP48 script 3h/);
   assert.doesNotMatch(app, /if\(steps\[3\]==="3h"\)return"p2tr"/);
-  assert.match(app, /hodlT\("Co-signer purpose indexes do not match \(\{purposes\}\)\./);
+  assert.match(app, /hodlTText\("Purpose index \{purpose\}h does not match the other co-signers \(\{reference\}h\)\./);
   assert.match(app, /button\.disabled=!ready/);
   assert.match(app, /if\(kind==="mixed"\)throw hodlError\("Co-signer keys indicate different script types. Export every key for the same multisig script type before deriving\."\)/);
 });

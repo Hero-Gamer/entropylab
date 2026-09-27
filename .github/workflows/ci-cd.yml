@@ -513,7 +513,7 @@ jobs:
           # GITHUB_TOKEN in an includeIf'd credentials file that overrides
           # URL credentials, so the token goes on the command line, which
           # outranks every config file.
-          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n x-access-token:${{ secrets.RELEASE_PUSH_TOKEN }} | base64)" push
+          git -c http.https://github.com/.extraheader=             -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n x-access-token:${{ secrets.RELEASE_PUSH_TOKEN }} | base64)"             push
 
   # ── Timestamp: OpenTimestamps the tested HTML after it is committed ──────
   # Calendars are online; this job must not block tests, the HTML commit, or
@@ -577,7 +577,7 @@ jobs:
           # GITHUB_TOKEN in an includeIf'd credentials file that overrides
           # URL credentials, so the token goes on the command line, which
           # outranks every config file.
-          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n x-access-token:${{ secrets.RELEASE_PUSH_TOKEN }} | base64)" push
+          git -c http.https://github.com/.extraheader=             -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n x-access-token:${{ secrets.RELEASE_PUSH_TOKEN }} | base64)"             push
 
   # ── Verify: independent check of the generated site artifact ──
 

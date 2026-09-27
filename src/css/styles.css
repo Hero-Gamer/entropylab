@@ -1786,10 +1786,11 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 /* Section titles in the editor read as the shared label, not as headings. */
 .psbted-map > h3 { margin: 0 0 4px; font: inherit; font-size: 14px; font-weight: 600; letter-spacing: normal; }
-/* The editor runs long, so every section label sits on a faint full-width
-   band that marks where the section begins. The band reaches 8px past the
-   content on each side so the label's text stays on the content edge. */
-.psbted-section-label, .psbted-map > .psbted-section-label {
+/* Long forms mark where each section begins with a faint full-width band
+   behind its label: the PSBT Editor's sections and MS Station's co-signer
+   cards. The band reaches 8px past the content on each side so the label's
+   text stays on the content edge. */
+.psbted-section-label, .psbted-map > .psbted-section-label, .msig-key-title {
   margin-inline: -8px; padding: 6px 8px;
   background: color-mix(in oklab, var(--fg) 5%, transparent);
 }
@@ -2361,7 +2362,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 #msig-account:disabled { cursor: not-allowed; color: var(--muted); opacity: 1; }
 #msig-account[data-state="mixed"] { color: var(--warn); }
 .msig-account-warning { color: var(--warn); }
-.msig-purpose-warning { color: var(--danger); }
+/* A co-signer card whose purpose index is the odd one out, in the bright red
+   of the wallet-level note above Derive. */
+.msig-purpose-mismatch { display: block; color: var(--danger-bright); }
 .msig-script-warning { color: var(--danger); }
 /* A wallet-level refusal: the red warning note, its text in the bar's red. */
 .msig-spec-warning { color: var(--danger-bright); }
@@ -2540,7 +2543,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
  .msig-keys .field { margin-top: 0; }
  .msig-key-order-status[hidden] { display: none; }
 .msig-key-row { display: grid; gap: var(--space-control); }
-.msig-key-title { margin-top: 0; color: var(--accent); font-size: 16px; }
+.msig-key-title { margin-top: 0; color: var(--accent); font-size: 14px; }
 .msig-key-content { display: grid; min-width: 0; gap: 8px; }
 .msig-cosigner-advanced { padding-top: 8px; }
 .msig-key-row-head {

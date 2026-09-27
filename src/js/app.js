@@ -7449,32 +7449,41 @@ function hodlUpdateMsigKeyPlaceholders() {
 function hodlUpdateMsigPurposeDetection() {
   // The wallet's purpose is the one its co-signer cards name: a spec's own,
   // or a Custom key's origin. With no key yet, the cards' specs alone.
-  let input = document.getElementById("msig-purpose"), warning = document.getElementById("msig-purpose-warning"), purposes = [], rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
-  if (!input) return { purposes, mixed: false, purpose: null };
-  for (let row of rows) {
-    let raw = hodlMsigRowValue(row), spec = hodlMsigSpec(hodlMsigRowSpec(row));
-    if (!String(raw ?? "").trim()) continue;
-    if (spec?.purpose != null) {
-      purposes.push(spec.purpose);
-      continue;
-    }
+  let input = document.getElementById("msig-purpose"), rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
+  if (!input) return { purposes: [], mixed: false, purpose: null };
+  let specPurpose = (row) => hodlMsigSpec(hodlMsigRowSpec(row))?.purpose ?? null;
+  let rowPurposes = rows.map((row) => {
+    let raw = hodlMsigRowValue(row), purpose = specPurpose(row);
+    if (!String(raw ?? "").trim()) return null;
+    if (purpose != null) return purpose;
     try {
       let parsed = hodlParseMultisigCosigner(raw);
-      if (parsed.origin) purposes.push(hodlMultisigPurposeIndex(parsed.origin));
+      return parsed.origin ? hodlMultisigPurposeIndex(parsed.origin) : null;
     } catch {
+      return null;
     }
-  }
-  if (!purposes.length) purposes = rows.map((row) => hodlMsigSpec(hodlMsigRowSpec(row))?.purpose).filter((purpose) => purpose != null);
-  purposes = [...new Set(purposes)].sort((left, right) => left - right);
+  });
+  if (rowPurposes.every((value) => value == null)) rowPurposes = rows.map(specPurpose);
+  let purposes = [...new Set(rowPurposes.filter((value) => value != null))].sort((left, right) => left - right);
   let mixed = purposes.length > 1, purpose = purposes.length === 1 ? purposes[0] : null;
   if (purpose != null) hodlSetMsigPurpose(purpose);
-  let message = mixed ? hodlT("Co-signer purpose indexes do not match ({purposes}).", { purposes: purposes.map(value => `${value}h`).join(", ") }) : "";
+  // The odd card is the one off the majority; on a tie, the first card with
+  // a purpose (normally Co-signer 1) is the reference.
+  let reference = null;
+  if (mixed) {
+    let counts = new Map();
+    rowPurposes.forEach((value) => { if (value != null) counts.set(value, (counts.get(value) || 0) + 1); });
+    let top = Math.max(...counts.values()), leaders = [...counts].filter(([, count]) => count === top);
+    reference = leaders.length === 1 ? leaders[0][0] : rowPurposes.find((value) => value != null);
+  }
+  rows.forEach((row, index) => {
+    let warning = row.querySelector("[data-msig-purpose-warning]"), value = rowPurposes[index], odd = mixed && value != null && value !== reference;
+    if (!warning) return;
+    warning.textContent = odd ? hodlTText("Purpose index {purpose}h does not match the other co-signers ({reference}h).", { purpose: value, reference }) : "";
+    warning.hidden = !odd;
+  });
   input.classList.toggle("bad", mixed);
   input.setAttribute("aria-invalid", String(mixed));
-  if (warning) {
-    warning.textContent = message;
-    warning.hidden = !message;
-  }
   hodlUpdateMsigLegacyControls();
   return { purposes, mixed, purpose };
 }
@@ -8520,7 +8529,14 @@ function hodlFillKeys(values, specs) {
     specSelect.setAttribute("aria-label", hodlTText("Derivation spec for co-signer {n}", { n: i + 1 }));
     let specHelp = document.createElement("span");
     specHelp.className = "field-note msig-spec-help";
-    specLabel.append(specSelect, specHelp);
+    // Names this card's purpose index when it is the odd one out, between the
+    // label and the select the user has to change.
+    let purposeWarning = document.createElement("span");
+    purposeWarning.className = "hint msig-purpose-mismatch";
+    purposeWarning.dataset.msigPurposeWarning = "";
+    purposeWarning.setAttribute("role", "status");
+    purposeWarning.hidden = true;
+    specLabel.append(purposeWarning, specSelect, specHelp);
     let advanced = document.createElement("details");
     advanced.className = "derivation-advanced msig-cosigner-advanced";
     let advancedSummary = document.createElement("summary");

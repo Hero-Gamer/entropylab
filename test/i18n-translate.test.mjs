@@ -189,3 +189,35 @@ test("chat(): a non-retryable 4xx fails immediately", async () => {
     server.close();
   }
 });
+
+// The real chat(): fence-wrapped JSON parses, and a truncated response is
+// retried rather than failing the whole language on a transient.
+const stubFetch = (bodies) => {
+  const calls = [];
+  return [calls, async (url, init) => {
+    calls.push(init.body);
+    const body = bodies[Math.min(calls.length - 1, bodies.length - 1)];
+    return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: body } }] }) };
+  }];
+};
+
+test("chat strips markdown fences and retries a truncated response", async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    const [calls, fenced] = stubFetch(["```json\n{\"a\": 1}\n```"]);
+    globalThis.fetch = fenced;
+    assert.deepEqual(await chat({ url: "https://x", key: "k", model: "m", name: "n", schema: {}, messages: [] }), { a: 1 });
+
+    const [retryCalls, truncThenGood] = stubFetch(["{\"a\": ", "{\"a\": 2}"]);
+    globalThis.fetch = truncThenGood;
+    assert.deepEqual(await chat({ url: "https://x", key: "k", model: "m", name: "n", schema: {}, messages: [] }), { a: 2 });
+    assert.equal(retryCalls.length, 2, "a truncated response was not retried");
+
+    const [garbageCalls, garbage] = stubFetch(["not json at all"]);
+    globalThis.fetch = garbage;
+    await assert.rejects(() => chat({ url: "https://x", key: "k", model: "m", name: "n", schema: {}, messages: [] }));
+    assert.equal(garbageCalls.length, 2, "persistent garbage was not attempted exactly twice");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});

@@ -157,3 +157,17 @@ test("the uploaded WASM modules land where every downstream job reads them", () 
     assert.ok(reproduce.includes(`${landed} `) || reproduce.includes(`${landed}\n`), `reproduce must hash ${landed}, where the download puts it`);
   }
 });
+
+// The artifact, timestamp, and OTS jobs push directly to rock. Once rock is
+// protected (required status checks for the translation gate), GITHUB_TOKEN
+// pushes are rejected, so each of those jobs must push with the maintainer
+// token instead — an admin bypass while enforce_admins is off. Without this,
+// the release pipeline breaks the moment protection is re-applied.
+test("every job that pushes to rock uses the maintainer push token", () => {
+  for (const workflow of [read(".github/workflows/ci-cd.yml"), read(".github/workflows/ots-upgrade.yml")]) {
+    const pushes = workflow.match(/git remote set-url origin https:\/\/x-access-token:\$\{\{ secrets\.RELEASE_PUSH_TOKEN \}\}/g) || [];
+    const rawPushes = workflow.match(/^\s+git push$/gm) || [];
+    assert.equal(pushes.length, rawPushes.length, "a job pushes to rock without the maintainer token");
+    assert.ok(pushes.length > 0, "expected at least one protected push site");
+  }
+});

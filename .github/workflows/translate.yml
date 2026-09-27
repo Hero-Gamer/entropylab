@@ -70,6 +70,10 @@ jobs:
         with:
           name: translation-proposals
           path: out/i18n
+          # The provenance sidecars live in out/i18n/.sources/ — a hidden
+          # directory upload-artifact drops by default, and the publish job
+          # then fails every language on a missing sidecar.
+          include-hidden-files: true
           retention-days: 1
           if-no-files-found: ignore
 

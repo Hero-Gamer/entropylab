@@ -94,3 +94,11 @@ test("the validate steps filter to language catalogs, so the run's report.json i
   const pattern = (translate.match(/\^\[a-z\]\{2\}\(-\[a-z0-9\]\+\)\?\\.json\$/g) || []).length;
   assert.ok(pattern >= 2, "both validate steps need the language-file pattern");
 });
+
+test("the proposals upload includes hidden files (the .sources sidecars)", () => {
+  // Run 36303976931: all four languages translated and validated, then the
+  // publish job failed every one on a missing sidecar — upload-artifact
+  // drops the hidden .sources/ directory without include-hidden-files.
+  const upload = translate.match(/name: Upload proposals[\s\S]*?include-hidden-files: true/);
+  assert.ok(upload, "the proposals upload must carry the hidden .sources/ sidecars");
+});

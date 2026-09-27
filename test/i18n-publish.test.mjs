@@ -24,7 +24,7 @@ const proposals = (dir, catalog) => {
 const CATALOG = { Save: "Guardar", Cancel: "Cancelar" };
 
 // A stub GitHub API with scriptable state. Returns { server, calls, state }.
-const stubGitHub = async ({ branchExists = false, prExists = false, contentsMatch = false } = {}) => {
+const stubGitHub = async ({ branchExists = false, prExists = false, contentsMatch = false, cleanStatus = false } = {}) => {
   const calls = [];
   const state = { branchSha: "base0000", prNumber: 7, prNode: "PR_node_7", writes: [] };
   const b64 = (text) => Buffer.from(text, "utf8").toString("base64");
@@ -64,7 +64,9 @@ const stubGitHub = async ({ branchExists = false, prExists = false, contentsMatc
       if (url === "/repos/o/r/labels" && req.method === "POST") return reply(201, { name: parsed.name });
       if (url === `/repos/o/r/issues/${state.prNumber}/labels` && req.method === "PUT") return reply(200, parsed.labels);
       if (url === "/repos/o/r" && req.method === "GET") return reply(200, { allow_squash_merge: true, allow_merge_commit: false, allow_rebase_merge: false });
+      if (url === "/graphql" && cleanStatus) return reply(200, { errors: [{ message: "Pull request Pull request is in clean status" }] });
       if (url === "/graphql") return reply(200, { data: { enablePullRequestAutoMerge: { pullRequest: { autoMergeRequest: { enabledAt: "now", mergeMethod: parsed.variables.method } } } } });
+      if (url === `/repos/o/r/pulls/${state.prNumber}/merge` && req.method === "PUT") return reply(200, { merged: true, sha: parsed.sha });
       return reply(404, { message: `unstubbed ${req.method} ${url}` });
     });
   });
@@ -173,3 +175,26 @@ test("a proposal whose sidecar disagrees with its catalog is rejected", async ()
   }
 });
 
+
+test("an immediately mergeable PR merges directly when auto-merge has nothing to wait on", async () => {
+  // With no required checks, GitHub refuses enablePullRequestAutoMerge with
+  // "clean status" (run 36307213357 failed all four languages there). The
+  // publisher must merge directly, pinned to the exact head SHA.
+  const dir = mkdtempSync(join(tmpdir(), "i18n-pub-"));
+  try {
+    proposals(dir, { Save: "Guardar", Cancel: "Cancelar" });
+    const { server, calls, state, url } = await stubGitHub({ cleanStatus: true });
+    try {
+      const summary = await publish(dir, url);
+      assert.match(summary, /merged directly/);
+      const merge = calls.find((call) => call.method === "PUT" && call.url === `/repos/o/r/pulls/${state.prNumber}/merge`);
+      assert.ok(merge, "the PR was not merged directly");
+      assert.equal(merge.body.sha, state.branchSha, "the direct merge binds the exact head SHA");
+      assert.equal(merge.body.merge_method, "squash");
+    } finally {
+      server.close();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

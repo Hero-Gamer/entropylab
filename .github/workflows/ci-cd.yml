@@ -470,6 +470,8 @@ jobs:
     needs: [build, verify, test-ci, test-browser, build-wasm, fuzz-lifehash, fuzz-msig, reproduce]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      superseded: ${{ steps.commit.outputs.superseded }}
     permissions:
       contents: write
     steps:
@@ -498,6 +500,7 @@ jobs:
       - name: Generate the IPFS CID name
         run: node scripts/cid.mjs entropylab.html > CID.txt
       - name: Commit the generated artifact
+        id: commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -507,6 +510,19 @@ jobs:
             exit 0
           fi
           git commit -m "Rebuild site artifact [skip ci]"
+          # A merge can land on rock while this run tests. It starts its own
+          # run, which builds and publishes the newer sources, so this build
+          # is superseded: rock never carries a site older than the sources
+          # beneath it. The bot's [skip ci] commits (proof upgrades) change no
+          # sources and start no run, so the build rebases over those.
+          git fetch --quiet origin rock
+          newer=$(git log --format=%s "$GITHUB_SHA..FETCH_HEAD" | grep -vcF '[skip ci]' || true)
+          if [ "$newer" != 0 ]; then
+            echo "::notice title=Artifact superseded::rock moved past ${GITHUB_SHA::7} while it was tested; the run for the newer commit publishes the site."
+            echo "superseded=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git rebase --quiet FETCH_HEAD
           # Push with the maintainer token: rock is protected, and required
           # status checks reject direct pushes from GITHUB_TOKEN (an admin
           # token bypasses while enforce_admins is off). The checkout keeps
@@ -522,7 +538,9 @@ jobs:
 
   timestamp:
     name: Timestamp · OpenTimestamps the tested HTML
-    if: github.ref == 'refs/heads/rock' && github.event_name == 'push'
+    # A superseded build was not committed; stamping it onto rock would give
+    # rock a proof for HTML it does not carry.
+    if: github.ref == 'refs/heads/rock' && github.event_name == 'push' && needs.artifact.outputs.superseded != 'true'
     needs: [build, artifact]
     runs-on: ubuntu-latest
     timeout-minutes: 10

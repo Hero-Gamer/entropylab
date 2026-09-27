@@ -17,6 +17,7 @@
 //! script hashing to the claimed program, a Taproot control block proving
 //! its script under the claimed output key).
 
+use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use bitcoin::blockdata::script::{Instruction, Script};
@@ -70,6 +71,29 @@ impl<T> AnalysisMemo<T> {
         }
         Rc::clone(self.result.as_ref().expect("stored above or by an earlier call"))
     }
+}
+
+/// Tapscript separator analyses for the whole run, keyed by leaf hash. The
+/// hash commits to the leaf's bytes and version, so it names the analysis
+/// exactly; the map holds every leaf, so signatures alternating between
+/// leaves no longer evict each other, and no script is copied (#539). A
+/// BTreeMap: no hasher seed to draw, no collisions to aim for.
+type TapscriptMemo = BTreeMap<TapLeafHash, Rc<scriptcode::Tapscript>>;
+
+/// An input's tapscript leaves (PSBT_IN_TAP_LEAF_SCRIPT, 0x15, leaf version
+/// 0xc0) by leaf hash, each hashed once — not once per script-path
+/// signature (#539). The first declaration of a hash wins, as the
+/// per-signature scan's first match did.
+fn tapscript_leaves(map: &[RawPair]) -> BTreeMap<TapLeafHash, &[u8]> {
+    let mut leaves = BTreeMap::new();
+    for pair in map.iter().filter(|pair| pair.key[0] == 0x15) {
+        let Some((&version, script)) = pair.value.split_last() else { continue };
+        if !matches!(LeafVersion::from_consensus(version), Ok(LeafVersion::TapScript)) {
+            continue;
+        }
+        leaves.entry(TapLeafHash::from_script(Script::from_bytes(script), LeafVersion::TapScript)).or_insert(script);
+    }
+    leaves
 }
 
 impl Budget {
@@ -401,25 +425,20 @@ fn taproot_sighash_script_spend(
 }
 
 /// The codesep_pos values a script-path signature under `leaf_hash` can have
-/// committed to: from the leaf's script when the input declares it
-/// (PSBT_IN_TAP_LEAF_SCRIPT, 0x15, tapscript leaf version 0xc0), the
-/// positions of the separators an execution can run last before a
-/// signature check, no-separator first when it is one. Without the script,
-/// only the no-separator default — what a signer uses absent a script.
-/// `truncated` when the script offers more candidates than the verification
-/// budget can reach (the prefix is exactly what the budget could try).
+/// committed to: from the leaf's script when the input declares it (its
+/// entry in `tapscript_leaves`), the positions of the separators an
+/// execution can run last before a signature check, no-separator first when
+/// it is one. Without the script, only the no-separator default — what a
+/// signer uses absent a script. `truncated` when the script offers more
+/// candidates than the verification budget can reach (the prefix is exactly
+/// what the budget could try).
 fn tapscript_codesep_positions(
-    map: &[RawPair],
+    script: Option<&[u8]>,
     leaf_hash: TapLeafHash,
-    memo: &mut AnalysisMemo<scriptcode::Tapscript>,
+    memo: &mut TapscriptMemo,
 ) -> (Vec<u32>, bool) {
-    let script = map.iter().filter(|pair| pair.key[0] == 0x15).find_map(|pair| {
-        let (&version, script) = pair.value.split_last()?;
-        let version = LeafVersion::from_consensus(version).ok()?;
-        (version == LeafVersion::TapScript && TapLeafHash::from_script(Script::from_bytes(script), version) == leaf_hash)
-            .then_some(script)
-    });
-    match script.map(|script| memo.get(script, scriptcode::tapscript_starts)) {
+    let shape = script.map(|script| Rc::clone(memo.entry(leaf_hash).or_insert_with(|| Rc::new(scriptcode::tapscript_starts(script)))));
+    match shape {
         Some(shape) => match &*shape {
             scriptcode::Tapscript::Starts { positions, truncated } if !positions.is_empty() => (positions.clone(), *truncated),
             _ => (vec![scriptcode::NO_CODESEPARATOR], false),
@@ -521,7 +540,7 @@ fn check_tap_sigs(
     prevouts: &Option<Vec<TxOut>>,
     budget: &mut Budget,
     problems: &mut Vec<Problem>,
-    tap_memo: &mut AnalysisMemo<scriptcode::Tapscript>,
+    tap_memo: &mut TapscriptMemo,
 ) {
     let Spend::P2tr(output_key) = spend else { return };
     let scope = format!("input {index}");
@@ -541,6 +560,9 @@ fn check_tap_sigs(
             },
         }
     }
+    // Built on the first script-path signature that gets this far, so an
+    // input without one hashes nothing.
+    let mut leaf_scripts = None;
     for pair in map.iter().filter(|pair| pair.key[0] == 0x14 && pair.key.len() == 65) {
         let xonly = &pair.key[1..33];
         let leaf_hash = &pair.key[33..65];
@@ -566,7 +588,8 @@ fn check_tap_sigs(
         let leaf_hash = TapLeafHash::from_slice(leaf_hash).expect("32 bytes");
         // Valid when it verifies at some position; each position past the
         // first is another digest and takes its own budget.
-        let (positions, truncated) = tapscript_codesep_positions(map, leaf_hash, tap_memo);
+        let script = leaf_scripts.get_or_insert_with(|| tapscript_leaves(map)).get(&leaf_hash).copied();
+        let (positions, truncated) = tapscript_codesep_positions(script, leaf_hash, tap_memo);
         let mut verdict = None;
         for (n, &position) in positions.iter().enumerate() {
             if n > 0 && !budget.take(problems) {
@@ -947,7 +970,7 @@ pub(crate) fn analyze(tx: &Transaction, inputs: &[Vec<RawPair>]) -> Vec<Problem>
     let mut cache = SighashCache::new(tx);
     let mut budget = Budget { left: MAX_SIGNATURE_CHECKS, noted: false };
     let mut starts_memo = AnalysisMemo { script: None, result: None };
-    let mut tap_memo = AnalysisMemo { script: None, result: None };
+    let mut tap_memo = TapscriptMemo::new();
     for (index, map) in inputs.iter().enumerate() {
         let scope = format!("input {index}");
         let (witness_claim, non_witness_claim) = &claims[index];

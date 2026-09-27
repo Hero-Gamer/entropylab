@@ -92,9 +92,19 @@ export async function chat({ url, key, model, name, schema, messages }) {
     }
     if (response.ok) {
       const data = await response.json();
-      const content = data?.choices?.[0]?.message?.content;
+      let content = data?.choices?.[0]?.message?.content;
       if (typeof content !== "string") throw new Error("LLM response carried no message content");
-      return JSON.parse(content);
+      // Providers sometimes wrap the JSON in markdown fences, and a slow or
+      // rate-limited stream can truncate it mid-response: strip fences, and
+      // retry a parse failure rather than failing the whole language on a
+      // transient.
+      content = content.trim().replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
+      try {
+        return JSON.parse(content);
+      } catch (error) {
+        lastError = error;
+        continue;
+      }
     }
     lastError = new Error(`LLM request failed: HTTP ${response.status} ${(await response.text()).slice(0, 200)}`);
     if (response.status !== 429 && response.status < 500) break;

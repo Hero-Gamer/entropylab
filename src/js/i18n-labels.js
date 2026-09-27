@@ -14,6 +14,18 @@ export const hodlKeyModeLabels = Object.freeze({
   key: "Private key",
 });
 
+// MS Station co-signer derivation specs (app.js's hodlMsigSpecs indexes these).
+export const hodlMsigSpecLabels = Object.freeze({
+  bip48: "BIP48 multisig",
+  bip87: "BIP87 multisig",
+  bip45: "BIP45 multisig",
+  bip44: "BIP44 account key",
+  bip49: "BIP49 account key",
+  bip84: "BIP84 account key",
+  bip86: "BIP86 account key",
+  custom: "Custom",
+});
+
 // Header network picker (Bitcoin Core's four networks).
 export const hodlNetworkNames = Object.freeze({
   mainnet: "Bitcoin",

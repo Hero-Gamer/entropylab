@@ -900,7 +900,8 @@ test("multisig separates script type from purpose and keeps the Legacy BIP87 sho
   assert.match(app, /hodlSetMsigPurpose\(hodlStandardMsigPurpose\(kind\)\)/);
   assert.match(app, /legacyBip87:!1/);
   assert.match(app, /purpose:"48"/);
-  assert.match(app, /purposeIndexes\.push\(hodlMultisigPurposeIndex\(parsed\.origin\)\)/);
+  // Co-signers on a spec must share one; mixed exports are refused.
+  assert.match(appSource, /if \(standardSpecs\.size > 1\) throw hodlError\(/);
 });
 
 test("Native SegWit multisig uses the imported Bitcoin address encoder", () => {
@@ -1019,7 +1020,7 @@ test("multisig consistently uses derive for its heading and action", () => {
   assert.match(app, /function hodlValidatedMsigInputs\(\)/);
   assert.match(appSource, /hodlValidatedMsigInputs\(\);\s*ready = true/);
   assert.match(app, /button\.disabled=!ready/);
-  assert.match(app, /let\{network,coinType,count,addressStart,branchStart,branchRange,n,m,kind,purpose,hardening,legacyStandard,nodes,xpubs,keyTokens,accountSummary,accountWarning\}=hodlValidatedMsigInputs\(\)/);
+  assert.match(app, /let\{network,coinType,count,addressStart,branchStart,branchRange,n,m,kind,purpose,hardening,legacyStandard,nodes,xpubs,keyTokens,accountSummary,accountWarning,customWarning\}=hodlValidatedMsigInputs\(\)/);
 });
 
 test("Station tabs stay pinned left while add controls stay pinned right", () => {
@@ -2135,7 +2136,7 @@ test("every MS Station co-signer keeps its key and full path visible with synchr
   assert.match(appSource, /originFields\.append\(fingerprintLabel, pathLabel\)/);
   assert.match(appSource, /pathComponents\.className = "derivation-advanced-fields msig-path-components"/);
   assert.match(appSource, /advanced\.append\(advancedSummary, pathComponents\)/);
-  assert.match(appSource, /content\.append\(chips, lab, originFields, advanced\)/);
+  assert.match(appSource, /content\.append\(chips, lab, specLabel, originFields, advanced\)/);
   assert.match(appSource, /hodlCreateMsigSessionKeyButton\(option, "msig-session-key"/);
   assert.match(appSource, /function hodlPickMsigSessionKey\(option, row\) \{/);
   assert.match(appSource, /ta\.value = deselect \? "" : value/);
@@ -2145,16 +2146,15 @@ test("every MS Station co-signer keeps its key and full path visible with synchr
   assert.match(appSource, /is already selected for another co-signer/);
   assert.match(appSource, /hodlFillKeyTabLifehash\(image, fingerprint\)/);
   assert.match(appSource, /hodlRefreshMsigSessionPickers\(\)/);
-  // Reusing a key appends a public child to the one visible full path; there
-  // is no second, special-purpose child-path control to reconcile.
-  assert.match(appSource, /function hodlMsigSuggestedDerivationPath\(parsed, row\) \{/);
-  assert.match(appSource, /value \+= "\/" \+ hodlMsigSuggestedDerivationPath\(optionParsed, row\)/);
+  // A reused key arrives as exported; the one visible full path sets it apart.
+  // There is no second, special-purpose child-path control to reconcile.
+  assert.doesNotMatch(appSource, /hodlMsigSuggestedDerivationPath/);
   assert.match(appSource, /function hodlUpdateMsigFullPathFromComponents\(row\) \{/);
   assert.match(appSource, /hodlApplyMsigRowPath\(row, false\)/);
   assert.match(appSource, /function hodlApplyMsigRowPath\(row, renderComponents = true\) \{/);
   assert.match(appSource, /if \(renderComponents\) hodlRenderMsigPathComponents\(row\)/);
   assert.match(appSource, /row\.dataset\.msigPathUpdate = "true"/);
-  assert.match(appSource, /if \(row\.dataset\.msigPathUpdate !== "true"\) hodlSyncMsigRowPathFromKey\(row\)/);
+  assert.match(appSource, /if \(row\.dataset\.msigPathUpdate !== "true"\) \{[\s\S]*?hodlSyncMsigRowPathFromKey\(row\);/);
   assert.match(appSource, /value\.setSelectionRange\(/);
   assert.match(appSource, /function hodlMsigRowValue\(row, strict = false\) \{/);
   assert.match(appSource, /Master fingerprint must be exactly 8 hexadecimal characters\./);

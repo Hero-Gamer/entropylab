@@ -2363,6 +2363,8 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .msig-account-warning { color: var(--warn); }
 .msig-purpose-warning { color: var(--danger); }
 .msig-script-warning { color: var(--danger); }
+/* A wallet-level refusal: the red warning note, its text in the bar's red. */
+.msig-spec-warning { color: var(--danger-bright); }
 @media (max-width: 520px) {
   .key-settings-row, .msig-origin-fields, .msig-path-components { grid-template-columns: minmax(0, 1fr); }
 }

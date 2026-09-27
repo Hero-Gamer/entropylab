@@ -7493,6 +7493,17 @@ function hodlSyncMsigDeriveButton() {
     return;
   }
   hodlSetDerivationButtonState("msig", "idle");
+  // A refusal that belongs to the wallet, not one card (co-signers on
+  // different specs, or BIP45 beside Custom), leaves every card looking
+  // valid: say it on the page above Derive, since a disabled button's title
+  // never shows on a touch screen. It depends only on the cards' specs, so it
+  // shows as soon as they conflict.
+  let specWarning = document.getElementById("msig-spec-warning");
+  if (specWarning) {
+    let message = hodlMsigSpecMixError([...document.querySelectorAll("#msig-keys .msig-key-row")].map(hodlMsigRowSpec));
+    specWarning.textContent = message;
+    specWarning.hidden = !message;
+  }
   let ready = false, reason = "";
   try {
     hodlValidatedMsigInputs();

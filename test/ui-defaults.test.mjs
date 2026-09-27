@@ -796,7 +796,7 @@ test("multisig script type and placeholders follow detected co-signer exports", 
     assert.doesNotMatch(markup, /data-msig-script="mixed"/);
     assert.match(appSource, /desired = summary\.mixed \? "mixed" : summary\.kind/);
     assert.match(markup, /id="msig-script-warning" role="status" hidden/);
-    assert.match(markup, /id="msig-go"[^>]*aria-describedby="msig-script-warning"/);
+    assert.match(markup, /id="msig-go"[^>]*aria-describedby="[^"]*\bmsig-script-warning\b/);
   }
   assert.match(shell, /placeholder="xpub…"/);
   assert.match(app, /function hodlMultisigKeyPlaceholder\(kind,network,purpose,coinType=hodlCoinTypeFromNetwork\(network\),hardening=/);

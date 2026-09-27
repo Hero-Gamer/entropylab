@@ -4949,6 +4949,47 @@
     await until(() => !document.getElementById("key-manager").hidden, "key workspace after MS Station picker test");
   });
 
+  await test("MS Station states a wallet-level spec refusal on the page, not only in Derive's tooltip", async () => {
+    // Co-signers on different specs, or BIP45 beside Custom, refuse the whole
+    // wallet while every card validates. A disabled button's title never
+    // shows on a touch screen, so the reason is a visible note above Derive.
+    document.querySelector('#workspace [data-workspace="msig"]').click();
+    await until(() => !document.getElementById("msig-card").hidden, "MS Station");
+    const note = document.getElementById("msig-spec-warning"), go = document.getElementById("msig-go");
+    const selects = () => [...document.querySelectorAll("#msig-keys [data-msig-spec]")];
+    const setSpec = (select, id) => {
+      select.value = id;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    const scriptTab = (kind) => document.querySelector(`#msig-script-tabs [data-msig-script="${kind}"]`);
+    const startScript = document.querySelector('#msig-script-tabs [aria-pressed="true"]')?.dataset.msigScript || "p2wsh";
+    const startSpecs = selects().map((select) => select.value);
+    assert((go.getAttribute("aria-describedby") || "").split(/\s+/).includes("msig-spec-warning"), "Derive does not point to the spec refusal note");
+    try {
+      scriptTab("p2wsh").click();
+      await wait(0);
+      const standard = selects()[0].value;
+      selects().forEach((select) => setSpec(select, standard));
+      assert(note.hidden, "the spec refusal note showed while every co-signer shares one spec");
+      setSpec(selects()[1], "bip87");
+      assert(!note.hidden && note.textContent.includes("BIP87"), "co-signers on different specs left no visible reason");
+      assert(go.disabled, "Derive stayed available across different specs");
+      setSpec(selects()[1], standard);
+      assert(note.hidden && !note.textContent, "the note stayed after the specs agreed again");
+      scriptTab("p2sh").click();
+      await wait(0);
+      setSpec(selects()[0], "bip45");
+      setSpec(selects()[1], "bip45");
+      setSpec(selects()[2], "custom");
+      assert(!note.hidden && note.textContent.includes("BIP45"), "BIP45 beside Custom left no visible reason");
+      setSpec(selects()[2], "bip45");
+      assert(note.hidden, "the note stayed once every co-signer was BIP45");
+    } finally {
+      scriptTab(startScript)?.click();
+      await wait(0);
+      selects().forEach((select, index) => { if (startSpecs[index]) setSpec(select, startSpecs[index]); });
+    }
+  });
   await test("a custom arbitrary-depth account path drives the derived addresses and descriptors", async () => {
     input(document.getElementById("branch-range"), "1");
     input(document.getElementById("address-range"), "1");

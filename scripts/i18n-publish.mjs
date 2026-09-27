@@ -93,7 +93,7 @@ const ensureLabel = async (ctx) => {
       body: {
         name: TRANSLATION_LABEL,
         color: "1d76db",
-        description: "Automated translation PR from the post-merge i18n workflow — merges without human review by design (issue #286)",
+        description: "Automated translation PR — merges without human review by design (issue #286)",
       },
     });
   }

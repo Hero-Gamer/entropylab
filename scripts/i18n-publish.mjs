@@ -9,9 +9,9 @@
 //   1. independently re-validate the catalog and its sidecar (job A's output
 //      is an artifact crossing a trust boundary — it is never trusted);
 //   2. skip the language when the committed catalog on rock already matches;
-//   3. create or update the automation branch i18n/translate-<lang> with
-//      exactly two files: src/locales/<lang>.json and
-//      src/locales/.sources/<lang>.json;
+//   3. point the automation branch i18n/translate-<lang> at one commit on
+//      rock's current tip that changes exactly two files:
+//      src/locales/<lang>.json and src/locales/.sources/<lang>.json;
 //   4. create or update one pull request per language, labelled
 //      translation-automated;
 //   5. enable GitHub auto-merge for that exact PR number and head SHA — if
@@ -99,25 +99,35 @@ const ensureLabel = async (ctx) => {
   }
 };
 
-// Write one file onto the branch via the Contents API, skipping no-op writes.
-// Returns the branch tip SHA after the write (or the unchanged tip).
-const writeFile = async (ctx, branch, path, content, message) => {
-  const current = await tryRequest(() => githubRequest({ ...ctx, method: "GET", path: `/repos/${ctx.repo}/contents/${path}?ref=${encodeURIComponent(branch)}` }));
-  if (current && current.content && Buffer.from(current.content.replace(/\n/g, ""), "base64").toString("utf8") === content) {
-    return null; // identical — nothing to commit
-  }
-  const result = await githubRequest({
+// Point the branch at one commit on rock's current tip that writes the given
+// files, and return the branch's head SHA. Each run rebuilds the language's
+// whole catalog from rock's committed copy, so nothing on the branch's
+// previous tip is lost; a branch cut from an older rock would conflict with
+// rock as soon as another translation merged there. The commit is built
+// before the branch moves, so the head never passes through rock itself (a
+// PR whose head is already on its base reads as merged). A branch already
+// holding these files on rock's tip is left alone.
+const commitOnRock = async (ctx, branch, files, message) => {
+  const rockSha = (await githubRequest({ ...ctx, method: "GET", path: `/repos/${ctx.repo}/git/ref/heads/rock` })).object.sha;
+  const rockCommit = await githubRequest({ ...ctx, method: "GET", path: `/repos/${ctx.repo}/git/commits/${rockSha}` });
+  const tree = await githubRequest({
     ...ctx,
-    method: "PUT",
-    path: `/repos/${ctx.repo}/contents/${path}`,
-    body: {
-      message,
-      content: Buffer.from(content, "utf8").toString("base64"),
-      branch,
-      ...(current?.sha ? { sha: current.sha } : {}),
-    },
+    method: "POST",
+    path: `/repos/${ctx.repo}/git/trees`,
+    body: { base_tree: rockCommit.tree.sha, tree: files.map(({ path, content }) => ({ path, mode: "100644", type: "blob", content })) },
   });
-  return result.commit.sha;
+  const existing = await tryRequest(() => githubRequest({ ...ctx, method: "GET", path: `/repos/${ctx.repo}/git/ref/heads/${encodeURIComponent(branch)}` }));
+  if (existing) {
+    const head = await githubRequest({ ...ctx, method: "GET", path: `/repos/${ctx.repo}/git/commits/${existing.object.sha}` });
+    if (head.tree.sha === tree.sha && head.parents.length === 1 && head.parents[0].sha === rockSha) return existing.object.sha;
+  }
+  const commit = await githubRequest({ ...ctx, method: "POST", path: `/repos/${ctx.repo}/git/commits`, body: { message, tree: tree.sha, parents: [rockSha] } });
+  if (existing) {
+    await githubRequest({ ...ctx, method: "PATCH", path: `/repos/${ctx.repo}/git/refs/heads/${encodeURIComponent(branch)}`, body: { sha: commit.sha, force: true } });
+  } else {
+    await githubRequest({ ...ctx, method: "POST", path: `/repos/${ctx.repo}/git/refs`, body: { ref: `refs/heads/${branch}`, sha: commit.sha } });
+  }
+  return commit.sha;
 };
 
 const enableAutoMerge = async (ctx, pr, headSha) => {
@@ -192,21 +202,14 @@ export async function publishLanguage({ dir, lang, repoRoot = root, repo, token,
 
   const ctx = { repo, token, apiUrl };
 
-  // Branch: create from rock's current tip, or reuse the existing automation
-  // branch (the Contents API commits onto its tip, so reruns stay one PR).
-  const baseRef = await githubRequest({ ...ctx, method: "GET", path: `/repos/${ctx.repo}/git/ref/heads/rock` });
-  const existingBranch = await tryRequest(() => githubRequest({ ...ctx, method: "GET", path: `/repos/${ctx.repo}/git/ref/heads/${encodeURIComponent(branch)}` }));
-  if (!existingBranch) {
-    await githubRequest({ ...ctx, method: "POST", path: `/repos/${ctx.repo}/git/refs`, body: { ref: `refs/heads/${branch}`, sha: baseRef.object.sha } });
-    log(`${lang}: created branch ${branch}`);
-  }
-
+  // Branch: one commit on rock's current tip, whether the branch is new or
+  // left from an earlier run (the branch name is kept, so reruns stay one PR).
   const message = `i18n(${lang}): automated translation update`;
-  await writeFile(ctx, branch, `src/locales/${lang}.json`, catalogText, message);
-  await writeFile(ctx, branch, `src/locales/.sources/${lang}.json`, sidecarText, message);
-
-  const headRef = await githubRequest({ ...ctx, method: "GET", path: `/repos/${ctx.repo}/git/ref/heads/${encodeURIComponent(branch)}` });
-  const headSha = headRef.object.sha;
+  const headSha = await commitOnRock(ctx, branch, [
+    { path: `src/locales/${lang}.json`, content: catalogText },
+    { path: `src/locales/.sources/${lang}.json`, content: sidecarText },
+  ], message);
+  log(`${lang}: ${branch} at ${headSha.slice(0, 10)} on rock`);
 
   const owner = repo.split("/")[0];
   const open = await githubRequest({ ...ctx, method: "GET", path: `/repos/${ctx.repo}/pulls?head=${owner}:${encodeURIComponent(branch)}&base=rock&state=open` });

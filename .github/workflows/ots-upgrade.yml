@@ -62,9 +62,8 @@ jobs:
           git commit -m "Upgrade OpenTimestamps proof for entropylab.html [skip ci]"
           # Push with the maintainer token: rock is protected, and required
           # status checks reject direct pushes from GITHUB_TOKEN (an admin
-          # token bypasses while enforce_admins is off). The checkout's
-          # extraheader persists GITHUB_TOKEN and would override the URL's
-          # credentials, so it must be unset first.
-          git config --local --unset-all http.https://github.com/.extraheader || true
-          git remote set-url origin https://x-access-token:${{ secrets.RELEASE_PUSH_TOKEN }}@github.com/${{ github.repository }}.git
-          git push
+          # token bypasses while enforce_admins is off). The checkout keeps
+          # GITHUB_TOKEN in an includeIf'd credentials file that overrides
+          # URL credentials, so the token goes on the command line, which
+          # outranks every config file.
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(echo -n x-access-token:${{ secrets.RELEASE_PUSH_TOKEN }} | base64)" push

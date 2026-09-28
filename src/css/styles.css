@@ -220,7 +220,7 @@ button:not(:disabled):active *,
    variants below are the whole vocabulary. Focus is left to the browser, whose
    own ring is the one mark that can never be mistaken for a meaning colour. */
 .btn, .segmented-control > .tab, .dice-input-pad button, .card-suit-pad button, .card-undo-button,
-.seed-keyboard-key, .seed-keyboard-space, .seed-keyboard-mode,
+.seed-keyboard-key, .seed-keyboard-space, .seed-keyboard-mode, .session-key-option, .msig-session-key,
 .theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button, .addr-qr,
 .beta-warning-dismiss, .intro-dismiss, .psbted-viz-box:has(> .psbted-viz-open), .psbted-viz-tx, .exp-cell {
   --hover-edge: var(--selection-accent); --hover-ink: var(--selection-accent-ink);
@@ -231,7 +231,7 @@ button:not(:disabled):active *,
    for as long as the pointer sat on it. */
 .btn:not(:disabled):hover,
 .segmented-control > .tab:not(:disabled):not(.active):not([aria-pressed="true"]):hover,
-:is(.dice-input-pad button, .card-suit-pad button, .card-undo-button, .seed-keyboard-key, .seed-keyboard-space, .seed-keyboard-mode):not(:disabled):not(.active):hover,
+:is(.dice-input-pad button, .card-suit-pad button, .card-undo-button, .seed-keyboard-key, .seed-keyboard-space, .seed-keyboard-mode, .session-key-option, .msig-session-key):not(:disabled):not(.active):hover,
 :is(.theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button, .addr-qr, .beta-warning-dismiss, .intro-dismiss, .psbted-viz-tx, .exp-cell):hover,
 .psbted-viz-box:has(> .psbted-viz-open):not(:has(input:hover)):hover {
   border-color: var(--hover-edge); background: var(--bg); color: var(--hover-ink);
@@ -1409,7 +1409,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   min-height: 44px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px;
   background: var(--surface-2); color: var(--fg); font-family: var(--mono); font-size: 13px; cursor: pointer;
 }
-.session-key-option:not(.active):hover { border-color: var(--accent); }
 /* Selection is unmistakable: accent border and tint plus a check mark, so
    it does not rest on the border colour alone. */
 .session-key-option.active,

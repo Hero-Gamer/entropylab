@@ -224,8 +224,8 @@ test("the mnemonic load path follows the session network like the xprv path", ()
     throw new Error(name);
   };
   const hodlUseKeyForBip85 = new Function(
-    "hodlBip85WipeParent", "hodlMnemonicToSeed", "hodlHDKey", "hodlWipeBytes", "hodlNetworkFamily", "hodlParseExtendedKey",
-    `${slice("hodlNetworkFamily")}; ${slice("hodlUseKeyForBip85")}; return hodlUseKeyForBip85;`,
+    "hodlBip85WipeParent", "hodlMnemonicToSeed", "hodlHDKey", "hodlWipeBytes", "hodlNetworkFamily", "hodlParseExtendedKey", "hodlResultRootNode",
+    `${slice("hodlNetworkFamily")}; ${slice("hodlResultHasSeed")}; ${slice("hodlSeedSessionRoot")}; ${slice("hodlUseKeyForBip85")}; return hodlUseKeyForBip85;`,
   )(
     () => {},
     () => new Uint8Array(64), // a stand-in seed; only the flag is under test
@@ -233,6 +233,7 @@ test("the mnemonic load path follows the session network like the xprv path", ()
     (bytes) => bytes.fill(0),
     undefined, // hodlNetworkFamily is sliced in
     undefined, // hodlParseExtendedKey is not reached by the mnemonic branch
+    undefined, // hodlResultRootNode is not reached: these results carry words, not a root node
   );
   const state = (network) => ({ id: "k1", name: "test", fields: { pass: "" }, result: { kind: "hd", mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", network } });
   hodlUseKeyForBip85(state("testnet"));

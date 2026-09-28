@@ -2222,14 +2222,14 @@ test("BIP-85 and SP Stations can bring in compatible existing roots", () => {
     assert.doesNotMatch(markup, /id="sp-use-calc"/);
   }
   assert.match(appSource, /function hodlSessionHdRootKeys\(\) \{/);
-  assert.match(appSource, /state\.result\?\.kind === "hd" && \(state\.result\.mnemonic \|\| hodlResultHasRoot\(state\.result\)\)/);
+  assert.match(appSource, /state\.result\?\.kind === "hd" && \(hodlResultHasSeed\(state\.result\) \|\| hodlResultHasRoot\(state\.result\)\)/);
   assert.match(appSource, /function hodlFillStationKeyPicker\(id, selectedSource, onSelect, keys = hodlSessionHdRootKeys\(\)\) \{/);
   assert.match(appSource, /hodlFillKeyTabLifehash\(image, fingerprint\)/);
   assert.match(appSource, /function hodlPickBip85SessionKey\(state\) \{/);
   assert.match(appSource, /function hodlPickSpSessionKey\(state\) \{/);
   assert.match(appSource, /document\.getElementById\("bip85-key"\)\.value = rootXprv;/);
-  assert.match(appSource, /document\.getElementById\("sp-key"\)\.value = state\.result\?\.mnemonic \|\| hodlResultRootXprv\(state\.result\) \|\| "";/);
-  assert.match(appSource, /document\.getElementById\("sp-pass"\)\.value = state\.result\?\.mnemonic \? state\.fields\?\.pass \|\| "" : "";/);
+  assert.match(appSource, /document\.getElementById\("sp-key"\)\.value = hodlResultMnemonic\(state\.result\) \|\| hodlResultRootXprv\(state\.result\) \|\| "";/);
+  assert.match(appSource, /document\.getElementById\("sp-pass"\)\.value = hodlResultHasSeed\(state\.result\) \? state\.fields\?\.pass \|\| "" : "";/);
   assert.match(appSource, /document\.getElementById\("bip85-key"\)\.addEventListener\("input"/);
   assert.match(appSource, /document\.getElementById\("sp-key"\)\.addEventListener\("input", detachStationKey\)/);
   // The selected chip is unmistakable: accent border and tint plus a check
@@ -2413,11 +2413,11 @@ test("the private recovery section lists the BIP39 passphrase beside the seed ph
   // The HD result carries the passphrase text (not just a flag) so the row
   // can render; imported roots and single keys carry an empty one.
   assert.match(appSource, /passphraseUsed: source\.passphraseUsed,\s*passphrase: source\.passphrase \?\? "",/);
-  assert.match(appSource, /\{ mnemonic, passphraseUsed: passphrase\.length > 0, passphrase, entropyHex, seedHex,/);
-  assert.match(appSource, /\{ mnemonic: null, passphraseUsed: false, passphrase: "", entropyHex: null,/);
+  assert.match(appSource, /\{ entropy, passphraseUsed: passphrase\.length > 0, passphrase, seed, notes:/);
+  assert.match(appSource, /\{ entropy: null, passphraseUsed: false, passphrase: "", seed: null,/);
   // Rendered right after the words, through the same masked private field as
   // the entropy and seed hex; absent when no passphrase is in use.
-  assert.match(appSource, /hodlSeedPhraseField\(`Your seed phrase[^\n]*\n[^\n]*\n[^\n]*\n\s*if \(wallet\.mnemonic && wallet\.passphraseUsed && wallet\.passphrase\) privateFields\.push\(hodlPrivateFieldHtml\("BIP39 passphrase", wallet\.passphrase\)\);\n\s*if \(wallet\.entropyHex\)/);
+  assert.match(appSource, /fields\.push\(hodlSeedPhraseField\(`Your seed phrase[^\n]*\n[^\n]*\n[^\n]*\n\s*if \(wallet\.passphraseUsed && wallet\.passphrase\) fields\.push\(hodlPrivateFieldHtml\("BIP39 passphrase", wallet\.passphrase\)\);\n\s*if \(wallet\.entropy\)/);
 });
 
 test("the vanity estimate is timed from a device sample, and Stop on first find halts the grind at the first match", () => {

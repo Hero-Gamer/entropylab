@@ -489,10 +489,15 @@ function hodlSinglePrivateKey(result) {
   if (result?.privateKey) return Uint8Array.from(result.privateKey);
   return result?.privHex ? hodlHex.decode(result.privHex) : null;
 }
-// Every private key a wallet result holds: a single key's bytes, or its row
-// keys' bytes and its root and account key nodes (#546 B2).
+// The byte arrays a wallet result keeps its own secrets in: a single key, or
+// a seed wallet's BIP39 entropy and seed (#546 B2).
+function hodlResultSecretBytes(result) {
+  return [result?.privateKey, result?.entropy, result?.seed].filter(Boolean);
+}
+// Every private key a wallet result holds: its secret bytes, its row keys'
+// bytes, and its root and account key nodes (#546 B2).
 function hodlWipeWalletKeys(result) {
-  result?.privateKey?.fill(0);
+  for (let bytes of hodlResultSecretBytes(result)) bytes.fill(0);
   result?.rootNode?.wipePrivateData();
   for (let account of result?.accounts || []) {
     account.privateNode?.wipePrivateData();
@@ -520,14 +525,15 @@ function hodlDisposeDroppedWallets() {
   for (let result of hodlCommittedResults) hodlWipeUnsharedWalletRows(result);
 }
 // Wipes the private keys a derivation made that no station shows (its row
-// keys or single key, and the root and account nodes its result keeps): all
-// of them when it stopped, failed or was declined, none once it has committed.
+// keys, its result's secret bytes, and the root and account nodes its result
+// keeps): all of them when it stopped, failed or was declined, none once it
+// has committed.
 function hodlSettleDerivationKeys(control) {
   if (!control?.rowKeys?.length && !control?.nodes?.length) return;
   let shown = new Set();
   for (let result of [...hodlLiveWalletResults(), ...hodlKeyManagerPending.map((state) => state.result)]) {
     shown.add(result?.rootNode);
-    shown.add(result?.privateKey);
+    for (let bytes of hodlResultSecretBytes(result)) shown.add(bytes);
     for (let account of result?.accounts || []) {
       shown.add(account.privateNode);
       for (let branch of hodlAccountAddressBranches(account)) for (let row of branch.rows) shown.add(row.privateKey);
@@ -861,6 +867,35 @@ function hodlResultRootNode(result) {
   if (result?.rootNode) return hodlCopyPrivateNode(result.rootNode);
   return result?.rootXprv ? hodlHDKey.fromExtendedKey(hodlParseExtendedKey(result.rootXprv).xkey) : null;
 }
+// A seed wallet keeps its BIP39 entropy and seed as bytes, never as text: the
+// words, entropy hex and seed hex are built only where one is shown, copied
+// or exported, or handed to a station that takes the words as text. A BIP-85
+// child's session key still carries its words as the BIP-85 Station's text.
+function hodlResultHasSeed(result) {
+  return Boolean(result?.entropy || result?.mnemonic);
+}
+function hodlResultMnemonic(result) {
+  if (result?.entropy) return hodlEntropyToMnemonic(result.entropy, hodlBip39Wordlist);
+  return result?.mnemonic || null;
+}
+function hodlResultEntropyHex(result) {
+  return result?.entropy ? hodlHex.encode(result.entropy) : null;
+}
+function hodlResultSeedHex(result) {
+  return result?.seed ? hodlHex.encode(result.seed) : null;
+}
+// A station session's own root for a key with seed words: a copy of a Key
+// Station wallet's root node, which its words and the passphrase it was
+// derived with produced, or a BIP-85 child's words with the given passphrase.
+function hodlSeedSessionRoot(result, passphrase = "") {
+  if (result?.rootNode) return hodlResultRootNode(result);
+  let seed = hodlMnemonicToSeed(result.mnemonic, passphrase);
+  try {
+    return hodlHDKey.fromMasterSeed(seed);
+  } finally {
+    seed.fill(0);
+  }
+}
 function hodlBuildMultisigCosignerExports(root, network, accountIndex, masterFingerprint, coinType = hodlCoinTypeFromNetwork(network)) {
   return [{
       accountId: "bip44",
@@ -1079,11 +1114,10 @@ function hodlRootWalletResult(root, network, source, accountIndex, masterFingerp
     kind: "hd",
     network,
     coinType,
-    mnemonic: source.mnemonic,
+    entropy: source.entropy ?? null,
     passphraseUsed: source.passphraseUsed,
     passphrase: source.passphrase ?? "",
-    entropyHex: source.entropyHex,
-    seedHex: source.seedHex,
+    seed: source.seed ?? null,
     rootNode: root.hasPrivateKey ? hodlKeepPrivateNode(root) : null,
     rootXpub: hodlSerializeExtendedKey(root.publicExtendedKey, network, "x", false),
     rootPrivateLabel: hodlExtendedKeyVersions[hodlNetworkFamily(network)].x.prvName,
@@ -1155,24 +1189,29 @@ async function hodlRootWalletWithProgress(root, network, count, source, accountI
 async function hodlMnemonicWalletWithProgress(value, passphrase, network, count, source, accountIndex, addressStart, tracker, purposeIndex, coinType = hodlCoinTypeFromNetwork(network), hardening = hodlDefaultHardening(), branchStart = 0, branchRange = 2, derivationPlan = null) {
   let validation = hodlValidateMnemonic(value);
   if (!validation.ok) throw validation.error?.key ? hodlError(validation.error.key, validation.error.vars) : hodlError("Invalid seed phrase");
-  let mnemonic = validation.words.join(" "), seed = hodlMnemonicToSeed(mnemonic, passphrase), root, seedHex;
+  // The wallet keeps its BIP39 entropy and seed as bytes that can be zeroed,
+  // never as text (#546 B2).
+  // The derivation records them with its row keys, so one that never commits
+  // zeroes them.
+  let mnemonic = validation.words.join(" "), seed = hodlMnemonicToSeed(mnemonic, passphrase), entropy = hodlMnemonicToEntropy(mnemonic, hodlBip39Wordlist), root;
+  for (let bytes of [entropy, seed]) hodlActiveDerivation?.rowKeys?.push(bytes);
   try {
     root = hodlHDKey.fromMasterSeed(seed);
-    seedHex = hodlHex.encode(seed);
-  } finally {
-    seed.fill(0); // the 64-byte seed is dead once the root node exists
+  } catch (error) {
+    for (let bytes of [entropy, seed]) bytes.fill(0);
+    throw error;
   }
-  let entropyHex = source?.entropyHex ?? hodlHex.encode(hodlMnemonicToEntropy(mnemonic, hodlBip39Wordlist)), warnings = [...source?.warnings ?? []];
+  let warnings = [...source?.warnings ?? []];
   if (passphrase.length > 0) warnings.push("A passphrase is in use. The same words without this passphrase are a different wallet. Do not store the passphrase with the words.");
   try {
-    return await hodlRootWalletWithProgress(root, network, count, { mnemonic, passphraseUsed: passphrase.length > 0, passphrase, entropyHex, seedHex, notes: source?.notes ?? [], warnings }, accountIndex, addressStart, tracker, purposeIndex, coinType, hardening, branchStart, branchRange, derivationPlan);
+    return await hodlRootWalletWithProgress(root, network, count, { entropy, passphraseUsed: passphrase.length > 0, passphrase, seed, notes: source?.notes ?? [], warnings }, accountIndex, addressStart, tracker, purposeIndex, coinType, hardening, branchStart, branchRange, derivationPlan);
   } finally {
     root.wipePrivateData(); // the result holds its own copy of the root
   }
 }
 async function hodlEntropyWalletWithProgress(entropy, passphrase, network, count, accountIndex, addressStart, tracker, purposeIndex, coinType = hodlCoinTypeFromNetwork(network), hardening = hodlDefaultHardening(), branchStart = 0, branchRange = 2, derivationPlan = null) {
   try {
-    return await hodlMnemonicWalletWithProgress(hodlEntropyToMnemonic(entropy.bytes, hodlBip39Wordlist), passphrase, network, count, { entropyHex: entropy.hex, notes: entropy.notes, warnings: entropy.warnings }, accountIndex, addressStart, tracker, purposeIndex, coinType, hardening, branchStart, branchRange, derivationPlan);
+    return await hodlMnemonicWalletWithProgress(hodlEntropyToMnemonic(entropy.bytes, hodlBip39Wordlist), passphrase, network, count, { notes: entropy.notes, warnings: entropy.warnings }, accountIndex, addressStart, tracker, purposeIndex, coinType, hardening, branchStart, branchRange, derivationPlan);
   } finally {
     entropy.bytes.fill(0); // the entropy bytes are dead once the mnemonic exists
   }
@@ -1186,7 +1225,7 @@ async function hodlImportedWalletWithProgress(value, network, count, accountInde
     if (!parsed.isPrivate && (derivationPlan ? derivationPlan.hasHardenedPrefix || hardening.branch || hardening.address : Object.values(hardening).some(Boolean))) throw hodlError("A root extended public key cannot derive the selected hardened path. Turn every Harden option off, import an account-level public key, or use the root xprv/tprv offline.");
     if (parsed.family !== "x") throw hodlError("A BIP32 root private key must use the generic xprv/tprv prefix.");
     try {
-      return await hodlRootWalletWithProgress(node, network, count, { mnemonic: null, passphraseUsed: false, passphrase: "", entropyHex: null, seedHex: null, notes, warnings: [] }, accountIndex, addressStart, tracker, purposeIndex, coinType, hardening, branchStart, branchRange, derivationPlan);
+      return await hodlRootWalletWithProgress(node, network, count, { entropy: null, passphraseUsed: false, passphrase: "", seed: null, notes, warnings: [] }, accountIndex, addressStart, tracker, purposeIndex, coinType, hardening, branchStart, branchRange, derivationPlan);
     } finally {
       node.wipePrivateData(); // the result holds its own copy of the imported root
     }
@@ -1204,11 +1243,10 @@ async function hodlImportedWalletWithProgress(value, network, count, accountInde
   return {
     kind: "hd",
     network,
-    mnemonic: null,
+    entropy: null,
     passphraseUsed: false,
     passphrase: "",
-    entropyHex: null,
-    seedHex: null,
+    seed: null,
     rootNode: null,
     rootXpub: null,
     importedPrivateKey: parsed.isPrivate ? importedValue : null,
@@ -1758,18 +1796,30 @@ function hodlSingleWalletData(wallet) {
     ${hodlPrivateDataControls("single-private-description", "single")}
   </div>`;
 }
-function hodlHdWalletData(wallet, accountMarkup = "") {
-  let privateFields = [];
-  if (wallet.mnemonic) privateFields.push(hodlSeedPhraseField(`Your seed phrase \xB7 ${wallet.mnemonic.trim().split(/\s+/).length} words`, wallet.mnemonic), hodlSeedQrExport(wallet.mnemonic, { passphraseUsed: wallet.passphraseUsed, entropyHex: wallet.entropyHex }));
+// A seed wallet's recovery fields, in the card's order: the words, SeedQR,
+// passphrase, entropy hex and seed hex. The words and hex are built only
+// while private values are revealed; hidden, every word masks at the same
+// width, so only the word count is needed. BIP39 has three words for every
+// four bytes of entropy; a BIP-85 child's session key carries its words.
+function hodlSeedRecoveryFields(wallet) {
+  if (!hodlResultHasSeed(wallet)) return [];
+  let count = wallet.entropy ? wallet.entropy.length * 3 / 4 : String(wallet.mnemonic).trim().split(/\s+/).length;
+  let words = hodlRevealPrivate ? hodlResultMnemonic(wallet) : Array(count).fill("\u2022").join(" "), fields = [];
+  fields.push(hodlSeedPhraseField(`Your seed phrase \xB7 ${count} words`, words), hodlRevealPrivate ? hodlSeedQrExport(words, { passphraseUsed: wallet.passphraseUsed, entropyHex: hodlResultEntropyHex(wallet) }) : "");
   // The passphrase sits right under the words it belongs to: without it the
   // words recover a different wallet, so it is recovery material too.
-  if (wallet.mnemonic && wallet.passphraseUsed && wallet.passphrase) privateFields.push(hodlPrivateFieldHtml("BIP39 passphrase", wallet.passphrase));
-  if (wallet.entropyHex) privateFields.push(hodlPrivateFieldHtml("BIP39 entropy hex", wallet.entropyHex));
-  if (wallet.seedHex) privateFields.push(hodlPrivateFieldHtml("Master seed hex", wallet.seedHex));
+  if (wallet.passphraseUsed && wallet.passphrase) fields.push(hodlPrivateFieldHtml("BIP39 passphrase", wallet.passphrase));
+  if (wallet.entropy) fields.push(hodlPrivateKeyFieldHtml("BIP39 entropy hex", wallet.entropy.length * 2, () => hodlResultEntropyHex(wallet)));
+  if (wallet.seed) fields.push(hodlPrivateKeyFieldHtml("Master seed hex", wallet.seed.length * 2, () => hodlResultSeedHex(wallet)));
+  return fields;
+}
+function hodlHdWalletData(wallet, accountMarkup = "") {
+  let privateFields = [];
+  privateFields.push(...hodlSeedRecoveryFields(wallet));
   if (wallet.rootNode) privateFields.push(hodlPrivateKeyFieldHtml(`Root ${wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName}`, hodlExtendedKeyLength, () => hodlResultRootXprv(wallet)));
   if (wallet.importedPrivateKey) privateFields.push(hodlPrivateFieldHtml(`Imported ${wallet.importedPrivateLabel || "extended private key"}`, wallet.importedPrivateKey));
   let hasAccountPrivate = wallet.accounts.some(hodlAccountHasPrivate), hasPrivate = privateFields.length > 0 || hasAccountPrivate;
-  let source = wallet.mnemonic ? "" : `<p><span class="label">Source</span><br><span>Imported extended ${hasPrivate ? "private" : "public"} key; no seed phrase was entered.</span></p>`;
+  let source = hodlResultHasSeed(wallet) ? "" : `<p><span class="label">Source</span><br><span>Imported extended ${hasPrivate ? "private" : "public"} key; no seed phrase was entered.</span></p>`;
   let fingerprint = wallet.masterFingerprint ? hodlPublicFieldHtml("Master fingerprint", wallet.masterFingerprint) : "";
   let parentFingerprint = !wallet.masterFingerprint && wallet.parentFingerprint ? hodlPublicFieldHtml("Encoded parent fingerprint (not a master fingerprint)", wallet.parentFingerprint) : "";
   let nodeFingerprint = !wallet.masterFingerprint && wallet.nodeFingerprint ? hodlPublicFieldHtml("Imported key fingerprint (not a master fingerprint)", wallet.nodeFingerprint) : "";
@@ -1778,7 +1828,7 @@ function hodlHdWalletData(wallet, accountMarkup = "") {
   // The toolbar holds the script type and the privacy bar, and sticks under the
   // header as one piece. Below it: what recovers the wallet, what identifies it,
   // the selected script type, and the wallet-wide exports closing the card.
-  let recoveryTitle = wallet.mnemonic ? hodlT("Recovery material") : hodlT("Root private key");
+  let recoveryTitle = hodlResultHasSeed(wallet) ? hodlT("Recovery material") : hodlT("Root private key");
   let recoveryGroup = privateFields.length ? hodlKeyGroupMarkup("recovery", `${recoveryTitle}${hodlPrivacyEyeMarkup()}`, `<p class="edge-note is-private"><strong>${hodlT("These values can recreate or spend from the wallet.")}</strong> ${hodlT("Reveal them only while this file is running offline on an air-gapped computer.")}</p><div class="wallet-data-fields">${privateFields.join("")}</div>`, hodlRevealPrivate ? "is-private is-revealed" : "is-private") : "";
   let identityGroup = hodlKeyGroupMarkup("identity", hodlT("Wallet identity"), `<p class="edge-note is-public">${hodlT("These values identify the wallet or enable watch-only use, but do not authorize spending. Treat them as privacy-sensitive because extended public keys and descriptors can reveal wallet addresses, balances, and transaction history.")}</p><div class="wallet-data-fields">${fingerprint}${parentFingerprint}${nodeFingerprint}${rootPublic}${importedPublic}${source}</div>`);
   return `<div class="key-view hd-key-view">
@@ -2158,16 +2208,17 @@ var hodlRecoverySheetText = function(wallet, revealPrivate) {
     lines.push("", "PUBLIC KEYS AND ADDRESSES", `Compressed public key:   ${wallet.pubkeyCompressed}`, `Uncompressed public key: ${wallet.pubkeyUncompressed}`, `Legacy uncompressed: ${wallet.p2pkhUncompressed}`, `Legacy compressed:   ${wallet.p2pkhCompressed}`, `Nested SegWit:       ${wallet.p2shP2wpkh}`, `Native SegWit:       ${wallet.p2wpkh}`, `Taproot:             ${wallet.p2tr}`);
     return lines.join("\n");
   }
-  let hasPrivate = Boolean(wallet.mnemonic || wallet.entropyHex || wallet.seedHex || hodlResultHasRoot(wallet) || wallet.importedPrivateKey || wallet.accounts.some(hodlAccountHasPrivate));
+  let hasPrivate = Boolean(hodlResultHasSeed(wallet) || wallet.seed || hodlResultHasRoot(wallet) || wallet.importedPrivateKey || wallet.accounts.some(hodlAccountHasPrivate));
   if (hasPrivate && revealPrivate) {
     lines.push("PRIVATE RECOVERY MATERIAL");
-    if (wallet.mnemonic) {
-      lines.push("", "YOUR SEED PHRASE", wallet.mnemonic);
-      let seedQrDigits = hodlSeedQrDigits(wallet.mnemonic);
+    if (hodlResultHasSeed(wallet)) {
+      let mnemonic = hodlResultMnemonic(wallet);
+      lines.push("", "YOUR SEED PHRASE", mnemonic);
+      let seedQrDigits = hodlSeedQrDigits(mnemonic);
       if (seedQrDigits) lines.push("", "SEEDQR DIGITS", seedQrDigits);
     }
-    if (wallet.entropyHex) lines.push("", "BIP39 ENTROPY HEX", wallet.entropyHex);
-    if (wallet.seedHex) lines.push("", "MASTER SEED HEX (BIP39 PBKDF2, 512 bits)", wallet.seedHex);
+    if (wallet.entropy) lines.push("", "BIP39 ENTROPY HEX", hodlResultEntropyHex(wallet));
+    if (wallet.seed) lines.push("", "MASTER SEED HEX (BIP39 PBKDF2, 512 bits)", hodlResultSeedHex(wallet));
     if (hodlResultHasRoot(wallet)) lines.push("", `BIP32 ROOT ${(wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName).toUpperCase()}`, hodlResultRootXprv(wallet));
     if (wallet.importedPrivateKey) lines.push("", `IMPORTED ${(wallet.importedPrivateLabel || "EXTENDED PRIVATE KEY").toUpperCase()}`, wallet.importedPrivateKey);
     for (let account of wallet.accounts) {
@@ -8150,7 +8201,7 @@ function hodlSessionMsigKeys() {
   return keys;
 }
 function hodlSessionHdRootKeys() {
-  return [...hodlKeys.filter((state) => !state.isLab && state.result?.kind === "hd" && (state.result.mnemonic || hodlResultHasRoot(state.result))),
+  return [...hodlKeys.filter((state) => !state.isLab && state.result?.kind === "hd" && (hodlResultHasSeed(state.result) || hodlResultHasRoot(state.result))),
     ...hodlBip85Children.map(hodlBip85SessionKeyState).filter((state) => state?.result.kind === "hd")];
 }
 function hodlBip85SessionKeyState(child) {
@@ -8219,7 +8270,7 @@ function hodlFillStationKeyPicker(id, selectedSource, onSelect, keys = hodlSessi
 // private key. Offering anything else would be a chip that only errors.
 function hodlPsbtSourceKeys() {
   return [...hodlKeys.filter((state) => !state.isLab && state.result && (
-    (state.result.kind === "hd" && (state.result.mnemonic || hodlResultHasRoot(state.result))) ||
+    (state.result.kind === "hd" && (hodlResultHasSeed(state.result) || hodlResultHasRoot(state.result))) ||
     (state.result.kind === "single" && hodlResultHasSingleKey(state.result)))),
     ...hodlBip85Children.map(hodlBip85SessionKeyState).filter(Boolean)];
 }
@@ -10028,14 +10079,8 @@ function hodlUseActiveKeyForPsbt(state = hodlKeys[hodlActiveKey]) {
   }
   let result = state.result;
   hodlPsbtWipeMem();
-  if (result.kind === "hd" && result.mnemonic) {
-    let seed = hodlMnemonicToSeed(result.mnemonic, state.fields.pass || "");
-    try {
-      hodlPsbtHd = hodlHDKey.fromMasterSeed(seed);
-    } finally {
-      seed.fill(0);
-    }
-  } else if (result.kind === "hd" && hodlResultHasRoot(result)) hodlPsbtHd = hodlResultRootNode(result);
+  if (result.kind === "hd" && hodlResultHasSeed(result)) hodlPsbtHd = hodlSeedSessionRoot(result, state.fields.pass || "");
+  else if (result.kind === "hd" && hodlResultHasRoot(result)) hodlPsbtHd = hodlResultRootNode(result);
   else if (result.kind === "hd" && result.importedPrivateKey) {
     hodlPsbtErrorSpec = { key: "The active key is an account-level extended private key. PSBT session signing needs origin-aware relative paths, which this version does not infer. Use the original seed or root xprv/tprv instead." };
     throw new Error(hodlTText("The active key is an account-level extended private key. PSBT session signing needs origin-aware relative paths, which this version does not infer. Use the original seed or root xprv/tprv instead."));
@@ -10429,13 +10474,8 @@ function hodlUseKeyForBip85(state) {
   if (!state || !state.result) throw new Error("Derive a key in Key Station first, then return to BIP-85 Station.");
   let result = state.result;
   hodlBip85WipeParent();
-  if (result.kind === "hd" && result.mnemonic) {
-    let seed = hodlMnemonicToSeed(result.mnemonic, state.fields.pass || "");
-    try {
-      hodlBip85Root = hodlHDKey.fromMasterSeed(seed);
-    } finally {
-      hodlWipeBytes(seed);
-    }
+  if (result.kind === "hd" && hodlResultHasSeed(result)) {
+    hodlBip85Root = hodlSeedSessionRoot(result, state.fields.pass || "");
     // The version bytes follow the session network on every load path: a
     // testnet wallet must not yield mainnet-version children because it
     // arrived as a mnemonic rather than a root xprv (issue #352).
@@ -10989,9 +11029,8 @@ function hodlSpUseKey(state) {
   if (!state || !state.result) throw new Error("Derive a key in Key Station first, then return to SP Station.");
   let result = state.result;
   hodlSpWipeKeys();
-  if (result.kind === "hd" && result.mnemonic) {
-    let seed = hodlMnemonicToSeed(result.mnemonic, state.fields.pass || "");
-    try { hodlSpHd = hodlHDKey.fromMasterSeed(seed); } finally { seed.fill(0); }
+  if (result.kind === "hd" && hodlResultHasSeed(result)) {
+    hodlSpHd = hodlSeedSessionRoot(result, state.fields.pass || "");
     hodlSpNote = "Session key from " + (state.name || "existing key") + " (BIP39 seed). Kept in page memory only.";
   } else if (result.kind === "hd" && hodlResultHasRoot(result)) {
     hodlSpHd = hodlResultRootNode(result);
@@ -11006,8 +11045,9 @@ function hodlPickSpSessionKey(state) {
   if (error) error.textContent = "";
   try {
     hodlSpUseKey(state);
-    document.getElementById("sp-key").value = state.result?.mnemonic || hodlResultRootXprv(state.result) || "";
-    document.getElementById("sp-pass").value = state.result?.mnemonic ? state.fields?.pass || "" : "";
+    // The station's key field shows the words, as the user would type them.
+    document.getElementById("sp-key").value = hodlResultMnemonic(state.result) || hodlResultRootXprv(state.result) || "";
+    document.getElementById("sp-pass").value = hodlResultHasSeed(state.result) ? state.fields?.pass || "" : "";
     document.getElementById("sp-session").textContent = hodlSpNote;
   } catch (exception) {
     if (error) error.textContent = exception.message || String(exception);
@@ -15365,7 +15405,8 @@ function hodlJournalOpenView(id) {
 function hodlJournalSyncDerivedKeys(states) {
   if (!hodlJournalUnlocked()) return { added: 0, updated: 0, matched: 0 };
   try {
-    let snapshots = (states || []).filter((state) => state && !state.isLab && state.result).map(hodlJournalKeySnapshot).filter(Boolean);
+    // The journal records the words as text, inside its encrypted document.
+    let snapshots = (states || []).filter((state) => state && !state.isLab && state.result).map((state) => hodlJournalKeySnapshot(state, hodlResultMnemonic(state.result) || "")).filter(Boolean);
     let result = hodlJournalSyncKeySnapshots(hodlJournalDoc, snapshots, hodlJournalKeyEntries);
     if (result.added || result.updated) hodlJournalDirty = true;
     return result;
@@ -15708,7 +15749,7 @@ function hodlVanitySyncSource() {
   panel.hidden = !state;
   let passphraseOption = document.querySelector('#vanity-method-tabs [data-vanity-method-option="passphrase"]');
   if (state) {
-    let label = hodlVanityKeyLabel(state), pass = String(state.fields?.pass ?? ""), hasMnemonic = Boolean(state.result?.mnemonic);
+    let label = hodlVanityKeyLabel(state), pass = String(state.fields?.pass ?? ""), hasMnemonic = hodlResultHasSeed(state.result);
     let name = document.getElementById("vanity-source-name"), kind = document.getElementById("vanity-source-kind"), image = document.getElementById("vanity-source-lifehash"), field = document.getElementById("vanity-pass"), passNote = document.getElementById("vanity-pass-note");
     if (name) name.textContent = label;
     if (kind) kind.textContent = `${hasMnemonic ? "BIP39 seed words" : "Root xprv"}${state.name && state.name !== label ? ` · ${state.name}` : ""}`;
@@ -15829,20 +15870,15 @@ function hodlVanityPlan(state, method, scriptId) {
   let passphrase = validateVanityPassphrase(fields.pass ?? "");
   let plan = { method, script: scriptId, sourceId: state.id, sourceLabel: label, passphrase, accountHardened: path[2] >= VANITY_HARDENED };
   if (method === "passphrase") {
-    if (!result.mnemonic) throw new Error(`Key ${label} has no seed words (root xprv), so its passphrase cannot be extended — switch to the derivation grind.`);
-    return { ...plan, mnemonic: validateVanityMnemonic(result.mnemonic), path, pathPrefix: [], counterSlot: 0 };
+    if (!hodlResultHasSeed(result)) throw new Error(`Key ${label} has no seed words (root xprv), so its passphrase cannot be extended — switch to the derivation grind.`);
+    // The grinder's workers take the words as text.
+    return { ...plan, mnemonic: validateVanityMnemonic(hodlResultMnemonic(result)), path, pathPrefix: [], counterSlot: 0 };
   }
   // Derivation grind: the node above the account is derived once, here, and
   // the workers receive only that node.
   let root;
-  if (result.mnemonic) {
-    let seed = hodlMnemonicToSeed(result.mnemonic, passphrase);
-    try {
-      root = hodlHDKey.fromMasterSeed(seed);
-    } finally {
-      seed.fill(0);
-    }
-  } else if (hodlResultHasRoot(result)) root = hodlResultRootNode(result);
+  if (hodlResultHasSeed(result)) root = hodlSeedSessionRoot(result, passphrase);
+  else if (hodlResultHasRoot(result)) root = hodlResultRootNode(result);
   else throw new Error(`Key ${label} carries neither seed words nor a root xprv.`);
   let parent = null;
   try {
@@ -15885,7 +15921,7 @@ function hodlVanityParseInputs() {
 // settings parse; anything wrong with the key itself still reports on start.
 function hodlVanityInputsReady() {
   let state = hodlVanitySourceState();
-  if (!state || (hodlVanityMethod() === "passphrase" && !state.result?.mnemonic)) return false;
+  if (!state || (hodlVanityMethod() === "passphrase" && !hodlResultHasSeed(state.result))) return false;
   try {
     hodlVanityParseFields();
     return true;
@@ -15938,7 +15974,7 @@ function hodlCopyVanityValue(button, value, label) {
 function hodlVanityMatchFingerprint(match, run) {
   if (match.fingerprint) return match.fingerprint;
   if (run.method !== "passphrase") return (match.fingerprint = run.sourceLabel);
-  let state = hodlVanitySourceKeys().find((candidate) => candidate.id === run.sourceId), mnemonic = state?.result?.mnemonic;
+  let state = hodlVanitySourceKeys().find((candidate) => candidate.id === run.sourceId), mnemonic = hodlResultMnemonic(state?.result);
   if (!mnemonic) return "";
   let seed = hodlMnemonicToSeed(mnemonic, match.passphrase), root = null;
   try {

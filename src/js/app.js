@@ -2852,8 +2852,11 @@ function hodlInitDerivationControls() {
 // length narrows a word from 2,048 candidates to at most 555. Five is about
 // the average word, so the hidden phrase keeps roughly its old size.
 var hodlSeedWordMaskLength = 5;
+// A seed word is data, not copy: every element that shows one as its whole
+// text is marked data-i18n-skip, because the translation sweep rewrites any
+// text that is a catalog key, and account, coin and online are keys (#610).
 function hodlSeedPhraseTokens(value, mask = false) {
-  return String(value ?? "").trim().split(/\s+/).filter(Boolean).map((word) => `<span class="seed-phrase-word">${mask ? "\u2022".repeat(hodlSeedWordMaskLength) : hodlEscapeHtml(word)}</span>`).join(" ");
+  return String(value ?? "").trim().split(/\s+/).filter(Boolean).map((word) => `<span class="seed-phrase-word" data-i18n-skip>${mask ? "\u2022".repeat(hodlSeedWordMaskLength) : hodlEscapeHtml(word)}</span>`).join(" ");
 }
 function hodlSeedPhraseField(label, value) {
   let text = String(value ?? "\u2014");
@@ -5242,7 +5245,7 @@ function hodlManualCalculationMarkup(method, value, targetWords = hodlTargetWord
   }
   if (!rows.length) return "";
   let title = method === "cards" ? "Direct card calculations" : method === "dplus" ? "D++ calculations" : "BitBox diceware calculations", note = method === "cards" ? "Ranks are mapped to zero-based values (A=0 through 8=7), then combined with radices 8, 8, 8, and 4." : method === "dplus" ? "D8 contributes 8 values and each hexadecimal D16 contributes 16 values, giving 8 × 16 × 16 = 2048 possible indices." : "Each D4 contributes one base-4 value and the final die contributes the coin bit, giving 4⁵ × 2 = 2048 possible indices.";
-  return `<div class="manual-calculation-panel"><p class="label">${title}</p><p class="muted">${note}</p><div class="manual-calculation-list">${rows.map((row) => method === "dplus" || method === "cards" || method === "bitbox" ? `<div class="manual-calculation-row dplus-calculation-row"><div class="manual-calculation-heading"><span>Word ${row.number}</span><strong>${row.word || "incomplete"}</strong></div><div class="dplus-calculation-stages">${row.stages.map((stage) => `<div class="dplus-calculation-stage"><span>${stage.label}</span><strong>${stage.face}</strong><small>&rarr; ${stage.value} &times; ${stage.multiplier}</small><b>= ${stage.value * stage.multiplier}</b></div>`).join("")}</div><div class="dplus-calculation-sum"><span>${row.stages.map((stage) => stage.value * stage.multiplier).join(" + ")}</span><b>= BIP39 index ${row.index} &middot; word number ${row.index + 1}</b></div></div>` : `<div class="manual-calculation-row"><span>Word ${row.number}</span><strong>${row.word || "incomplete"}</strong><code>${row.formula}</code><b>BIP39 index ${row.index} · word number ${row.index + 1}</b></div>`).join("")}</div></div>`;
+  return `<div class="manual-calculation-panel"><p class="label">${title}</p><p class="muted">${note}</p><div class="manual-calculation-list">${rows.map((row) => method === "dplus" || method === "cards" || method === "bitbox" ? `<div class="manual-calculation-row dplus-calculation-row"><div class="manual-calculation-heading"><span>Word ${row.number}</span><strong${row.word ? " data-i18n-skip" : ""}>${row.word || "incomplete"}</strong></div><div class="dplus-calculation-stages">${row.stages.map((stage) => `<div class="dplus-calculation-stage"><span>${stage.label}</span><strong>${stage.face}</strong><small>&rarr; ${stage.value} &times; ${stage.multiplier}</small><b>= ${stage.value * stage.multiplier}</b></div>`).join("")}</div><div class="dplus-calculation-sum"><span>${row.stages.map((stage) => stage.value * stage.multiplier).join(" + ")}</span><b>= BIP39 index ${row.index} &middot; word number ${row.index + 1}</b></div></div>` : `<div class="manual-calculation-row"><span>Word ${row.number}</span><strong${row.word ? " data-i18n-skip" : ""}>${row.word || "incomplete"}</strong><code>${row.formula}</code><b>BIP39 index ${row.index} · word number ${row.index + 1}</b></div>`).join("")}</div></div>`;
 }
 // The switch every checkbox in the card uses: a checkbox and its title on one
 // row, and an optional note under both that the checkbox points at. A
@@ -5277,7 +5280,7 @@ function hodlRenderNumberBaseCalculations(value, format = "bin", targetWords = h
   let panel = document.getElementById("number-base-calculations"), toggle = document.getElementById("show-number-base-calculations");
   if (!panel || !toggle) return;
   let meta = hodlEntropyFormatConfig(format, targetWords), rows = hodlNumberBaseCalculationRows(value, meta.id, targetWords);
-  hodlShowCalculations(panel, rows.length ? `<p class="label">${meta.label} calculations</p><p class="muted">Each 11-bit group is interpreted as a big-endian binary integer. Multiply each bit by its bit weight, then sum the contributions to get the zero-based BIP39 index. The corresponding word number is the index plus 1.</p>${hodlNumberBaseBinaryConversionMarkup(value, meta)}<div class="number-base-calculation-list">${rows.map((row) => `<div class="number-base-calculation" data-calculation-word="${row.number}"><div class="number-base-calculation-title"><span>Word ${row.number}</span><strong>${row.word || "incomplete"}</strong></div><div class="number-base-calculation-row"><span class="number-base-calculation-label">Bit weight</span><div class="number-base-calculation-powers">${row.terms.map((term) => `<span>${term.place}</span>`).join("")}</div></div><div class="number-base-calculation-row"><span class="number-base-calculation-label">Bit</span><div class="number-base-calculation-bits">${row.terms.map((term) => `<span>${term.bit}</span>`).join("")}</div></div><div class="number-base-calculation-row"><span class="number-base-calculation-label">Contribution</span><div class="number-base-calculation-products">${row.terms.map((term) => `<span>${term.value}</span>`).join("")}</div></div><div class="number-base-calculation-sum"><span>${row.terms.map((term) => term.value).join(" + ")} <b>=</b></span><span>BIP39 index <strong>${row.index}</strong></span><span>word number <strong>${row.index + 1}</strong></span></div></div>`).join("")}</div>` : "", toggle.checked);
+  hodlShowCalculations(panel, rows.length ? `<p class="label">${meta.label} calculations</p><p class="muted">Each 11-bit group is interpreted as a big-endian binary integer. Multiply each bit by its bit weight, then sum the contributions to get the zero-based BIP39 index. The corresponding word number is the index plus 1.</p>${hodlNumberBaseBinaryConversionMarkup(value, meta)}<div class="number-base-calculation-list">${rows.map((row) => `<div class="number-base-calculation" data-calculation-word="${row.number}"><div class="number-base-calculation-title"><span>Word ${row.number}</span><strong${row.word ? " data-i18n-skip" : ""}>${row.word || "incomplete"}</strong></div><div class="number-base-calculation-row"><span class="number-base-calculation-label">Bit weight</span><div class="number-base-calculation-powers">${row.terms.map((term) => `<span>${term.place}</span>`).join("")}</div></div><div class="number-base-calculation-row"><span class="number-base-calculation-label">Bit</span><div class="number-base-calculation-bits">${row.terms.map((term) => `<span>${term.bit}</span>`).join("")}</div></div><div class="number-base-calculation-row"><span class="number-base-calculation-label">Contribution</span><div class="number-base-calculation-products">${row.terms.map((term) => `<span>${term.value}</span>`).join("")}</div></div><div class="number-base-calculation-sum"><span>${row.terms.map((term) => term.value).join(" + ")} <b>=</b></span><span>BIP39 index <strong>${row.index}</strong></span><span>word number <strong>${row.index + 1}</strong></span></div></div>`).join("")}</div>` : "", toggle.checked);
 }
 function hodlHexPreviewWords(value, targetWords = hodlTargetWordCount) {
   return hodlNumberBasePreviewWords(value, "hex", targetWords);
@@ -5849,7 +5852,7 @@ function hodlRenderLastWordPicker(container, candidates, selected, onPick, setti
   container.innerHTML = "";
   if (!candidates || !candidates.length) return;
   if (candidates.length <= 16 && !settings.forceSelect) {
-    container.innerHTML = candidates.map((word) => `<button type="button" class="tab${word === selected ? " active" : ""}" data-lw="${word}" aria-pressed="${word === selected}">${word}</button>`).join("");
+    container.innerHTML = candidates.map((word) => `<button type="button" class="tab${word === selected ? " active" : ""}" data-lw="${word}" data-i18n-skip aria-pressed="${word === selected}">${word}</button>`).join("");
     container.querySelectorAll("[data-lw]").forEach((button) => {
       button.onclick = () => onPick(button.dataset.lw || "");
     });
@@ -5872,6 +5875,7 @@ function hodlRenderLastWordPicker(container, candidates, selected, onPick, setti
     let option = document.createElement("option");
     option.value = word;
     option.textContent = word;
+    option.dataset.i18nSkip = "";
     option.selected = word === selected;
     select.appendChild(option);
   });

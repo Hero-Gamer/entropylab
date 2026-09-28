@@ -59,12 +59,20 @@
       span.textContent = text;
       return span;
     };
+    // An option marked data-i18n-skip shows data, a seed word: the row and the
+    // button that repeat its text carry the mark too, so the translation sweep
+    // leaves every copy of it alone.
+    const markLike = (element, option) => {
+      if (option?.dataset.i18nSkip !== undefined) element.dataset.i18nSkip = "";
+      else delete element.dataset.i18nSkip;
+    };
 
     const sync = () => {
       const selected = select.options[select.selectedIndex] || select.options[0];
       const selectedIcon = iconFor(selected);
       if (selectedIcon) label.replaceChildren(selectedIcon, textSpan(selected?.textContent || "Select"));
       else label.textContent = selected?.textContent || "Select";
+      markLike(label, selected);
       const visibleOptions = [...select.options].filter((option) => option.dataset.customSelectPlaceholder !== "true");
       list.replaceChildren(...visibleOptions.map((option) => {
         const item = document.createElement("button");
@@ -76,6 +84,7 @@
         const optionIcon = iconFor(option);
         if (optionIcon) item.replaceChildren(optionIcon, textSpan(option.textContent));
         else item.textContent = option.textContent;
+        markLike(item, option);
         item.onclick = (event) => {
           event.preventDefault();
           event.stopPropagation();

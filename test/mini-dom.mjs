@@ -11,7 +11,9 @@
 //     build the fixture;
 //   - a disabled button does not click;
 //   - `document.createTreeWalker` walks text nodes, so the app's own
-//     translation sweep (i18n.js) runs over the fixture.
+//     translation sweep (i18n.js) runs over the fixture;
+//   - a select reports its options, selected index and value, so the custom
+//     select (enhanced-inputs.js) can mirror one.
 // Selectors: tag, #id, .class, [attr], [attr=value], compounds, descendant
 // chains and comma lists. Anything else throws, so an unsupported selector
 // fails loudly rather than matching nothing.
@@ -137,6 +139,35 @@ export class MiniElement {
     me(own.parent).kids.splice(me(own.parent).kids.indexOf(this), 1);
     own.parent = null;
   }
+  after(...nodes) {
+    const parent = me(this).parent;
+    if (!parent) return;
+    let at = me(parent).kids.indexOf(this) + 1;
+    for (const node of nodes) {
+      const child = typeof node === "string" ? new MiniText(node) : node;
+      if (child instanceof MiniElement) child.remove();
+      me(child).parent = parent;
+      me(parent).kids.splice(at++, 0, child);
+    }
+  }
+  get previousElementSibling() {
+    const parent = me(this).parent;
+    if (!parent) return null;
+    const siblings = me(parent).kids.filter((kid) => kid instanceof MiniElement);
+    return siblings[siblings.indexOf(this) - 1] || null;
+  }
+  // A select and its options, as far as the custom select and the final-word
+  // picker use them: the selected option, and the value it gives the select.
+  get options() { return me(this).tag === "select" ? this.querySelectorAll("option") : undefined; }
+  get selectedIndex() {
+    const options = this.options || [], selected = options.findIndex((option) => me(option).selected);
+    return selected >= 0 ? selected : options.findIndex((option) => !option.disabled);
+  }
+  get selected() { return Boolean(me(this).selected); }
+  set selected(value) {
+    if (value) for (const option of this.closest("select")?.options || []) me(option).selected = false;
+    me(this).selected = Boolean(value);
+  }
   getAttribute(name) { return me(this).attrs.get(name) ?? null; }
   setAttribute(name, value) { me(this).attrs.set(String(name), String(value)); }
   removeAttribute(name) { me(this).attrs.delete(name); }
@@ -152,8 +183,21 @@ export class MiniElement {
   set disabled(value) { if (value) this.setAttribute("disabled", ""); else this.removeAttribute("disabled"); }
   get hidden() { return this.hasAttribute("hidden"); }
   set hidden(value) { if (value) this.setAttribute("hidden", ""); else this.removeAttribute("hidden"); }
-  get value() { return me(this).value; }
-  set value(value) { me(this).value = String(value); }
+  get value() {
+    const own = me(this);
+    if (own.tag === "select") return this.options[this.selectedIndex]?.value ?? "";
+    if (own.tag === "option" && !own.valueSet) return this.getAttribute("value") ?? this.textContent;
+    return own.value;
+  }
+  set value(value) {
+    const own = me(this);
+    if (own.tag === "select") {
+      for (const option of this.options) me(option).selected = option.value === String(value);
+      return;
+    }
+    own.value = String(value);
+    own.valueSet = true;
+  }
   get style() { return me(this).style; }
   get classList() {
     const read = () => (this.getAttribute("class") || "").split(/\s+/).filter(Boolean), write = (names) => this.setAttribute("class", names.join(" "));
@@ -255,6 +299,7 @@ export class MiniDocument {
   createElementNS(_namespace, tag) { return new MiniElement(tag, this); }
   createDocumentFragment() { return new MiniFragment(this); }
   createTextNode(text) { return new MiniText(text); }
+  addEventListener() {}
   getElementById(id) { return this.body.querySelector(`#${id}`); }
   querySelector(selector) { return this.body.querySelector(selector); }
   querySelectorAll(selector) { return this.body.querySelectorAll(selector); }

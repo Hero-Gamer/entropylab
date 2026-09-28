@@ -26,7 +26,7 @@ const utf8 = (text) => new TextEncoder().encode(text);
 // with accents, a combining mark, CJK and characters outside the BMP, kept
 // exactly as typed (BIP39 normalizes only for the seed).
 const WORDS = "legal winner thank year wave sausage worth useful legal winner thank yellow";
-const PASSPHRASES = ["TREZOR", "correct horse battery staple", "Grüße, 東京! café 🔑🌕 naïve"];
+const PASSPHRASES = ["TREZOR", "correct horse battery staple", "Grüße, 東京! cafe\u0301 🔑🌕 naïve"];
 // Bitcoin wiki, "Mini private key format": the Casascius example.
 const MINI = "S6c56bnXQiBjk9mqSYE7ykVQ7NzrRy";
 // BIP84's published account key for the "abandon … about" mnemonic, and the
@@ -134,6 +134,35 @@ test("the typed secrets are rebuilt on request, as typed", async () => {
   }
 });
 
+// The revealed passphrase is recovery material: typed into any BIP39 tool
+// with the words, it must recover this wallet. A leading U+FEFF is part of
+// the passphrase (BIP39 hashes it), so decoding its bytes must not drop it as
+// a byte-order mark (Codex, #601). An unpaired surrogate is not a Unicode
+// character, so it cannot be hashed as itself: the page's UTF-8 encoding
+// derives the seed with U+FFFD in its place (@scure/bip39 refuses such a
+// passphrase outright), and the revealed text shows that U+FFFD, which
+// recovers the same wallet.
+test("the revealed passphrase is exactly what the wallet was derived with", async () => {
+  const helpers = await load(["hodlResultPassphrase"]);
+  // [typed, the passphrase the seed hashes]
+  const cases = [
+    ["\uFEFFTREZOR", "\uFEFFTREZOR"], ["\uFEFF", "\uFEFF"], ["\uFEFF\uFEFFTREZOR", "\uFEFF\uFEFFTREZOR"], ["TREZOR\uFEFF", "TREZOR\uFEFF"],
+    ["\uD800TREZOR", "\uFFFDTREZOR"],
+  ];
+  const rootOf = (pass) => ScureHDKey.fromMasterSeed(mnemonicToSeedSync(WORDS, pass)).privateExtendedKey;
+  const wrong = [];
+  for (const [typed, hashed] of cases) {
+    const wallet = await seedWallet(typed), revealed = helpers.hodlResultPassphrase(wallet), name = JSON.stringify(typed);
+    assert.equal(wallet.rootNode.privateExtendedKey, rootOf(hashed), `${name}: the wallet's root`);
+    if (revealed !== hashed) wrong.push(`${name}: shows ${JSON.stringify(revealed)}`);
+    else if (rootOf(revealed) !== wallet.rootNode.privateExtendedKey) wrong.push(`${name}: the shown passphrase recovers a different wallet`);
+  }
+  assert.deepEqual(wrong, []);
+  // A leading U+FEFF changes the wallet, so dropping it is not cosmetic.
+  assert.notEqual(rootOf("\uFEFFTREZOR"), rootOf("TREZOR"));
+  assert.notEqual(rootOf("\uFEFF"), rootOf(""));
+});
+
 // Hidden, each field is a mask as long as the value (a passphrase counts its
 // characters) and revealed it is the value, both rendered with the unchanged
 // private-field primitive around the independently known text. (The full card
@@ -147,7 +176,8 @@ test("the passphrase, the pasted key and the card render the same, hidden and re
   for (const revealed of [false, true]) {
     view.__set.hodlRevealPrivate(revealed);
     const state = revealed ? "revealed" : "hidden", field = (label, value) => view.hodlPrivateFieldHtml(label, value, undefined, "label");
-    for (const pass of PASSPHRASES) {
+    // A leading U+FEFF is part of the passphrase and shows as typed.
+    for (const pass of [...PASSPHRASES, "\uFEFFTREZOR", "\uFEFF"]) {
       const fields = view.hodlSeedRecoveryFields(await seedWallet(pass));
       assert.equal(fields[2], field("BIP39 passphrase", pass), `${state}: passphrase "${pass}"`);
     }

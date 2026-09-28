@@ -497,12 +497,17 @@ function hodlResultSecretBytes(result) {
 }
 // A wallet keeps what the user typed as its UTF-8 bytes, never as text
 // (#546 B2): the BIP39 passphrase and a Casascius mini key, which nothing can
-// rebuild from the keys they make. The text is built only to show or export it.
+// rebuild from the keys they make. The text is built only to show or export
+// it, exactly as typed: a leading U+FEFF is part of a passphrase (BIP39 hashes
+// it), not a byte-order mark to drop.
+function hodlTypedText(bytes) {
+  return new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
+}
 function hodlResultPassphrase(result) {
-  return result?.passphrase ? new TextDecoder().decode(result.passphrase) : "";
+  return result?.passphrase ? hodlTypedText(result.passphrase) : "";
 }
 function hodlResultMinikey(result) {
-  return result?.minikey ? new TextDecoder().decode(result.minikey) : null;
+  return result?.minikey ? hodlTypedText(result.minikey) : null;
 }
 // A pasted account-level extended private key is kept only as the account's
 // key node, like every derived key (#546 B2). As pasted, it is that node under

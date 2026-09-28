@@ -26,8 +26,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadAppFunctions } from "./app-slice-harness.mjs";
 
-const { hodlMsigSpecsFor, hodlMsigSpec, hodlMsigSpecFromOrigin, hodlMsigSpecComponents, hodlMsigSpecStepLabels, hodlMsigForeignSpecNote, hodlMsigWalletStandard, hodlMsigSpecMixError, hodlMsigSummaryPath } = await loadAppFunctions([
-  "hodlMsigSpecsFor", "hodlMsigSpec", "hodlMsigSpecFromOrigin", "hodlMsigSpecComponents", "hodlMsigSpecStepLabels", "hodlMsigForeignSpecNote", "hodlMsigWalletStandard", "hodlMsigSpecMixError", "hodlMsigSummaryPath",
+const { hodlMsigSpecsFor, hodlMsigSpec, hodlMsigSpecFromOrigin, hodlMsigSpecComponents, hodlMsigSpecStepLabels, hodlMsigForeignSpecNote, hodlMsigWalletStandard, hodlMsigSpecMixError } = await loadAppFunctions([
+  "hodlMsigSpecsFor", "hodlMsigSpec", "hodlMsigSpecFromOrigin", "hodlMsigSpecComponents", "hodlMsigSpecStepLabels", "hodlMsigForeignSpecNote", "hodlMsigWalletStandard", "hodlMsigSpecMixError",
 ]);
 
 const ALL = { purpose: true, coinType: true, account: true, address: false };
@@ -133,17 +133,3 @@ test("co-signer specs that cannot share one wallet are refused, and those that c
   }
 });
 
-test("the summary says paths vary only when a card is Custom", () => {
-  const order = (...paths) => paths.map((path, index) => ({ position: index + 1, fingerprint: "73c5da0a", path }));
-  // A standard BIP48 wallet on two accounts: rock's placeholder standard for
-  // it is "custom", which must not read as custom paths.
-  const standard = { scriptStandard: "custom", specCustom: false, accountMixed: true, scriptOrder: order("48h/0h/0h/2h", "48h/0h/1h/2h") };
-  assert.equal(hodlMsigSummaryPath(standard), "m/48'/0'/0'/2' \xB7 accounts vary");
-  // A wallet restored from before cards had specs reads the same way.
-  assert.equal(hodlMsigSummaryPath({ ...standard, specCustom: undefined }), "m/48'/0'/0'/2' \xB7 accounts vary");
-  // A Custom card with a different path says so.
-  const custom = { scriptStandard: "custom", specCustom: true, accountMixed: false, scriptOrder: order("48h/0h/0h/2h", "0h") };
-  assert.equal(hodlMsigSummaryPath(custom), "m/48'/0'/0'/2' \xB7 paths vary");
-  // Custom cards on one shared path have nothing to add.
-  assert.equal(hodlMsigSummaryPath({ ...custom, scriptOrder: order("0h", "0h") }), "m/0'");
-});

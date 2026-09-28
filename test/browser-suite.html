@@ -146,6 +146,8 @@
     element.value = value;
     element.dispatchEvent(new Event("input", { bubbles: true }));
   };
+  // A co-signer's key verdict sits in its card's status slot, above the field.
+  const msigKeyStatus = (field) => field.closest(".msig-key-row").querySelector("[data-msig-key-status]");
   // The first address the key view derived: the top row of its first address
   // table. It reads content only, so it works while the group is collapsed.
   const firstAcctAddress = () => {
@@ -4761,10 +4763,8 @@
     assert(/^[A-Za-z]pub/.test(bareFirstKey) && !bareFirstKey.includes("["), "Selecting a key did not split its extended public key from its origin fields");
     assert(/^[0-9a-f]{8}$/.test(firstFingerprint), "Selecting a key did not populate its separate master fingerprint");
     input(document.getElementById("msig-network"), /^(?:tpub|[UV]pub)/.test(bareFirstKey) ? "1" : "0");
-    const firstHint = first.nextElementSibling;
-    const fieldMessageGap = firstHint.getBoundingClientRect().top - first.getBoundingClientRect().bottom;
-    const standardFieldMessageGap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--space-control"));
-    assert(firstHint.classList.contains("hint") && Math.abs(fieldMessageGap - standardFieldMessageGap) <= 0.5, `The co-signer input message gap did not match the app's field-message spacing (${fieldMessageGap}px vs ${standardFieldMessageGap}px)`);
+    const firstHint = msigKeyStatus(first);
+    assert(firstHint.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING, "The co-signer key verdict did not precede its field");
     assert(!document.querySelector("#msig-keys .msig-key-ident"), "The selected key was repeated between its label and input");
     rows = [...document.querySelectorAll("#msig-keys .msig-key-row")];
     assert(rowOption(rows[0]).classList.contains("active"), "The picked key was not marked active on the first row");
@@ -4808,7 +4808,7 @@
     const secondPath = rows[1].querySelector(".msig-full-path");
     const exportedPath = rows[0].querySelector(".msig-full-path").value;
     assert(second.value === first.value && secondPath.value === exportedPath, "Reusing a key did not bring it in exactly as exported, without an invented path step");
-    assert(second.nextElementSibling.classList.contains("bad"), "A reused key on an unchanged path was not refused as a duplicate");
+    assert(msigKeyStatus(second).classList.contains("bad"), "A reused key on an unchanged path was not refused as a duplicate");
     assert(rows[1].querySelector(".msig-master-fingerprint").value === secondFingerprint, "The reused key's separate master fingerprint changed");
     const secondAdvanced = rows[1].querySelector(".msig-cosigner-advanced");
     secondAdvanced.open = true;
@@ -4818,7 +4818,7 @@
     input(accountStep(rows[1]), "1'");
     const accountOneKey = second.value;
     assert(/^m\/\d+'\/\d+'\/1'/.test(secondPath.value) && accountOneKey !== first.value && /^[A-Za-z]pub/.test(accountOneKey), `Changing the account step did not re-derive the co-signer key (${secondPath.value})`);
-    assert(second.nextElementSibling.classList.contains("ok"), `The re-derived co-signer did not validate: ${second.nextElementSibling.textContent}`);
+    assert(msigKeyStatus(second).classList.contains("ok"), `The re-derived co-signer did not validate: ${msigKeyStatus(second).textContent}`);
     const accountHarden = accountStep(rows[1]).closest("label").querySelector('input[type="checkbox"]');
     const specSelect = rows[1].querySelector("[data-msig-spec]"), standardSpec = specSelect.value;
     const setSpec = (id) => {
@@ -4829,9 +4829,9 @@
     assert(/^m\/\d+'\/\d+'\/1(?:\/|$)/.test(secondPath.value) && second.value !== accountOneKey && second.value !== first.value, `Unhardening the account step did not re-derive the co-signer key (${secondPath.value})`);
     // An unhardened account is not BIP48: the spec card refuses it with a
     // readable reason, and only a Custom card (which warns) accepts it.
-    assert(second.nextElementSibling.classList.contains("bad") && !second.nextElementSibling.textContent.includes("[object"), `A spec card accepted an off-spec account hardening: ${second.nextElementSibling.textContent}`);
+    assert(msigKeyStatus(second).classList.contains("bad") && !msigKeyStatus(second).textContent.includes("[object"), `A spec card accepted an off-spec account hardening: ${msigKeyStatus(second).textContent}`);
     setSpec("custom");
-    assert(!second.nextElementSibling.classList.contains("bad") && second.nextElementSibling.textContent.includes("Custom"), `A Custom co-signer with its own account hardening did not validate: ${second.nextElementSibling.textContent}`);
+    assert(!msigKeyStatus(second).classList.contains("bad") && msigKeyStatus(second).textContent.includes("Custom"), `A Custom co-signer with its own account hardening did not validate: ${msigKeyStatus(second).textContent}`);
     // The spec change re-rendered the path fields: take the live checkbox.
     accountStep(rows[1]).closest("label").querySelector('input[type="checkbox"]').click();
     assert(second.value === accountOneKey, "Re-hardening the account step did not return to the same derived key");
@@ -4839,21 +4839,21 @@
     // whole path, hardened or not, rather than taking a step after it.
     input(secondPath, secondPath.value + "/2");
     const deepKey = second.value;
-    assert(deepKey !== accountOneKey && !second.nextElementSibling.classList.contains("bad") && !second.nextElementSibling.textContent.includes("/2"), `An extra path step did not re-derive the session key at the deeper path: ${second.nextElementSibling.textContent}`);
+    assert(deepKey !== accountOneKey && !msigKeyStatus(second).classList.contains("bad") && !msigKeyStatus(second).textContent.includes("/2"), `An extra path step did not re-derive the session key at the deeper path: ${msigKeyStatus(second).textContent}`);
     const extraStep = rows[1].querySelector('.msig-cosigner-advanced [data-path-index="4"]');
     assert(extraStep, "The extra path step was not represented in Advanced entry");
     extraStep.focus();
     extraStep.setSelectionRange(1, 1);
     input(extraStep, "3");
-    assert(/\/3$/.test(secondPath.value) && second.value !== deepKey && !second.nextElementSibling.classList.contains("bad"), "Changing an Advanced path component did not update the full path and re-derive the key");
+    assert(/\/3$/.test(secondPath.value) && second.value !== deepKey && !msigKeyStatus(second).classList.contains("bad"), "Changing an Advanced path component did not update the full path and re-derive the key");
     assert(document.activeElement === extraStep && extraStep.selectionStart === 1, "Changing an Advanced path component lost its focus or cursor position");
     const shallowKey = second.value;
     extraStep.closest("label").querySelector('input[type="checkbox"]').click();
-    assert(/\/3'$/.test(secondPath.value) && second.value !== shallowKey && !second.nextElementSibling.classList.contains("bad"), "Hardening an extra path step did not re-derive the key");
+    assert(/\/3'$/.test(secondPath.value) && second.value !== shallowKey && !msigKeyStatus(second).classList.contains("bad"), "Hardening an extra path step did not re-derive the key");
     input(secondPath, secondPath.value.replace(/\/3'$/, ""));
     assert(second.value === accountOneKey, "Removing the extra step did not return to the account key");
     setSpec(standardSpec);
-    assert(second.value === accountOneKey && second.nextElementSibling.classList.contains("ok"), "Returning to the spec did not keep the standard account key");
+    assert(second.value === accountOneKey && msigKeyStatus(second).classList.contains("ok"), "Returning to the spec did not keep the standard account key");
     // Each card follows a derivation spec, offered from the specs its script
     // type serves. A path off the card's spec — an unhardened account without
     // its script step, or a lone m/0' — is refused with a readable reason;
@@ -4864,7 +4864,7 @@
     assert(standardSpec !== "custom" && offered.includes("custom") && offered.includes("bip87") && !offered.includes("bip45"), `A SegWit card did not offer its script type's specs: ${offered.join(", ")}`);
     for (const customPath of ["m/48'/0'/1", "m/0'"]) {
       input(secondPath, customPath);
-      const hint = second.nextElementSibling;
+      const hint = msigKeyStatus(second);
       assert(second.value !== accountOneKey && hint.classList.contains("bad") && hint.textContent.trim() && !hint.textContent.includes("[object"), `A path off the card's spec was not refused with a readable reason (${customPath}): ${hint.textContent}`);
       setSpec("custom");
       assert(!hint.classList.contains("bad") && hint.textContent.trim() && !hint.textContent.includes("[object") && secondPath.value === customPath, `A Custom card did not accept an explained custom path (${customPath}): ${hint.textContent}`);
@@ -4879,7 +4879,7 @@
     setSpec("custom");
     setSpec(standardSpec);
     assert(secondPath.value === accountOnePath && second.value === accountOneKey, `Choosing the spec again did not keep the card's account (${secondPath.value})`);
-    assert(second.nextElementSibling.classList.contains("ok"), "Returning from a custom path did not restore the standard account key");
+    assert(msigKeyStatus(second).classList.contains("ok"), "Returning from a custom path did not restore the standard account key");
     // A key the session does not derive at its stated origin is never
     // re-derived, even under the session's own fingerprint: here the account-1
     // key is pasted bare onto the default account-0 path.
@@ -4891,12 +4891,12 @@
     assert(second.value === pastedKey, "A key that no session key derives at its origin was replaced on a path edit");
     // Such a key keeps its depth and takes a public step after it instead.
     input(secondPath, secondPath.value + "/2");
-    assert(second.value === pastedKey && second.nextElementSibling.textContent.includes("/2"), "A pasted key did not take a public step after it");
+    assert(second.value === pastedKey && msigKeyStatus(second).textContent.includes("/2"), "A pasted key did not take a public step after it");
     // A spec change never rewrites what a pasted key claims: its origin stays,
     // and the key is held to the chosen spec instead.
     const pastedPath = secondPath.value;
     setSpec("bip87");
-    assert(second.value === pastedKey && secondPath.value === pastedPath && second.nextElementSibling.classList.contains("bad"), "A spec change rewrote a pasted key's origin, or accepted it under a spec it does not follow");
+    assert(second.value === pastedKey && secondPath.value === pastedPath && msigKeyStatus(second).classList.contains("bad"), "A spec change rewrote a pasted key's origin, or accepted it under a spec it does not follow");
     setSpec(standardSpec);
 
     const firstPath = rows[0].querySelector(".msig-full-path").value;
@@ -4936,10 +4936,10 @@
     input(document.getElementById("msig-network"), /\]tpub/.test(importedKey) ? "1" : "0");
     const foreignField = document.getElementById("msig-x-0"), foreignSpec = foreignField.closest(".msig-key-row").querySelector("[data-msig-spec]");
     input(foreignField, importedKey.replace("/48h/", "/44h/"));
-    assert(foreignSpec.value !== "custom" && foreignField.nextElementSibling.classList.contains("bad") && !foreignField.nextElementSibling.textContent.includes("[object"), `A BIP44 key on a Native SegWit card was not refused with a reason: ${foreignSpec.value} ${foreignField.nextElementSibling.textContent}`);
+    assert(foreignSpec.value !== "custom" && msigKeyStatus(foreignField).classList.contains("bad") && !msigKeyStatus(foreignField).textContent.includes("[object"), `A BIP44 key on a Native SegWit card was not refused with a reason: ${foreignSpec.value} ${msigKeyStatus(foreignField).textContent}`);
     foreignSpec.value = "custom";
     foreignSpec.dispatchEvent(new Event("change"));
-    assert(!foreignField.nextElementSibling.classList.contains("bad"), `Choosing Custom did not accept the BIP44 key: ${foreignField.nextElementSibling.textContent}`);
+    assert(!msigKeyStatus(foreignField).classList.contains("bad"), `Choosing Custom did not accept the BIP44 key: ${msigKeyStatus(foreignField).textContent}`);
     document.getElementById("msig-wipe").click();
     assert(!document.getElementById("msig-threshold-control").disabled, "Clearing the multisig did not unlock manual quorum selection");
     equal(document.getElementById("msig-m").value, "2", "Clearing the imported multisig did not restore default m");
@@ -4947,6 +4947,49 @@
     equal(document.getElementById("msig-descriptor").value, "", "Clearing the imported multisig did not clear its descriptor");
     document.querySelector('#workspace [data-workspace="calc"]').click();
     await until(() => !document.getElementById("key-manager").hidden, "key workspace after MS Station picker test");
+  });
+
+  await test("MS Station moves a listed co-signer from its title band and keeps it in view", async () => {
+    document.querySelector('#workspace [data-workspace="msig"]').click();
+    await until(() => !document.getElementById("msig-card").hidden, "MS Station");
+    const keyOrder = document.getElementById("msig-key-order"), startOrder = keyOrder.value;
+    const setOrder = (value) => {
+      keyOrder.value = value;
+      keyOrder.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    const rows = () => [...document.querySelectorAll("#msig-keys .msig-key-row")];
+    try {
+      setOrder("listed");
+      await wait(0);
+      assert(rows().length >= 3, "MS Station did not show three co-signers");
+      rows().forEach((row, index) => {
+        const title = document.getElementById(row.getAttribute("aria-labelledby"));
+        const up = row.querySelector('[data-msig-move="-1"]'), down = row.querySelector('[data-msig-move="1"]');
+        assert(title && up && down, `Co-signer ${index + 1} had no title or move controls`);
+        assert(title.parentElement.contains(up) && title.parentElement.contains(down), `Co-signer ${index + 1}'s move controls were not on its title row`);
+        equal(up.disabled, index === 0, `Co-signer ${index + 1}'s up control had the wrong state`);
+        equal(down.disabled, index === rows().length - 1, `Co-signer ${index + 1}'s down control had the wrong state`);
+      });
+      const moved = rows()[0];
+      moved.scrollIntoView({ block: "center" });
+      await wait(0);
+      const before = moved.getBoundingClientRect().top;
+      moved.querySelector('[data-msig-move="1"]').click();
+      await wait(0);
+      equal(rows().indexOf(moved), 1, "Moving Co-signer 1 down did not make it the second co-signer");
+      equal(moved.getAttribute("aria-labelledby"), "msig-cosigner-1-label", "The moved card did not take its new title");
+      assert(Math.abs(moved.getBoundingClientRect().top - before) <= 1, `The moved card jumped on screen (${before}px to ${moved.getBoundingClientRect().top}px)`);
+      moved.querySelector('[data-msig-move="-1"]').click();
+      await wait(0);
+      equal(rows().indexOf(moved), 0, "Moving the card back up did not restore the order");
+      setOrder("sorted");
+      await wait(0);
+      assert(!document.querySelector("#msig-keys [data-msig-move]"), "Sorted order still offered move controls");
+    } finally {
+      setOrder(startOrder);
+      document.querySelector('#workspace [data-workspace="calc"]').click();
+      await until(() => !document.getElementById("key-manager").hidden, "key workspace after the co-signer move test");
+    }
   });
 
   await test("MS Station states a wallet-level spec refusal on the page, not only in Derive's tooltip", async () => {
@@ -5244,7 +5287,6 @@
     assert(multisigProgress.querySelector(".derive-progress-label")?.textContent.includes("Done"), "Completed multisig progress did not show Done");
     const resultText = document.getElementById("msig-out").textContent;
     assert(document.getElementById("msig-summary-policy")?.textContent.includes("1-of-1 multisig"), "The summary did not state the policy");
-    assert(document.getElementById("msig-summary-path")?.textContent.includes("87'"), "The summary path did not identify the BIP87 purpose");
     assert(resultText.includes("/87h/1h/0h") && resultText.includes("/<0;1>/*"), "BIP87 wallet descriptor paths are wrong");
     const multisigReceiveRows = document.querySelectorAll('#msig-out [data-address-table="msig-receive"] tbody tr');
     equal(multisigReceiveRows.length, 5, "The requested multisig receive address range was not rendered");
@@ -5277,7 +5319,7 @@
     equal(multisigPurpose.value, "69420", "A custom co-signer purpose was not auto-detected");
     const deriveCustomMultisig = await until(() => !document.getElementById("msig-go").disabled && document.getElementById("msig-go"), "custom-purpose multisig derive button");
     deriveCustomMultisig.click();
-    await until(() => document.getElementById("msig-summary-path")?.textContent.includes("69420'") || document.getElementById("msig-error").textContent, "custom-purpose multisig result");
+    await until(() => document.getElementById("msig-out").textContent.includes("/69420h/") || document.getElementById("msig-error").textContent, "custom-purpose multisig result");
     assert(
       !document.getElementById("msig-error").textContent,
       `Custom-purpose multisig derivation failed: ${document.getElementById("msig-error").textContent}`,

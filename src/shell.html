@@ -83,7 +83,7 @@
           <p class="key-summary-meta" id="key-summary-script"></p>
           <p class="key-summary-meta key-summary-path" id="key-summary-path"></p>
         </div>
-        <button class="btn secondary" id="key-edit-inputs" type="button">Edit Input</button>
+        <button class="btn secondary key-summary-edit" id="key-edit-inputs" type="button">Edit Input</button>
       </div>
       <div class="key-lab" id="key-lab">
       <div class="global-sync-host" id="global-sync-host"></div>
@@ -403,10 +403,9 @@ words, pick one of the checksum words.</span></span>
         <div class="key-summary-text">
           <code class="key-summary-fingerprint" id="msig-summary-policy"></code>
           <p class="key-summary-meta" id="msig-summary-script"></p>
-          <p class="key-summary-meta key-summary-path" id="msig-summary-path"></p>
           <div class="msig-summary-cosigners" id="msig-summary-cosigners" hidden></div>
         </div>
-        <button class="btn secondary" id="msig-edit-inputs" type="button">Edit Input</button>
+        <button class="btn secondary key-summary-edit" id="msig-edit-inputs" type="button">Edit Input</button>
       </div>
       <div class="msig-lab" id="msig-lab">
       <details class="msig-import" id="msig-import" open>
@@ -460,7 +459,6 @@ words, pick one of the checksum words.</span></span>
           <p class="switch-note" id="msig-legacy-bip87-help" data-i18n-rich>Uses <span class="mono">m/87'/coin'/account'</span> with this Legacy P2SH descriptor. BIP87 account keys are script-agnostic. Leave unchecked for default BIP45 without accounts.</p>
         </div>
       </div>
-      <p class="edge-note is-public" id="msig-key-order-status" hidden></p>
       <div class="switch-row msig-key-reuse-toggle">
         <label class="switch-toggle"><input id="msig-reuse-session-keys" type="checkbox" aria-describedby="msig-reuse-session-keys-note"><span class="label">Allow key reuse</span></label>
         <p class="switch-note" id="msig-reuse-session-keys-note">Keep selected keys available for more than one co-signer input. Reused keys need different derivation paths.</p>

@@ -469,9 +469,30 @@ function hodlRowWifCell(row) {
   if (!row.privateKey) return null;
   return hodlRevealPrivate ? hodlRowWif(row) : "\u2022".repeat(hodlCompressedWifLength);
 }
-// Every private key a wallet result holds: its row keys' bytes and its root
-// and account key nodes (#546 B2).
+// A single key's WIFs and hex are encoded only where one is shown, copied or
+// exported. Every uncompressed WIF (mainnet 5, testnet 9) is 51 Base58
+// characters and the hex is 64, so hidden fields mask those lengths.
+var hodlUncompressedWifLength = 51, hodlPrivateKeyHexLength = 64;
+function hodlSingleWif(wallet, compressed) {
+  return wallet?.privateKey ? hodlEncodeWif(wallet.privateKey, compressed, wallet.network) : null;
+}
+function hodlSinglePrivateHex(wallet) {
+  return wallet?.privateKey ? hodlHex.encode(wallet.privateKey) : null;
+}
+// A BIP-85 WIF child's session key still carries its key as the BIP-85
+// Station's hex output; a Key Station single key carries bytes.
+function hodlResultHasSingleKey(result) {
+  return Boolean(result?.privateKey || result?.privHex);
+}
+// A station session's own copy of a single key, which the station zeroes.
+function hodlSinglePrivateKey(result) {
+  if (result?.privateKey) return Uint8Array.from(result.privateKey);
+  return result?.privHex ? hodlHex.decode(result.privHex) : null;
+}
+// Every private key a wallet result holds: a single key's bytes, or its row
+// keys' bytes and its root and account key nodes (#546 B2).
 function hodlWipeWalletKeys(result) {
+  result?.privateKey?.fill(0);
   result?.rootNode?.wipePrivateData();
   for (let account of result?.accounts || []) {
     account.privateNode?.wipePrivateData();
@@ -499,13 +520,14 @@ function hodlDisposeDroppedWallets() {
   for (let result of hodlCommittedResults) hodlWipeUnsharedWalletRows(result);
 }
 // Wipes the private keys a derivation made that no station shows (its row
-// keys and the root and account nodes its result keeps): all of them when it
-// stopped, failed or was declined, none once it has committed.
+// keys or single key, and the root and account nodes its result keeps): all
+// of them when it stopped, failed or was declined, none once it has committed.
 function hodlSettleDerivationKeys(control) {
   if (!control?.rowKeys?.length && !control?.nodes?.length) return;
   let shown = new Set();
   for (let result of [...hodlLiveWalletResults(), ...hodlKeyManagerPending.map((state) => state.result)]) {
     shown.add(result?.rootNode);
+    shown.add(result?.privateKey);
     for (let account of result?.accounts || []) {
       shown.add(account.privateNode);
       for (let branch of hodlAccountAddressBranches(account)) for (let row of branch.rows) shown.add(row.privateKey);
@@ -609,8 +631,13 @@ function hodlSingleKeyWallet(e, t, r, trimBrainWallet = false) {
   }
   hodlAssertPrivateKey(i);
   let f = hodlSecp256k1.getPublicKey(i, true), d = hodlSecp256k1.getPublicKey(i, false), l = addressFor("p2pkh", d, c), u = addressFor("p2pkh", f, c), p = addressFor("p2sh-p2wpkh", f, c), b = addressFor("p2wpkh", f, c), w = addressFor("p2tr", f, c);
-  let wallet = { kind: "single", network: c, warnings: o, notes: n, privHex: hodlHex.encode(i), wifCompressed: hodlEncodeWif(i, true, c), wifUncompressed: hodlEncodeWif(i, false, c), pubkeyCompressed: hodlHex.encode(f), pubkeyUncompressed: hodlHex.encode(d), p2pkhUncompressed: l, p2pkhCompressed: u, p2shP2wpkh: p, p2wpkh: b, p2tr: w, minikey: s, source, compressed };
-  i.fill(0); // the decoded private key bytes; the result keeps its hex/WIF strings
+  // The result keeps its own copy of the key as bytes that can be zeroed,
+  // never its WIFs or hex (hodlSingleWif, hodlSinglePrivateHex; #546 B2). The
+  // derivation records it with its row keys, so one that never commits zeroes it.
+  let privateKey = Uint8Array.from(i);
+  hodlActiveDerivation?.rowKeys?.push(privateKey);
+  let wallet = { kind: "single", network: c, warnings: o, notes: n, privateKey, pubkeyCompressed: hodlHex.encode(f), pubkeyUncompressed: hodlHex.encode(d), p2pkhUncompressed: l, p2pkhCompressed: u, p2shP2wpkh: p, p2wpkh: b, p2tr: w, minikey: s, source, compressed };
+  i.fill(0); // the decoded private key bytes; the result keeps its own copy
   return wallet;
 }
 function hodlQrSvg(e, t = "#111111", r = "#ffffff") {
@@ -1701,11 +1728,16 @@ function hodlSingleLeadAddress(wallet) {
   if (wallet?.source === "minikey" || wallet?.source === "brain") return "p2pkhUncompressed";
   return "p2wpkh";
 }
+// The private key group's fields: each encoding built only while private
+// values are revealed. The mini key is the typed input itself.
+function hodlSinglePrivateFieldsHtml(wallet) {
+  return `${hodlPrivateKeyFieldHtml("WIF compressed", hodlCompressedWifLength, () => hodlSingleWif(wallet, true), void 0, "muted")}${hodlPrivateKeyFieldHtml("WIF uncompressed", hodlUncompressedWifLength, () => hodlSingleWif(wallet, false), void 0, "muted")}${hodlPrivateKeyFieldHtml("Hex private key", hodlPrivateKeyHexLength, () => hodlSinglePrivateHex(wallet), void 0, "muted")}${wallet.minikey ? hodlPrivateFieldHtml("Mini private key", wallet.minikey, void 0, "muted") : ""}`;
+}
 // Grouped by what a reader comes to do: receive to the key, back it up, or
 // reach a format another wallet needs. Only receiving starts open. The
 // recovery sheet is an action rather than data, so it is never folded away.
 function hodlSingleWalletData(wallet) {
-  let miniKey = wallet.minikey ? hodlPrivateFieldHtml("Mini private key", wallet.minikey, void 0, "muted") : "", lead = hodlSingleLeadAddress(wallet);
+  let lead = hodlSingleLeadAddress(wallet);
   // Canonical order for the list; the lead is lifted out of it into Receive.
   let addressFields = {
     p2pkhUncompressed: hodlPublicFieldHtml("Legacy uncompressed", wallet.p2pkhUncompressed, void 0, "muted"),
@@ -1720,7 +1752,7 @@ function hodlSingleWalletData(wallet) {
     <div class="key-groups">
       ${hodlKeyGroupMarkup("receive", hodlT("Receive address"), `${addressFields[lead]}<div class="qr" aria-label="${hodlTAttr("Receive address QR code")}">${hodlQrSvg(wallet[lead])}</div>`)}
       ${hodlKeyGroupMarkup("addresses", hodlT("Other address formats"), Object.keys(addressFields).filter((key) => key !== lead).map((key) => addressFields[key]).join(""))}
-      ${hodlKeyGroupMarkup("private", `${hodlT("Private key")}${hodlPrivacyEyeMarkup()}`, `${hodlPrivateFieldHtml("WIF compressed", wallet.wifCompressed, void 0, "muted")}${hodlPrivateFieldHtml("WIF uncompressed", wallet.wifUncompressed, void 0, "muted")}${hodlPrivateFieldHtml("Hex private key", wallet.privHex, void 0, "muted")}${miniKey}`, hodlRevealPrivate ? "is-private is-revealed" : "is-private")}
+      ${hodlKeyGroupMarkup("private", `${hodlT("Private key")}${hodlPrivacyEyeMarkup()}`, hodlSinglePrivateFieldsHtml(wallet), hodlRevealPrivate ? "is-private is-revealed" : "is-private")}
       ${hodlKeyGroupMarkup("public", hodlT("Public keys"), `${hodlPublicFieldHtml("Compressed public key", wallet.pubkeyCompressed, void 0, "muted")}${hodlPublicFieldHtml("Uncompressed public key", wallet.pubkeyUncompressed, void 0, "muted")}`)}
     </div>
     ${hodlPrivateDataControls("single-private-description", "single")}
@@ -2120,7 +2152,7 @@ var hodlRecoverySheetText = function(wallet, revealPrivate) {
   lines.push("");
   if (wallet.kind === "single") {
     if (revealPrivate) {
-      lines.push("PRIVATE RECOVERY MATERIAL", `WIF compressed:   ${wallet.wifCompressed ?? ""}`, `WIF uncompressed: ${wallet.wifUncompressed ?? ""}`, `Hex private key:  ${wallet.privHex ?? ""}`);
+      lines.push("PRIVATE RECOVERY MATERIAL", `WIF compressed:   ${hodlSingleWif(wallet, true) ?? ""}`, `WIF uncompressed: ${hodlSingleWif(wallet, false) ?? ""}`, `Hex private key:  ${hodlSinglePrivateHex(wallet) ?? ""}`);
       if (wallet.minikey) lines.push(`Mini key: ${wallet.minikey}`);
     } else lines.push("PRIVATE RECOVERY MATERIAL OMITTED", "Private values were not saved because Show private recovery material was off.");
     lines.push("", "PUBLIC KEYS AND ADDRESSES", `Compressed public key:   ${wallet.pubkeyCompressed}`, `Uncompressed public key: ${wallet.pubkeyUncompressed}`, `Legacy uncompressed: ${wallet.p2pkhUncompressed}`, `Legacy compressed:   ${wallet.p2pkhCompressed}`, `Nested SegWit:       ${wallet.p2shP2wpkh}`, `Native SegWit:       ${wallet.p2wpkh}`, `Taproot:             ${wallet.p2tr}`);
@@ -8183,7 +8215,7 @@ function hodlFillStationKeyPicker(id, selectedSource, onSelect, keys = hodlSessi
 function hodlPsbtSourceKeys() {
   return [...hodlKeys.filter((state) => !state.isLab && state.result && (
     (state.result.kind === "hd" && (state.result.mnemonic || hodlResultHasRoot(state.result))) ||
-    (state.result.kind === "single" && state.result.privHex))),
+    (state.result.kind === "single" && hodlResultHasSingleKey(state.result)))),
     ...hodlBip85Children.map(hodlBip85SessionKeyState).filter(Boolean)];
 }
 // Both inspectors share one session, so a chip picked on either loads the key
@@ -10003,8 +10035,8 @@ function hodlUseActiveKeyForPsbt(state = hodlKeys[hodlActiveKey]) {
     hodlPsbtErrorSpec = { key: "The active key is an account-level extended private key. PSBT session signing needs origin-aware relative paths, which this version does not infer. Use the original seed or root xprv/tprv instead." };
     throw new Error(hodlTText("The active key is an account-level extended private key. PSBT session signing needs origin-aware relative paths, which this version does not infer. Use the original seed or root xprv/tprv instead."));
   }
-  else if (result.kind === "single" && result.privHex) {
-    hodlPsbtPriv = hodlHex.decode(result.privHex);
+  else if (result.kind === "single" && hodlResultHasSingleKey(result)) {
+    hodlPsbtPriv = hodlSinglePrivateKey(result);
     hodlAssertPrivateKey(hodlPsbtPriv);
   } else {
     hodlPsbtErrorSpec = { key: "The active key has no private material available for a session check." };

@@ -27,6 +27,18 @@ test("catalog content is valid and drift is report-only", () => {
   execFileSync(process.execPath, [join(root, "scripts/i18n-sync.mjs")], { stdio: "pipe" });
 });
 
+// The field helpers take the English label as their first argument and
+// translate it inside, so a literal label at any of their call sites must be
+// a translation source, or i18n:sync prunes its translations as dead.
+test("labels passed to the field helpers are translation sources", async () => {
+  const { collectSources } = await import(join(root, "scripts/i18n-sources.mjs"));
+  const sources = await collectSources(root), known = new Set(sources instanceof Map ? sources.keys() : sources);
+  const app = execFileSync("cat", [join(root, "src/js/app.js")], { encoding: "utf8" });
+  const labels = [...app.matchAll(/\bhodl(?:Public|Private|PrivateKey)FieldHtml\("((?:[^"\\]|\\.)*)"/g)].map((match) => JSON.parse(`"${match[1]}"`));
+  assert.ok(labels.length > 10, "fixture: the field helpers have literal labels");
+  assert.deepEqual(labels.filter((label) => !known.has(label)), []);
+});
+
 test("every locale stays selectable, translated or not", () => {
   assert.deepEqual(hodlSelectableLocales(), [...hodlLocaleCodes]);
 });

@@ -54,7 +54,7 @@ const callSites = (root) => {
     // names; the longest names come first so the alternation cannot match a
     // prefix. The field helpers take the English label as their first
     // argument and translate it internally, so their literals are sources too.
-    const translating = ["hodlPublicFieldHtml", "hodlPrivateFieldHtml", "hodlTText", "hodlTAttr", "hodlT", "hodlError", "hodlNote"];
+    const translating = ["hodlPublicFieldHtml", "hodlPrivateKeyFieldHtml", "hodlPrivateFieldHtml", "hodlTText", "hodlTAttr", "hodlT", "hodlError", "hodlNote"];
     const fns = name === "wallet-export.js" || name === "network-check.js" ? [...translating, "t"] : translating;
     const pattern = new RegExp(`(?:^|[^\\w$.])(?:${fns.join("|")})\\(`, "gm");
     for (const match of src.matchAll(pattern)) {

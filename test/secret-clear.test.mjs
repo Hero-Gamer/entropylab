@@ -495,7 +495,7 @@ const walletBuilderParts = loadAppFunctions(["hodlAccountExportFamily", "hodlSer
 const walletKeepers = ["hodlCopyPrivateNode", "hodlKeepPrivateNode"].filter((name) => app.includes(`function ${name}(`));
 const bip84Definition = { id: "bip84", label: "Native SegWit", bip: "BIP84", script: "p2wpkh", purpose: 84, purposeHardened: true };
 
-async function derivationHarness({ failAtAddress = 0, identity = () => "bip32-vector-1" } = {}) {
+async function derivationHarness({ failAtAddress = 0, identity = () => "bip32-vector-1", single = false } = {}) {
   const harness = raceHarness(), { context } = harness, keys = [], pauses = [];
   const real = await loadAppFunctions(["hodlPathComponent", "hodlAddressBranchRole", "hodlAddressOrThrow"]);
   let clock = 0, addresses = 0;
@@ -514,6 +514,13 @@ async function derivationHarness({ failAtAddress = 0, identity = () => "bip32-ve
     // The rows come from the real row builder; the real account and wallet
     // builders then assemble them into the result a derivation commits.
     async hodlEntropyWalletWithProgress(entropy, passphrase, network, count, accountIndex, addressStart, tracker) {
+      // A single-key result from the real builder, which records its key
+      // bytes with this harness's derivation (#546 B2 step 2c-1).
+      if (single) {
+        const builder = await singleKeyBuilder;
+        builder.__set.hodlActiveDerivation(context.hodlActiveDerivation);
+        return builder.hodlSingleKeyWallet(singleKeyWif, "mainnet", "wif");
+      }
       const root = HDKey.fromMasterSeed(vectorSeed), account = root.derive("m/84'/0'/0'"), watched = {
         derive(path) {
           const child = account.derive(path);
@@ -1041,5 +1048,86 @@ test("a derivation declined at the fingerprint confirmation, or hidden while it 
     await run.promise;
     assert.equal(context.hodlWalletResult, null);
     assert.deepEqual(usableKeyMaterial(pending), [], `${ending}: the uncommitted result's extended private keys are still usable`);
+  }
+});
+
+// #546 B2 step 2c-1: a single key (WIF, hex, mini key or brain wallet) holds
+// its private key as bytes, which go wherever a wallet's keys go. Before this
+// step its WIFs and hex were strings for the whole session.
+// Bitcoin wiki, "Wallet import format": this key's uncompressed mainnet WIF.
+const singleKeyWif = "5HueCGU8rMjxEXxiPuD5BDku4MkFqeZyd4dZ1jvhTVqvbTLvyTJ";
+const singleKeyBytes = hex.decode("0c28fca386c7a227600b2fe50b7cae11ec86d3bf1fbe471be89827e19d72aa1d");
+const singleKeyBuilder = loadAppFunctions(["hodlSingleKeyWallet", "hodlActiveDerivation"], { settable: ["hodlActiveDerivation"] });
+// Whether a result still makes the key usable: its WIFs or hex as text
+// anywhere in it, or bytes that still hold it.
+const usableSingleKey = (result) => {
+  const b58check = createBase58check(sha256), texts = [
+    b58check.encode(Uint8Array.from([0x80, ...singleKeyBytes])), b58check.encode(Uint8Array.from([0x80, ...singleKeyBytes, 1])), hex.encode(singleKeyBytes),
+  ];
+  let found = false;
+  const seen = new Set(), walk = (value) => {
+    if (typeof value === "string") found ||= texts.some((secret) => value.toLowerCase().includes(secret.toLowerCase()));
+    else if (value instanceof Uint8Array || (ArrayBuffer.isView(value) && value.BYTES_PER_ELEMENT === 1)) found ||= hex.encode(Uint8Array.from(value)) === hex.encode(singleKeyBytes);
+    else if (value && typeof value === "object" && !seen.has(value)) {
+      seen.add(value);
+      for (const key of Object.keys(value)) walk(value[key]);
+    }
+  };
+  walk(result);
+  return found;
+};
+
+test("a single key stays usable while it is held and is zeroed once it is dropped or the page goes", async () => {
+  for (const drop of ["Wipe", "edit", "re-derive", "delete", "journal lock", "pagehide"]) {
+    const { context, events, derive, selectLab, leaveKeys, active } = await stationHarness({ single: true });
+    context.hodlJournalUnlocked = () => drop === "journal lock";
+    await derive();
+    const dropped = active().result;
+    selectLab();
+    await derive();
+    const kept = active().result;
+    assert.equal(dropped.kind, "single");
+    assert.notEqual(dropped, kept);
+    assert.ok(usableSingleKey(dropped) && usableSingleKey(kept), `${drop}: a committed single key lost its key`);
+    context.hodlActiveKey = context.hodlKeys.findIndex((state) => state.result === dropped);
+    context.hodlRestoreKey();
+    if (drop === "Wipe") context.hodlWipeActiveKey();
+    else if (drop === "edit") context.hodlInvalidateLiveKeyResult();
+    else if (drop === "re-derive") await derive();
+    else if (drop === "delete") context.hodlDeleteActiveKey();
+    else if (drop === "journal lock") {
+      context.hodlDeleteActiveKey();
+      leaveKeys("journal");
+      context.hodlJournalLock();
+    } else events.pagehide({});
+    assert.equal(usableSingleKey(dropped), false, `${drop}: the dropped single key is still usable`);
+    if (drop === "pagehide") assert.equal(usableSingleKey(kept), false, "pagehide left a shown single key usable");
+    else assert.ok(usableSingleKey(kept), `${drop}: dropping one key took another key's bytes`);
+  }
+});
+
+test("a single key another tab still shows keeps its bytes when one tab drops it", async () => {
+  const { context, derive, active } = await stationHarness({ single: true });
+  await derive();
+  const result = active().result;
+  context.hodlKeys.push({ id: 99, number: 99, isLab: false, fields: {}, result });
+  context.hodlInvalidateLiveKeyResult();
+  assert.ok(usableSingleKey(result), "dropping a shared single key from one tab zeroed the key the other tab shows");
+});
+
+test("a single key declined at the fingerprint confirmation, or hidden while it asks, is zeroed", async () => {
+  for (const ending of ["declined", "pagehide"]) {
+    const { context, events, driveUntil, start } = await derivationHarness({ single: true }), confirm = deferred();
+    let pending = null;
+    context.hodlConfirmKeyFingerprint = (result) => { pending = result; return confirm.promise; };
+    const run = start();
+    await driveUntil(() => pending);
+    assert.ok(usableSingleKey(pending), `${ending}: the finished result carries no key to zero`);
+    if (ending === "pagehide") events.pagehide({});
+    confirm.resolve(ending === "pagehide");
+    await driveUntil(() => run.settled);
+    await run.promise;
+    assert.equal(context.hodlWalletResult, null);
+    assert.equal(usableSingleKey(pending), false, `${ending}: the uncommitted single key is still usable`);
   }
 });

@@ -593,12 +593,13 @@ details.lab-entropy > summary {
    labels above it rather than the button default, which inherits the
    browser's 16px and read a step larger than every title around it. */
 .dice-fairness-toggle {
-  display: inline-flex; align-items: center; gap: 4px; width: fit-content; min-height: 32px; padding: 0;
+  display: inline-flex; align-items: center; gap: 2px; width: fit-content; min-height: 32px; padding: 0;
   border: 0; background: transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer;
 }
-/* Grey at rest, white while hovered or open: the arrow is a child span with no
-   colour of its own, so it follows the label through every state. */
-.dice-fairness-toggle:hover, .dice-fairness-toggle[aria-expanded="true"] { color: var(--fg); }
+/* Grey at rest, white while open, the buttons' orange under the pointer: the
+   arrow is a child span with no colour of its own, so it follows the label. */
+.dice-fairness-toggle[aria-expanded="true"] { color: var(--fg); }
+.dice-fairness-toggle:hover { color: var(--selection-accent-ink); }
 /* The fairness toggle heads the panel under it rather than trailing anything,
    so it takes its own row, close to the keypad above. The copy button that
    used to share this row belongs with the seed phrase title instead. */
@@ -619,9 +620,6 @@ details.lab-entropy > summary {
    label's does inside its own, so centred boxes read as a sagging arrow. The
    nudge lines up what the eye sees rather than what the layout measures, and
    a transform keeps it out of the 44px row height. Optical, not layout. */
-.dice-fairness-toggle [data-dice-fairness-glyph] {
-  display: inline-block; width: 0.7em; font-size: 22px; line-height: 1; transform: translateY(-2px);
-}
 /* Sits directly under the control that opens it: the toggle row already
    carries its own space below the text, since the button holds a 44px touch
    target around a 14px line. */
@@ -2268,22 +2266,26 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    text — a line only as wide as the words would read as an underline. The
    glyph and label still sit left; only the hit area grows with it. */
 :is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary {
-  display: inline-flex; align-items: center; gap: 4px; width: fit-content; min-height: 32px;
+  display: inline-flex; align-items: center; gap: 2px; width: fit-content; min-height: 32px;
   margin-bottom: var(--space-control);
   color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; list-style: none;
 }
 :is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary::-webkit-details-marker { display: none; }
-:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary::before {
-  content: "\25B8"; display: inline-block; width: 0.7em; font-size: 22px; line-height: 1; transform: translateY(-2px);
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary::before { content: "\25B8"; }
+/* The disclosure triangle, one size for every toggle: the details summaries
+   draw it as a pseudo-element, the fairness button as a child span. */
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary::before, .dice-fairness-toggle [data-dice-fairness-glyph] {
+  display: inline-block; width: 0.6em; font-size: 26px; line-height: 1; transform: translateY(-2px);
 }
 :is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced)[open] > summary::before { content: "\25BE"; }
-:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary:hover { color: var(--fg); }
 :is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary:focus-visible { outline-offset: 4px; border-radius: 3px; }
 /* Open, the toggle titles the block rather than standing off from it, and the
    block carries the space beneath itself instead. The gap under the toggle is
    the same either way — set on the summary itself — so opening the section
    moves the fields in without shifting the toggle. */
 :is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced)[open] > summary { color: var(--fg); }
+/* Under the pointer the toggle takes the buttons' hover ink, open or shut. */
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary:hover { color: var(--selection-accent-ink); }
 /* A key view group is a row, not a word: the whole line answers the pointer,
    so there is no dead space beside the title. */
 .key-group > summary { display: flex; width: auto; min-height: 36px; }

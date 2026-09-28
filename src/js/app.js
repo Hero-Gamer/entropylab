@@ -12213,6 +12213,9 @@ function hodlKeyManagerReset() {
   hodlKeyManagerIgnored = [];
   hodlKeyManagerPending = [];
   hodlKeyManagerActiveId = "";
+  // The Key Station forgets the wallets only the Key Manager held, so no
+  // record keeps their other private material reachable after a lock.
+  hodlDisposeDroppedWallets();
   let file = document.getElementById("journal-keymanager-file");
   if (file) file.value = "";
   hodlKeyManagerStatus("");

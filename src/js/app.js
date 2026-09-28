@@ -10618,9 +10618,10 @@ function hodlRenderBip85Out() {
             : hodlEscapeHtml(fingerprintLabel)}</p>
         </div>
       </div>
-      <div class="edge-note is-private wallet-data-section-head">
-        <p class="muted" id="bip85-private-description">Anyone with the parent, application, and index can reproduce this child key.</p>
-      </div>
+      <section class="edge-note-titled" aria-labelledby="bip85-child-safety-heading">
+        <h3 class="edge-note-title is-private" id="bip85-child-safety-heading">${hodlT("Safety notes")}</h3>
+        <p class="edge-note is-private" id="bip85-private-description">Anyone with the parent, application, and index can reproduce this child key.</p>
+      </section>
       <div class="wallet-data-actions no-print">
         <label class="privacy-bar${hodlBip85Reveal ? " is-revealed" : ""}">
           <input type="checkbox" role="switch" id="bip85-reveal" ${hodlBip85Reveal ? "checked" : ""} aria-describedby="bip85-private-description">
@@ -10632,9 +10633,12 @@ function hodlRenderBip85Out() {
         ${hodlBip85SecretField(derived.secretLabel, derived.secret)}
         ${hodlBip85SecretField("Derived entropy", derived.entropyHex)}
       </div>
-      <p class="edge-note is-private">Button below copies the child key's seed phrase regardless of whether that data is revealed above.</p>
+      <section class="edge-note-titled" aria-labelledby="bip85-copy-heading">
+        <h3 class="edge-note-title is-private" id="bip85-copy-heading">${hodlT("Important!")}</h3>
+        <p class="edge-note is-private">Button below copies the child key's seed phrase regardless of whether that data is revealed above.</p>
+      </section>
       <div class="row bip85-actions current-item-actions tool-actions no-print">
-        <button class="btn secondary" id="bip85-copy" type="button">Copy Child Seed Phrase</button>
+        <button class="btn secondary red" id="bip85-copy" type="button">Copy Child Seed Phrase</button>
         <span class="copy-status bip85-copy-status" id="bip85-copy-status" aria-live="polite"></span>
       </div>
     </section>`;

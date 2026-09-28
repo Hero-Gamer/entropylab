@@ -28,8 +28,9 @@ import { HDKey } from "@scure/bip32";
 import { entropyToMnemonic } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { deriveApplication, wipeBip85Result } from "../src/js/bip85.js";
+import { hodlApplyStaticI18n, hodlSetLocale, t as translate } from "../src/js/i18n.js";
 import { loadAppFunctions } from "./app-slice-harness.mjs";
-import { MiniDocument } from "./mini-dom.mjs";
+import { MiniDocument, MiniNodeFilter } from "./mini-dom.mjs";
 
 const inert = new Proxy(function () {}, { get: (target, key) => key === Symbol.toPrimitive ? () => "" : key === "then" ? undefined : inert, apply: () => inert, construct: () => inert });
 Object.assign(globalThis, { __ENTROPYLAB_TEST_HOOKS__: false, document: inert, window: inert });
@@ -59,12 +60,15 @@ function page(mode = "works") {
   written.length = executed.length = 0;
   globalThis.document = new MiniDocument();
   globalThis.document.execCommand = (command) => (executed.push([command, globalThis.document.querySelector("textarea")?.value]), true);
+  globalThis.NodeFilter = MiniNodeFilter;
   clipboard(mode);
   mock.timers.enable({ apis: ["setTimeout"] });
   return globalThis.document;
 }
 function leave() {
   mock.timers.reset();
+  hodlSetLocale("en", false);
+  delete globalThis.NodeFilter;
   delete globalThis.document;
   if (navigatorDescriptor) Object.defineProperty(globalThis, "navigator", navigatorDescriptor);
   else delete globalThis.navigator;
@@ -292,6 +296,67 @@ test("the Journal's copy buttons still copy what they carry", withPage("works", 
   await settle();
   assert.deepEqual(written, ["first line\nsecond line"]);
 }));
+
+// ---- A seed word is data, not text to translate ----------------------------
+
+// The page's translation sweep (i18n.js, run on every language switch and at
+// boot) rewrites any text node whose text is a catalog key, and three BIP39
+// words are keys: "account", "coin" and "online". The grid must show them, and
+// the button must copy them, unchanged in every language (#609 review).
+const LOCALES = ["es", "pt", "fr", "de"];
+// Entropy whose phrase starts with the given words: their 11-bit indices, then
+// zero bits. @scure/bip39 turns it into the phrase, checksum word included.
+function entropyStartingWith(words, bytes) {
+  const bits = words.map((word) => wordlist.indexOf(word).toString(2).padStart(11, "0")).join("").padEnd(bytes * 8, "0");
+  return Uint8Array.from(bits.match(/.{8}/g), (byte) => parseInt(byte, 2));
+}
+const TRANSLATABLE = [
+  // The review's case: 12 words ending "account accident".
+  ["12 words ending in account", entropyToMnemonic(hex("00000000000000000000000000000600"), wordlist).split(" "), 12],
+  ["24 words with all three", entropyToMnemonic(entropyStartingWith(["online", "legal", "coin", "winner", "account", "coin", "online", "account"], 32), wordlist).split(" "), 24],
+  ["partial grid, 5 of 12", entropyToMnemonic(entropyStartingWith(["coin", "online", "account", "zoo", "coin"], 16), wordlist).split(" ").slice(0, 5), 12],
+];
+const shownWords = (document, count) => [...document.querySelectorAll("#form [data-word-slot] [data-word]")].slice(0, count).map((slot) => slot.textContent);
+
+test("the fixtures carry the BIP39 words that are translation keys", () => {
+  assert.deepEqual(TRANSLATABLE[0][1].slice(-2), ["account", "accident"]);
+  for (const [name, words] of TRANSLATABLE) assert.ok(words.some((word) => ["account", "coin", "online"].includes(word)), name);
+  assert.ok(TRANSLATABLE.slice(1).every(([, words]) => ["account", "coin", "online"].every((word) => words.includes(word))));
+  // Without the skip, the sweep would change these words: Spanish translates all three.
+  try {
+    hodlSetLocale("es", false);
+    for (const word of ["account", "coin", "online"]) assert.notEqual(translate(word), word, word);
+  } finally {
+    hodlSetLocale("en", false);
+  }
+});
+
+for (const [name, words, target] of TRANSLATABLE) {
+  for (const locale of LOCALES) {
+    test(`${name}, language switched to ${locale}: the grid shows the words and a click copies them exactly`, withPage("works", async (document) => {
+      const { button, render } = seedPage(document);
+      render(words, target);
+      hodlSetLocale(locale, false);
+      button.click();
+      await settle();
+      assert.deepEqual(written, [words.join(" ")]);
+      assert.deepEqual(shownWords(document, words.length), words);
+      assert.deepEqual(leaks(button, words.join(" ")), []);
+    }));
+
+    test(`${name}, rendered in ${locale}: the grid shows the words and a click copies them exactly`, withPage("works", async (document) => {
+      hodlSetLocale(locale, false);
+      const { button, render } = seedPage(document);
+      render(words, target);
+      hodlApplyStaticI18n();
+      button.click();
+      await settle();
+      assert.deepEqual(written, [words.join(" ")]);
+      assert.deepEqual(shownWords(document, words.length), words);
+      assert.deepEqual(leaks(button, words.join(" ")), []);
+    }));
+  }
+}
 
 // ---- The BIP-85 Station's child copy button --------------------------------
 

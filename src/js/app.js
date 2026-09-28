@@ -5787,6 +5787,10 @@ function hodlRenderDiceWordGrid(container, words, targetWords = hodlTargetWordCo
     number.textContent = `${index + 1}.`;
     value.className = "dice-word-value";
     value.dataset.word = "";
+    // A BIP39 word is data, not copy: the translation sweep must not rewrite
+    // it (account, coin and online are catalog keys), and the copy button
+    // reads it back from here.
+    value.dataset.i18nSkip = "";
     value.textContent = word || hodlEmptyWordSlot;
     slot.append(number, value);
     fragment.appendChild(slot);

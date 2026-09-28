@@ -9,7 +9,9 @@
 //     `onclick`, a timer id), so a test can enumerate them;
 //   - `innerHTML` parses markup, so the app's own row and station templates
 //     build the fixture;
-//   - a disabled button does not click.
+//   - a disabled button does not click;
+//   - `document.createTreeWalker` walks text nodes, so the app's own
+//     translation sweep (i18n.js) runs over the fixture.
 // Selectors: tag, #id, .class, [attr], [attr=value], compounds, descendant
 // chains and comma lists. Anything else throws, so an unsupported selector
 // fails loudly rather than matching nothing.
@@ -59,7 +61,10 @@ export class MiniText {
     state.set(this, { parent: null });
   }
   get textContent() { return this.data; }
+  get nodeValue() { return this.data; }
+  set nodeValue(value) { this.data = String(value); }
   get parentNode() { return me(this).parent; }
+  get parentElement() { return me(this).parent instanceof MiniElement ? me(this).parent : null; }
 }
 
 function adopt(parent, node) {
@@ -220,11 +225,31 @@ function parseHtml(ownerDocument, html) {
   return root;
 }
 
+// The text-node walk the app's translation sweep uses (whatToShow is taken to
+// be SHOW_TEXT). A rejected text node is simply not returned.
+export const MiniNodeFilter = Object.freeze({ SHOW_TEXT: 4, FILTER_ACCEPT: 1, FILTER_REJECT: 2, FILTER_SKIP: 3 });
+function textNodesUnder(node, out = []) {
+  for (const kid of me(node).kids) {
+    if (kid instanceof MiniText) out.push(kid);
+    else if (kid instanceof MiniElement) textNodesUnder(kid, out);
+  }
+  return out;
+}
+
 export class MiniDocument {
   constructor() {
     this.body = new MiniElement("body", this);
     me(this.body).parent = this;
+    this.documentElement = { lang: "en" };
     state.set(this, { kids: [this.body] });
+  }
+  createTreeWalker(root, _whatToShow, filter) {
+    const nodes = textNodesUnder(root).filter((node) => !filter?.acceptNode || filter.acceptNode(node) === MiniNodeFilter.FILTER_ACCEPT);
+    let index = -1;
+    return {
+      get currentNode() { return nodes[index] ?? root; },
+      nextNode() { return ++index < nodes.length ? nodes[index] : null; },
+    };
   }
   createElement(tag) { return new MiniElement(tag, this); }
   createElementNS(_namespace, tag) { return new MiniElement(tag, this); }

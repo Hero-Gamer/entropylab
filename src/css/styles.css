@@ -1742,7 +1742,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* The overall verdict is a <strong>, which the browser sets at 700; the
    report's headings sit at 600. */
 .psbt-analysis-summary > p > strong { font-weight: 600; }
-.psbt-analysis-summary > p:is(.psbt-ok, .psbt-warn, .psbt-bad, .psbted-note-ok, .psbted-note-warn, .psbted-note-bad) { font-size: 15px; }
+.psbt-analysis-summary > p:is(.psbt-ok, .psbt-warn, .psbt-bad, .psbted-note-ok, .psbted-note-warn, .psbted-note-bad) { font-size: 13px; }
 /* The report's sections — the analysis, where the coins go, what they spend —
    are parted by the same hairline the rest of the app uses. */
 .result-divider { height: 0; margin: var(--space-section) 0; border: 0; border-top: 1px solid var(--border); }
@@ -1794,10 +1794,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* Section titles in the editor read as the shared label, not as headings. */
 .psbted-map > h3 { margin: 0 0 4px; font: inherit; font-size: 14px; font-weight: 600; letter-spacing: normal; }
 /* Long forms mark where each section begins with a faint full-width band
-   behind its label: the PSBT Editor's sections and MS Station's co-signer
-   cards. The band reaches 8px past the content on each side so the label's
-   text stays on the content edge. */
-.psbted-section-label, .psbted-map > .psbted-section-label, .msig-key-band {
+   behind its label: the PSBT Editor's sections, the PSBT Inspector's result
+   sections and MS Station's co-signer cards. The band reaches 8px past the
+   content on each side so the label's text stays on the content edge. */
+.psbted-section-label, .psbted-map > .psbted-section-label, .psbt-section-label, .psbt-analysis-summary > .psbt-section-label, .msig-key-band {
   margin-inline: -8px; padding: 6px 8px;
   background: color-mix(in oklab, var(--fg) 5%, transparent);
 }

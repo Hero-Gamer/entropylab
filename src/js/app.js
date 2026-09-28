@@ -10172,6 +10172,23 @@ function hodlSetButtonEnabled(id, on) {
   button.disabled = !on;
   button.setAttribute("aria-disabled", String(!on));
 }
+// The two cards that run an inspection, and what each one's run reads.
+var hodlPsbtCards = [
+  { text: "psbt-text", fields: ["psbt-key", "psbt-pass"], go: "psbt-go", download: "psbt-download", out: "psbt-out", session: "psbt-session" },
+  { text: "nonce-text", fields: ["nonce-key", "nonce-pass", "psbt-ax-transcript"], go: "nonce-go", out: "nonce-out", session: "nonce-session" },
+];
+// A run is stamped with everything it read: the payload, the key fields and
+// the session. Running it again on the same stamp would only repeat the
+// result on screen, so the card's run button waits for one of them to change.
+var hodlPsbtInspected = {};
+function hodlPsbtRunStamp(card) {
+  let value = (id) => String(document.getElementById(id)?.value || "").trim();
+  return JSON.stringify([value(card.text), ...card.fields.map(value), hodlPsbtSessionSpec]);
+}
+function hodlMarkPsbtInspected(go) {
+  let card = hodlPsbtCards.find((entry) => entry.go === go);
+  if (card) hodlPsbtInspected[go] = hodlPsbtRunStamp(card);
+}
 function hodlSyncPsbtControls() {
   let value = (id) => String(document.getElementById(id)?.value || "").trim();
   let decodes = (text) => {
@@ -10187,12 +10204,9 @@ function hodlSyncPsbtControls() {
   let loaded = Boolean(hodlPsbtPriv || hodlPsbtHd);
   let idle = hodlPsbtSessionSpec.key === "No session key. Inspect-only mode.";
   let anything = loaded || hodlPsbtNonceHistory.length > 0;
-  for (let card of [
-    { text: "psbt-text", fields: ["psbt-key", "psbt-pass"], go: "psbt-go", download: "psbt-download", out: "psbt-out", session: "psbt-session" },
-    { text: "nonce-text", fields: ["nonce-key", "nonce-pass", "psbt-ax-transcript"], go: "nonce-go", out: "nonce-out", session: "nonce-session" },
-  ]) {
+  for (let card of hodlPsbtCards) {
     let text = value(card.text), typed = Boolean(text || card.fields.some((id) => value(id))), ready = decodes(text);
-    enable(card.go, ready);
+    enable(card.go, ready && hodlPsbtInspected[card.go] !== hodlPsbtRunStamp(card));
     if (card.download) enable(card.download, ready);
     let session = document.getElementById(card.session);
     if (session) {
@@ -10226,6 +10240,7 @@ function hodlEndPsbtSession() {
   hodlPsbtWipeMem();
   hodlPsbtClearNonceHistory(true);
   hodlPsbtLast = null;
+  hodlPsbtInspected = {};
   hodlPsbtSessionSpec = { key: "Session ended and accessible fields were cleared (best effort)." };
   for (let id of ["psbt-key", "psbt-pass", "psbt-text", "psbt-ax-transcript", "nonce-key", "nonce-pass", "nonce-text"]) {
     let field = document.getElementById(id);
@@ -10279,6 +10294,7 @@ function hodlInitPsbt() {
   go.onclick = () => {
     hodlRunPsbt();
     hodlRefreshStationKeyPickers();
+    hodlMarkPsbtInspected("psbt-go");
     hodlSyncPsbtControls();
   };
   document.getElementById("psbt-wipe").onclick = hodlEndPsbtSession;
@@ -10286,6 +10302,7 @@ function hodlInitPsbt() {
   document.getElementById("nonce-go").onclick = () => {
     hodlRunNonce();
     hodlRefreshStationKeyPickers();
+    hodlMarkPsbtInspected("nonce-go");
     hodlSyncPsbtControls();
   };
   const nonceFile = document.getElementById("nonce-file");
@@ -11708,7 +11725,7 @@ function hodlPsbtAnalysisSummary(checks) {
       className = check.state === "complete" ? "psbt-ok" : check.state === "problem" ? "psbt-bad" : "psbt-warn";
     return "<li><span class='label'>" + hodlEscapeHtml(check.label) + "</span> — <span class='" + className + "'>" + label + "</span><br><span class='muted'>" + hodlEscapeHtml(check.detail) + "</span></li>";
   }).join("");
-  return "<section class='psbt-analysis-summary' aria-label='PSBT security analysis status'><p class='label'>PSBT security analysis</p><p class='" + overallClass + "'><strong>" + overall + "</strong></p><ul>" + rows + "</ul><p class='edge-note is-private'>Completed means only that the named check ran on the information available here. It does not prove that the PSBT claims are true or that the transaction is safe to sign.</p></section>";
+  return "<section class='psbt-analysis-summary' aria-label='PSBT security analysis status'><p class='label psbt-section-label'>PSBT security analysis</p><p class='" + overallClass + "'><strong>" + overall + "</strong></p><ul>" + rows + "</ul><p class='edge-note is-private'>Completed means only that the named check ran on the information available here. It does not prove that the PSBT claims are true or that the transaction is safe to sign.</p></section>";
 }
 function hodlPsbtNonceCheck(reused, possible, nonceIncomplete) {
   if (reused.length) return { label: "Nonce analysis", state: "problem", detail: "A repeated ECDSA nonce was detected; open the Nonce Inspector for the affected signatures." };
@@ -11761,14 +11778,14 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
     transcriptError = exception.message || String(exception);
   }
   html.push("<hr class='result-divider'>");
-  html.push("<p class='label'>" + hodlT("Tx outputs") + " <span class='label-value'>(" + tx.outputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction sends bitcoin") + "</p>");
+  html.push("<p class='label psbt-section-label'>" + hodlT("Tx outputs") + " <span class='label-value'>(" + tx.outputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction sends bitcoin") + "</p>");
   let ownershipMap = hodlSessionOwnership(network);
   tx.outputs.forEach((output, index) => {
     html.push(hodlRenderOutputHtml(output, index, network, ownershipMap, psbt.outputs[index]));
   });
   html.push(hodlOwnershipWarning(tx.outputs, network, ownershipMap));
   html.push("<hr class='result-divider'>");
-  html.push("<p class='label'>" + hodlT("Tx inputs") + " <span class='label-value'>(" + tx.inputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction’s outputs are spending from") + "</p>");
+  html.push("<p class='label psbt-section-label'>" + hodlT("Tx inputs") + " <span class='label-value'>(" + tx.inputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction’s outputs are spending from") + "</p>");
   psbt.inputs.forEach((entries, index) => {
     let witnessUtxo = hodlWitUtxo(entries);
     // The non-witness UTXO is the checkable claim: it embeds the previous
@@ -11945,7 +11962,7 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
     });
   });
   html.push("<hr class='result-divider'>");
-  html.push("<p class='label'>" + hodlT("Tx fees") + "</p><p class='muted label-description'>" + hodlT("Remainder of total inputs after total outputs are accounted for") + "</p>");
+  html.push("<p class='label psbt-section-label'>" + hodlT("Tx fees") + "</p><p class='muted label-description'>" + hodlT("Remainder of total inputs after total outputs are accounted for") + "</p>");
   if (conflictedInputs.length) html.push("<p class='psbt-bad'><strong>Fee unknown</strong> — input(s) " + conflictedInputs.join(", ") + " carry conflicting witness and non-witness UTXO amounts.</p>");
   else if (knownInputs === tx.inputs.length) {
     let outputSum = tx.outputs.reduce((sum, output) => sum + output.amount, 0n), fee = inputSum - outputSum;
@@ -12034,13 +12051,13 @@ function hodlRenderRawTx(tx, nonceSourceTag = new Uint8Array(), nonceCheckedAt =
     uninspected = 0;
   html.push("<p class='psbt-warn'><strong>Raw Bitcoin transaction.</strong> Not a PSBT. Input amounts and fee are unknown without previous outputs. RFC 6979 cannot be checked here. This is the last look before broadcast.</p>");
   html.push("<hr class='result-divider'>");
-  html.push("<p class='label'>" + hodlT("Tx outputs") + " <span class='label-value'>(" + tx.outputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction sends bitcoin") + "</p>");
+  html.push("<p class='label psbt-section-label'>" + hodlT("Tx outputs") + " <span class='label-value'>(" + tx.outputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction sends bitcoin") + "</p>");
   tx.outputs.forEach((output, index) => {
     html.push(hodlRenderOutputHtml(output, index, network, map, null));
   });
   html.push(hodlOwnershipWarning(tx.outputs, network, map));
   html.push("<hr class='result-divider'>");
-  html.push("<p class='label'>" + hodlT("Tx inputs") + " <span class='label-value'>(" + tx.inputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction’s outputs are spending from") + "</p>");
+  html.push("<p class='label psbt-section-label'>" + hodlT("Tx inputs") + " <span class='label-value'>(" + tx.inputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction’s outputs are spending from") + "</p>");
   tx.inputs.forEach((input, index) => {
     html.push("<p class='psbt-kv'><strong>Input " + index + "</strong> \xB7 " + hodlHexRev(input.txid) + " : " + input.vout + "<br>sequence " + hodlEscapeHtml("0x" + input.sequence.toString(16)) + (input.sequence < 0xfffffffe ? " \xB7 RBF-capable" : "") + "</p>");
   });

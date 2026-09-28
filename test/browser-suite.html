@@ -3849,6 +3849,11 @@
       const without = verdict();
       equal(without, "Incomplete", "unsupported signatures should leave nonce coverage incomplete");
       input(jade, transcript);
+      // The transcript is not an Inspector input, so Inspect waits for one of
+      // its own to change. A passphrase with no key is read but loads nothing,
+      // so the rerun sees the same PSBT and the same empty session.
+      assert(document.getElementById("psbt-go").disabled, "a Nonce Inspector field re-enabled the PSBT Inspector's run");
+      input(document.getElementById("psbt-pass"), "unused");
       document.getElementById("psbt-out").innerHTML = "";
       document.getElementById("psbt-go").click();
       await until(() => verdict(), "inspector verdict with a transcript on the other tab");
@@ -3932,6 +3937,12 @@
       document.getElementById("psbt-go").click();
       await until(() => selected("psbt-session-keys").length === 0, "chips to release after a typed key");
       equal(selected("nonce-session-keys").length, 0, "the Nonce Inspector kept a released chip");
+      // A run waits for a change: the same inputs would only repeat the result.
+      assert(!on("psbt-go") && on("psbt-download"), "Inspect stayed available for inputs it had just inspected");
+      input(document.getElementById("psbt-pass"), "x");
+      assert(on("psbt-go"), "Inspect did not return after an input changed");
+      input(document.getElementById("psbt-pass"), "");
+      assert(!on("psbt-go"), "Inspect returned for the inputs it had already inspected");
     } finally {
       document.getElementById("psbt-wipe").click();
     }

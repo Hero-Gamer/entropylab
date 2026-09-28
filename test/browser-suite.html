@@ -35,6 +35,21 @@
   const equal = (actual, expected) => {
     if (actual !== expected) throw new Error(`expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
   };
+  // What clicking a copy button puts on the clipboard: the buttons build it on
+  // the click and hold no copy of it, so the click is the only way to read it.
+  const copiedBy = async (button) => {
+    const original = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    let copied = null;
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (text) => { copied = text; } } });
+    try {
+      button.click();
+      await wait(0);
+    } finally {
+      if (original) Object.defineProperty(navigator, "clipboard", original);
+      else delete navigator.clipboard;
+    }
+    return copied;
+  };
   const report = (filename) => {
     const text = results.map((result) =>
       [result.ok ? "ok" : "not ok", result.name, result.error || ""].join("\t")
@@ -730,7 +745,7 @@
     assert(document.getElementById("cards-meta").textContent.includes("recommended cards"), "Card status lost its count line");
     equal([...document.querySelectorAll("#dice-words [data-word]")].filter((word) => word.textContent !== "—").length, 24);
     const cardCopy = document.querySelector('[data-copy-seed-phrase]');
-    assert(cardCopy && !cardCopy.disabled && cardCopy.dataset.phrase.split(" ").length === 24, "Testing seed preview was not copyable");
+    assert(cardCopy && !cardCopy.disabled && (await copiedBy(cardCopy)).split(" ").length === 24, "Testing seed preview was not copyable");
     assert(!dealt.hidden && dealt.textContent.includes("A"), "Show cards did not reveal the dealt card");
     equal(dealt.getBoundingClientRect().height, emptyHistoryHeight);
     input(cards, "AS ZZ");
@@ -877,7 +892,8 @@
     await wait(0);
     const copy = document.querySelector('[data-copy-seed-phrase]');
     assert(copy && !copy.disabled, "Partial seed-word copy control remained disabled");
-    equal(copy.dataset.phrase, "abandon");
+    equal(await copiedBy(copy), "abandon");
+    assert(!("phrase" in copy.dataset), "the copy control kept the phrase in data-phrase");
     input(binary, "");
   });
 

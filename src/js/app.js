@@ -5633,6 +5633,18 @@ function hodlSeedPhraseCopyText(words, targetWords = hodlTargetWordCount) {
   if (values.slice(firstMissing + 1).some(Boolean)) return "";
   return values.slice(0, firstMissing).join(" ");
 }
+// What an empty slot of a word grid shows in place of a word.
+var hodlEmptyWordSlot = "\u2014";
+// The text a copy button copies, read when it is clicked. The Key Station copy
+// seed phrase button keeps no copy of the phrase (#546 B3: no secret in an
+// attribute or property, where Wipe cannot reach it): it reads the words its
+// grid shows, through the same rule the grid was rendered with. The Journal
+// copy buttons still carry their text in data-phrase.
+function hodlSeedButtonPhrase(button) {
+  if (!button.hasAttribute("data-copy-seed-phrase")) return button.dataset.phrase;
+  let slots = Array.from(button.closest("#form")?.querySelectorAll("[data-word-slot] [data-word]") || []);
+  return hodlSeedPhraseCopyText(slots.map((slot) => slot.textContent === hodlEmptyWordSlot ? "" : slot.textContent), slots.length);
+}
 function hodlClipboardIconMarkup() {
   return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect class="seed-copy-icon-clip" x="8" y="2" width="8" height="4" rx="1"/><path class="seed-copy-icon-board" d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>`;
 }
@@ -5728,7 +5740,7 @@ function hodlShowSeedPhraseCopied(button) {
   clearTimeout(button.hodlCopiedTimer);
   button.hodlCopiedTimer = setTimeout(() => {
     if (!button.isConnected) return;
-    let phrase = button.dataset.phrase;
+    let phrase = hodlSeedButtonPhrase(button);
     button.classList.remove("is-copied");
     button.innerHTML = hodlClipboardIconMarkup();
     let copyLabel = button.dataset.copyLabel || hodlT("Copy seed phrase");
@@ -5738,7 +5750,7 @@ function hodlShowSeedPhraseCopied(button) {
   }, 1600);
 }
 function hodlCopySeedPhraseButton(button) {
-  let phrase = button?.dataset.phrase;
+  let phrase = button && hodlSeedButtonPhrase(button);
   if (!phrase || button.disabled) return;
   let done = () => hodlShowSeedPhraseCopied(button);
   let fallback = () => {
@@ -5775,7 +5787,7 @@ function hodlRenderDiceWordGrid(container, words, targetWords = hodlTargetWordCo
     number.textContent = `${index + 1}.`;
     value.className = "dice-word-value";
     value.dataset.word = "";
-    value.textContent = word || "\u2014";
+    value.textContent = word || hodlEmptyWordSlot;
     slot.append(number, value);
     fragment.appendChild(slot);
   }
@@ -5783,7 +5795,6 @@ function hodlRenderDiceWordGrid(container, words, targetWords = hodlTargetWordCo
   let copy = container.closest("#form")?.querySelector("[data-copy-seed-phrase]"), phrase = hodlSeedPhraseCopyText(values, config.words);
   if (copy) {
     copy.disabled = !phrase;
-    copy.dataset.phrase = phrase;
     if (!copy.classList.contains("is-copied")) {
       copy.setAttribute("aria-label", phrase ? hodlTText("Copy seed phrase") : hodlTText("Seed phrase unavailable"));
       copy.title = phrase ? hodlTText("Copy seed phrase") : hodlTText("Seed phrase unavailable");
@@ -10535,8 +10546,10 @@ function hodlPickBip85SessionKey(state) {
   hodlSyncBip85Parent();
   hodlRefreshStationKeyPickers();
 }
+// The child on show, read from the station when the button is clicked: the
+// button keeps no copy of the secret (#546 B3).
 function hodlCopyBip85Child(button) {
-  let phrase = button?.dataset.phrase;
+  let phrase = button && hodlBip85ActiveState()?.result?.secret;
   if (!phrase || button.disabled) return;
   let done = () => {
     let note = document.getElementById("bip85-copy-status");
@@ -10619,10 +10632,7 @@ function hodlRenderBip85Out() {
     requestAnimationFrame(() => document.getElementById("bip85-reveal")?.focus({ preventScroll: true }));
   });
   let copy = document.getElementById("bip85-copy");
-  if (copy) {
-    copy.dataset.phrase = derived.secret;
-    copy.onclick = () => hodlCopyBip85Child(copy);
-  }
+  if (copy) copy.onclick = () => hodlCopyBip85Child(copy);
 }
 // Stations with generated tabs (BIP-85 children, Silent Payments addresses)
 // share one tab strip: a list of tab states, the first usually the station

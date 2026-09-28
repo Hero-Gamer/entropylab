@@ -1795,9 +1795,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .psbted-map > h3 { margin: 0 0 4px; font: inherit; font-size: 14px; font-weight: 600; letter-spacing: normal; }
 /* Long forms mark where each section begins with a faint full-width band
    behind its label: the PSBT Editor's sections, the PSBT Inspector's result
-   sections and MS Station's co-signer cards. The band reaches 8px past the
+   sections, MS Station's co-signer cards and its address settings.
+   .section-band is the plain form for any other section label. The band reaches 8px past the
    content on each side so the label's text stays on the content edge. */
-.psbted-section-label, .psbted-map > .psbted-section-label, .psbt-section-label, .psbt-analysis-summary > .psbt-section-label, .msig-key-band {
+.psbted-section-label, .psbted-map > .psbted-section-label, .psbt-section-label, .psbt-analysis-summary > .psbt-section-label, .msig-key-band, .section-band {
   margin-inline: -8px; padding: 6px 8px;
   background: color-mix(in oklab, var(--fg) 5%, transparent);
 }
@@ -2123,7 +2124,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .label + .label-description,
 .psbted-map > h3 + .label-description { margin-top: 8px; margin-bottom: 0; }
 
-:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary + :is(.label-description, .field-note) { margin-top: 0; margin-bottom: 0; }
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary + :is(.label-description, .field-note, label.field) { margin-top: 0; margin-bottom: 0; }
 /* The exception: a checkbox's own text is not a heading over content. It sits
    inside the control, on one line with the box, so it owns no gap either side.
    The components above already say margin: 0; this repeats it only to outrank
@@ -2561,6 +2562,11 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* The card's banded head: title left, the listed-order controls right. */
 .msig-key-band { display: flex; align-items: center; justify-content: space-between; gap: var(--space-control); min-height: 44px; margin-bottom: 4px; }
 .msig-key-band > .msig-key-title { margin: 0; }
+/* The address settings open on their band: the settings block already
+   carries the section's space above, and the band keeps the co-signer
+   bands' 12px beneath. */
+.section-band { margin-bottom: 12px; }
+.msig-output-advanced > .section-band { margin-top: 0; }
 .msig-key-move { display: flex; align-items: center; gap: 6px; }
 .msig-key-move-label { margin-right: 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
 .msig-key-move-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; min-height: 32px; height: 32px; padding: 0; }

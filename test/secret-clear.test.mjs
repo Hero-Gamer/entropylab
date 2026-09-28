@@ -841,7 +841,7 @@ test("changing the language outside Keys keeps the selected key's wallet", async
       hodlKeyModeSelectEl: { options: [], dispatchEvent() {} }, hodlNetworkPickerRender: null, hodlReadThemeMode: () => "system",
     });
     for (const name of ["hodlRenderKeyForm", "hodlRestoreFormFields", "hodlUpdateSeedLengthControl", "hodlUpdateAddressEstimate",
-      "hodlUpdateCoinTypeHelp", "hodlUpdateDerivationPathPreview", "hodlUpdateMsigHint", "hodlUpdateMsigScriptDetection",
+      "hodlUpdateCoinTypeHelp", "hodlUpdateDerivationPathPreview", "hodlUpdateMsigScriptDetection",
       "hodlUpdateMsigAccount", "hodlShowMsig", "hodlRefreshKeyResult", "hodlRefreshPsbtLocale", "hodlApplyTheme", "hodlRefreshWorkspaceErrors"])
       context[name] = () => {};
     vm.runInContext(functionSource("hodlApplyLocale"), context);

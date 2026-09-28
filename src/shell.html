@@ -410,11 +410,11 @@ words, pick one of the checksum words.</span></span>
       <div class="msig-lab" id="msig-lab">
       <details class="msig-import" id="msig-import" open>
         <summary>Import existing multisig wallet</summary>
-                <p class="field-note edge-note is-public" id="msig-descriptor-help">Input a wallet-exported multisig descriptor — the quorum, script type, key order, and co-signer xpubs will be filled in below. Only accepts watch-only public keys; a descriptor carrying private keys will be refused.</p>
-        <label class="field"><span class="muted label-value">Paste wallet descriptor here</span>
+        <label class="field"><span class="muted label-value">Paste a wallet-exported multisig descriptor here — the quorum, script type, key order, and co-signer xpubs will be filled in below.</span>
           <textarea id="msig-descriptor" placeholder="wsh(sortedmulti(2,[fingerprint/48h/0h/0h/2h]Zpub…/0/*, …))" autocomplete="off" spellcheck="false" aria-describedby="msig-descriptor-help"></textarea>
         </label>
         <button class="btn secondary" id="msig-descriptor-import" type="button" disabled aria-disabled="true">Import Descriptor</button>
+        <p class="field-note edge-note is-muted" id="msig-descriptor-help">Only accepts watch-only public keys; a descriptor carrying private keys will be refused.</p>
         <p class="hint" id="msig-descriptor-status" role="status" hidden></p>
       </details>
       <p class="label">Quorum</p>
@@ -464,7 +464,6 @@ words, pick one of the checksum words.</span></span>
         <p class="switch-note" id="msig-reuse-session-keys-note">Keep selected keys available for more than one co-signer input. Reused keys need different derivation paths.</p>
       </div>
       <div id="msig-keys" class="msig-keys"><label class="field">Co-signer 1 multisig extended public key<textarea id="msig-x-0" placeholder="xpub…" autocomplete="off" spellcheck="false"></textarea></label><label class="field">Co-signer 2 multisig extended public key<textarea id="msig-x-1" placeholder="xpub…" autocomplete="off" spellcheck="false"></textarea></label><label class="field">Co-signer 3 multisig extended public key<textarea id="msig-x-2" placeholder="xpub…" autocomplete="off" spellcheck="false"></textarea></label></div>
-      <p class="edge-note is-public" id="msig-hint"></p>
       <p class="hint msig-account-warning" id="msig-account-warning" role="status" hidden></p>
       <div class="key-settings msig-output-settings">
         <!-- Parsed co-signer origins remain the internal source of truth for
@@ -475,8 +474,8 @@ words, pick one of the checksum words.</span></span>
           <input id="msig-account" type="text" value="" disabled><input id="msig-account-harden" type="checkbox" checked>
           <span id="msig-purpose-help"></span><span id="msig-network-help"></span><span id="msig-account-help"></span>
         </div>
-        <details class="derivation-advanced msig-output-advanced" id="msig-output-advanced">
-          <summary>Advanced multisig entry</summary>
+        <div class="msig-output-advanced" id="msig-output-advanced" role="group" aria-labelledby="msig-output-advanced-label">
+          <p class="label section-band" id="msig-output-advanced-label">Advanced multisig entry</p>
           <div class="derivation-advanced-fields">
     <div class="key-settings-row address-branch-settings">
               <div class="field"><div class="field-head"><label for="msig-branch-start">Starting address branch index</label><label class="derivation-harden"><input id="msig-branch-start-harden" type="checkbox"><span>Harden</span></label></div>
@@ -499,7 +498,7 @@ words, pick one of the checksum words.</span></span>
               </label>
             </div>
           </div>
-        </details>
+        </div>
       </div>
       <p class="field-note address-estimate derivation-estimate edge-note is-muted" id="msig-address-estimate" role="status">Measuring this device…</p>
       <p class="edge-note is-private msig-spec-warning" id="msig-spec-warning" role="status" hidden></p>

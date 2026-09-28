@@ -704,7 +704,7 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
 });
 
 test("multisig policy settings precede the key inputs and output settings follow them", () => {
-  const fieldOrder = /id="msig-script-tabs"[\s\S]*id="msig-key-order"[\s\S]*id="msig-legacy-bip87"[\s\S]*id="msig-keys"[\s\S]*id="msig-hint"[\s\S]*id="msig-origin-state"[\s\S]*id="msig-purpose"[\s\S]*id="msig-network"[\s\S]*id="msig-account"[\s\S]*id="msig-address-start"[\s\S]*id="msig-address-range"[\s\S]*id="msig-go"/;
+  const fieldOrder = /id="msig-script-tabs"[\s\S]*id="msig-key-order"[\s\S]*id="msig-legacy-bip87"[\s\S]*id="msig-keys"[\s\S]*id="msig-origin-state"[\s\S]*id="msig-purpose"[\s\S]*id="msig-network"[\s\S]*id="msig-account"[\s\S]*id="msig-address-start"[\s\S]*id="msig-address-range"[\s\S]*id="msig-go"/;
   assert.match(shell, fieldOrder);
 });
 

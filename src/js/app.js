@@ -7957,13 +7957,6 @@ function hodlInvalidateMsig() {
   hodlUpdateMsigAccount();
   hodlSyncMsigDeriveButton();
 }
-function hodlUpdateMsigHint() {
-  let n = Number(document.getElementById("msig-n").value || 3), m = document.getElementById("msig-m").value || "2", hint = document.getElementById("msig-hint");
-  if (hint) {
-    hint.textContent = n === 1 ? hodlTText("Spending requires this key.") : hodlTText("Spending requires {m} of these {n} keys.", { m, n });
-    hint.className = "edge-note is-public";
-  }
-}
 var hodlMsigSliderBaseMax = 9, hodlMsigSliderLimit = 15;
 function hodlClampMsigThreshold(value, min, max) {
   let number = Number(value);
@@ -8022,14 +8015,12 @@ function hodlSetMsigThresholds(mValue, nValue, changed, moveOther) {
   mInput.value = String(m);
   nInput.value = String(n);
   hodlRenderMsigThreshold();
-  hodlUpdateMsigHint();
   return { m, n };
 }
 function hodlChangeMsigThreshold(handle, value, moveOther) {
   let mInput = document.getElementById("msig-m"), nInput = document.getElementById("msig-n"), previousN = document.querySelectorAll("#msig-keys textarea").length || Number(nInput.value || 3), state = hodlMsigs[hodlActiveMsig];
   let saved = state ? hodlMergeMsigXpubs(state) : hodlReadMsigXpubs(), next = hodlSetMsigThresholds(handle === "m" ? value : mInput.value, handle === "n" ? value : nInput.value, handle, moveOther);
   if (next.n !== previousN) hodlFillKeys(saved);
-  else hodlUpdateMsigHint();
   hodlInvalidateMsig();
 }
 function hodlMsigThresholdPointerValue(clientX, rect, visibleMax) {
@@ -8889,7 +8880,6 @@ function hodlFillKeys(values, specs) {
   hodlSyncMsigKeyMoveButtons();
   hodlUpdateMsigScriptDetection();
   box.querySelectorAll("textarea").forEach(hodlCheckXpub);
-  hodlUpdateMsigHint();
   hodlUpdateMsigAccount();
   hodlSyncMsigDescriptorImport();
   hodlRefreshMsigSessionPickers();
@@ -16954,7 +16944,6 @@ function hodlApplyLocale() {
   hodlUpdateCoinTypeHelp();
   hodlUpdateCoinTypeHelp(document.getElementById("msig-network"), document.getElementById("msig-network-help"));
   hodlUpdateDerivationPathPreview();
-  hodlUpdateMsigHint();
   hodlUpdateMsigScriptDetection();
   hodlUpdateMsigAccount();
   if (hodlWalletResult?.kind === "msig") hodlShowMsig();

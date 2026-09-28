@@ -482,6 +482,15 @@ function hodlLiveWalletResults() {
 function hodlWipeUnsharedWalletRows(result) {
   if (!result || hodlLiveWalletResults().has(result) || hodlKeyManagerPending.some((state) => state.result === result)) return;
   hodlZeroWalletRows(result);
+  hodlCommittedResults.delete(result);
+}
+// Every wallet the Key Station has committed and not yet zeroed. A wallet
+// the station drops (an edit clears it, a re-derive replaces it, its tab is
+// deleted or ignored) can never be shown again, so each drop zeroes it here
+// rather than leaving its row keys for the collector.
+var hodlCommittedResults = new Set();
+function hodlDisposeDroppedWallets() {
+  for (let result of hodlCommittedResults) hodlWipeUnsharedWalletRows(result);
 }
 // Zeroes the row keys a derivation made that no station shows: all of them
 // when it stopped, failed or was declined, none once it has committed.
@@ -5676,6 +5685,7 @@ function hodlInvalidateActiveKeyOutput() {
     state.error = "";
     state.errorSpec = null;
   }
+  hodlDisposeDroppedWallets();
 }
 function hodlSetSeedLength(words) {
   let config = hodlSeedLengths[Number(words)];
@@ -6686,6 +6696,7 @@ function hodlInvalidateLiveKeyResult() {
   hodlOutEl.innerHTML = "";
   hodlStopDerivation("key");
   hodlResetDerivationProgress("key");
+  hodlDisposeDroppedWallets();
 }
 // Revoking the acknowledgement retracts every wallet it authorised. Committed
 // key tabs re-render their stored result without asking again, so the material
@@ -6696,6 +6707,7 @@ function hodlRetractBrainWalletResults(output) {
     state.result = null;
     state.reveal = false;
   }
+  hodlDisposeDroppedWallets();
 }
 function hodlInitMasterFingerprintPreview() {
   let panel = document.getElementById("calc-card"), pass = document.getElementById("pass");
@@ -6853,6 +6865,7 @@ async function hodlCalculateKey(progress) {
     if (!(await hodlConfirmKeyFingerprint(result))) return false;
     hodlAssertDerivationActive(generation, control);
     hodlWalletResult = result;
+    hodlCommittedResults.add(result);
     hodlRevealPrivate = false;
     hodlSetSelectedScriptType(scriptType);
     hodlCaptureKey();
@@ -6860,6 +6873,7 @@ async function hodlCalculateKey(progress) {
     hodlSnapshotKeySummary();
     hodlCommitDerivedKey();
     hodlJournalCaptureDerivedKey(hodlKeys[hodlActiveKey]);
+    hodlDisposeDroppedWallets(); // the wallet this one replaced on its tab
     hodlFocusWalletResult();
     return true;
   } catch (error) {
@@ -6869,6 +6883,7 @@ async function hodlCalculateKey(progress) {
     hodlSetWorkspaceError("key", hodlErrorSpecFrom(error, "Could not derive key"));
     hodlOutEl.innerHTML = "";
     hodlCaptureKey();
+    hodlDisposeDroppedWallets(); // the wallet the tab showed before the failure
     hodlJournalLog("derive-error");
     return false;
   }
@@ -12150,6 +12165,7 @@ function hodlKeyManagerIgnore(state) {
   hodlKeyManagerRender();
   hodlKeyManagerStatus("Key moved to Ignored keys.");
   hodlJournalLog("key-manager-ignore", hodlKeyLogLabel(state), "journal");
+  hodlDisposeDroppedWallets(); // the ignored wallet: its Ignored copy keeps no key bytes
 }
 function hodlKeyManagerRestoreIgnored(entry) {
   let identity = keyVaultIdentity(entry), state = hodlKeyManagerStates().find((candidate) => keyVaultIdentity(candidate) === identity);
@@ -12197,6 +12213,9 @@ function hodlKeyManagerReset() {
   hodlKeyManagerIgnored = [];
   hodlKeyManagerPending = [];
   hodlKeyManagerActiveId = "";
+  // The Key Station forgets the wallets only the Key Manager held, so no
+  // record keeps their other private material reachable after a lock.
+  hodlDisposeDroppedWallets();
   let file = document.getElementById("journal-keymanager-file");
   if (file) file.value = "";
   hodlKeyManagerStatus("");
@@ -13059,6 +13078,7 @@ function hodlDeleteActiveKey() {
   } else hodlActiveKey = Math.min(deletedIndex, hodlKeys.length - 1);
   hodlRenderKeyTabs();
   hodlRestoreKey();
+  hodlDisposeDroppedWallets();
   hodlJournalLog("station-delete", `key-${deletedState.number}`, "calc");
   (hodlActiveKey >= 0 ? hodlElement("#key-tabs").children[hodlActiveKey] : hodlElement("#add-key"))?.focus();
 }
@@ -16080,6 +16100,8 @@ async function hodlVanityApplyMatch(index) {
     hodlVanityApplying = false;
     hodlRenderKeyTabs();
     hodlRestoreKey();
+    // Only now, with the Key Station's own tab back: the wallet the key had.
+    hodlDisposeDroppedWallets();
     // The Keys panel opened for the derive; this tab stays where it is.
     document.getElementById("calc-card").hidden = hodlWorkspace !== "calc";
     hodlVanitySyncSource();
@@ -16525,7 +16547,8 @@ function hodlInitSecretFieldAutoClear() {
     // Every derived wallet's row key bytes, shared results included: the
     // whole session is going (#546 B2). Before the Journal wipe, which empties
     // the Key Manager's pending keys.
-    for (let result of [hodlWalletResult, ...hodlKeys.map((state) => state.result), ...hodlKeyManagerPending.map((state) => state.result)]) hodlZeroWalletRows(result);
+    for (let result of [hodlWalletResult, ...hodlKeys.map((state) => state.result), ...hodlKeyManagerPending.map((state) => state.result), ...hodlCommittedResults]) hodlZeroWalletRows(result);
+    hodlCommittedResults.clear();
     hodlJournalWipeMem();
     hodlKeys = hodlKeys.map((state) => {
       let fields = state.fields || {}, privateKeys = fields.privateKeys;
@@ -16681,7 +16704,10 @@ function hodlApplyLocale() {
   hodlKeyModeSelectEl.dispatchEvent(new Event("entropylab:sync-select"));
   if (hodlNetworkPickerRender) hodlNetworkPickerRender();
   let state = hodlKeys[hodlActiveKey];
-  if (state) hodlCaptureKey();
+  // Only the Keys workspace shows the active key's wallet; elsewhere the
+  // shown result is cleared, and capturing it would drop the key's wallet.
+  // Its fields were captured on leaving Keys.
+  if (state && hodlWorkspace === "calc") hodlCaptureKey();
   hodlRenderKeyForm();
   if (state) hodlRestoreFormFields(state);
   hodlUpdateSeedLengthControl();

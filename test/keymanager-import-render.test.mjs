@@ -66,6 +66,8 @@ function importHarness() {
     hodlCaptureKey: () => { context.hodlKeys[context.hodlActiveKey].result = context.hodlWalletResult; },
     hodlShowWorkspace: () => { context.hodlWalletResult = context.hodlKeys[context.hodlActiveKey].result; },
     hodlRestoreKey: () => { context.hodlWalletResult = context.hodlKeys[context.hodlActiveKey].result; },
+    // Zeroing dropped wallets is covered in secret-clear.test.mjs.
+    hodlCommittedResults: new Set(), hodlDisposeDroppedWallets() {},
   };
   for (const name of ["hodlNewKeyState", "hodlNewLabState", "hodlKeyManagerImportedState",
     "hodlKeyManagerStates", "hodlKeyManagerUseInStation", "hodlKeyManagerUseAllInStation",

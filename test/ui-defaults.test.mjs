@@ -2410,14 +2410,15 @@ test("the vanity grinder is a workspace tab that ships collapsed and never auto-
 });
 
 test("the private recovery section lists the BIP39 passphrase beside the seed phrase", () => {
-  // The HD result carries the passphrase text (not just a flag) so the row
-  // can render; imported roots and single keys carry an empty one.
-  assert.match(appSource, /passphraseUsed: source\.passphraseUsed,\s*passphrase: source\.passphrase \?\? "",/);
-  assert.match(appSource, /\{ entropy, passphraseUsed: passphrase\.length > 0, passphrase, seed, notes:/);
-  assert.match(appSource, /\{ entropy: null, passphraseUsed: false, passphrase: "", seed: null,/);
+  // The HD result carries the passphrase (not just a flag) so the row can
+  // render, as its UTF-8 bytes (#546 B2 step 2c-3); imported roots and single
+  // keys carry none.
+  assert.match(appSource, /passphraseUsed: source\.passphraseUsed,\s*passphrase: source\.passphrase \?\? null,/);
+  assert.match(appSource, /\{ entropy, passphraseUsed: passphrase\.length > 0, passphrase: passphraseBytes, seed, notes:/);
+  assert.match(appSource, /\{ entropy: null, passphraseUsed: false, passphrase: null, seed: null,/);
   // Rendered right after the words, through the same masked private field as
   // the entropy and seed hex; absent when no passphrase is in use.
-  assert.match(appSource, /fields\.push\(hodlSeedPhraseField\(`Your seed phrase[^\n]*\n[^\n]*\n[^\n]*\n\s*if \(wallet\.passphraseUsed && wallet\.passphrase\) fields\.push\(hodlPrivateFieldHtml\("BIP39 passphrase", wallet\.passphrase\)\);\n\s*if \(wallet\.entropy\)/);
+  assert.match(appSource, /fields\.push\(hodlSeedPhraseField\(`Your seed phrase[^\n]*\n(?:\s*\/\/[^\n]*\n)*\s*if \(wallet\.passphraseUsed && wallet\.passphrase\?\.length\) fields\.push\(hodlPrivateKeyFieldHtml\("BIP39 passphrase", [^\n]*\(\) => hodlResultPassphrase\(wallet\)\)\);\n\s*if \(wallet\.entropy\)/);
 });
 
 test("the vanity estimate is timed from a device sample, and Stop on first find halts the grind at the first match", () => {

@@ -187,12 +187,13 @@ test("the journal still records a derived key's words", async () => {
 // Hidden, every word masks at the same width (#599), so nothing but the word
 // count is needed to draw the hidden phrase, and BIP39 fixes the count by the
 // entropy's length. A seed wallet keeps its entropy and seed, the two byte
-// strings BIP39 defines, and no other bytes about its words: their lengths
-// would narrow each word to at most 555 of 2,048.
-test("a seed wallet keeps its entropy and seed and no other bytes", async () => {
+// strings BIP39 defines, and the passphrase it was typed with (#546 B2 step
+// 2c-3), and no other bytes about its words: their lengths would narrow each
+// word to at most 555 of 2,048.
+test("a seed wallet keeps its entropy, seed and passphrase and no other bytes", async () => {
   for (const [label, vector, wallet] of await wallets()) {
     const bytes = Object.keys(wallet).filter((key) => ArrayBuffer.isView(wallet[key])).sort();
-    assert.deepEqual(bytes, ["entropy", "seed"], `${label}: the wallet keeps other bytes`);
+    assert.deepEqual(bytes, ["entropy", "passphrase", "seed"], `${label}: the wallet keeps other bytes`);
     assert.equal(wallet.entropy.length * 3 / 4, vector.words.split(" ").length, `${label}: BIP39's word count from the entropy`);
   }
 });

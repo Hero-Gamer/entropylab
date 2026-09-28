@@ -1161,26 +1161,29 @@ const seedWalletBuilder = (async () => {
 })();
 // Which seed material a result still makes usable: the words or entropy hex
 // as text, or entropy bytes ("entropy"); the seed hex as text, or seed bytes
-// ("seed").
+// ("seed"); the typed passphrase as text or as its UTF-8 bytes ("passphrase",
+// #546 B2 step 2c-3).
 const usableSeedMaterial = (result) => {
-  const found = new Set(), seen = new Set(), walk = (value) => {
+  const found = new Set(), seen = new Set(), passphrase = hex.encode(new TextEncoder().encode(seedVector.pass)), walk = (value) => {
     if (typeof value === "string") {
       const text = value.toLowerCase();
       if (text.includes(seedVector.words) || text.includes(seedVector.entropy)) found.add("entropy");
       if (text.includes(seedVector.seed)) found.add("seed");
+      if (value.includes(seedVector.pass)) found.add("passphrase");
     } else if (ArrayBuffer.isView(value) && value.BYTES_PER_ELEMENT === 1) {
       const bytes = hex.encode(Uint8Array.from(value));
       if (bytes === seedVector.entropy) found.add("entropy");
       if (bytes === seedVector.seed) found.add("seed");
+      if (bytes === passphrase) found.add("passphrase");
     } else if (value && typeof value === "object" && !seen.has(value)) {
       seen.add(value);
       for (const key of Object.keys(value)) walk(value[key]);
     }
   };
   walk(result);
-  return ["entropy", "seed"].filter((name) => found.has(name));
+  return ["entropy", "passphrase", "seed"].filter((name) => found.has(name));
 };
-const bothSeeds = ["entropy", "seed"];
+const bothSeeds = ["entropy", "passphrase", "seed"];
 
 test("a seed wallet's seed material stays usable while it is held and is zeroed once it is dropped or the page goes", async () => {
   for (const drop of ["Wipe", "edit", "re-derive", "delete", "journal lock", "pagehide"]) {

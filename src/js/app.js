@@ -445,11 +445,51 @@ function hodlAddressOrThrow(e, t, r) {
 function hodlDerivedAddressRow(node, accountPath, script, network, branchOrRole, index, addressHardened = false, branchHardened = false) {
   let chain = Number.isSafeInteger(branchOrRole) ? branchOrRole : branchOrRole === "receive" ? 0 : 1, branchStep = hodlPathComponent(chain, branchHardened), indexStep = hodlPathComponent(index, addressHardened), child = node.derive(`m/${branchStep}/${indexStep}`), publicKey = child.publicKey;
   if (!publicKey) throw new Error("Missing public key");
+  // The row keeps the getter's own copy of the private key as wipeable bytes,
+  // never as text: strings cannot be erased, so the WIF is encoded only while
+  // it is shown, copied or exported (hodlRowWif; #546 B2).
   let privateKey = child.privateKey;
-  let row = { index, role: hodlAddressBranchRole(chain), branch: chain, branchHardened, path: `${accountPath}/${branchStep}/${indexStep}`, address: hodlAddressOrThrow(script, publicKey, network), wif: privateKey ? hodlEncodeWif(privateKey, true, network) : null, pubkey: hodlHex.encode(publicKey), privHex: privateKey ? hodlHex.encode(privateKey) : null };
-  child.wipePrivateData();
-  if (privateKey) privateKey.fill(0); // the getter copy; the row keeps its strings
-  return row;
+  // Until a derivation commits, no station reaches its rows: it records each
+  // key so it can zero the ones it leaves behind when it ends.
+  if (privateKey) hodlActiveDerivation?.rowKeys?.push(privateKey);
+  try {
+    return { index, role: hodlAddressBranchRole(chain), branch: chain, branchHardened, path: `${accountPath}/${branchStep}/${indexStep}`, address: hodlAddressOrThrow(script, publicKey, network), pubkey: hodlHex.encode(publicKey), network, privateKey: privateKey || null };
+  } finally {
+    child.wipePrivateData();
+  }
+}
+// Every compressed WIF (mainnet K/L, testnet c) is 52 Base58 characters, so
+// the hidden table masks that many without encoding the key.
+var hodlCompressedWifLength = 52;
+function hodlRowWif(row) {
+  return row?.privateKey ? hodlEncodeWif(row.privateKey, true, row.network) : null;
+}
+// A row's WIF cell: the key encoded only while private values are revealed.
+function hodlRowWifCell(row) {
+  if (!row.privateKey) return null;
+  return hodlRevealPrivate ? hodlRowWif(row) : "\u2022".repeat(hodlCompressedWifLength);
+}
+function hodlZeroWalletRows(result) {
+  for (let account of result?.accounts || []) for (let branch of hodlAccountAddressBranches(account)) for (let row of branch.rows) row.privateKey?.fill(0);
+}
+// The results a station still shows. The Key Station and a key tab committed
+// from it share one result (hodlCloneDerivedKey), and a key detached into the
+// Key Manager keeps its own: zeroing a result one of them still shows would
+// leave it rendering zeroed keys.
+function hodlLiveWalletResults() {
+  return new Set([hodlWalletResult, ...hodlKeys.map((state) => state.result)].filter(Boolean));
+}
+function hodlWipeUnsharedWalletRows(result) {
+  if (!result || hodlLiveWalletResults().has(result) || hodlKeyManagerPending.some((state) => state.result === result)) return;
+  hodlZeroWalletRows(result);
+}
+// Zeroes the row keys a derivation made that no station shows: all of them
+// when it stopped, failed or was declined, none once it has committed.
+function hodlSettleDerivationKeys(control) {
+  if (!control?.rowKeys?.length) return;
+  let shown = new Set();
+  for (let result of [...hodlLiveWalletResults(), ...hodlKeyManagerPending.map((state) => state.result)]) for (let account of result?.accounts || []) for (let branch of hodlAccountAddressBranches(account)) for (let row of branch.rows) shown.add(row.privateKey);
+  for (let key of control.rowKeys) if (!shown.has(key)) key.fill(0);
 }
 function hodlDeriveAddressRows(node, accountPath, script, network, count, branchOrRole, startIndex = 0, addressHardened = false, branchHardened = false) {
   let rows = [];
@@ -1007,8 +1047,12 @@ async function hodlRootWalletWithProgress(root, network, count, source, accountI
   tracker.setTotal(addressCount * hodlScriptTypes.length * branchRange);
   for (let definition of hodlScriptTypes) {
     let derivedDefinition = { ...definition, purpose: purposeIndex, purposeHardened: hardening.purpose }, accountPath = derivationPlan?.accountPath || hodlAccountPath(derivedDefinition, coinType, accountIndex, hardening), node = root.derive(accountPath), originPath = derivationPlan?.originPath ?? `${hodlOriginPathComponent(purposeIndex, hardening.purpose)}/${hodlOriginPathComponent(coinType, hardening.coinType)}/${hodlOriginPathComponent(accountIndex, hardening.account)}`;
-    let account = await hodlAccountResultWithProgress(node, derivedDefinition, network, addressCount, { accountPath, accountIndex, masterFingerprint, originFingerprint: masterFingerprint, originPath, addressStart, branchHardened: hardening.branch, addressHardened: hardening.address, branchStart, branchRange }, tracker);
-    node.wipePrivateData(); // the account keeps its extended-key strings, not the node
+    let account;
+    try {
+      account = await hodlAccountResultWithProgress(node, derivedDefinition, network, addressCount, { accountPath, accountIndex, masterFingerprint, originFingerprint: masterFingerprint, originPath, addressStart, branchHardened: hardening.branch, addressHardened: hardening.address, branchStart, branchRange }, tracker);
+    } finally {
+      node.wipePrivateData(); // the account keeps its extended-key strings, not the node; a stopped one keeps neither
+    }
     accounts.push(account);
   }
   return hodlRootWalletResult(root, network, source, accountIndex, masterFingerprint, accounts, coinType);
@@ -1056,8 +1100,12 @@ async function hodlImportedWalletWithProgress(value, network, count, accountInde
   if ((hardening.branch || hardening.address) && !parsed.isPrivate) throw hodlError(hardening.branch ? "Hardened address branches cannot be derived from an account extended public key. Turn off Harden or import the matching extended private key offline." : "Hardened address indexes cannot be derived from an account extended public key. Turn off Harden or import the matching extended private key offline.");
   let definition = hodlImportedScriptDefinition(parsed), addressCount = Math.min(Math.max(count, 1), hodlMaxAddressRange), parentFingerprint = hodlFingerprintHex(node.parentFingerprint), nodeFingerprint = hodlFingerprintHex(node.fingerprint);
   tracker.setTotal(addressCount * branchRange);
-  let account = await hodlAccountResultWithProgress(node, definition, network, addressCount, { accountPath: "Imported account key", accountIndex: null, imported: true, importedFamily: parsed.family, importedValue, parentFingerprint, nodeFingerprint, addressStart, branchHardened: hardening.branch, addressHardened: hardening.address, branchStart, branchRange }, tracker);
-  node.wipePrivateData(); // the account result keeps its strings, not the imported node
+  let account;
+  try {
+    account = await hodlAccountResultWithProgress(node, definition, network, addressCount, { accountPath: "Imported account key", accountIndex: null, imported: true, importedFamily: parsed.family, importedValue, parentFingerprint, nodeFingerprint, addressStart, branchHardened: hardening.branch, addressHardened: hardening.address, branchStart, branchRange }, tracker);
+  } finally {
+    node.wipePrivateData(); // the account result keeps its strings, not the imported node; a stopped import keeps neither
+  }
   return {
     kind: "hd",
     network,
@@ -1082,7 +1130,7 @@ async function hodlImportedWalletWithProgress(value, network, count, accountInde
   };
 }
 function hodlAccountHasPrivate(account) {
-  return Boolean(account.primaryPrivate || hodlAccountAddressBranches(account).some((branch) => branch.privateDescriptor || branch.rows.some((row) => row.wif)));
+  return Boolean(account.primaryPrivate || hodlAccountAddressBranches(account).some((branch) => branch.privateDescriptor || branch.rows.some((row) => row.privateKey)));
 }
 function hodlAccountAddressBranches(account) {
   if (account?.addressBranches?.length) return account.addressBranches;
@@ -1304,7 +1352,7 @@ function hodlAddressIndexHtml(index) {
   return Number.isSafeInteger(index) && index >= 0 ? String(index) : hodlEscapeHtml(index);
 }
 function hodlAddressTableRows(rows, includeWif = false, rowOffset = 0) {
-  return rows.map((row, offset) => `<tr aria-rowindex="${rowOffset + offset + 2}"><th scope="row">${hodlAddressIndexHtml(row.index)}</th><td>${hodlEscapeHtml(hodlDisplayDerivationPath(row.path))}</td><td><button type="button" class="addr-text" data-copy-field title="${hodlTAttr("Copy")}">${hodlEscapeHtml(row.address)}</button>${hodlAddressQrButton(row.address, hodlT("Address #{n}", { n: row.index }))}<span class="copy-field-status is-icon-only" aria-live="polite"></span></td>${includeWif ? `<td>${hodlPrivateValue(row.wif, "mono table-private-field-value")}</td>` : ""}</tr>`).join("");
+  return rows.map((row, offset) => `<tr aria-rowindex="${rowOffset + offset + 2}"><th scope="row">${hodlAddressIndexHtml(row.index)}</th><td>${hodlEscapeHtml(hodlDisplayDerivationPath(row.path))}</td><td><button type="button" class="addr-text" data-copy-field title="${hodlTAttr("Copy")}">${hodlEscapeHtml(row.address)}</button>${hodlAddressQrButton(row.address, hodlT("Address #{n}", { n: row.index }))}<span class="copy-field-status is-icon-only" aria-live="polite"></span></td>${includeWif ? `<td>${hodlPrivateValue(hodlRowWifCell(row), "mono table-private-field-value")}</td>` : ""}</tr>`).join("");
 }
 function hodlAddressVirtualSpacer(height, columns) {
   return height > 0 ? `<tr class="address-virtual-spacer" aria-hidden="true"><td colspan="${columns}" style="height:${height}px"></td></tr>` : "";
@@ -1952,10 +2000,10 @@ function hodlSheetAddressRows(lines, label, rows) {
   for (let row of rows) lines.push(`  ${row.index}  ${hodlDisplayDerivationPath(row.path)}  ${row.address}`);
 }
 function hodlSheetWifRows(lines, label, rows) {
-  let privateRows = rows.filter((row) => row.wif);
+  let privateRows = rows.filter((row) => row.privateKey);
   if (!privateRows.length) return;
   lines.push(label.toUpperCase());
-  for (let row of privateRows) lines.push(`  ${row.index}  ${hodlDisplayDerivationPath(row.path)}  ${row.wif}`);
+  for (let row of privateRows) lines.push(`  ${row.index}  ${hodlDisplayDerivationPath(row.path)}  ${hodlRowWif(row)}`);
 }
 var hodlRecoverySheetText = function(wallet, revealPrivate) {
   let lines = ["ENTROPYLAB \u2014 RECOVERY SHEET", "This file was computed locally. The calculator never generated wallet entropy.", ""];
@@ -2279,7 +2327,10 @@ var hodlActiveDerivation = null;
 var hodlDerivationGeneration = 0;
 function hodlInvalidateDerivation() {
   hodlDerivationGeneration++;
-  if (hodlActiveDerivation) hodlActiveDerivation.cancelled = true;
+  if (!hodlActiveDerivation) return;
+  hodlActiveDerivation.cancelled = true;
+  // It can no longer commit, and a hidden page may never resume it to unwind.
+  hodlSettleDerivationKeys(hodlActiveDerivation);
 }
 function hodlAssertDerivationActive(generation, control) {
   if (generation !== hodlDerivationGeneration || control?.cancelled) throw new HodlDerivationCancelledError();
@@ -2410,7 +2461,7 @@ function hodlHandleDerivationButton(kind, derive) {
 async function hodlDeriveWithProgress(kind, derive) {
   if (hodlActiveDerivation) return;
   let multisig = kind === "msig", progress = document.getElementById(multisig ? "msig-derive-progress" : "derive-progress");
-  let control = { kind, cancelled: false };
+  let control = { kind, cancelled: false, rowKeys: [] };
   hodlActiveDerivation = control;
   hodlResetDerivationProgress(kind, false);
   hodlSetDerivationButtonState(kind, "running");
@@ -2431,6 +2482,7 @@ async function hodlDeriveWithProgress(kind, derive) {
     if (error instanceof HodlDerivationCancelledError) hodlResetDerivationProgress(kind);
     else throw error;
   } finally {
+    hodlSettleDerivationKeys(control);
     if (hodlActiveDerivation === control) hodlActiveDerivation = null;
     hodlSetDerivationButtonState(kind, "idle");
     hodlSyncDeriveButton();
@@ -11840,7 +11892,9 @@ function hodlKeyManagerStates() {
   return states;
 }
 function hodlKeyManagerEntry(state) {
-  let copy = JSON.parse(JSON.stringify(state));
+  // Byte arrays stay behind: the copy is read only for the key's identity, and
+  // JSON would turn a row's key bytes into plain numbers no wipe can reach.
+  let copy = JSON.parse(JSON.stringify(state, (key, value) => ArrayBuffer.isView(value) ? void 0 : value));
   delete copy.isLab;
   copy.reveal = false;
   copy.error = "";
@@ -12134,7 +12188,10 @@ function hodlKeyManagerWipeValue(value, seen = new Set()) {
   Object.values(value).forEach((entry) => hodlKeyManagerWipeValue(entry, seen));
 }
 function hodlKeyManagerReset() {
-  hodlKeyManagerPending.forEach((state) => hodlKeyManagerWipeValue(state));
+  // A pending key detached from a station can share its result with one that
+  // still shows it; the walk skips those results rather than zero them.
+  let live = hodlLiveWalletResults();
+  hodlKeyManagerPending.forEach((state) => hodlKeyManagerWipeValue(state, new Set(live)));
   hodlKeyManagerIgnored.forEach((state) => hodlKeyManagerWipeValue(state));
   hodlKeyManagerIds.clear();
   hodlKeyManagerIgnored = [];
@@ -12479,6 +12536,7 @@ function hodlWipeActiveKey() {
   let state = hodlKeys[hodlActiveKey];
   hodlKeys[hodlActiveKey] = state.isLab ? hodlNewLabState() : hodlNewKeyState(state.name, state.id, state.number);
   hodlRestoreKey();
+  hodlWipeUnsharedWalletRows(state.result);
   hodlJournalLog("clear", `key-${state.number}`, "calc");
 }
 function hodlCaptureKey() {
@@ -16464,6 +16522,10 @@ function hodlInitSecretFieldAutoClear() {
     hodlBip85WipeMem();
     hodlSpWipeMem();
     hodlLnWipeMem();
+    // Every derived wallet's row key bytes, shared results included: the
+    // whole session is going (#546 B2). Before the Journal wipe, which empties
+    // the Key Manager's pending keys.
+    for (let result of [hodlWalletResult, ...hodlKeys.map((state) => state.result), ...hodlKeyManagerPending.map((state) => state.result)]) hodlZeroWalletRows(result);
     hodlJournalWipeMem();
     hodlKeys = hodlKeys.map((state) => {
       let fields = state.fields || {}, privateKeys = fields.privateKeys;

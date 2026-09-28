@@ -149,7 +149,7 @@ for (const match of app.matchAll(/^import \{([^}]*)\} from "\.\/([\w.-]+)";$/gm)
 }
 
 let loads = 0;
-export async function loadAppFunctions(names, { stubs = {} } = {}) {
+export async function loadAppFunctions(names, { stubs = {}, settable = [] } = {}) {
   const included = new Set(), queue = [...names];
   while (queue.length) {
     const name = queue.pop();
@@ -190,6 +190,9 @@ export async function loadAppFunctions(names, { stubs = {} } = {}) {
     ...Object.keys(stubs).map((name) => `const ${name} = globalThis.__appSliceStubs[${JSON.stringify(name)}];`),
     ...bodies,
     `export { ${names.join(", ")} };`,
+    // A test can set a top-level variable the loaded functions read (the
+    // reveal toggle, say) through __set.name(value), without stubbing it out.
+    `export const __set = { ${settable.map((name) => `${name}: (value) => { ${name} = value; }`).join(", ")} };`,
   ].join("\n");
   globalThis.__appSliceStubs = stubs;
   // Outside test/, so suites that list that directory never see it.

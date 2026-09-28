@@ -417,9 +417,12 @@ test("a receive-only wallet still exports: units cover whichever branches exist 
 
 test("the app keys the secrets label and filename to actual material (issue #366)", () => {
   const app = read("src/js/app.js");
-  assert.match(app, /withSecrets = includePrivate && hodlWalletExport\.hasPrivateDescriptors\(hodlWalletResult\)/);
+  // The wallet keeps its spending descriptors as key material (#546 B2); the
+  // export view carries them as text for the check and the file.
+  assert.match(app, /withSecrets = includePrivate && hodlWalletExport\.hasPrivateDescriptors\(hodlWalletExportView\(hodlWalletResult\)\)/);
   assert.match(app, /walletDatButtonLabel\(withSecrets\)/);
-  assert.match(app, /withSecrets = hodlWalletResult\.kind !== "msig" && hodlRevealPrivate && hodlWalletExport\.hasPrivateDescriptors\(hodlWalletResult\)/);
+  assert.match(app, /exported = hodlWalletResult\.kind !== "msig" && hodlRevealPrivate \? hodlWalletExportView\(hodlWalletResult\) : hodlWalletResult/);
+  assert.match(app, /withSecrets = hodlWalletResult\.kind !== "msig" && hodlRevealPrivate && hodlWalletExport\.hasPrivateDescriptors\(exported\)/);
   assert.match(app, /walletDatFilename\(hodlWalletResult, withSecrets\)/);
 });
 
@@ -653,7 +656,7 @@ test("template, build script, and app wiring ship the export", () => {
   assert.match(app, /hodlSaveRecoveryControl\s*\(\s*\)\s*\{\s*return\s*`<div class="wallet-data-actions no-print">[^`]*\$\{hodlWalletDatControl\(\s*(?:false|!1)\s*\)\}/);
   assert.match(app, /id="download-wallet-dat"[^>]*>\$\{hodlWalletExport\.walletDatButtonLabel\(withSecrets\)\}/);
   assert.match(app, /hodlWalletExport\.hasDescriptors\(hodlWalletResult\)/);
-  assert.match(app, /hodlWalletExport\.buildWalletDat\(\s*hodlWalletResult\s*,\s*withSecrets\s*,\s*hodlWalletDatDeps\(\s*\)\s*,\s*creationTime\s*\)/);
+  assert.match(app, /hodlWalletExport\.buildWalletDat\(\s*exported\s*,\s*withSecrets\s*,\s*hodlWalletDatDeps\(\s*\)\s*,\s*creationTime\s*\)/);
   assert.match(app, /hodlWalletExport\.walletDatFilename\(hodlWalletResult, withSecrets\)/);
   assert.match(app, /document\.getElementById\("download-wallet-dat"\)/);
 });

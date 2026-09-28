@@ -16,7 +16,7 @@ import { keyVaultIdentity } from "../src/js/keymanager.js";
 // The helpers that zero address-row key bytes (#546 B2). The lifecycle
 // harness loads whichever of them app.js defines, so a source without them
 // fails the byte-wiping tests on the bytes, not on a missing function.
-const rowWipeHelpers = ["hodlZeroWalletRows", "hodlLiveWalletResults", "hodlWipeUnsharedWalletRows", "hodlSettleDerivationKeys", "hodlDisposeDroppedWallets"];
+const rowWipeHelpers = ["hodlZeroWalletRows", "hodlWipeWalletKeys", "hodlLiveWalletResults", "hodlWipeUnsharedWalletRows", "hodlSettleDerivationKeys", "hodlDisposeDroppedWallets"];
 
 function deferred() {
   let resolve, reject;
@@ -481,14 +481,25 @@ test("a Key Manager reset leaves the row key bytes of a wallet a station still s
 // child node is recorded, so the assertions read the exact buffers the rows
 // kept, and the expected keys come from @scure/bip32.
 const vectorRowKey = (branch, index) => ScureHDKey.fromMasterSeed(vectorSeed).derive(`m/84'/0'/0'/${branch}/${index}`).privateKey;
+const vectorFingerprint = ScureHDKey.fromMasterSeed(vectorSeed).fingerprint.toString(16).padStart(8, "0");
 const vectorRowKeys = [[0, 0], [0, 1], [1, 0], [1, 1]].map(([branch, index]) => vectorRowKey(branch, index));
 const allZero = (keys) => keys.every((key) => key.every((byte) => byte === 0));
 const noneZero = (keys) => keys.every((key) => key.some((byte) => byte !== 0));
+
+// The real account and wallet builders' collaborators, loaded once. The
+// builders themselves run in each harness context, so the key material they
+// keep registers with that harness's derivation (#546 B2 step 2b).
+const walletBuilderParts = loadAppFunctions(["hodlAccountExportFamily", "hodlSerializeExtendedKey", "hodlExtendedKeyVersions", "hodlNetworkFamily",
+  "hodlDescriptorWithChecksum", "hodlScriptDescriptor", "hodlWatchOnlyMultipathDescriptor", "hodlOriginPathComponent", "hodlAddressBranchLabel",
+  "hodlDeriveAddressRows", "hodlBuildMultisigCosignerExports", "hodlCoinTypeFromNetwork", "hodlNote"]);
+const walletKeepers = ["hodlCopyPrivateNode", "hodlKeepPrivateNode"].filter((name) => app.includes(`function ${name}(`));
+const bip84Definition = { id: "bip84", label: "Native SegWit", bip: "BIP84", script: "p2wpkh", purpose: 84, purposeHardened: true };
 
 async function derivationHarness({ failAtAddress = 0, identity = () => "bip32-vector-1" } = {}) {
   const harness = raceHarness(), { context } = harness, keys = [], pauses = [];
   const real = await loadAppFunctions(["hodlPathComponent", "hodlAddressBranchRole", "hodlAddressOrThrow"]);
   let clock = 0, addresses = 0;
+  Object.assign(context, await walletBuilderParts, { hodlHDKey: HDKey });
   Object.assign(context, {
     hodlActiveDerivation: null, hodlDerivationProgressTimers: {}, hodlHex: appHex,
     hodlPathComponent: real.hodlPathComponent, hodlAddressBranchRole: real.hodlAddressBranchRole,
@@ -500,19 +511,28 @@ async function derivationHarness({ failAtAddress = 0, identity = () => "bip32-ve
     performance: { now: () => (clock += 20) }, setTimeout: () => 0, clearTimeout() {},
     hodlDerivationPause() { const gate = deferred(); pauses.push(gate); return gate.promise; },
     hodlResetDerivationProgress() {}, hodlSetDerivationButtonState() {}, hodlSyncDeriveButton() {}, hodlSyncMsigDeriveButton() {},
+    // The rows come from the real row builder; the real account and wallet
+    // builders then assemble them into the result a derivation commits.
     async hodlEntropyWalletWithProgress(entropy, passphrase, network, count, accountIndex, addressStart, tracker) {
-      const account = HDKey.fromMasterSeed(vectorSeed).derive("m/84'/0'/0'"), watched = {
+      const root = HDKey.fromMasterSeed(vectorSeed), account = root.derive("m/84'/0'/0'"), watched = {
         derive(path) {
           const child = account.derive(path);
           return { get publicKey() { return child.publicKey; }, get privateKey() { const key = child.privateKey; keys.push(key); return key; }, wipePrivateData: () => child.wipePrivateData() };
         },
       }, addressBranches = [];
-      for (const branch of [0, 1]) addressBranches.push({ branch, rows: await context.hodlAddressRowsWithProgress(watched, "m/84h/0h/0h", "p2wpkh", "mainnet", 2, branch, 0, tracker) });
-      account.wipePrivateData();
-      return { kind: "hd", network: "mainnet", masterFingerprint: "3442193e", masterIdentity: identity(), accounts: [{ addressBranches }] };
+      try {
+        for (const branch of [0, 1]) addressBranches.push({ branch, rows: await context.hodlAddressRowsWithProgress(watched, "m/84h/0h/0h", "p2wpkh", "mainnet", 2, branch, 0, tracker) });
+        const fingerprint = vectorFingerprint, source = { mnemonic: null, passphraseUsed: false, passphrase: "", entropyHex: null, seedHex: null, notes: [], warnings: [] };
+        const accountResult = context.hodlAccountResult(account, bip84Definition, "mainnet", 2, { accountPath: "m/84h/0h/0h", accountIndex: 0, masterFingerprint: fingerprint, originFingerprint: fingerprint, originPath: "84h/0h/0h", addressBranches, branchStart: 0, branchRange: 2 });
+        return Object.assign(context.hodlRootWalletResult(root, "mainnet", source, 0, fingerprint, [accountResult], 0), { masterIdentity: identity() });
+      } finally {
+        account.wipePrivateData();
+        root.wipePrivateData();
+      }
     },
   });
-  for (const name of ["hodlDeriveWithProgress", "hodlCreateDerivationTracker", "hodlStopDerivation", "hodlAddressRowsWithProgress", "hodlDerivedAddressRow"])
+  for (const name of ["hodlDeriveWithProgress", "hodlCreateDerivationTracker", "hodlStopDerivation", "hodlAddressRowsWithProgress", "hodlDerivedAddressRow",
+    "hodlAccountResult", "hodlRootWalletResult", ...walletKeepers])
     vm.runInContext(functionSource(name), context);
   // Releases held pauses until `done` holds; fails if the derivation stalls.
   const driveUntil = async (done) => {
@@ -686,8 +706,8 @@ async function stationHarness(options = {}) {
   const leaveKeys = (workspace) => { context.hodlCaptureKey(); context.hodlWorkspace = workspace; context.hodlWalletResult = null; };
   const returnToKeys = () => { context.hodlWorkspace = "calc"; context.hodlRestoreKey(); };
   // Whether the Key Station still keeps a reference to a wallet. A dropped
-  // wallet must be forgotten, not only zeroed: its other private material
-  // (root xprv, seed text) is still strings until the later B2 steps.
+  // wallet must be forgotten, not only zeroed: its seed material is still
+  // text until B2 step 2c.
   const held = (result) => [...context.hodlCommittedResults].includes(result);
   const active = () => context.hodlKeys[context.hodlActiveKey];
   return { ...harness, derive, selectLab, leaveKeys, returnToKeys, held, active, setIdentity: (value) => { identity = value; } };
@@ -875,7 +895,8 @@ test("saving a vanity passphrase match to its key zeroes the wallet the key had"
   assert.equal(context.hodlKeys.filter((state) => !state.isLab).length, 1, "the new wallet stayed in a second tab");
   assert.ok(allZero(previous), "the key's previous wallet kept its row key bytes");
   assert.ok(!held(previousResult), "the Key Station still references the key's previous wallet");
-  const shown = saved.result.accounts[0].addressBranches.flatMap((branch) => branch.rows.map((row) => row.privateKey));
+  // Spread into this realm's array: the result's arrays come from the harness context.
+  const shown = [...saved.result.accounts[0].addressBranches.flatMap((branch) => branch.rows.map((row) => row.privateKey))];
   assert.deepEqual(shown, vectorRowKeys, "saving zeroed the wallet the key now shows");
 });
 
@@ -918,4 +939,107 @@ test("locking the journal forgets the Key Manager's wallets and keeps the ones a
   returnToKeys();
   context.hodlInvalidateLiveKeyResult();
   assert.ok(allZero(sharedKeys) && !held(shared), "the shared wallet escaped disposal after the lock");
+});
+
+// #546 B2 step 2b: the extended private keys a wallet result keeps (its root
+// and account keys, and the descriptors and SLIP-132 exports built from
+// them) go wherever its row keys go. Before this step they were strings for
+// the whole session, so no Wipe could reach them.
+// Which of the wallet's extended private keys a result still makes usable:
+// the root's or the BIP84 account's, found as text anywhere in it (the xprv,
+// or the account's SLIP-132 yprv/zprv) or as a key node that still holds that
+// private key.
+const vectorKeys = (() => {
+  const b58check = createBase58check(sha256), withVersion = (text, version) => {
+    const raw = Uint8Array.from(b58check.decode(text));
+    new DataView(raw.buffer).setUint32(0, version);
+    return b58check.encode(raw);
+  };
+  const root = ScureHDKey.fromMasterSeed(vectorSeed), account = root.derive("m/84'/0'/0'");
+  // SLIP-0132 mainnet private versions: xprv, yprv, zprv.
+  return [
+    { name: "account", privateKey: hex.encode(account.privateKey), texts: [0x0488ade4, 0x049d7878, 0x04b2430c].map((version) => withVersion(account.privateExtendedKey, version)) },
+    { name: "root", privateKey: hex.encode(root.privateKey), texts: [root.privateExtendedKey] },
+  ];
+})();
+const usableKeyMaterial = (result) => {
+  const found = new Set(), seen = new Set(), walk = (value) => {
+    if (typeof value === "string") {
+      for (const key of vectorKeys) if (key.texts.some((secret) => value.includes(secret))) found.add(key.name);
+    } else if (value && typeof value === "object" && !ArrayBuffer.isView(value) && !seen.has(value)) {
+      seen.add(value);
+      const privateKey = value instanceof HDKey ? value.privateKey : null;
+      if (privateKey) for (const key of vectorKeys) if (key.privateKey === hex.encode(privateKey)) found.add(key.name);
+      for (const key of Object.keys(value)) walk(value[key]);
+    }
+  };
+  walk(result);
+  return vectorKeys.map((key) => key.name).filter((name) => found.has(name));
+};
+const bothKeys = ["account", "root"];
+
+test("a wallet's extended private keys stay usable while it is held and are gone once it is dropped or the page goes", async () => {
+  for (const drop of ["Wipe", "edit", "re-derive", "delete", "journal lock", "pagehide"]) {
+    const { context, events, derive, selectLab, leaveKeys, active } = await stationHarness();
+    context.hodlJournalUnlocked = () => drop === "journal lock";
+    await derive("dropped");
+    const dropped = active().result;
+    selectLab();
+    await derive("kept");
+    const kept = active().result;
+    assert.deepEqual(usableKeyMaterial(dropped), bothKeys, `${drop}: a committed wallet lost its keys`);
+    assert.deepEqual(usableKeyMaterial(kept), bothKeys, `${drop}: a committed wallet lost its keys`);
+    context.hodlActiveKey = context.hodlKeys.findIndex((state) => state.result === dropped);
+    context.hodlRestoreKey();
+    if (drop === "Wipe") context.hodlWipeActiveKey();
+    else if (drop === "edit") context.hodlInvalidateLiveKeyResult();
+    else if (drop === "re-derive") await derive("dropped");
+    else if (drop === "delete") context.hodlDeleteActiveKey();
+    else if (drop === "journal lock") {
+      context.hodlDeleteActiveKey();
+      leaveKeys("journal");
+      context.hodlJournalLock();
+    } else events.pagehide({});
+    assert.deepEqual(usableKeyMaterial(dropped), [], `${drop}: the dropped wallet's extended private keys are still usable`);
+    if (drop === "pagehide") assert.deepEqual(usableKeyMaterial(kept), [], "pagehide left a shown wallet's extended private keys usable");
+    else assert.deepEqual(usableKeyMaterial(kept), bothKeys, `${drop}: dropping one wallet took another wallet's keys`);
+  }
+});
+
+test("a wallet another tab still shows keeps its extended private keys when one tab drops it", async () => {
+  const { context, derive, active } = await stationHarness();
+  await derive();
+  const result = active().result;
+  context.hodlKeys.push({ id: 99, number: 99, isLab: false, fields: {}, result });
+  context.hodlInvalidateLiveKeyResult();
+  assert.deepEqual(usableKeyMaterial(result), bothKeys, "dropping a shared wallet from one tab took the keys the other tab shows");
+});
+
+// The Ignored list keeps a JSON copy of the key for its identity. JSON drops
+// byte arrays, so with the keys held as nodes the copy keeps none of them;
+// text would have been copied whole.
+test("an ignored key's saved copy carries none of its wallet's extended private keys", async () => {
+  const { context, derive, active } = await stationHarness();
+  await derive();
+  const state = active(), entry = context.hodlKeyManagerEntry(state);
+  assert.deepEqual(usableKeyMaterial(entry), [], "the Ignored copy kept an extended private key");
+  assert.equal(keyVaultIdentity(entry), keyVaultIdentity(state), "the copy keeps what identifies the key");
+  assert.deepEqual(usableKeyMaterial(state.result), bothKeys, "copying must not touch the live wallet");
+});
+
+test("a derivation declined at the fingerprint confirmation, or hidden while it asks, leaves no usable extended private key", async () => {
+  for (const ending of ["declined", "pagehide"]) {
+    const { context, events, driveUntil, start } = await derivationHarness(), confirm = deferred();
+    let pending = null;
+    context.hodlConfirmKeyFingerprint = (result) => { pending = result; return confirm.promise; };
+    const run = start();
+    await driveUntil(() => pending);
+    assert.deepEqual(usableKeyMaterial(pending), bothKeys, `${ending}: the finished result carries no keys to wipe`);
+    if (ending === "pagehide") events.pagehide({});
+    confirm.resolve(ending === "pagehide");
+    await driveUntil(() => run.settled);
+    await run.promise;
+    assert.equal(context.hodlWalletResult, null);
+    assert.deepEqual(usableKeyMaterial(pending), [], `${ending}: the uncommitted result's extended private keys are still usable`);
+  }
 });

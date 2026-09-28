@@ -2413,7 +2413,7 @@ test("the private recovery section lists the BIP39 passphrase beside the seed ph
   // The HD result carries the passphrase text (not just a flag) so the row
   // can render; imported roots and single keys carry an empty one.
   assert.match(appSource, /passphraseUsed: source\.passphraseUsed,\s*passphrase: source\.passphrase \?\? "",/);
-  assert.match(appSource, /\{ entropy, passphraseUsed: passphrase\.length > 0, passphrase, seed, seedWordLengths,/);
+  assert.match(appSource, /\{ entropy, passphraseUsed: passphrase\.length > 0, passphrase, seed, notes:/);
   assert.match(appSource, /\{ entropy: null, passphraseUsed: false, passphrase: "", seed: null,/);
   // Rendered right after the words, through the same masked private field as
   // the entropy and seed hex; absent when no passphrase is in use.

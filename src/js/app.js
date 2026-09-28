@@ -490,9 +490,9 @@ function hodlSinglePrivateKey(result) {
   return result?.privHex ? hodlHex.decode(result.privHex) : null;
 }
 // The byte arrays a wallet result keeps its own secrets in: a single key, or
-// a seed wallet's BIP39 entropy, seed and word lengths (#546 B2).
+// a seed wallet's BIP39 entropy and seed (#546 B2).
 function hodlResultSecretBytes(result) {
-  return [result?.privateKey, result?.entropy, result?.seed, result?.seedWordLengths].filter(Boolean);
+  return [result?.privateKey, result?.entropy, result?.seed].filter(Boolean);
 }
 // Every private key a wallet result holds: its secret bytes, its row keys'
 // bytes, and its root and account key nodes (#546 B2).
@@ -1118,7 +1118,6 @@ function hodlRootWalletResult(root, network, source, accountIndex, masterFingerp
     passphraseUsed: source.passphraseUsed,
     passphrase: source.passphrase ?? "",
     seed: source.seed ?? null,
-    seedWordLengths: source.seedWordLengths ?? null,
     rootNode: root.hasPrivateKey ? hodlKeepPrivateNode(root) : null,
     rootXpub: hodlSerializeExtendedKey(root.publicExtendedKey, network, "x", false),
     rootPrivateLabel: hodlExtendedKeyVersions[hodlNetworkFamily(network)].x.prvName,
@@ -1190,22 +1189,22 @@ async function hodlRootWalletWithProgress(root, network, count, source, accountI
 async function hodlMnemonicWalletWithProgress(value, passphrase, network, count, source, accountIndex, addressStart, tracker, purposeIndex, coinType = hodlCoinTypeFromNetwork(network), hardening = hodlDefaultHardening(), branchStart = 0, branchRange = 2, derivationPlan = null) {
   let validation = hodlValidateMnemonic(value);
   if (!validation.ok) throw validation.error?.key ? hodlError(validation.error.key, validation.error.vars) : hodlError("Invalid seed phrase");
-  // The wallet keeps its BIP39 entropy and seed, and its words' lengths for
-  // the hidden view, as bytes that can be zeroed, never as text (#546 B2).
+  // The wallet keeps its BIP39 entropy and seed as bytes that can be zeroed,
+  // never as text (#546 B2).
   // The derivation records them with its row keys, so one that never commits
   // zeroes them.
-  let mnemonic = validation.words.join(" "), seed = hodlMnemonicToSeed(mnemonic, passphrase), entropy = hodlMnemonicToEntropy(mnemonic, hodlBip39Wordlist), seedWordLengths = Uint8Array.from(validation.words, (word) => Array.from(word).length), root;
-  for (let bytes of [entropy, seed, seedWordLengths]) hodlActiveDerivation?.rowKeys?.push(bytes);
+  let mnemonic = validation.words.join(" "), seed = hodlMnemonicToSeed(mnemonic, passphrase), entropy = hodlMnemonicToEntropy(mnemonic, hodlBip39Wordlist), root;
+  for (let bytes of [entropy, seed]) hodlActiveDerivation?.rowKeys?.push(bytes);
   try {
     root = hodlHDKey.fromMasterSeed(seed);
   } catch (error) {
-    for (let bytes of [entropy, seed, seedWordLengths]) bytes.fill(0);
+    for (let bytes of [entropy, seed]) bytes.fill(0);
     throw error;
   }
   let warnings = [...source?.warnings ?? []];
   if (passphrase.length > 0) warnings.push("A passphrase is in use. The same words without this passphrase are a different wallet. Do not store the passphrase with the words.");
   try {
-    return await hodlRootWalletWithProgress(root, network, count, { entropy, passphraseUsed: passphrase.length > 0, passphrase, seed, seedWordLengths, notes: source?.notes ?? [], warnings }, accountIndex, addressStart, tracker, purposeIndex, coinType, hardening, branchStart, branchRange, derivationPlan);
+    return await hodlRootWalletWithProgress(root, network, count, { entropy, passphraseUsed: passphrase.length > 0, passphrase, seed, notes: source?.notes ?? [], warnings }, accountIndex, addressStart, tracker, purposeIndex, coinType, hardening, branchStart, branchRange, derivationPlan);
   } finally {
     root.wipePrivateData(); // the result holds its own copy of the root
   }
@@ -1799,13 +1798,14 @@ function hodlSingleWalletData(wallet) {
 }
 // A seed wallet's recovery fields, in the card's order: the words, SeedQR,
 // passphrase, entropy hex and seed hex. The words and hex are built only
-// while private values are revealed; hidden, the words mask letter for
-// letter from their stored lengths, as they always have.
+// while private values are revealed; hidden, every word masks at the same
+// width, so only the word count is needed. BIP39 has three words for every
+// four bytes of entropy; a BIP-85 child's session key carries its words.
 function hodlSeedRecoveryFields(wallet) {
   if (!hodlResultHasSeed(wallet)) return [];
-  let lengths = wallet.seedWordLengths ? Array.from(wallet.seedWordLengths) : String(wallet.mnemonic).trim().split(/\s+/).map((word) => Array.from(word).length);
-  let words = hodlRevealPrivate ? hodlResultMnemonic(wallet) : lengths.map((length) => "\u2022".repeat(length)).join(" "), fields = [];
-  fields.push(hodlSeedPhraseField(`Your seed phrase \xB7 ${lengths.length} words`, words), hodlRevealPrivate ? hodlSeedQrExport(words, { passphraseUsed: wallet.passphraseUsed, entropyHex: hodlResultEntropyHex(wallet) }) : "");
+  let count = wallet.entropy ? wallet.entropy.length * 3 / 4 : String(wallet.mnemonic).trim().split(/\s+/).length;
+  let words = hodlRevealPrivate ? hodlResultMnemonic(wallet) : Array(count).fill("\u2022").join(" "), fields = [];
+  fields.push(hodlSeedPhraseField(`Your seed phrase \xB7 ${count} words`, words), hodlRevealPrivate ? hodlSeedQrExport(words, { passphraseUsed: wallet.passphraseUsed, entropyHex: hodlResultEntropyHex(wallet) }) : "");
   // The passphrase sits right under the words it belongs to: without it the
   // words recover a different wallet, so it is recovery material too.
   if (wallet.passphraseUsed && wallet.passphrase) fields.push(hodlPrivateFieldHtml("BIP39 passphrase", wallet.passphrase));

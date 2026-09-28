@@ -90,7 +90,7 @@ test("the words, entropy hex and seed hex are produced on request and match BIP3
   assert.equal(api.hodlResultSeedHex(imported), null);
 });
 
-// The hidden view masks each word letter for letter and each hex value at
+// The hidden view masks each word at the same width and each hex value at
 // its length; the revealed view is the value. Both are rendered with the
 // unchanged primitives around the independently computed values, in the
 // order the card has always used: words, SeedQR, passphrase, entropy, seed.
@@ -114,6 +114,9 @@ test("the recovery fields render the same, hidden and revealed", async () => {
     const expected = view.hodlSeedPhraseField("Your seed phrase \xB7 12 words", vector.words) + view.hodlSeedQrExport(vector.words, { passphraseUsed: false, entropyHex: vector.entropy })
       + view.hodlPrivateFieldHtml("BIP39 entropy hex", vector.entropy) + view.hodlPrivateFieldHtml("Master seed hex", seed);
     assert.equal(view.hodlSeedRecoveryFields(wallet).join(""), expected, `${revealed ? "revealed" : "hidden"}, no passphrase`);
+    // A BIP-85 child's session key carries its words as text.
+    const words = VECTORS[2].words, child = { kind: "hd", mnemonic: words, passphraseUsed: false };
+    assert.equal(view.hodlSeedRecoveryFields(child).join(""), view.hodlSeedPhraseField("Your seed phrase \xB7 24 words", words) + (revealed ? view.hodlSeedQrExport(words, { passphraseUsed: false, entropyHex: null }) : ""), `${revealed ? "revealed" : "hidden"}, BIP-85 child words`);
   }
 });
 
@@ -179,6 +182,19 @@ test("the journal still records a derived key's words", async () => {
   assert.equal(synced.added, 1);
   assert.equal(doc.entries.length, 1);
   assert.equal(doc.entries[0].phrase, vector.words);
+});
+
+// Hidden, every word masks at the same width (#599), so nothing but the word
+// count is needed to draw the hidden phrase, and BIP39 fixes the count by the
+// entropy's length. A seed wallet keeps its entropy and seed, the two byte
+// strings BIP39 defines, and no other bytes about its words: their lengths
+// would narrow each word to at most 555 of 2,048.
+test("a seed wallet keeps its entropy and seed and no other bytes", async () => {
+  for (const [label, vector, wallet] of await wallets()) {
+    const bytes = Object.keys(wallet).filter((key) => ArrayBuffer.isView(wallet[key])).sort();
+    assert.deepEqual(bytes, ["entropy", "seed"], `${label}: the wallet keeps other bytes`);
+    assert.equal(wallet.entropy.length * 3 / 4, vector.words.split(" ").length, `${label}: BIP39's word count from the entropy`);
+  }
 });
 
 // The bytes are recorded by the derivation that made them, so one that never

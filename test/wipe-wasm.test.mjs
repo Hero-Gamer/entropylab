@@ -352,8 +352,8 @@ test("app derivation paths wipe seeds, roots, and per-address keys (source guard
   const mnemonicPath = app.slice(app.indexOf("async function hodlMnemonicWalletWithProgress("), app.indexOf("async function hodlEntropyWalletWithProgress("));
   // The wallet keeps its seed as bytes that the drop sites zero (#546 B2): the
   // derivation records it for zeroing, and a failed master derivation zeroes it.
-  assert.match(mnemonicPath, /for \(let bytes of \[entropy, seed, seedWordLengths\]\) hodlActiveDerivation\?\.rowKeys\?\.push\(bytes\)/, "the BIP39 seed must be recorded for zeroing by its derivation");
-  assert.match(mnemonicPath, /catch \(error\) \{\s*for \(let bytes of \[entropy, seed, seedWordLengths\]\) bytes\.fill\(0\);/, "the BIP39 seed must be zeroed if master derivation fails");
+  assert.match(mnemonicPath, /for \(let bytes of \[entropy, seed\]\) hodlActiveDerivation\?\.rowKeys\?\.push\(bytes\)/, "the BIP39 seed must be recorded for zeroing by its derivation");
+  assert.match(mnemonicPath, /catch \(error\) \{\s*for \(let bytes of \[entropy, seed\]\) bytes\.fill\(0\);/, "the BIP39 seed must be zeroed if master derivation fails");
   assert.match(mnemonicPath, /root\.wipePrivateData\(\)/, "the master root node must be wiped after the wallet is built");
   const entropyPath = app.slice(app.indexOf("async function hodlEntropyWalletWithProgress("), app.indexOf("async function hodlImportedWalletWithProgress("));
   assert.match(entropyPath, /entropy\.bytes\.fill\(0\)/, "the entropy bytes must be wiped once the mnemonic exists");

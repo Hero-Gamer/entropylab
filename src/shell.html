@@ -336,8 +336,11 @@ words, pick one of the checksum words.</span></span>
       </section>
       <section class="card no-print tool-card" id="bip85-card" role="tabpanel" hidden>
       <div class="bip85-bench" id="bip85-bench">
+      <section class="edge-note-titled" aria-labelledby="bip85-safety-heading">
+        <h3 class="edge-note-title is-private" id="bip85-safety-heading">Safety notes</h3>
+        <p class="edge-note is-private" id="bip85-retention-note">Any derived child key that isn't cleared will be available elsewhere in the app wherever choosing an existing key is an option. Anyone with the parent seed, passphrase, application, and index can reproduce them.</p>
+      </section>
       <p class="edge-note is-public" id="bip85-source-note">Choose a compatible HD-root key from this session, or paste a root extended private key below.</p>
-      <p class="edge-note is-private" id="bip85-retention-note">Derived children remain in this page only. Anyone with the parent seed, passphrase, application, and index can reproduce them.</p>
       <div class="station-key-source tool-section">
         <p class="label">Use an existing key</p>
         <div class="session-key-picker" id="bip85-session-keys" role="group" aria-label="Compatible existing keys" hidden></div>
@@ -382,7 +385,6 @@ words, pick one of the checksum words.</span></span>
         </label>
       </div>
       <p class="edge-note is-muted bip85-path-row">Path <code id="bip85-path">m/83696968'/39'/0'/24'/0'</code></p>
-      <p class="edge-note is-public" id="bip85-key-availability-note">Any derived child key that isn't cleared will be available elsewhere in the app wherever choosing an existing key is an option.</p>
       <p class="err" id="bip85-error" role="alert"></p>
       <div class="row bip85-actions current-item-actions tool-actions">
         <button class="btn primary" id="bip85-go" type="button" disabled aria-disabled="true">Derive Child Key</button>

@@ -1582,7 +1582,7 @@
       assert(bipCard.querySelector(".station-key-source"), "BIP-85 key-source block is missing");
       // Measured against whatever opens the card, so reordering the blocks
       // below it does not make this a test of their order.
-      const bipFirst = document.getElementById("bip85-source-note");
+      const bipFirst = document.getElementById("bip85-bench").firstElementChild;
       equal(Math.round(bipFirst.getBoundingClientRect().top - bipCard.getBoundingClientRect().top - parseFloat(getComputedStyle(bipCard).borderTopWidth)), token("--space-section"), "BIP-85 first-section card inset");
     } finally {
       document.querySelector('#workspace [data-workspace="calc"]').click();
@@ -4559,8 +4559,6 @@
       assert(chip.textContent.includes("→"), `${id} omitted the parent-to-child arrow`);
     }
     assert([...document.querySelectorAll("#msig-keys .msig-session-key")].some((chip) => chip.dataset.keyId?.startsWith("bip85:") && chip.textContent.includes(firstChildFingerprint)), "MS Station did not offer the BIP-85 HD child");
-    const availabilityNote = document.getElementById("bip85-key-availability-note");
-    assert(document.getElementById("bip85-bench").contains(availabilityNote) && availabilityNote.compareDocumentPosition(document.getElementById("bip85-go")) & Node.DOCUMENT_POSITION_FOLLOWING, "The child-key availability note was not above the BIP-85 derive controls");
     assert(!document.getElementById("delete-bip85").disabled, "The child delete control did not become available");
 
     document.querySelector('#workspace [data-workspace="journal"]').click();

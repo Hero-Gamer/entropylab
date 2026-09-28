@@ -1354,6 +1354,8 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-summary-lifehash { flex: 0 0 auto; width: 72px; height: 72px; border-radius: 8px; image-rendering: pixelated; background: #fff; }
 .key-summary-lifehash[hidden] { display: none; }
 .key-summary-text { flex: 1 1 auto; min-width: 0; }
+/* Edit sits at the top corner however tall the summary beside it grows. */
+.key-summary-edit { align-self: flex-start; }
 /* The co-signer column sets the block's height, so the summary beside it
    starts at the top rather than floating against the middle of the stack. */
 #msig-summary .key-summary-text { align-self: flex-start; }
@@ -1367,7 +1369,15 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    off them, so it adds no margin of its own. */
 .msig-summary-cosigners-label { flex: 1 1 100%; margin: 0; }
 .msig-summary-cosigners[hidden] { display: none; }
+/* Sorted keys share one row: a wider step between marks than above them. */
+.msig-summary-cosigners:not(.is-listed) { column-gap: var(--space-component); }
 .msig-summary-cosigner { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-family: var(--mono); font-size: 12px; }
+/* Under multi the order is the script's: one key per line, its path beneath. */
+.msig-summary-cosigners.is-listed { flex-direction: column; align-items: flex-start; }
+.msig-summary-cosigner-text { display: grid; }
+.msig-summary-cosigner-text > :first-child { color: var(--fg); }
+.msig-summary-cosigner-path { word-break: break-all; }
+.msig-summary-cosigner-order { min-width: 2ch; color: var(--muted); text-align: right; }
 .key-summary-path { font-family: var(--mono); word-break: break-all; }
 /* The parent line sits apart from the child's own two lines, and carries the
    parent's LifeHash beside the fingerprint it names. */
@@ -1790,7 +1800,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    behind its label: the PSBT Editor's sections and MS Station's co-signer
    cards. The band reaches 8px past the content on each side so the label's
    text stays on the content edge. */
-.psbted-section-label, .psbted-map > .psbted-section-label, .msig-key-title {
+.psbted-section-label, .psbted-map > .psbted-section-label, .msig-key-band {
   margin-inline: -8px; padding: 6px 8px;
   background: color-mix(in oklab, var(--fg) 5%, transparent);
 }
@@ -2364,7 +2374,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .msig-account-warning { color: var(--warn); }
 /* A co-signer card whose purpose index is the odd one out, in the bright red
    of the wallet-level note above Derive. */
-.msig-purpose-mismatch { display: block; color: var(--danger-bright); }
+.msig-purpose-mismatch, .msig-key-status.bad { display: block; color: var(--danger-bright); }
+.msig-key-status { margin: -8px 0 6px; }
+.msig-key-status.ok { color: var(--ok-bright); }
 .msig-script-warning { color: var(--danger); }
 /* A wallet-level refusal: the red warning note, its text in the bar's red. */
 .msig-spec-warning { color: var(--danger-bright); }
@@ -2541,27 +2553,18 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .msig-threshold-lock { text-align: center; }
  .msig-keys { display: grid; gap: var(--space-component); margin-top: var(--space-section); padding-top: var(--space-section); border-top: 1px solid var(--border); }
  .msig-keys .field { margin-top: 0; }
- .msig-key-order-status[hidden] { display: none; }
 .msig-key-row { display: grid; gap: var(--space-control); }
 .msig-key-title { margin-top: 0; color: var(--accent); font-size: 14px; }
 .msig-key-content { display: grid; min-width: 0; gap: 8px; }
 .msig-cosigner-advanced { padding-top: 8px; }
-.msig-key-row-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
-}
-.msig-key-position { color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
-.msig-keys-listed .msig-key-position { color: var(--fg); }
-.msig-key-move { display: flex; gap: 8px; }
-.msig-key-move-btn { min-height: 36px; padding: 0 12px; }
+/* The card's banded head: title left, the listed-order controls right. */
+.msig-key-band { display: flex; align-items: center; justify-content: space-between; gap: var(--space-control); min-height: 44px; margin-bottom: 4px; }
+.msig-key-band > .msig-key-title { margin: 0; }
+.msig-key-move { display: flex; align-items: center; gap: 6px; }
+.msig-key-move-label { margin-right: 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.msig-key-move-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; min-height: 32px; height: 32px; padding: 0; }
+.msig-key-move-btn svg { width: 12px; height: 12px; fill: currentColor; }
 .msig-key-move-btn:disabled { opacity: 0.42; cursor: not-allowed; }
-.msig-script-order {
-  margin: 0; padding-left: 1.25em; display: grid; gap: 8px;
-}
-.msig-script-order li { padding-left: 4px; }
-.msig-script-order-position {
-  display: block; color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
-}
-.msig-script-order code { font-size: 13px; overflow-wrap: anywhere; }
 @media (max-width: 520px) {
   /* A 24px thumb cannot resolve a step this narrow, so the slider, its ticks
      and the note that tells you to drag it all go; the numbers are the control. */

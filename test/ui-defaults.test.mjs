@@ -704,7 +704,7 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
 });
 
 test("multisig policy settings precede the key inputs and output settings follow them", () => {
-  const fieldOrder = /id="msig-script-tabs"[\s\S]*id="msig-key-order"[\s\S]*id="msig-legacy-bip87"[\s\S]*id="msig-key-order-status"[\s\S]*id="msig-keys"[\s\S]*id="msig-hint"[\s\S]*id="msig-origin-state"[\s\S]*id="msig-purpose"[\s\S]*id="msig-network"[\s\S]*id="msig-account"[\s\S]*id="msig-address-start"[\s\S]*id="msig-address-range"[\s\S]*id="msig-go"/;
+  const fieldOrder = /id="msig-script-tabs"[\s\S]*id="msig-key-order"[\s\S]*id="msig-legacy-bip87"[\s\S]*id="msig-keys"[\s\S]*id="msig-hint"[\s\S]*id="msig-origin-state"[\s\S]*id="msig-purpose"[\s\S]*id="msig-network"[\s\S]*id="msig-account"[\s\S]*id="msig-address-start"[\s\S]*id="msig-address-range"[\s\S]*id="msig-go"/;
   assert.match(shell, fieldOrder);
 });
 
@@ -870,7 +870,6 @@ test("multisig key order is sorted by default and visible with the policy settin
     assert.doesNotMatch(markup, /id="msig-advanced"/);
     assert.match(markup, /<option value="sorted" selected(?:="selected")?(?:\s[^>]*)?>Sorted (?:·|\\xB7) sortedmulti<\/option>/);
     assert.match(markup, /<option value="listed"(?:\s[^>]*)?>As listed (?:·|\\xB7) multi<\/option>/);
-    assert.match(markup, /id="msig-key-order-status" hidden/);
   }
   assert.match(app, /function hodlMsigKeysSorted\(\)/);
   assert.match(app, /function hodlBindMsigKeyReorder\(box\)/);
@@ -878,7 +877,6 @@ test("multisig key order is sorted by default and visible with the policy settin
   assert.match(app, /hodlTText\("Move up"\)/);
   assert.match(app, /hodlTText\("Move down"\)/);
   assert.match(app, /function hodlMsigScriptOrder\(keyTokens\)/);
-  assert.match(app, /id="multisig-order-heading">\$\{hodlT\("Script key order"\)\}/);
   assert.match(app, /keyOrder:"sorted"/);
   assert.match(app, /listed co-signer order is part of the script/);
 });
@@ -2136,7 +2134,7 @@ test("every MS Station co-signer keeps its key and full path visible with synchr
   assert.match(appSource, /originFields\.append\(fingerprintLabel, pathLabel\)/);
   assert.match(appSource, /pathComponents\.className = "derivation-advanced-fields msig-path-components"/);
   assert.match(appSource, /advanced\.append\(advancedSummary, pathComponents\)/);
-  assert.match(appSource, /content\.append\(chips, lab, specLabel, originFields, advanced\)/);
+  assert.match(appSource, /content\.append\(chips, keyStatus, lab, specLabel, originFields, advanced\)/);
   assert.match(appSource, /hodlCreateMsigSessionKeyButton\(option, "msig-session-key"/);
   assert.match(appSource, /function hodlPickMsigSessionKey\(option, row\) \{/);
   assert.match(appSource, /ta\.value = deselect \? "" : value/);

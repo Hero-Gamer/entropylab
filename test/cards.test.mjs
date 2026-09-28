@@ -358,10 +358,12 @@ test("card notices give only the physical action required before the next draw",
   assert.equal(hodlDirectCardInstruction(direct), "Shuffle A–4 (any suit), then draw");
 
   const needed = { first: 52, extra: 6 };
-  assert.equal(hodlHashedCardInstruction({ cards: [], needed }), "Shuffle a standard 52-card deck before the first draw.");
-  assert.equal(hodlHashedCardInstruction({ cards: ["AS"], needed }), "Deal the next card without replacement from the shuffled deck.");
-  assert.equal(hodlHashedCardInstruction({ cards: DECK, needed }), "Shuffle the full 52-card deck again before the next draw.");
-  assert.equal(hodlHashedCardInstruction({ cards: [...DECK, "AS"], needed }), "Deal the next card without replacement from the second shuffle.");
+  assert.equal(hodlHashedCardInstruction({ cards: [], needed }), "Shuffle a standard 52-card deck and draw the first card");
+  assert.equal(hodlHashedCardInstruction({ cards: ["AS"], needed }), "Draw the next card from the same shuffled deck");
+  // One card left in the deck: it is the last, not the next.
+  assert.equal(hodlHashedCardInstruction({ cards: DECK.slice(0, 51), needed }), "Draw the last card from the same shuffled deck");
+  assert.equal(hodlHashedCardInstruction({ cards: DECK, needed }), "Shuffle the 52-card deck again and draw");
+  assert.equal(hodlHashedCardInstruction({ cards: [...DECK, "AS"], needed }), "Draw the next card from the same shuffled deck");
   assert.equal(hodlHashedCardInstruction({ cards: [...DECK, "AS", "2S", "3S", "4S", "5S", "6S"], needed }), "");
 });
 

@@ -4001,10 +4001,12 @@ function hodlDirectCardInstruction(parsed) {
 function hodlHashedCardInstruction(parsed) {
   let required = parsed.needed.first + parsed.needed.extra;
   if (parsed.cards.length >= required) return "";
-  if (!parsed.cards.length) return hodlTText("Shuffle a standard 52-card deck before the first draw.");
-  if (parsed.needed.extra && parsed.cards.length === parsed.needed.first) return hodlTText("Shuffle the full 52-card deck again before the next draw.");
-  if (parsed.needed.extra && parsed.cards.length > parsed.needed.first) return hodlTText("Deal the next card without replacement from the second shuffle.");
-  return hodlTText("Deal the next card without replacement from the shuffled deck.");
+  if (!parsed.cards.length) return hodlTText("Shuffle a standard 52-card deck and draw the first card");
+  if (parsed.needed.extra && parsed.cards.length === parsed.needed.first) return hodlTText("Shuffle the 52-card deck again and draw");
+  // Cards already dealt from the deck in hand: the one card a full deck has
+  // left is the last, not the next.
+  let dealt = parsed.needed.extra && parsed.cards.length > parsed.needed.first ? parsed.cards.length - parsed.needed.first : parsed.cards.length;
+  return dealt === 51 ? hodlTText("Draw the last card from the same shuffled deck") : hodlTText("Draw the next card from the same shuffled deck");
 }
 function hodlDealtDirectCardMarkup(rank) {
   return `<span class="dealt-card dealt-card-rank-only" title="${hodlT("Rank {rank}", { rank: hodlEscapeHtml(rank) })}"><span class="dealt-rank">${hodlEscapeHtml(rank)}</span></span>`;

@@ -16,7 +16,7 @@ import { keyVaultIdentity } from "../src/js/keymanager.js";
 // The helpers that zero address-row key bytes (#546 B2). The lifecycle
 // harness loads whichever of them app.js defines, so a source without them
 // fails the byte-wiping tests on the bytes, not on a missing function.
-const rowWipeHelpers = ["hodlZeroWalletRows", "hodlWipeWalletKeys", "hodlLiveWalletResults", "hodlWipeUnsharedWalletRows", "hodlSettleDerivationKeys", "hodlDisposeDroppedWallets"];
+const rowWipeHelpers = ["hodlZeroWalletRows", "hodlResultSecretBytes", "hodlWipeWalletKeys", "hodlLiveWalletResults", "hodlWipeUnsharedWalletRows", "hodlSettleDerivationKeys", "hodlDisposeDroppedWallets"];
 
 function deferred() {
   let resolve, reject;
@@ -495,7 +495,7 @@ const walletBuilderParts = loadAppFunctions(["hodlAccountExportFamily", "hodlSer
 const walletKeepers = ["hodlCopyPrivateNode", "hodlKeepPrivateNode"].filter((name) => app.includes(`function ${name}(`));
 const bip84Definition = { id: "bip84", label: "Native SegWit", bip: "BIP84", script: "p2wpkh", purpose: 84, purposeHardened: true };
 
-async function derivationHarness({ failAtAddress = 0, identity = () => "bip32-vector-1", single = false } = {}) {
+async function derivationHarness({ failAtAddress = 0, identity = () => "bip32-vector-1", single = false, seedWords = false } = {}) {
   const harness = raceHarness(), { context } = harness, keys = [], pauses = [];
   const real = await loadAppFunctions(["hodlPathComponent", "hodlAddressBranchRole", "hodlAddressOrThrow"]);
   let clock = 0, addresses = 0;
@@ -520,6 +520,13 @@ async function derivationHarness({ failAtAddress = 0, identity = () => "bip32-ve
         const builder = await singleKeyBuilder;
         builder.__set.hodlActiveDerivation(context.hodlActiveDerivation);
         return builder.hodlSingleKeyWallet(singleKeyWif, "mainnet", "wif");
+      }
+      // A seed wallet from the real builder, which records its seed material
+      // with this harness's derivation (#546 B2 step 2c-2).
+      if (seedWords) {
+        const builder = await seedWalletBuilder;
+        builder.__set.hodlActiveDerivation(context.hodlActiveDerivation);
+        return Object.assign(await builder.hodlMnemonicWalletWithProgress(seedVector.words, seedVector.pass, "mainnet", 2, undefined, 0, 0, tracker, 84, 0), { masterIdentity: identity() });
       }
       const root = HDKey.fromMasterSeed(vectorSeed), account = root.derive("m/84'/0'/0'"), watched = {
         derive(path) {
@@ -1129,5 +1136,110 @@ test("a single key declined at the fingerprint confirmation, or hidden while it 
     await run.promise;
     assert.equal(context.hodlWalletResult, null);
     assert.equal(usableSingleKey(pending), false, `${ending}: the uncommitted single key is still usable`);
+  }
+});
+
+// #546 B2 step 2c-2: a seed wallet holds its BIP39 entropy and seed as bytes,
+// which go wherever a wallet's keys go. Before this step its words, entropy
+// hex and seed hex were strings for the whole session.
+// BIP39 test vector (trezor/python-mnemonic vectors.json), passphrase "TREZOR".
+const seedVector = {
+  words: "legal winner thank year wave sausage worth useful legal winner thank yellow", pass: "TREZOR", entropy: "7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f",
+  seed: "2e8905819b8723fe2c1d161860e5ee1830318dbf49a83bd451cfb8440c28bd6fa457fe1296106559a3c80937a1c1069be3a3a5bd381ee6260e8d9739fce1f607",
+};
+// Its slice carries page-boot statements that run once at load; they get
+// inert stand-ins for the page there.
+const seedWalletBuilder = (async () => {
+  const inert = new Proxy(function () {}, { get: (target, key) => key === Symbol.toPrimitive ? () => "" : key === "then" ? undefined : inert, apply: () => inert, construct: () => inert });
+  Object.assign(globalThis, { __ENTROPYLAB_TEST_HOOKS__: false, document: inert, window: inert });
+  try {
+    return await loadAppFunctions(["hodlMnemonicWalletWithProgress", "hodlActiveDerivation"], { stubs: { hodlSelectedScriptType: () => "bip84" }, settable: ["hodlActiveDerivation"] });
+  } finally {
+    delete globalThis.document;
+    delete globalThis.window;
+  }
+})();
+// Which seed material a result still makes usable: the words or entropy hex
+// as text, or entropy bytes ("entropy"); the seed hex as text, or seed bytes
+// ("seed").
+const usableSeedMaterial = (result) => {
+  const found = new Set(), seen = new Set(), walk = (value) => {
+    if (typeof value === "string") {
+      const text = value.toLowerCase();
+      if (text.includes(seedVector.words) || text.includes(seedVector.entropy)) found.add("entropy");
+      if (text.includes(seedVector.seed)) found.add("seed");
+    } else if (ArrayBuffer.isView(value) && value.BYTES_PER_ELEMENT === 1) {
+      const bytes = hex.encode(Uint8Array.from(value));
+      if (bytes === seedVector.entropy) found.add("entropy");
+      if (bytes === seedVector.seed) found.add("seed");
+    } else if (value && typeof value === "object" && !seen.has(value)) {
+      seen.add(value);
+      for (const key of Object.keys(value)) walk(value[key]);
+    }
+  };
+  walk(result);
+  return ["entropy", "seed"].filter((name) => found.has(name));
+};
+const bothSeeds = ["entropy", "seed"];
+
+test("a seed wallet's seed material stays usable while it is held and is zeroed once it is dropped or the page goes", async () => {
+  for (const drop of ["Wipe", "edit", "re-derive", "delete", "journal lock", "pagehide"]) {
+    const { context, events, derive, selectLab, leaveKeys, active } = await stationHarness({ seedWords: true });
+    context.hodlJournalUnlocked = () => drop === "journal lock";
+    await derive("dropped");
+    const dropped = active().result;
+    selectLab();
+    await derive("kept");
+    const kept = active().result;
+    assert.deepEqual(usableSeedMaterial(dropped), bothSeeds, `${drop}: a committed wallet lost its seed material`);
+    assert.deepEqual(usableSeedMaterial(kept), bothSeeds, `${drop}: a committed wallet lost its seed material`);
+    context.hodlActiveKey = context.hodlKeys.findIndex((state) => state.result === dropped);
+    context.hodlRestoreKey();
+    if (drop === "Wipe") context.hodlWipeActiveKey();
+    else if (drop === "edit") context.hodlInvalidateLiveKeyResult();
+    else if (drop === "re-derive") await derive("dropped");
+    else if (drop === "delete") context.hodlDeleteActiveKey();
+    else if (drop === "journal lock") {
+      context.hodlDeleteActiveKey();
+      leaveKeys("journal");
+      context.hodlJournalLock();
+    } else events.pagehide({});
+    assert.deepEqual(usableSeedMaterial(dropped), [], `${drop}: the dropped wallet's seed material is still usable`);
+    if (drop === "pagehide") assert.deepEqual(usableSeedMaterial(kept), [], "pagehide left a shown wallet's seed material usable");
+    else assert.deepEqual(usableSeedMaterial(kept), bothSeeds, `${drop}: dropping one wallet took another wallet's seed material`);
+  }
+});
+
+test("a seed wallet another tab still shows keeps its seed material when one tab drops it", async () => {
+  const { context, derive, active } = await stationHarness({ seedWords: true });
+  await derive();
+  const result = active().result;
+  context.hodlKeys.push({ id: 99, number: 99, isLab: false, fields: {}, result });
+  context.hodlInvalidateLiveKeyResult();
+  assert.deepEqual(usableSeedMaterial(result), bothSeeds, "dropping a shared wallet from one tab zeroed the seed material the other tab shows");
+});
+
+test("an ignored seed wallet's saved copy carries none of its seed material", async () => {
+  const { context, derive, active } = await stationHarness({ seedWords: true });
+  await derive();
+  const state = active(), entry = context.hodlKeyManagerEntry(state);
+  assert.deepEqual(usableSeedMaterial(entry), [], "the Ignored copy kept seed material");
+  assert.deepEqual(usableSeedMaterial(state.result), bothSeeds, "copying must not touch the live wallet");
+});
+
+test("a seed wallet declined at the fingerprint confirmation, or hidden while it asks, leaves no usable seed material", async () => {
+  for (const ending of ["declined", "pagehide"]) {
+    const { context, events, driveUntil, start } = await derivationHarness({ seedWords: true }), confirm = deferred();
+    let pending = null;
+    context.hodlConfirmKeyFingerprint = (result) => { pending = result; return confirm.promise; };
+    const run = start();
+    await driveUntil(() => pending);
+    assert.deepEqual(usableSeedMaterial(pending), bothSeeds, `${ending}: the finished result carries no seed material to zero`);
+    if (ending === "pagehide") events.pagehide({});
+    confirm.resolve(ending === "pagehide");
+    await driveUntil(() => run.settled);
+    await run.promise;
+    assert.equal(context.hodlWalletResult, null);
+    assert.deepEqual(usableSeedMaterial(pending), [], `${ending}: the uncommitted wallet's seed material is still usable`);
   }
 });

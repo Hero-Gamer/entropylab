@@ -547,7 +547,9 @@ export function searchEntries(doc, query) {
   return entries.filter((entry) => String(entry.label || "").toLowerCase().includes(needle));
 }
 
-export function snapshotFromKeyState(state) {
+// The phrase is the key's words as text; app.js builds it from the wallet's
+// entropy bytes (#546 B2).
+export function snapshotFromKeyState(state, phrase = state?.result?.mnemonic || "") {
   if (!state || state.isLab) return null;
   const fields = state.fields || {};
   const mode = state.mode || "";
@@ -584,7 +586,6 @@ export function snapshotFromKeyState(state) {
       input = (fields.privateKeys && (fields.privateKeys[kind] || fields.privateKeys.wif)) || fields.key || "";
     }
   }
-  const phrase = state.result?.mnemonic || "";
   if (!String(input).trim() && !String(phrase).trim()) return null;
   return {
     method,

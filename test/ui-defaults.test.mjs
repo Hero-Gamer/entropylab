@@ -344,8 +344,7 @@ test("the BitBox word counter is coloured and its next roll sits on its own line
   assert.match(appSource, /hodlMetaValue\(String\(result\.words\.length \+ 1\), false\)/);
   // What to roll next is its own sentence, so it lands on its own line.
   assert.match(appSource, /hodlTText\("Word \{word\} of \{partial\}", \{ word: hodlMetaToken, partial: result\.neededPartial \}\)/);
-  assert.match(appSource, /hodlTText\("Die \{die\} of 5 \(only faces 1–4 used\)", \{ die: result\.diceInWord \+ 1 \}\)/);
-  assert.match(appSource, /hodlTText\("6th die \(interpreted as a coin flip\)"\)/);
+  assert.match(appSource, /\[hodlMetaToken, bitboxRoll\]/);
   // BitBox carries no tail at all now: the invalid-input note is redundant with
   // the highlighted transcript above, and ignored extras still reach the user
   // as a derive-time warning.
@@ -704,7 +703,7 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
 });
 
 test("multisig policy settings precede the key inputs and output settings follow them", () => {
-  const fieldOrder = /id="msig-script-tabs"[\s\S]*id="msig-key-order"[\s\S]*id="msig-legacy-bip87"[\s\S]*id="msig-keys"[\s\S]*id="msig-hint"[\s\S]*id="msig-origin-state"[\s\S]*id="msig-purpose"[\s\S]*id="msig-network"[\s\S]*id="msig-account"[\s\S]*id="msig-address-start"[\s\S]*id="msig-address-range"[\s\S]*id="msig-go"/;
+  const fieldOrder = /id="msig-script-tabs"[\s\S]*id="msig-key-order"[\s\S]*id="msig-legacy-bip87"[\s\S]*id="msig-keys"[\s\S]*id="msig-origin-state"[\s\S]*id="msig-purpose"[\s\S]*id="msig-network"[\s\S]*id="msig-account"[\s\S]*id="msig-address-start"[\s\S]*id="msig-address-range"[\s\S]*id="msig-go"/;
   assert.match(shell, fieldOrder);
 });
 

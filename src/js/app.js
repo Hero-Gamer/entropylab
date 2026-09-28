@@ -1656,7 +1656,7 @@ function hodlPrivateDataControls(descriptionId, scope = "wallet") {
   let disclosure = privateSheet ? scope === "wallet" ? hodlT("The downloaded plain-text file is unencrypted and includes all available root and account private recovery material across every script type.") : hodlT("The downloaded plain-text file is unencrypted and includes every private key shown in this section.") : hodlT("The downloaded sheet omits all private recovery material.");
   return `<div class="wallet-data-actions no-print">
     <p class="label">${hodlT("Downloads")}</p>
-    <p class="edge-note ${privateSheet ? "is-private" : "is-public"} recovery-download-disclosure" id="recovery-sheet-disclosure"><strong>${privateSheet ? hodlT("Private export:") : hodlT("Watch-only export:")}</strong> ${disclosure}</p>
+    <div class="edge-note-titled recovery-download-disclosure" id="recovery-sheet-disclosure"><p class="edge-note-title ${privateSheet ? "is-private" : "is-public"}">${privateSheet ? hodlT("Private export") : hodlT("Watch-only export")}</p><p class="edge-note ${privateSheet ? "is-private" : "is-public"}">${disclosure}</p></div>
     ${hodlWalletDatBirthdayField()}
     <button class="btn secondary ${privateSheet ? "red" : "green"} save-recovery-sheet" id="save" type="button" aria-describedby="recovery-sheet-disclosure">${downloadLabel}</button>
     ${hodlWalletDatControl(privateSheet)}
@@ -1710,7 +1710,7 @@ function hodlWalletMessages(wallet, idPrefix) {
     let lines = [...warnings.map((message) => hodlFormatNote(message)), notes.map((message) => hodlFormatNote(message)).join(" ")].filter(Boolean).map((text) => `<p>${hodlEscapeHtml(text)}</p>`).join("");
     return `<section class="edge-note is-public wallet-result-messages" aria-label="${hodlTAttr("Safety notes")}">${lines}</section>`;
   }
-  return `<section class="edge-note is-private wallet-result-messages" aria-labelledby="${idPrefix}-safety-heading"><h3 id="${idPrefix}-safety-heading">Safety notes</h3><ul>${items}</ul></section>`;
+  return `<section class="edge-note-titled" aria-labelledby="${idPrefix}-safety-heading"><h3 class="edge-note-title is-private" id="${idPrefix}-safety-heading">Safety notes</h3><div class="edge-note is-private wallet-result-messages"><ul>${items}</ul></div></section>`;
 }
 // The privacy bar: one switch for every masked value in the key view, kept in
 // sight while the reader scrolls. A checkbox underneath, announced as a
@@ -4001,10 +4001,12 @@ function hodlDirectCardInstruction(parsed) {
 function hodlHashedCardInstruction(parsed) {
   let required = parsed.needed.first + parsed.needed.extra;
   if (parsed.cards.length >= required) return "";
-  if (!parsed.cards.length) return hodlTText("Shuffle a standard 52-card deck before the first draw.");
-  if (parsed.needed.extra && parsed.cards.length === parsed.needed.first) return hodlTText("Shuffle the full 52-card deck again before the next draw.");
-  if (parsed.needed.extra && parsed.cards.length > parsed.needed.first) return hodlTText("Deal the next card without replacement from the second shuffle.");
-  return hodlTText("Deal the next card without replacement from the shuffled deck.");
+  if (!parsed.cards.length) return hodlTText("Shuffle a standard 52-card deck and draw the first card");
+  if (parsed.needed.extra && parsed.cards.length === parsed.needed.first) return hodlTText("Shuffle the 52-card deck again and draw");
+  // Cards already dealt from the deck in hand: the one card a full deck has
+  // left is the last, not the next.
+  let dealt = parsed.needed.extra && parsed.cards.length > parsed.needed.first ? parsed.cards.length - parsed.needed.first : parsed.cards.length;
+  return dealt === 51 ? hodlTText("Draw the last card from the same shuffled deck") : hodlTText("Draw the next card from the same shuffled deck");
 }
 function hodlDealtDirectCardMarkup(rank) {
   return `<span class="dealt-card dealt-card-rank-only" title="${hodlT("Rank {rank}", { rank: hodlEscapeHtml(rank) })}"><span class="dealt-rank">${hodlEscapeHtml(rank)}</span></span>`;
@@ -6379,9 +6381,9 @@ function hodlUpdateDice() {
     // The old "Group x of y" prefix counted completed groups beside the active
     // word, so the line carried two numbers that disagreed by one throughout.
     let rollPhrase = "", rollRange = "", nextText = "", nextCue = "";
-    if (result.waiting === "d8") { rollPhrase = hodlTText("D8 roll"); rollRange = hodlTText(" (1–8)"); }
-    else if (result.waiting === "d16-first") { rollPhrase = hodlTText("First D16 roll"); rollRange = hodlTText(" (0–F)"); }
-    else if (result.waiting === "d16-second") { rollPhrase = hodlTText("Second D16 roll"); rollRange = hodlTText(" (0–F)"); }
+    if (result.waiting === "d8") { rollPhrase = hodlTText("Roll D8"); rollRange = hodlTText(" (1–8)"); }
+    else if (result.waiting === "d16-first") { rollPhrase = hodlTText("Roll first D16"); rollRange = hodlTText(" (0–F)"); }
+    else if (result.waiting === "d16-second") { rollPhrase = hodlTText("Roll second D16"); rollRange = hodlTText(" (0–F)"); }
     else if (result.waiting === "correction") {
       let invalid = result.firstInvalid,
         specSteps = hodlDPlusFinalSteps(config.words),
@@ -6389,9 +6391,9 @@ function hodlUpdateDice() {
       nextText = `Correct ${result.invalidRequiredCount} highlighted invalid result${result.invalidRequiredCount===1?"":"s"}, starting with ${position}`;
     }
     else if (selectingFinal) nextCue = selectedFinal ? hodlTText("Checksum valid · ready to derive") : hodlTText("Choose final checksum word below");
-    else if (result.waiting === "checksum-d8") { rollPhrase = hodlTText("Final D8 checksum roll"); rollRange = hodlTText(" (1–8)"); }
-    else if (result.waiting === "checksum-d16") { rollPhrase = hodlTText("Final D16 checksum roll"); rollRange = hodlTText(" (0–F)"); }
-    else if (result.waiting === "checksum-coin") { rollPhrase = hodlTText("Final D8 as a coin flip"); rollRange = hodlTText(" (1–4 Heads, 5–8 Tails)"); }
+    else if (result.waiting === "checksum-d8") { rollPhrase = hodlTText("Roll final D8 checksum"); rollRange = hodlTText(" (1–8)"); }
+    else if (result.waiting === "checksum-d16") { rollPhrase = hodlTText("Roll final D16 checksum"); rollRange = hodlTText(" (0–F)"); }
+    else if (result.waiting === "checksum-coin") { rollPhrase = hodlTText("Roll final D8 as a coin flip"); rollRange = hodlTText(" (1–4 Heads, 5–8 Tails)"); }
     else nextCue = hodlTText("Checksum valid · ready to derive");
     let statusTail = result.extraAfter ? hodlT(" · {n} extra input(s) ignored", { n: result.extraAfter }) : "";
     let displayWords = result.wordSlots.slice();
@@ -6430,9 +6432,15 @@ function hodlUpdateDice() {
     // is the count to act on: red until every lookup-table word is in, green
     // once the phrase is down to its final checksum pick.
     let result = hodlBitBoxRolls(input.value, config.words), bitboxDone = result.waiting === "last-word",
+      // The next roll reads as the D++ prompt does: an orange instruction,
+      // its face range for assistive tech only.
+      bitboxDie = [hodlTText("Roll first D6"), hodlTText("Roll second D6"), hodlTText("Roll third D6"), hodlTText("Roll fourth D6"), hodlTText("Roll fifth D6")][result.diceInWord] || "",
+      bitboxRoll = result.waiting === "coin"
+        ? hodlDPlusRollNode(hodlTText("Roll sixth D6 (as a coin flip)"), hodlTText(" (1–3 Heads, 4–6 Tails)"))
+        : hodlDPlusRollNode(bitboxDie, hodlTText(" (only faces 1–4 used)")),
       bitboxLines = bitboxDone
         ? [[hodlTText("{n} words", { n: hodlMetaToken }), hodlMetaValue(String(result.words.length), true)], [hodlMetaToken, hodlMetaCue(hodlTText("Choose final checksum word below"))]]
-        : [[hodlTText("Word {word} of {partial}", { word: hodlMetaToken, partial: result.neededPartial }), hodlMetaValue(String(result.words.length + 1), false)], [result.waiting === "coin" ? hodlTText("6th die (interpreted as a coin flip)") : hodlTText("Die {die} of 5 (only faces 1–4 used)", { die: result.diceInWord + 1 }), null]];
+        : [[hodlTText("Word {word} of {partial}", { word: hodlMetaToken, partial: result.neededPartial }), hodlMetaValue(String(result.words.length + 1), false)], [hodlMetaToken, bitboxRoll]];
     let last = result.waiting === "last-word" ? hodlTargetLastWords(result.words.join(" "), config.words) : null;
     if (last && !last.error && !last.candidates.includes(hodlPickedLastWord)) hodlPickedLastWord = "";
     if (!last || last.error) hodlPickedLastWord = "";
@@ -7957,13 +7965,6 @@ function hodlInvalidateMsig() {
   hodlUpdateMsigAccount();
   hodlSyncMsigDeriveButton();
 }
-function hodlUpdateMsigHint() {
-  let n = Number(document.getElementById("msig-n").value || 3), m = document.getElementById("msig-m").value || "2", hint = document.getElementById("msig-hint");
-  if (hint) {
-    hint.textContent = n === 1 ? hodlTText("Spending requires this key.") : hodlTText("Spending requires {m} of these {n} keys.", { m, n });
-    hint.className = "edge-note is-public";
-  }
-}
 var hodlMsigSliderBaseMax = 9, hodlMsigSliderLimit = 15;
 function hodlClampMsigThreshold(value, min, max) {
   let number = Number(value);
@@ -8022,14 +8023,12 @@ function hodlSetMsigThresholds(mValue, nValue, changed, moveOther) {
   mInput.value = String(m);
   nInput.value = String(n);
   hodlRenderMsigThreshold();
-  hodlUpdateMsigHint();
   return { m, n };
 }
 function hodlChangeMsigThreshold(handle, value, moveOther) {
   let mInput = document.getElementById("msig-m"), nInput = document.getElementById("msig-n"), previousN = document.querySelectorAll("#msig-keys textarea").length || Number(nInput.value || 3), state = hodlMsigs[hodlActiveMsig];
   let saved = state ? hodlMergeMsigXpubs(state) : hodlReadMsigXpubs(), next = hodlSetMsigThresholds(handle === "m" ? value : mInput.value, handle === "n" ? value : nInput.value, handle, moveOther);
   if (next.n !== previousN) hodlFillKeys(saved);
-  else hodlUpdateMsigHint();
   hodlInvalidateMsig();
 }
 function hodlMsigThresholdPointerValue(clientX, rect, visibleMax) {
@@ -8889,7 +8888,6 @@ function hodlFillKeys(values, specs) {
   hodlSyncMsigKeyMoveButtons();
   hodlUpdateMsigScriptDetection();
   box.querySelectorAll("textarea").forEach(hodlCheckXpub);
-  hodlUpdateMsigHint();
   hodlUpdateMsigAccount();
   hodlSyncMsigDescriptorImport();
   hodlRefreshMsigSessionPickers();
@@ -10172,6 +10170,23 @@ function hodlSetButtonEnabled(id, on) {
   button.disabled = !on;
   button.setAttribute("aria-disabled", String(!on));
 }
+// The two cards that run an inspection, and what each one's run reads.
+var hodlPsbtCards = [
+  { text: "psbt-text", fields: ["psbt-key", "psbt-pass"], go: "psbt-go", download: "psbt-download", out: "psbt-out", session: "psbt-session" },
+  { text: "nonce-text", fields: ["nonce-key", "nonce-pass", "psbt-ax-transcript"], go: "nonce-go", out: "nonce-out", session: "nonce-session" },
+];
+// A run is stamped with everything it read: the payload, the key fields and
+// the session. Running it again on the same stamp would only repeat the
+// result on screen, so the card's run button waits for one of them to change.
+var hodlPsbtInspected = {};
+function hodlPsbtRunStamp(card) {
+  let value = (id) => String(document.getElementById(id)?.value || "").trim();
+  return JSON.stringify([value(card.text), ...card.fields.map(value), hodlPsbtSessionSpec]);
+}
+function hodlMarkPsbtInspected(go) {
+  let card = hodlPsbtCards.find((entry) => entry.go === go);
+  if (card) hodlPsbtInspected[go] = hodlPsbtRunStamp(card);
+}
 function hodlSyncPsbtControls() {
   let value = (id) => String(document.getElementById(id)?.value || "").trim();
   let decodes = (text) => {
@@ -10187,12 +10202,9 @@ function hodlSyncPsbtControls() {
   let loaded = Boolean(hodlPsbtPriv || hodlPsbtHd);
   let idle = hodlPsbtSessionSpec.key === "No session key. Inspect-only mode.";
   let anything = loaded || hodlPsbtNonceHistory.length > 0;
-  for (let card of [
-    { text: "psbt-text", fields: ["psbt-key", "psbt-pass"], go: "psbt-go", download: "psbt-download", out: "psbt-out", session: "psbt-session" },
-    { text: "nonce-text", fields: ["nonce-key", "nonce-pass", "psbt-ax-transcript"], go: "nonce-go", out: "nonce-out", session: "nonce-session" },
-  ]) {
+  for (let card of hodlPsbtCards) {
     let text = value(card.text), typed = Boolean(text || card.fields.some((id) => value(id))), ready = decodes(text);
-    enable(card.go, ready);
+    enable(card.go, ready && hodlPsbtInspected[card.go] !== hodlPsbtRunStamp(card));
     if (card.download) enable(card.download, ready);
     let session = document.getElementById(card.session);
     if (session) {
@@ -10226,6 +10238,7 @@ function hodlEndPsbtSession() {
   hodlPsbtWipeMem();
   hodlPsbtClearNonceHistory(true);
   hodlPsbtLast = null;
+  hodlPsbtInspected = {};
   hodlPsbtSessionSpec = { key: "Session ended and accessible fields were cleared (best effort)." };
   for (let id of ["psbt-key", "psbt-pass", "psbt-text", "psbt-ax-transcript", "nonce-key", "nonce-pass", "nonce-text"]) {
     let field = document.getElementById(id);
@@ -10279,6 +10292,7 @@ function hodlInitPsbt() {
   go.onclick = () => {
     hodlRunPsbt();
     hodlRefreshStationKeyPickers();
+    hodlMarkPsbtInspected("psbt-go");
     hodlSyncPsbtControls();
   };
   document.getElementById("psbt-wipe").onclick = hodlEndPsbtSession;
@@ -10286,6 +10300,7 @@ function hodlInitPsbt() {
   document.getElementById("nonce-go").onclick = () => {
     hodlRunNonce();
     hodlRefreshStationKeyPickers();
+    hodlMarkPsbtInspected("nonce-go");
     hodlSyncPsbtControls();
   };
   const nonceFile = document.getElementById("nonce-file");
@@ -10611,9 +10626,10 @@ function hodlRenderBip85Out() {
             : hodlEscapeHtml(fingerprintLabel)}</p>
         </div>
       </div>
-      <div class="edge-note is-private wallet-data-section-head">
-        <p class="muted" id="bip85-private-description">Anyone with the parent, application, and index can reproduce this child key.</p>
-      </div>
+      <section class="edge-note-titled" aria-labelledby="bip85-child-safety-heading">
+        <h3 class="edge-note-title is-private" id="bip85-child-safety-heading">${hodlT("Safety notes")}</h3>
+        <p class="edge-note is-private" id="bip85-private-description">Anyone with the parent, application, and index can reproduce this child key.</p>
+      </section>
       <div class="wallet-data-actions no-print">
         <label class="privacy-bar${hodlBip85Reveal ? " is-revealed" : ""}">
           <input type="checkbox" role="switch" id="bip85-reveal" ${hodlBip85Reveal ? "checked" : ""} aria-describedby="bip85-private-description">
@@ -10625,9 +10641,12 @@ function hodlRenderBip85Out() {
         ${hodlBip85SecretField(derived.secretLabel, derived.secret)}
         ${hodlBip85SecretField("Derived entropy", derived.entropyHex)}
       </div>
-      <p class="edge-note is-private">Button below copies the child key's seed phrase regardless of whether that data is revealed above.</p>
+      <section class="edge-note-titled" aria-labelledby="bip85-copy-heading">
+        <h3 class="edge-note-title is-private" id="bip85-copy-heading">${hodlT("Important!")}</h3>
+        <p class="edge-note is-private">Button below copies the child key's seed phrase regardless of whether that data is revealed above.</p>
+      </section>
       <div class="row bip85-actions current-item-actions tool-actions no-print">
-        <button class="btn secondary" id="bip85-copy" type="button">Copy Child Seed Phrase</button>
+        <button class="btn secondary red" id="bip85-copy" type="button">Copy Child Seed Phrase</button>
         <span class="copy-status bip85-copy-status" id="bip85-copy-status" aria-live="polite"></span>
       </div>
     </section>`;
@@ -11708,7 +11727,7 @@ function hodlPsbtAnalysisSummary(checks) {
       className = check.state === "complete" ? "psbt-ok" : check.state === "problem" ? "psbt-bad" : "psbt-warn";
     return "<li><span class='label'>" + hodlEscapeHtml(check.label) + "</span> — <span class='" + className + "'>" + label + "</span><br><span class='muted'>" + hodlEscapeHtml(check.detail) + "</span></li>";
   }).join("");
-  return "<section class='psbt-analysis-summary' aria-label='PSBT security analysis status'><p class='label'>PSBT security analysis</p><p class='" + overallClass + "'><strong>" + overall + "</strong></p><ul>" + rows + "</ul><p class='edge-note is-private'>Completed means only that the named check ran on the information available here. It does not prove that the PSBT claims are true or that the transaction is safe to sign.</p></section>";
+  return "<section class='psbt-analysis-summary' aria-label='PSBT security analysis status'><p class='label psbt-section-label'>PSBT security analysis</p><p class='" + overallClass + "'><strong>" + overall + "</strong></p><ul>" + rows + "</ul><p class='edge-note is-private'>Completed means only that the named check ran on the information available here. It does not prove that the PSBT claims are true or that the transaction is safe to sign.</p></section>";
 }
 function hodlPsbtNonceCheck(reused, possible, nonceIncomplete) {
   if (reused.length) return { label: "Nonce analysis", state: "problem", detail: "A repeated ECDSA nonce was detected; open the Nonce Inspector for the affected signatures." };
@@ -11761,14 +11780,14 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
     transcriptError = exception.message || String(exception);
   }
   html.push("<hr class='result-divider'>");
-  html.push("<p class='label'>" + hodlT("Tx outputs") + " <span class='label-value'>(" + tx.outputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction sends bitcoin") + "</p>");
+  html.push("<p class='label psbt-section-label'>" + hodlT("Tx outputs") + " <span class='label-value'>(" + tx.outputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction sends bitcoin") + "</p>");
   let ownershipMap = hodlSessionOwnership(network);
   tx.outputs.forEach((output, index) => {
     html.push(hodlRenderOutputHtml(output, index, network, ownershipMap, psbt.outputs[index]));
   });
   html.push(hodlOwnershipWarning(tx.outputs, network, ownershipMap));
   html.push("<hr class='result-divider'>");
-  html.push("<p class='label'>" + hodlT("Tx inputs") + " <span class='label-value'>(" + tx.inputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction’s outputs are spending from") + "</p>");
+  html.push("<p class='label psbt-section-label'>" + hodlT("Tx inputs") + " <span class='label-value'>(" + tx.inputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction’s outputs are spending from") + "</p>");
   psbt.inputs.forEach((entries, index) => {
     let witnessUtxo = hodlWitUtxo(entries);
     // The non-witness UTXO is the checkable claim: it embeds the previous
@@ -11945,7 +11964,7 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
     });
   });
   html.push("<hr class='result-divider'>");
-  html.push("<p class='label'>" + hodlT("Tx fees") + "</p><p class='muted label-description'>" + hodlT("Remainder of total inputs after total outputs are accounted for") + "</p>");
+  html.push("<p class='label psbt-section-label'>" + hodlT("Tx fees") + "</p><p class='muted label-description'>" + hodlT("Remainder of total inputs after total outputs are accounted for") + "</p>");
   if (conflictedInputs.length) html.push("<p class='psbt-bad'><strong>Fee unknown</strong> — input(s) " + conflictedInputs.join(", ") + " carry conflicting witness and non-witness UTXO amounts.</p>");
   else if (knownInputs === tx.inputs.length) {
     let outputSum = tx.outputs.reduce((sum, output) => sum + output.amount, 0n), fee = inputSum - outputSum;
@@ -12034,13 +12053,13 @@ function hodlRenderRawTx(tx, nonceSourceTag = new Uint8Array(), nonceCheckedAt =
     uninspected = 0;
   html.push("<p class='psbt-warn'><strong>Raw Bitcoin transaction.</strong> Not a PSBT. Input amounts and fee are unknown without previous outputs. RFC 6979 cannot be checked here. This is the last look before broadcast.</p>");
   html.push("<hr class='result-divider'>");
-  html.push("<p class='label'>" + hodlT("Tx outputs") + " <span class='label-value'>(" + tx.outputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction sends bitcoin") + "</p>");
+  html.push("<p class='label psbt-section-label'>" + hodlT("Tx outputs") + " <span class='label-value'>(" + tx.outputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction sends bitcoin") + "</p>");
   tx.outputs.forEach((output, index) => {
     html.push(hodlRenderOutputHtml(output, index, network, map, null));
   });
   html.push(hodlOwnershipWarning(tx.outputs, network, map));
   html.push("<hr class='result-divider'>");
-  html.push("<p class='label'>" + hodlT("Tx inputs") + " <span class='label-value'>(" + tx.inputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction’s outputs are spending from") + "</p>");
+  html.push("<p class='label psbt-section-label'>" + hodlT("Tx inputs") + " <span class='label-value'>(" + tx.inputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction’s outputs are spending from") + "</p>");
   tx.inputs.forEach((input, index) => {
     html.push("<p class='psbt-kv'><strong>Input " + index + "</strong> \xB7 " + hodlHexRev(input.txid) + " : " + input.vout + "<br>sequence " + hodlEscapeHtml("0x" + input.sequence.toString(16)) + (input.sequence < 0xfffffffe ? " \xB7 RBF-capable" : "") + "</p>");
   });
@@ -16937,7 +16956,6 @@ function hodlApplyLocale() {
   hodlUpdateCoinTypeHelp();
   hodlUpdateCoinTypeHelp(document.getElementById("msig-network"), document.getElementById("msig-network-help"));
   hodlUpdateDerivationPathPreview();
-  hodlUpdateMsigHint();
   hodlUpdateMsigScriptDetection();
   hodlUpdateMsigAccount();
   if (hodlWalletResult?.kind === "msig") hodlShowMsig();

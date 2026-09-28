@@ -550,7 +550,6 @@ details.lab-entropy { margin-top: var(--space-section); }
 details.lab-entropy > summary {
   cursor: pointer; font-weight: 600; color: var(--fg);
 }
-details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); }
 #brain-lab { font-family: var(--mono); letter-spacing: 0; }
 @media (min-width: 720px) {
   .choice-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -594,12 +593,13 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
    labels above it rather than the button default, which inherits the
    browser's 16px and read a step larger than every title around it. */
 .dice-fairness-toggle {
-  display: inline-flex; align-items: center; gap: 4px; width: fit-content; min-height: 32px; padding: 0;
+  display: inline-flex; align-items: center; gap: 2px; width: fit-content; min-height: 32px; padding: 0;
   border: 0; background: transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer;
 }
-/* Grey at rest, white while hovered or open: the arrow is a child span with no
-   colour of its own, so it follows the label through every state. */
-.dice-fairness-toggle:hover, .dice-fairness-toggle[aria-expanded="true"] { color: var(--fg); }
+/* Grey at rest, white while open, the buttons' orange under the pointer: the
+   arrow is a child span with no colour of its own, so it follows the label. */
+.dice-fairness-toggle[aria-expanded="true"] { color: var(--fg); }
+.dice-fairness-toggle:hover { color: var(--selection-accent-ink); }
 /* The fairness toggle heads the panel under it rather than trailing anything,
    so it takes its own row, close to the keypad above. The copy button that
    used to share this row belongs with the seed phrase title instead. */
@@ -620,9 +620,6 @@ details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); 
    label's does inside its own, so centred boxes read as a sagging arrow. The
    nudge lines up what the eye sees rather than what the layout measures, and
    a transform keeps it out of the 44px row height. Optical, not layout. */
-.dice-fairness-toggle [data-dice-fairness-glyph] {
-  display: inline-block; width: 0.7em; font-size: 22px; line-height: 1; transform: translateY(-2px);
-}
 /* Sits directly under the control that opens it: the toggle row already
    carries its own space below the text, since the button holds a 44px touch
    target around a 14px line. */
@@ -1356,6 +1353,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-summary-text { flex: 1 1 auto; min-width: 0; }
 /* Edit sits at the top corner however tall the summary beside it grows. */
 .key-summary-edit { align-self: flex-start; }
+@media (max-width: 520px) { .key-summary-edit { flex: 1 1 100%; } }
 /* The co-signer column sets the block's height, so the summary beside it
    starts at the top rather than floating against the middle of the stack. */
 #msig-summary .key-summary-text { align-self: flex-start; }
@@ -1744,7 +1742,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* The overall verdict is a <strong>, which the browser sets at 700; the
    report's headings sit at 600. */
 .psbt-analysis-summary > p > strong { font-weight: 600; }
-.psbt-analysis-summary > p:is(.psbt-ok, .psbt-warn, .psbt-bad, .psbted-note-ok, .psbted-note-warn, .psbted-note-bad) { font-size: 15px; }
+.psbt-analysis-summary > p:is(.psbt-ok, .psbt-warn, .psbt-bad, .psbted-note-ok, .psbted-note-warn, .psbted-note-bad) { font-size: 13px; }
 /* The report's sections — the analysis, where the coins go, what they spend —
    are parted by the same hairline the rest of the app uses. */
 .result-divider { height: 0; margin: var(--space-section) 0; border: 0; border-top: 1px solid var(--border); }
@@ -1796,10 +1794,11 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* Section titles in the editor read as the shared label, not as headings. */
 .psbted-map > h3 { margin: 0 0 4px; font: inherit; font-size: 14px; font-weight: 600; letter-spacing: normal; }
 /* Long forms mark where each section begins with a faint full-width band
-   behind its label: the PSBT Editor's sections and MS Station's co-signer
-   cards. The band reaches 8px past the content on each side so the label's
-   text stays on the content edge. */
-.psbted-section-label, .psbted-map > .psbted-section-label, .msig-key-band {
+   behind its label: the PSBT Editor's sections, the PSBT Inspector's result
+   sections, MS Station's co-signer cards and its address settings.
+   .section-band is the plain form for any other section label. The band reaches 8px past the
+   content on each side so the label's text stays on the content edge. */
+.psbted-section-label, .psbted-map > .psbted-section-label, .psbt-section-label, .psbt-analysis-summary > .psbt-section-label, .msig-key-band, .section-band {
   margin-inline: -8px; padding: 6px 8px;
   background: color-mix(in oklab, var(--fg) 5%, transparent);
 }
@@ -2125,7 +2124,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .label + .label-description,
 .psbted-map > h3 + .label-description { margin-top: 8px; margin-bottom: 0; }
 
-:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary + :is(.label-description, .field-note) { margin-top: 0; margin-bottom: 0; }
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary + :is(.label-description, .field-note, label.field) { margin-top: 0; margin-bottom: 0; }
 /* The exception: a checkbox's own text is not a heading over content. It sits
    inside the control, on one line with the box, so it owns no gap either side.
    The components above already say margin: 0; this repeats it only to outrank
@@ -2268,22 +2267,26 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    text — a line only as wide as the words would read as an underline. The
    glyph and label still sit left; only the hit area grows with it. */
 :is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary {
-  display: inline-flex; align-items: center; gap: 4px; width: fit-content; min-height: 32px;
+  display: inline-flex; align-items: center; gap: 2px; width: fit-content; min-height: 32px;
   margin-bottom: var(--space-control);
   color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; list-style: none;
 }
 :is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary::-webkit-details-marker { display: none; }
-:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary::before {
-  content: "\25B8"; display: inline-block; width: 0.7em; font-size: 22px; line-height: 1; transform: translateY(-2px);
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary::before { content: "\25B8"; }
+/* The disclosure triangle, one size for every toggle: the details summaries
+   draw it as a pseudo-element, the fairness button as a child span. */
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary::before, .dice-fairness-toggle [data-dice-fairness-glyph] {
+  display: inline-block; width: 0.6em; font-size: 26px; line-height: 1; transform: translateY(-2px);
 }
 :is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced)[open] > summary::before { content: "\25BE"; }
-:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary:hover { color: var(--fg); }
 :is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary:focus-visible { outline-offset: 4px; border-radius: 3px; }
 /* Open, the toggle titles the block rather than standing off from it, and the
    block carries the space beneath itself instead. The gap under the toggle is
    the same either way — set on the summary itself — so opening the section
    moves the fields in without shifting the toggle. */
 :is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced)[open] > summary { color: var(--fg); }
+/* Under the pointer the toggle takes the buttons' hover ink, open or shut. */
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary:hover { color: var(--selection-accent-ink); }
 /* A key view group is a row, not a word: the whole line answers the pointer,
    so there is no dead space beside the title. */
 .key-group > summary { display: flex; width: auto; min-height: 36px; }
@@ -2559,6 +2562,11 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* The card's banded head: title left, the listed-order controls right. */
 .msig-key-band { display: flex; align-items: center; justify-content: space-between; gap: var(--space-control); min-height: 44px; margin-bottom: 4px; }
 .msig-key-band > .msig-key-title { margin: 0; }
+/* The address settings open on their band: the settings block already
+   carries the section's space above, and the band keeps the co-signer
+   bands' 12px beneath. */
+.section-band { margin-bottom: 12px; }
+.msig-output-advanced > .section-band { margin-top: 0; }
 .msig-key-move { display: flex; align-items: center; gap: 6px; }
 .msig-key-move-label { margin-right: 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
 .msig-key-move-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; min-height: 32px; height: 32px; padding: 0; }
@@ -2734,17 +2742,25 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .wallet-birthday-field { flex: 1 1 100%; }
 .wallet-birthday-field > .label { margin-top: 0; }
 .wallet-result-messages {
-  margin-top: 18px; padding: 14px 16px; border: 1px solid var(--notice-edge, color-mix(in oklab, var(--warn) 42%, var(--border)));
+  margin-top: 18px; padding: 14px 16px; border: 1px solid color-mix(in oklab, var(--warn) 42%, var(--border));
   background: color-mix(in oklab, var(--warn) 6%, var(--bg));
 }
-.wallet-result-messages h3 { margin: 0 0 8px; color: var(--notice-title, inherit); }
+.wallet-result-messages h3 { margin: 0 0 8px; }
+/* A note's title stands outside the box, above it on the text column:
+   capitals in the note's own colour. The group carries the note's
+   spacing, so the title and box read as one block. */
+.edge-note-titled { margin-top: var(--space-component); }
+.edge-note-titled > .edge-note { margin-top: 0; }
+.edge-note-title {
+  margin: 0 0 6px; padding: 0 14px; font: inherit; font-size: 13px; font-weight: 600; letter-spacing: normal;
+  text-transform: uppercase; color: var(--edge-note-color, inherit);
+}
+.edge-note-title.is-private { --edge-note-color: var(--danger-bright); }
+.edge-note-title.is-public { --edge-note-color: var(--ok-bright); }
 /* The multisig note leads the groups below it, whose first rule would
    otherwise sit tight against it. Scoped to that card so the key views'
    notes keep their own spacing. */
 .account-result-card > .wallet-result-messages { margin-bottom: var(--space-component); }
-/* A warning that guards funds rather than informs: square, edged and titled
-   in the alert red. The notice supplies only these three values. */
-.wallet-result-messages.is-danger { --notice-edge: var(--danger-bright); --notice-title: var(--danger-bright); }
 .address-match-field input { display: block; font-family: var(--mono); }
 .address-match-note { margin: 0; }
 .address-match-field .hint { display: block; margin-top: var(--space-control); }

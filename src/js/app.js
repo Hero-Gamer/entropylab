@@ -489,10 +489,36 @@ function hodlSinglePrivateKey(result) {
   if (result?.privateKey) return Uint8Array.from(result.privateKey);
   return result?.privHex ? hodlHex.decode(result.privHex) : null;
 }
-// The byte arrays a wallet result keeps its own secrets in: a single key, or
-// a seed wallet's BIP39 entropy and seed (#546 B2).
+// The byte arrays a wallet result keeps its own secrets in: a single key and
+// its typed mini key, or a seed wallet's BIP39 entropy, seed and typed
+// passphrase (#546 B2).
 function hodlResultSecretBytes(result) {
-  return [result?.privateKey, result?.entropy, result?.seed].filter(Boolean);
+  return [result?.privateKey, result?.minikey, result?.entropy, result?.seed, result?.passphrase].filter((bytes) => ArrayBuffer.isView(bytes));
+}
+// A wallet keeps what the user typed as its UTF-8 bytes, never as text
+// (#546 B2): the BIP39 passphrase and a Casascius mini key, which nothing can
+// rebuild from the keys they make. The text is built only to show or export
+// it, exactly as typed: a leading U+FEFF is part of a passphrase (BIP39 hashes
+// it), not a byte-order mark to drop.
+function hodlTypedText(bytes) {
+  return new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
+}
+function hodlResultPassphrase(result) {
+  return result?.passphrase ? hodlTypedText(result.passphrase) : "";
+}
+function hodlResultMinikey(result) {
+  return result?.minikey ? hodlTypedText(result.minikey) : null;
+}
+// A pasted account-level extended private key is kept only as the account's
+// key node, like every derived key (#546 B2). As pasted, it is that node under
+// the prefix family it was pasted with: the same version bytes over the same
+// payload, so the same text.
+function hodlResultHasImportedPrivate(result) {
+  return Boolean(result?.importedPrivateLabel);
+}
+function hodlImportedPrivateKey(result) {
+  let account = hodlResultHasImportedPrivate(result) ? result.accounts?.[0] : null;
+  return account ? hodlAccountPrivateKey(account, account.importedFamily) : null;
 }
 // Every private key a wallet result holds: its secret bytes, its row keys'
 // bytes, and its root and account key nodes (#546 B2).
@@ -642,7 +668,10 @@ function hodlSingleKeyWallet(e, t, r, trimBrainWallet = false) {
   // derivation records it with its row keys, so one that never commits zeroes it.
   let privateKey = Uint8Array.from(i);
   hodlActiveDerivation?.rowKeys?.push(privateKey);
-  let wallet = { kind: "single", network: c, warnings: o, notes: n, privateKey, pubkeyCompressed: hodlHex.encode(f), pubkeyUncompressed: hodlHex.encode(d), p2pkhUncompressed: l, p2pkhCompressed: u, p2shP2wpkh: p, p2wpkh: b, p2tr: w, minikey: s, source, compressed };
+  // A typed mini key is kept as its bytes, recorded the same way.
+  let minikey = s === null ? null : new TextEncoder().encode(s);
+  if (minikey) hodlActiveDerivation?.rowKeys?.push(minikey);
+  let wallet = { kind: "single", network: c, warnings: o, notes: n, privateKey, pubkeyCompressed: hodlHex.encode(f), pubkeyUncompressed: hodlHex.encode(d), p2pkhUncompressed: l, p2pkhCompressed: u, p2shP2wpkh: p, p2wpkh: b, p2tr: w, minikey, source, compressed };
   i.fill(0); // the decoded private key bytes; the result keeps its own copy
   return wallet;
 }
@@ -1079,7 +1108,6 @@ function hodlAccountResult(node, definition, network, count, options = {}) {
     originPath: options.originPath || null,
     imported: Boolean(options.imported),
     importedFamily: options.importedFamily || null,
-    importedValue: options.importedValue || null,
     masterFingerprint: options.masterFingerprint ?? null,
     parentFingerprint: options.parentFingerprint ?? null,
     nodeFingerprint: options.nodeFingerprint ?? null,
@@ -1116,7 +1144,7 @@ function hodlRootWalletResult(root, network, source, accountIndex, masterFingerp
     coinType,
     entropy: source.entropy ?? null,
     passphraseUsed: source.passphraseUsed,
-    passphrase: source.passphrase ?? "",
+    passphrase: source.passphrase ?? null,
     seed: source.seed ?? null,
     rootNode: root.hasPrivateKey ? hodlKeepPrivateNode(root) : null,
     rootXpub: hodlSerializeExtendedKey(root.publicExtendedKey, network, "x", false),
@@ -1203,8 +1231,11 @@ async function hodlMnemonicWalletWithProgress(value, passphrase, network, count,
   }
   let warnings = [...source?.warnings ?? []];
   if (passphrase.length > 0) warnings.push("A passphrase is in use. The same words without this passphrase are a different wallet. Do not store the passphrase with the words.");
+  // The typed passphrase is kept as its UTF-8 bytes, recorded the same way.
+  let passphraseBytes = passphrase.length > 0 ? new TextEncoder().encode(passphrase) : null;
+  if (passphraseBytes) hodlActiveDerivation?.rowKeys?.push(passphraseBytes);
   try {
-    return await hodlRootWalletWithProgress(root, network, count, { entropy, passphraseUsed: passphrase.length > 0, passphrase, seed, notes: source?.notes ?? [], warnings }, accountIndex, addressStart, tracker, purposeIndex, coinType, hardening, branchStart, branchRange, derivationPlan);
+    return await hodlRootWalletWithProgress(root, network, count, { entropy, passphraseUsed: passphrase.length > 0, passphrase: passphraseBytes, seed, notes: source?.notes ?? [], warnings }, accountIndex, addressStart, tracker, purposeIndex, coinType, hardening, branchStart, branchRange, derivationPlan);
   } finally {
     root.wipePrivateData(); // the result holds its own copy of the root
   }
@@ -1225,7 +1256,7 @@ async function hodlImportedWalletWithProgress(value, network, count, accountInde
     if (!parsed.isPrivate && (derivationPlan ? derivationPlan.hasHardenedPrefix || hardening.branch || hardening.address : Object.values(hardening).some(Boolean))) throw hodlError("A root extended public key cannot derive the selected hardened path. Turn every Harden option off, import an account-level public key, or use the root xprv/tprv offline.");
     if (parsed.family !== "x") throw hodlError("A BIP32 root private key must use the generic xprv/tprv prefix.");
     try {
-      return await hodlRootWalletWithProgress(node, network, count, { entropy: null, passphraseUsed: false, passphrase: "", seed: null, notes, warnings: [] }, accountIndex, addressStart, tracker, purposeIndex, coinType, hardening, branchStart, branchRange, derivationPlan);
+      return await hodlRootWalletWithProgress(node, network, count, { entropy: null, passphraseUsed: false, passphrase: null, seed: null, notes, warnings: [] }, accountIndex, addressStart, tracker, purposeIndex, coinType, hardening, branchStart, branchRange, derivationPlan);
     } finally {
       node.wipePrivateData(); // the result holds its own copy of the imported root
     }
@@ -1236,7 +1267,7 @@ async function hodlImportedWalletWithProgress(value, network, count, accountInde
   tracker.setTotal(addressCount * branchRange);
   let account;
   try {
-    account = await hodlAccountResultWithProgress(node, definition, network, addressCount, { accountPath: "Imported account key", accountIndex: null, imported: true, importedFamily: parsed.family, importedValue, parentFingerprint, nodeFingerprint, addressStart, branchHardened: hardening.branch, addressHardened: hardening.address, branchStart, branchRange }, tracker);
+    account = await hodlAccountResultWithProgress(node, definition, network, addressCount, { accountPath: "Imported account key", accountIndex: null, imported: true, importedFamily: parsed.family, parentFingerprint, nodeFingerprint, addressStart, branchHardened: hardening.branch, addressHardened: hardening.address, branchStart, branchRange }, tracker);
   } finally {
     node.wipePrivateData(); // the account holds its own copy of the imported node; a stopped import wipes that copy too
   }
@@ -1245,11 +1276,10 @@ async function hodlImportedWalletWithProgress(value, network, count, accountInde
     network,
     entropy: null,
     passphraseUsed: false,
-    passphrase: "",
+    passphrase: null,
     seed: null,
     rootNode: null,
     rootXpub: null,
-    importedPrivateKey: parsed.isPrivate ? importedValue : null,
     importedPublicKey: parsed.isPrivate ? null : importedValue,
     importedPrivateLabel: parsed.isPrivate ? parsed.prefix : null,
     importedPublicLabel: parsed.isPrivate ? null : parsed.prefix,
@@ -1552,9 +1582,9 @@ function hodlSlip132Fields(account, wallet, isPrivate = false, labelClass = "lab
 // the Core export when it was generic (x), and the SLIP-132 export when it
 // carried that family.
 function hodlSlip132PrivateFields(account, wallet, labelClass) {
-  let pasted = wallet?.importedPrivateKey || "", pastedFamily = pasted ? account.importedFamily : null, parts = [];
+  let pasted = hodlResultHasImportedPrivate(wallet), pastedFamily = pasted ? account.importedFamily : null, parts = [];
   let field = (label, family) => hodlPrivateKeyFieldHtml(label, hodlExtendedKeyLength, () => hodlAccountPrivateKey(account, family), void 0, labelClass);
-  if (pasted) parts.push(hodlPrivateFieldHtml("As pasted", pasted, void 0, labelClass));
+  if (pasted) parts.push(hodlPrivateKeyFieldHtml("As pasted", hodlExtendedKeyLength, () => hodlAccountPrivateKey(account, pastedFamily), void 0, labelClass));
   if (account.privateNode && pastedFamily !== "x") parts.push(field(`Bitcoin Core ${account.genericPrivateLabel}`, "x"));
   if (account.privateNode && account.hasAlternateExport && pastedFamily !== account.primaryFamily) parts.push(field(`SLIP-132 ${account.primaryPrivateLabel}`, account.primaryFamily));
   return parts.join("");
@@ -1768,7 +1798,7 @@ function hodlSingleLeadAddress(wallet) {
 // The private key group's fields: each encoding built only while private
 // values are revealed. The mini key is the typed input itself.
 function hodlSinglePrivateFieldsHtml(wallet) {
-  return `${hodlPrivateKeyFieldHtml("WIF compressed", hodlCompressedWifLength, () => hodlSingleWif(wallet, true), void 0, "muted")}${hodlPrivateKeyFieldHtml("WIF uncompressed", hodlUncompressedWifLength, () => hodlSingleWif(wallet, false), void 0, "muted")}${hodlPrivateKeyFieldHtml("Hex private key", hodlPrivateKeyHexLength, () => hodlSinglePrivateHex(wallet), void 0, "muted")}${wallet.minikey ? hodlPrivateFieldHtml("Mini private key", wallet.minikey, void 0, "muted") : ""}`;
+  return `${hodlPrivateKeyFieldHtml("WIF compressed", hodlCompressedWifLength, () => hodlSingleWif(wallet, true), void 0, "muted")}${hodlPrivateKeyFieldHtml("WIF uncompressed", hodlUncompressedWifLength, () => hodlSingleWif(wallet, false), void 0, "muted")}${hodlPrivateKeyFieldHtml("Hex private key", hodlPrivateKeyHexLength, () => hodlSinglePrivateHex(wallet), void 0, "muted")}${wallet.minikey ? hodlPrivateKeyFieldHtml("Mini private key", wallet.minikey.length, () => hodlResultMinikey(wallet), void 0, "muted") : ""}`;
 }
 // Grouped by what a reader comes to do: receive to the key, back it up, or
 // reach a format another wallet needs. Only receiving starts open. The
@@ -1807,7 +1837,10 @@ function hodlSeedRecoveryFields(wallet) {
   fields.push(hodlSeedPhraseField(`Your seed phrase \xB7 ${count} words`, words), hodlRevealPrivate ? hodlSeedQrExport(words, { passphraseUsed: wallet.passphraseUsed, entropyHex: hodlResultEntropyHex(wallet) }) : "");
   // The passphrase sits right under the words it belongs to: without it the
   // words recover a different wallet, so it is recovery material too.
-  if (wallet.passphraseUsed && wallet.passphrase) fields.push(hodlPrivateFieldHtml("BIP39 passphrase", wallet.passphrase));
+  // Hidden, it masks at its length in characters, which its UTF-8 bytes give
+  // without building it: every character starts at a byte that is not a
+  // continuation byte (10xxxxxx).
+  if (wallet.passphraseUsed && wallet.passphrase?.length) fields.push(hodlPrivateKeyFieldHtml("BIP39 passphrase", wallet.passphrase.reduce((count, byte) => count + ((byte & 0xc0) !== 0x80), 0), () => hodlResultPassphrase(wallet)));
   if (wallet.entropy) fields.push(hodlPrivateKeyFieldHtml("BIP39 entropy hex", wallet.entropy.length * 2, () => hodlResultEntropyHex(wallet)));
   if (wallet.seed) fields.push(hodlPrivateKeyFieldHtml("Master seed hex", wallet.seed.length * 2, () => hodlResultSeedHex(wallet)));
   return fields;
@@ -1816,7 +1849,7 @@ function hodlHdWalletData(wallet, accountMarkup = "") {
   let privateFields = [];
   privateFields.push(...hodlSeedRecoveryFields(wallet));
   if (wallet.rootNode) privateFields.push(hodlPrivateKeyFieldHtml(`Root ${wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName}`, hodlExtendedKeyLength, () => hodlResultRootXprv(wallet)));
-  if (wallet.importedPrivateKey) privateFields.push(hodlPrivateFieldHtml(`Imported ${wallet.importedPrivateLabel || "extended private key"}`, wallet.importedPrivateKey));
+  if (hodlResultHasImportedPrivate(wallet)) privateFields.push(hodlPrivateKeyFieldHtml(`Imported ${wallet.importedPrivateLabel || "extended private key"}`, hodlExtendedKeyLength, () => hodlImportedPrivateKey(wallet)));
   let hasAccountPrivate = wallet.accounts.some(hodlAccountHasPrivate), hasPrivate = privateFields.length > 0 || hasAccountPrivate;
   let source = hodlResultHasSeed(wallet) ? "" : `<p><span class="label">Source</span><br><span>Imported extended ${hasPrivate ? "private" : "public"} key; no seed phrase was entered.</span></p>`;
   let fingerprint = wallet.masterFingerprint ? hodlPublicFieldHtml("Master fingerprint", wallet.masterFingerprint) : "";
@@ -2202,12 +2235,12 @@ var hodlRecoverySheetText = function(wallet, revealPrivate) {
   if (wallet.kind === "single") {
     if (revealPrivate) {
       lines.push("PRIVATE RECOVERY MATERIAL", `WIF compressed:   ${hodlSingleWif(wallet, true) ?? ""}`, `WIF uncompressed: ${hodlSingleWif(wallet, false) ?? ""}`, `Hex private key:  ${hodlSinglePrivateHex(wallet) ?? ""}`);
-      if (wallet.minikey) lines.push(`Mini key: ${wallet.minikey}`);
+      if (wallet.minikey) lines.push(`Mini key: ${hodlResultMinikey(wallet)}`);
     } else lines.push("PRIVATE RECOVERY MATERIAL OMITTED", "Private values were not saved because Show private recovery material was off.");
     lines.push("", "PUBLIC KEYS AND ADDRESSES", `Compressed public key:   ${wallet.pubkeyCompressed}`, `Uncompressed public key: ${wallet.pubkeyUncompressed}`, `Legacy uncompressed: ${wallet.p2pkhUncompressed}`, `Legacy compressed:   ${wallet.p2pkhCompressed}`, `Nested SegWit:       ${wallet.p2shP2wpkh}`, `Native SegWit:       ${wallet.p2wpkh}`, `Taproot:             ${wallet.p2tr}`);
     return lines.join("\n");
   }
-  let hasPrivate = Boolean(hodlResultHasSeed(wallet) || wallet.seed || hodlResultHasRoot(wallet) || wallet.importedPrivateKey || wallet.accounts.some(hodlAccountHasPrivate));
+  let hasPrivate = Boolean(hodlResultHasSeed(wallet) || wallet.seed || hodlResultHasRoot(wallet) || hodlResultHasImportedPrivate(wallet) || wallet.accounts.some(hodlAccountHasPrivate));
   if (hasPrivate && revealPrivate) {
     lines.push("PRIVATE RECOVERY MATERIAL");
     if (hodlResultHasSeed(wallet)) {
@@ -2219,7 +2252,7 @@ var hodlRecoverySheetText = function(wallet, revealPrivate) {
     if (wallet.entropy) lines.push("", "BIP39 ENTROPY HEX", hodlResultEntropyHex(wallet));
     if (wallet.seed) lines.push("", "MASTER SEED HEX (BIP39 PBKDF2, 512 bits)", hodlResultSeedHex(wallet));
     if (hodlResultHasRoot(wallet)) lines.push("", `BIP32 ROOT ${(wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName).toUpperCase()}`, hodlResultRootXprv(wallet));
-    if (wallet.importedPrivateKey) lines.push("", `IMPORTED ${(wallet.importedPrivateLabel || "EXTENDED PRIVATE KEY").toUpperCase()}`, wallet.importedPrivateKey);
+    if (hodlResultHasImportedPrivate(wallet)) lines.push("", `IMPORTED ${(wallet.importedPrivateLabel || "EXTENDED PRIVATE KEY").toUpperCase()}`, hodlImportedPrivateKey(wallet));
     for (let account of wallet.accounts) {
       if (!hodlAccountHasPrivate(account)) continue;
       lines.push("", `-- ${account.def.label} (${account.imported ? account.def.bip : `Purpose ${hodlPathComponent(account.def.purpose, account.def.purposeHardened !== false)}`}) PRIVATE ACCOUNT MATERIAL --`);
@@ -10080,7 +10113,7 @@ function hodlUseActiveKeyForPsbt(state = hodlKeys[hodlActiveKey]) {
   hodlPsbtWipeMem();
   if (result.kind === "hd" && hodlResultHasSeed(result)) hodlPsbtHd = hodlSeedSessionRoot(result, state.fields.pass || "");
   else if (result.kind === "hd" && hodlResultHasRoot(result)) hodlPsbtHd = hodlResultRootNode(result);
-  else if (result.kind === "hd" && result.importedPrivateKey) {
+  else if (result.kind === "hd" && hodlResultHasImportedPrivate(result)) {
     hodlPsbtErrorSpec = { key: "The active key is an account-level extended private key. PSBT session signing needs origin-aware relative paths, which this version does not infer. Use the original seed or root xprv/tprv instead." };
     throw new Error(hodlTText("The active key is an account-level extended private key. PSBT session signing needs origin-aware relative paths, which this version does not infer. Use the original seed or root xprv/tprv instead."));
   }
@@ -12125,7 +12158,7 @@ function hodlKeyManagerDetails(state) {
     ["Network", result.network || state.fields?.network || "Unknown"],
     ["Derivation path", state.fields?.derivationPath || state.createdPath || "Not available"],
     ["Public root key", result.rootXpub || result.xpub || result.importedPublicKey || "Not available"],
-    ["Private material", hodlResultHasRoot(result) || result.importedPrivateKey || result.accounts?.some((account) => account.privateNode) ? "Present in encrypted key file" : "Not present"],
+    ["Private material", hodlResultHasRoot(result) || hodlResultHasImportedPrivate(result) || result.accounts?.some((account) => account.privateNode) ? "Present in encrypted key file" : "Not present"],
   ];
 }
 function hodlKeyManagerRenderIgnored() {

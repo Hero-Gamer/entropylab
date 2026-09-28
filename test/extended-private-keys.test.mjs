@@ -94,9 +94,9 @@ test("a derived wallet holds no extended private key as text", async () => {
     ["seed phrase, mainnet", await mnemonicWallet("mainnet"), secretTexts("mainnet"), []],
     ["seed phrase, testnet", await mnemonicWallet("testnet"), secretTexts("testnet"), []],
     ["imported root xprv", await importedWallet(expected("mainnet").root), secretTexts("mainnet"), []],
-    // The pasted account key is a copy of the input field's text, which the
-    // later seed-material step handles; every key derived from it is not.
-    ["imported account zprv", await importedWallet(BIP84_ACCOUNT_ZPRV), Object.values(expected("mainnet").account), [BIP84_ACCOUNT_ZPRV]],
+    // Nor is the pasted account key itself (#546 B2 step 2c-3): the account's
+    // key node rebuilds it as pasted.
+    ["imported account zprv", await importedWallet(BIP84_ACCOUNT_ZPRV), Object.values(expected("mainnet").account), []],
   ];
   for (const [label, result, secrets, pasted] of cases) {
     const leaks = stringsIn(result).filter((text) => !pasted.includes(text) && secrets.some((secret) => text.includes(secret)));

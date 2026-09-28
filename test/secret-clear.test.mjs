@@ -652,7 +652,7 @@ async function stationHarness(options = {}) {
   const harness = await derivationHarness({ ...options, identity: () => identity }), { context } = harness;
   const lab = () => ({ id: 0, number: 0, isLab: true, fields: {}, result: null });
   Object.assign(context, {
-    hodlKeys: [lab()], hodlActiveKey: 0, hodlNextKeyNumber: 1,
+    hodlKeys: [lab()], hodlActiveKey: 0, hodlNextKeyNumber: 1, hodlWorkspace: "calc",
     hodlKeyManagerIds: new Set(), hodlKeyManagerActiveId: "", hodlKeyManagerIgnored: [], keyVaultIdentity,
     hodlCaptureKey() { const state = context.hodlKeys[context.hodlActiveKey]; if (state) state.result = context.hodlWalletResult; },
     hodlRestoreKey() { context.hodlWalletResult = context.hodlKeys[context.hodlActiveKey]?.result ?? null; },
@@ -675,7 +675,11 @@ async function stationHarness(options = {}) {
     return harness.keys.slice(from);
   };
   const selectLab = () => { context.hodlActiveKey = context.hodlKeys.findIndex((state) => state.isLab); context.hodlRestoreKey(); };
-  return { ...harness, derive, selectLab, setIdentity: (value) => { identity = value; } };
+  // What hodlShowWorkspace does to the key state: capture the active tab on
+  // leaving Keys and clear the shown wallet; restore the active tab on return.
+  const leaveKeys = (workspace) => { context.hodlCaptureKey(); context.hodlWorkspace = workspace; context.hodlWalletResult = null; };
+  const returnToKeys = () => { context.hodlWorkspace = "calc"; context.hodlRestoreKey(); };
+  return { ...harness, derive, selectLab, leaveKeys, returnToKeys, setIdentity: (value) => { identity = value; } };
 }
 
 test("an edit that clears a derived wallet zeroes its row keys", async () => {
@@ -742,19 +746,60 @@ test("deleting a key tab zeroes its wallet; with the journal open it moves to th
   }
 });
 
-test("ignoring a key in the Key Manager zeroes its wallet's row keys, from a station tab or from pending", async () => {
-  for (const from of ["station", "pending"]) {
-    const { context, derive } = await stationHarness();
-    const ignored = await derive(), state = context.hodlKeys[context.hodlActiveKey];
+// The Key Manager lives in the Journal workspace. Leaving Keys captures the
+// active tab and clears the shown wallet (hodlShowWorkspace), so anything
+// that runs there must not capture again: that would file the cleared value
+// over the selected tab's wallet, and the next sweep would zero it.
+test("ignoring a key from the Journal zeroes its wallet and leaves the selected wallet intact", async () => {
+  for (const [ignored, from] of [["a", "station"], ["b", "station"], ["a", "pending"]]) {
+    const { context, derive, selectLab, leaveKeys, returnToKeys } = await stationHarness();
+    const keys = { a: await derive("wallet-a") };
+    selectLab();
+    keys.b = await derive("wallet-b");
+    const tab = (wallet) => context.hodlKeys.find((state) => state.result?.masterIdentity === `wallet-${wallet}`);
+    const states = { a: tab("a"), b: tab("b") }, kept = ignored === "a" ? "b" : "a", keptResult = states[kept].result;
     if (from === "pending") {
+      // Deleting a tab with the journal open moves it to the Key Manager.
+      context.hodlActiveKey = context.hodlKeys.indexOf(states.a);
+      context.hodlRestoreKey();
       context.hodlJournalUnlocked = () => true;
       context.hodlDeleteActiveKey();
-      assert.deepEqual(context.hodlKeyManagerPending, [state], "the key did not move to the Key Manager");
+      assert.deepEqual(context.hodlKeyManagerPending, [states.a]);
     }
-    context.hodlKeyManagerIgnore(state);
+    const label = `ignoring ${ignored} from ${from} with b selected`;
+    leaveKeys("journal");
+    context.hodlKeyManagerIgnore(states[ignored]);
     assert.equal(context.hodlKeyManagerIgnored.length, 1);
-    assert.notEqual(context.hodlWalletResult, state.result, `${from}: the station still shows the ignored wallet`);
-    assert.ok(allZero(ignored), `${from}: the ignored key's row key bytes stayed in memory`);
+    assert.ok(allZero(keys[ignored]), `${label}: the ignored wallet kept its row key bytes`);
+    assert.equal(states[kept].result, keptResult, `${label}: the other wallet's tab lost its wallet`);
+    assert.deepEqual(keys[kept], vectorRowKeys, `${label}: the other wallet's row keys were zeroed`);
+    returnToKeys();
+    assert.notEqual(context.hodlWalletResult, states[ignored].result, `${label}: Keys shows the ignored wallet`);
+  }
+});
+
+test("changing the language outside Keys keeps the selected key's wallet", async () => {
+  for (const shown of [null, { kind: "msig" }]) {
+    const { context, derive, leaveKeys, returnToKeys } = await stationHarness();
+    const keys = await derive(), state = context.hodlKeys[context.hodlActiveKey], result = state.result;
+    Object.assign(context, {
+      Event: class { constructor(type) { this.type = type; } }, hodlWorkspaceTabs: [], hodlKeyModeLabels: {},
+      hodlKeyModeSelectEl: { options: [], dispatchEvent() {} }, hodlNetworkPickerRender: null, hodlReadThemeMode: () => "system",
+    });
+    for (const name of ["hodlRenderKeyForm", "hodlRestoreFormFields", "hodlUpdateSeedLengthControl", "hodlUpdateAddressEstimate",
+      "hodlUpdateCoinTypeHelp", "hodlUpdateDerivationPathPreview", "hodlUpdateMsigHint", "hodlUpdateMsigScriptDetection",
+      "hodlUpdateMsigAccount", "hodlShowMsig", "hodlRefreshKeyResult", "hodlRefreshPsbtLocale", "hodlApplyTheme", "hodlRefreshWorkspaceErrors"])
+      context[name] = () => {};
+    vm.runInContext(functionSource("hodlApplyLocale"), context);
+    leaveKeys("msig");
+    // The Multisig workspace shows its own result, or none.
+    context.hodlWalletResult = shown;
+    context.hodlApplyLocale();
+    assert.equal(state.result, result, `${shown ? "with" : "without"} a multisig result: the language change dropped the key's wallet`);
+    context.hodlDisposeDroppedWallets();
+    assert.deepEqual(keys, vectorRowKeys, "the language change got the selected wallet zeroed");
+    returnToKeys();
+    assert.equal(context.hodlWalletResult, result);
   }
 });
 

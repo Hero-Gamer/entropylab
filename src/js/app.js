@@ -12153,13 +12153,10 @@ function hodlKeyManagerUseAllInStation() {
 function hodlKeyManagerIgnore(state) {
   let identity = keyVaultIdentity(state), station = hodlKeys.indexOf(state), pending = hodlKeyManagerPending.indexOf(state);
   if (station >= 0) {
-    hodlCaptureKey();
     hodlKeys.splice(station, 1);
     if (hodlActiveKey > station) hodlActiveKey--;
     else if (hodlActiveKey === station) hodlActiveKey = Math.min(station, hodlKeys.length - 1);
     hodlRenderKeyTabs();
-    // As a detach does: the station stops showing the ignored wallet.
-    hodlRestoreKey();
   } else if (pending >= 0) hodlKeyManagerPending.splice(pending, 1);
   hodlKeyManagerIgnored = hodlKeyManagerIgnored.filter((entry) => keyVaultIdentity(entry) !== identity);
   hodlKeyManagerIgnored.push(hodlKeyManagerEntry(state));
@@ -16704,7 +16701,10 @@ function hodlApplyLocale() {
   hodlKeyModeSelectEl.dispatchEvent(new Event("entropylab:sync-select"));
   if (hodlNetworkPickerRender) hodlNetworkPickerRender();
   let state = hodlKeys[hodlActiveKey];
-  if (state) hodlCaptureKey();
+  // Only the Keys workspace shows the active key's wallet; elsewhere the
+  // shown result is cleared, and capturing it would drop the key's wallet.
+  // Its fields were captured on leaving Keys.
+  if (state && hodlWorkspace === "calc") hodlCaptureKey();
   hodlRenderKeyForm();
   if (state) hodlRestoreFormFields(state);
   hodlUpdateSeedLengthControl();

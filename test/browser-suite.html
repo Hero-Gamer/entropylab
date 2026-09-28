@@ -1066,7 +1066,7 @@
     document.querySelector('input[name="dm"][value="dplus"]').click();
     const dplusProgress = document.getElementById("dice-meta");
     const dplusRange = dplusProgress.querySelector(".sr-only");
-    assert(/D8 roll|D16 roll/.test(dplusProgress.textContent) && /^ \([01]–[8F]\)$/.test(dplusRange?.textContent || ""), "D++ progress lost its accessible next-roll range");
+    assert(/Roll .*D(?:8|16)/.test(dplusProgress.textContent) && /^ \([01]–[8F]\)$/.test(dplusRange?.textContent || ""), "D++ progress lost its accessible next-roll range");
     assert([...dplusProgress.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE).every((node) => !/[01]–[8F]/.test(node.textContent)), "D++ progress left the face range in the visible narrow-screen line");
     equal(document.getElementById("dice").value, "1", "Three bits did not emit the first complete D++ D8 result");
     document.querySelector('input[name="dm"][value="bitbox"]').click();

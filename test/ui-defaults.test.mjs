@@ -344,8 +344,7 @@ test("the BitBox word counter is coloured and its next roll sits on its own line
   assert.match(appSource, /hodlMetaValue\(String\(result\.words\.length \+ 1\), false\)/);
   // What to roll next is its own sentence, so it lands on its own line.
   assert.match(appSource, /hodlTText\("Word \{word\} of \{partial\}", \{ word: hodlMetaToken, partial: result\.neededPartial \}\)/);
-  assert.match(appSource, /hodlTText\("Die \{die\} of 5 \(only faces 1–4 used\)", \{ die: result\.diceInWord \+ 1 \}\)/);
-  assert.match(appSource, /hodlTText\("6th die \(interpreted as a coin flip\)"\)/);
+  assert.match(appSource, /\[hodlMetaToken, bitboxRoll\]/);
   // BitBox carries no tail at all now: the invalid-input note is redundant with
   // the highlighted transcript above, and ignored extras still reach the user
   // as a derive-time warning.

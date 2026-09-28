@@ -469,8 +469,14 @@ function hodlRowWifCell(row) {
   if (!row.privateKey) return null;
   return hodlRevealPrivate ? hodlRowWif(row) : "\u2022".repeat(hodlCompressedWifLength);
 }
-function hodlZeroWalletRows(result) {
-  for (let account of result?.accounts || []) for (let branch of hodlAccountAddressBranches(account)) for (let row of branch.rows) row.privateKey?.fill(0);
+// Every private key a wallet result holds: its row keys' bytes and its root
+// and account key nodes (#546 B2).
+function hodlWipeWalletKeys(result) {
+  result?.rootNode?.wipePrivateData();
+  for (let account of result?.accounts || []) {
+    account.privateNode?.wipePrivateData();
+    for (let branch of hodlAccountAddressBranches(account)) for (let row of branch.rows) row.privateKey?.fill(0);
+  }
 }
 // The results a station still shows. The Key Station and a key tab committed
 // from it share one result (hodlCloneDerivedKey), and a key detached into the
@@ -481,7 +487,7 @@ function hodlLiveWalletResults() {
 }
 function hodlWipeUnsharedWalletRows(result) {
   if (!result || hodlLiveWalletResults().has(result) || hodlKeyManagerPending.some((state) => state.result === result)) return;
-  hodlZeroWalletRows(result);
+  hodlWipeWalletKeys(result);
   hodlCommittedResults.delete(result);
 }
 // Every wallet the Key Station has committed and not yet zeroed. A wallet
@@ -492,13 +498,21 @@ var hodlCommittedResults = new Set();
 function hodlDisposeDroppedWallets() {
   for (let result of hodlCommittedResults) hodlWipeUnsharedWalletRows(result);
 }
-// Zeroes the row keys a derivation made that no station shows: all of them
-// when it stopped, failed or was declined, none once it has committed.
+// Wipes the private keys a derivation made that no station shows (its row
+// keys and the root and account nodes its result keeps): all of them when it
+// stopped, failed or was declined, none once it has committed.
 function hodlSettleDerivationKeys(control) {
-  if (!control?.rowKeys?.length) return;
+  if (!control?.rowKeys?.length && !control?.nodes?.length) return;
   let shown = new Set();
-  for (let result of [...hodlLiveWalletResults(), ...hodlKeyManagerPending.map((state) => state.result)]) for (let account of result?.accounts || []) for (let branch of hodlAccountAddressBranches(account)) for (let row of branch.rows) shown.add(row.privateKey);
-  for (let key of control.rowKeys) if (!shown.has(key)) key.fill(0);
+  for (let result of [...hodlLiveWalletResults(), ...hodlKeyManagerPending.map((state) => state.result)]) {
+    shown.add(result?.rootNode);
+    for (let account of result?.accounts || []) {
+      shown.add(account.privateNode);
+      for (let branch of hodlAccountAddressBranches(account)) for (let row of branch.rows) shown.add(row.privateKey);
+    }
+  }
+  for (let key of control.rowKeys || []) if (!shown.has(key)) key.fill(0);
+  for (let node of control.nodes || []) if (!shown.has(node)) node.wipePrivateData();
 }
 function hodlDeriveAddressRows(node, accountPath, script, network, count, branchOrRole, startIndex = 0, addressHardened = false, branchHardened = false) {
   let rows = [];
@@ -769,6 +783,57 @@ function hodlAccountExportFamily(definition, options = {}) {
 function hodlSerializeExtendedKey(value, network, family, isPrivate) {
   return value ? hodlReversionExtendedKey(value, hodlExtendedKeyVersions[hodlNetworkFamily(network)][family][isPrivate ? "prv" : "pub"]) : null;
 }
+// A wallet keeps its root and account private keys as wipeable HDKey nodes,
+// never as text: strings cannot be erased, so each xprv, SLIP-132 export and
+// spending descriptor is serialized only where one is shown, copied or
+// exported (#546 B2). Every standard extended key is 111 characters long,
+// which is the length a hidden one masks at.
+var hodlExtendedKeyLength = 111;
+function hodlCopyPrivateNode(node) {
+  let privateKey = node?.privateKey ?? null;
+  if (!privateKey) return null;
+  let chainCode = node.chainCode;
+  try {
+    return new hodlHDKey({ versions: node.versions, depth: node.depth, index: node.index, parentFingerprint: node.parentFingerprint, chainCode, privateKey });
+  } finally {
+    privateKey.fill(0); // the getters' copies
+    chainCode.fill(0);
+  }
+}
+// The copy a wallet result keeps. The derivation records it, so one that
+// never commits wipes it with its row keys (hodlSettleDerivationKeys).
+function hodlKeepPrivateNode(node) {
+  let copy = hodlCopyPrivateNode(node);
+  if (copy) hodlActiveDerivation?.nodes?.push(copy);
+  return copy;
+}
+function hodlAccountPrivateKey(account, family = "x") {
+  return account?.privateNode ? hodlSerializeExtendedKey(account.privateNode.privateExtendedKey, account.network, family, true) : null;
+}
+function hodlBranchPrivateDescriptor(account, branch, keyText = hodlAccountPrivateKey(account)) {
+  if (!keyText) return null;
+  let origin = account.originFingerprint && account.originPath ? `[${account.originFingerprint}/${account.originPath}]` : "";
+  return hodlDescriptorWithChecksum(hodlScriptDescriptor(account.def.script, `${origin}${keyText}/${hodlPathComponent(branch, account.branchHardened)}/${account.addressHardened ? "*'" : "*"}`));
+}
+// A hidden spending descriptor masks at the length of the same descriptor
+// with the account xpub in the key's place, which is exactly as long.
+function hodlBranchPrivateDescriptorLength(account, branch) {
+  return account?.privateNode ? hodlBranchPrivateDescriptor(account, branch, account.genericPublic).length : 0;
+}
+// A BIP-85 child's session key still carries its root as text (the BIP-85
+// Station's own output); a Key Station wallet carries a node.
+function hodlResultHasRoot(result) {
+  return Boolean(result?.rootNode || result?.rootXprv);
+}
+function hodlResultRootXprv(result) {
+  if (result?.rootNode) return hodlSerializeExtendedKey(result.rootNode.privateExtendedKey, result.network, "x", true);
+  return result?.rootXprv || null;
+}
+// A station session's own copy of a key's BIP32 root, which the station wipes.
+function hodlResultRootNode(result) {
+  if (result?.rootNode) return hodlCopyPrivateNode(result.rootNode);
+  return result?.rootXprv ? hodlHDKey.fromExtendedKey(hodlParseExtendedKey(result.rootXprv).xkey) : null;
+}
 function hodlBuildMultisigCosignerExports(root, network, accountIndex, masterFingerprint, coinType = hodlCoinTypeFromNetwork(network)) {
   return [{
       accountId: "bip44",
@@ -815,6 +880,7 @@ function hodlBuildMultisigCosignerExports(root, network, accountIndex, masterFin
       originPath = definition.originPath || `48h/${coinType}h/${accountIndex}h/${definition.scriptIndex}h`;
     let node = root.derive(accountPath),
       publicKey = hodlSerializeExtendedKey(node.publicExtendedKey, network, "x", !1);
+    node.wipePrivateData(); // only its xpub is exported
     let prefix = hodlExtendedKeyVersions[hodlNetworkFamily(network)].x.pubName;
     return {
       ...definition,
@@ -919,20 +985,21 @@ function hodlWatchOnlyDescriptorExport(receiveDescriptor, changeDescriptor, addr
   return `${field("Watch-only wallet descriptor", multipath || "\u2014")}${collapsible ? `<details class="wallet-advanced"><summary>Address branch descriptors</summary>${details}</details>` : details}`;
 }
 function hodlAccountResult(node, definition, network, count, options = {}) {
-  let rawPublic = node.publicExtendedKey, rawPrivate = node.privateKey ? node.privateExtendedKey : null, family = hodlAccountExportFamily(definition, options), keyVersions = hodlExtendedKeyVersions[hodlNetworkFamily(network)], primaryConfig = keyVersions[family] || keyVersions.x, genericConfig = keyVersions.x;
-  let genericPublic = hodlSerializeExtendedKey(rawPublic, network, "x", false), genericPrivate = hodlSerializeExtendedKey(rawPrivate, network, "x", true);
-  let primaryPublic = hodlSerializeExtendedKey(rawPublic, network, family, false), primaryPrivate = hodlSerializeExtendedKey(rawPrivate, network, family, true);
+  // The private key stays a node (hodlAccountPrivateKey serializes it).
+  let privateNode = node.hasPrivateKey ? hodlKeepPrivateNode(node) : null;
+  let rawPublic = node.publicExtendedKey, family = hodlAccountExportFamily(definition, options), keyVersions = hodlExtendedKeyVersions[hodlNetworkFamily(network)], primaryConfig = keyVersions[family] || keyVersions.x, genericConfig = keyVersions.x;
+  let genericPublic = hodlSerializeExtendedKey(rawPublic, network, "x", false);
+  let primaryPublic = hodlSerializeExtendedKey(rawPublic, network, family, false);
   let origin = options.originFingerprint && options.originPath ? `[${options.originFingerprint}/${options.originPath}]` : "", branchHardened = Boolean(options.branchHardened), addressHardened = Boolean(options.addressHardened), wildcard = addressHardened ? "*'" : "*", branchStart = options.branchStart ?? 0, branchRange = options.branchRange ?? 2;
   let addressBranches = Array.from({ length: branchRange }, (_, offset) => {
-    let branch = branchStart + offset, branchStep = hodlPathComponent(branch, branchHardened), branchOrigin = options.originFingerprint && options.originPath ? `[${options.originFingerprint}/${options.originPath}/${hodlOriginPathComponent(branch, branchHardened)}]` : "", branchNode = branchHardened && node.privateKey ? node.derive(`m/${branchStep}`) : null, branchPublic = branchNode ? hodlSerializeExtendedKey(branchNode.publicExtendedKey, network, "x", false) : null;
-    let publicToken = addressHardened ? null : branchHardened ? branchPublic ? `${branchOrigin}${branchPublic}/${wildcard}` : null : `${origin}${genericPublic}/${branchStep}/${wildcard}`, privateToken = genericPrivate ? `${origin}${genericPrivate}/${branchStep}/${wildcard}` : null;
+    let branch = branchStart + offset, branchStep = hodlPathComponent(branch, branchHardened), branchOrigin = options.originFingerprint && options.originPath ? `[${options.originFingerprint}/${options.originPath}/${hodlOriginPathComponent(branch, branchHardened)}]` : "", branchNode = branchHardened && privateNode ? node.derive(`m/${branchStep}`) : null, branchPublic = branchNode ? hodlSerializeExtendedKey(branchNode.publicExtendedKey, network, "x", false) : null;
+    let publicToken = addressHardened ? null : branchHardened ? branchPublic ? `${branchOrigin}${branchPublic}/${wildcard}` : null : `${origin}${genericPublic}/${branchStep}/${wildcard}`;
     let result = {
       branch,
       branchHardened,
       role: hodlAddressBranchRole(branch),
       label: hodlAddressBranchLabel(branch),
       publicDescriptor: publicToken ? hodlDescriptorWithChecksum(hodlScriptDescriptor(definition.script, publicToken)) : null,
-      privateDescriptor: privateToken ? hodlDescriptorWithChecksum(hodlScriptDescriptor(definition.script, privateToken)) : null,
       rows: options.addressBranches?.find((entry) => entry.branch === branch)?.rows ?? hodlDeriveAddressRows(node, options.accountPath ?? "Imported account key", definition.script, network, count, branch, options.addressStart ?? 0, addressHardened, branchHardened)
     };
     if (branchNode) branchNode.wipePrivateData(); // only its xpub string is kept
@@ -956,32 +1023,24 @@ function hodlAccountResult(node, definition, network, count, options = {}) {
     nodeFingerprint: options.nodeFingerprint ?? null,
     primaryFamily: family,
     primaryPublic,
-    primaryPrivate,
     primaryPublicLabel: primaryConfig.pubName,
     primaryPrivateLabel: primaryConfig.prvName,
     genericPublic,
-    genericPrivate,
     genericPublicLabel: genericConfig.pubName,
     genericPrivateLabel: genericConfig.prvName,
     hasAlternateExport: family !== "x",
     publicExports: [{ name: primaryConfig.pubName, value: primaryPublic }],
-    privateExports: primaryPrivate ? [{ name: primaryConfig.prvName, value: primaryPrivate }] : [],
     xpub: genericPublic,
-    xprv: genericPrivate,
     ypub: family === "y" ? primaryPublic : null,
-    yprv: family === "y" ? primaryPrivate : null,
     zpub: family === "z" ? primaryPublic : null,
-    zprv: family === "z" ? primaryPrivate : null,
     vpub: null,
-    vprv: null,
+    privateNode,
     addressBranches,
     branchStart,
     branchRange,
     receiveDescriptor: receiveBranch?.publicDescriptor ?? null,
     changeDescriptor: changeBranch?.publicDescriptor ?? null,
     walletDescriptor: addressBranches[0]?.publicDescriptor ? addressBranches.length === 1 ? addressBranches[0].publicDescriptor : hodlWatchOnlyMultipathDescriptor(addressBranches[0].publicDescriptor, addressBranches.map((entry) => entry.branch)) : null,
-    receiveDescriptorPriv: receiveBranch?.privateDescriptor ?? null,
-    changeDescriptorPriv: changeBranch?.privateDescriptor ?? null,
     branchHardened,
     addressHardened,
     receive: receiveBranch?.rows ?? [],
@@ -998,7 +1057,7 @@ function hodlRootWalletResult(root, network, source, accountIndex, masterFingerp
     passphrase: source.passphrase ?? "",
     entropyHex: source.entropyHex,
     seedHex: source.seedHex,
-    rootXprv: hodlSerializeExtendedKey(root.privateKey ? root.privateExtendedKey : null, network, "x", true),
+    rootNode: root.hasPrivateKey ? hodlKeepPrivateNode(root) : null,
     rootXpub: hodlSerializeExtendedKey(root.publicExtendedKey, network, "x", false),
     rootPrivateLabel: hodlExtendedKeyVersions[hodlNetworkFamily(network)].x.prvName,
     rootPublicLabel: hodlExtendedKeyVersions[hodlNetworkFamily(network)].x.pubName,
@@ -1060,7 +1119,7 @@ async function hodlRootWalletWithProgress(root, network, count, source, accountI
     try {
       account = await hodlAccountResultWithProgress(node, derivedDefinition, network, addressCount, { accountPath, accountIndex, masterFingerprint, originFingerprint: masterFingerprint, originPath, addressStart, branchHardened: hardening.branch, addressHardened: hardening.address, branchStart, branchRange }, tracker);
     } finally {
-      node.wipePrivateData(); // the account keeps its extended-key strings, not the node; a stopped one keeps neither
+      node.wipePrivateData(); // the account holds its own copy of the node; a stopped derivation wipes that copy too
     }
     accounts.push(account);
   }
@@ -1081,7 +1140,7 @@ async function hodlMnemonicWalletWithProgress(value, passphrase, network, count,
   try {
     return await hodlRootWalletWithProgress(root, network, count, { mnemonic, passphraseUsed: passphrase.length > 0, passphrase, entropyHex, seedHex, notes: source?.notes ?? [], warnings }, accountIndex, addressStart, tracker, purposeIndex, coinType, hardening, branchStart, branchRange, derivationPlan);
   } finally {
-    root.wipePrivateData(); // the result keeps its extended-key strings, not the root
+    root.wipePrivateData(); // the result holds its own copy of the root
   }
 }
 async function hodlEntropyWalletWithProgress(entropy, passphrase, network, count, accountIndex, addressStart, tracker, purposeIndex, coinType = hodlCoinTypeFromNetwork(network), hardening = hodlDefaultHardening(), branchStart = 0, branchRange = 2, derivationPlan = null) {
@@ -1102,7 +1161,7 @@ async function hodlImportedWalletWithProgress(value, network, count, accountInde
     try {
       return await hodlRootWalletWithProgress(node, network, count, { mnemonic: null, passphraseUsed: false, passphrase: "", entropyHex: null, seedHex: null, notes, warnings: [] }, accountIndex, addressStart, tracker, purposeIndex, coinType, hardening, branchStart, branchRange, derivationPlan);
     } finally {
-      node.wipePrivateData(); // the imported root is dead once the result strings exist
+      node.wipePrivateData(); // the result holds its own copy of the imported root
     }
   }
   if (node.depth !== 3) throw hodlError("This extended key is depth {depth}. Key Derivation accepts a BIP32 root private key (depth 0) or an account-level extended key (depth 3).", { depth: node.depth });
@@ -1113,7 +1172,7 @@ async function hodlImportedWalletWithProgress(value, network, count, accountInde
   try {
     account = await hodlAccountResultWithProgress(node, definition, network, addressCount, { accountPath: "Imported account key", accountIndex: null, imported: true, importedFamily: parsed.family, importedValue, parentFingerprint, nodeFingerprint, addressStart, branchHardened: hardening.branch, addressHardened: hardening.address, branchStart, branchRange }, tracker);
   } finally {
-    node.wipePrivateData(); // the account result keeps its strings, not the imported node; a stopped import keeps neither
+    node.wipePrivateData(); // the account holds its own copy of the imported node; a stopped import wipes that copy too
   }
   return {
     kind: "hd",
@@ -1123,7 +1182,7 @@ async function hodlImportedWalletWithProgress(value, network, count, accountInde
     passphrase: "",
     entropyHex: null,
     seedHex: null,
-    rootXprv: null,
+    rootNode: null,
     rootXpub: null,
     importedPrivateKey: parsed.isPrivate ? importedValue : null,
     importedPublicKey: parsed.isPrivate ? null : importedValue,
@@ -1139,21 +1198,21 @@ async function hodlImportedWalletWithProgress(value, network, count, accountInde
   };
 }
 function hodlAccountHasPrivate(account) {
-  return Boolean(account.primaryPrivate || hodlAccountAddressBranches(account).some((branch) => branch.privateDescriptor || branch.rows.some((row) => row.privateKey)));
+  return Boolean(account.privateNode || hodlAccountAddressBranches(account).some((branch) => branch.rows.some((row) => row.privateKey)));
 }
 function hodlAccountAddressBranches(account) {
   if (account?.addressBranches?.length) return account.addressBranches;
   return [
-    { branch: 0, role: "receive", label: "Receive", rows: account?.receive || [], publicDescriptor: account?.receiveDescriptor, privateDescriptor: account?.receiveDescriptorPriv },
-    { branch: 1, role: "change", label: "Change", rows: account?.change || [], publicDescriptor: account?.changeDescriptor, privateDescriptor: account?.changeDescriptorPriv }
-  ].filter((entry) => entry.rows.length || entry.publicDescriptor || entry.privateDescriptor);
+    { branch: 0, role: "receive", label: "Receive", rows: account?.receive || [], publicDescriptor: account?.receiveDescriptor },
+    { branch: 1, role: "change", label: "Change", rows: account?.change || [], publicDescriptor: account?.changeDescriptor }
+  ].filter((entry) => entry.rows.length || entry.publicDescriptor);
 }
-function hodlAddressBranchDescriptorFields(branches, isPrivate = false, labelClass = "label") {
+// Spending descriptors come from the account's key node (pass the account).
+function hodlAddressBranchDescriptorFields(branches, isPrivate = false, labelClass = "label", account = null) {
   return branches.map((branch) => {
-    let descriptor = isPrivate ? branch.privateDescriptor : branch.publicDescriptor;
-    if (!descriptor) return "";
     let label = `${isPrivate ? "Spending" : "Watch-only"} ${hodlAddressBranchLabel(branch.branch).toLowerCase()} descriptor`;
-    return isPrivate ? hodlPrivateFieldHtml(label, descriptor, void 0, labelClass) : hodlPublicFieldHtml(label, descriptor, void 0, labelClass);
+    if (isPrivate) return account?.privateNode ? hodlPrivateKeyFieldHtml(label, hodlBranchPrivateDescriptorLength(account, branch.branch), () => hodlBranchPrivateDescriptor(account, branch.branch), void 0, labelClass) : "";
+    return branch.publicDescriptor ? hodlPublicFieldHtml(label, branch.publicDescriptor, void 0, labelClass) : "";
   }).join("");
 }
 function hodlAddressBranchKey(prefix, branch) {
@@ -1170,7 +1229,7 @@ function hodlAddressBranchVirtualConfigs(branches, includeWif, prefix) {
 }
 function hodlAccountAdvancedExports(account, includePrivate = false, labelClass = "label") {
   if (!account.hasAlternateExport) return "";
-  let privateExport = includePrivate && account.genericPrivate ? hodlPrivateFieldHtml("Generic {name} for descriptor compatibility", account.genericPrivate, { name: account.genericPrivateLabel }, labelClass) : "";
+  let privateExport = includePrivate && account.privateNode ? hodlPrivateKeyFieldHtml("Generic {name} for descriptor compatibility", hodlExtendedKeyLength, () => hodlAccountPrivateKey(account, "x"), { name: account.genericPrivateLabel }, labelClass) : "";
   let publicExport = !includePrivate && account.genericPublic ? hodlPublicFieldHtml("Generic {name} for descriptor compatibility", account.genericPublic, { name: account.genericPublicLabel }, labelClass, true) : "";
   if (!privateExport && !publicExport) return "";
   // One more field among the account exports, not a disclosure of its own.
@@ -1244,31 +1303,41 @@ function hodlAddressMatchMarkup(){
 var hodlAddressSearchLimit = 1000;
 
 function hodlMatchHdAddressBeyond(address, account, start) {
-  let extendedKey = account?.branchHardened ? account?.xprv || account?.genericPrivate : account?.xpub || account?.genericPublic;
-  if (!extendedKey || !account?.def) return {
-    state: "miss",
-    searchedTo: start
-  };
-  let node = hodlHDKey.fromExtendedKey(extendedKey),
-    network = account.network || hodlWalletResult.network,
+  // A hardened branch needs the private key: a copy of the account's node,
+  // wiped with every child when the search ends.
+  let extendedKey = account?.branchHardened ? null : account?.xpub || account?.genericPublic, node = account?.branchHardened ? hodlCopyPrivateNode(account?.privateNode) : null;
+  if (!(node || extendedKey) || !account?.def) {
+    node?.wipePrivateData();
+    return {
+      state: "miss",
+      searchedTo: start
+    };
+  }
+  node = node || hodlHDKey.fromExtendedKey(extendedKey);
+  let network = account.network || hodlWalletResult.network,
     script = account.def.script,
     base = account.accountPath || "m";
   let searchEnd = Math.min(hodlMaxAddressIndex + 1, start + hodlAddressSearchLimit);
-  for (let index = start; index < searchEnd; index++) {
-    for (let branch of hodlAccountAddressBranches(account)) {
-      let chain = branch.branch, role = branch.role, branchStep = hodlPathComponent(chain, account.branchHardened), indexStep = hodlPathComponent(index, account.addressHardened);
-      let child = node.derive(`m/${branchStep}/${indexStep}`),
-        pk = child.publicKey;
-      if (!pk) continue;
-      if (hodlAddressesEqual(address, hodlAddressOrThrow(script, pk, network))) return {
-        state: "match",
-        chain: role,
-        branch: chain,
-        index,
-        path: `${base}/${branchStep}/${indexStep}`,
-        beyond: !0
+  try {
+    for (let index = start; index < searchEnd; index++) {
+      for (let branch of hodlAccountAddressBranches(account)) {
+        let chain = branch.branch, role = branch.role, branchStep = hodlPathComponent(chain, account.branchHardened), indexStep = hodlPathComponent(index, account.addressHardened);
+        let child = node.derive(`m/${branchStep}/${indexStep}`),
+          pk = child.publicKey;
+        child.wipePrivateData();
+        if (!pk) continue;
+        if (hodlAddressesEqual(address, hodlAddressOrThrow(script, pk, network))) return {
+          state: "match",
+          chain: role,
+          branch: chain,
+          index,
+          path: `${base}/${branchStep}/${indexStep}`,
+          beyond: !0
+        }
       }
     }
+  } finally {
+    node.wipePrivateData();
   }
   return {
     state: "miss",
@@ -1399,17 +1468,30 @@ function hodlBindAddressVirtualization(configs = []) {
   });
 }
 function hodlSlip132Fields(account, wallet, isPrivate = false, labelClass = "label") {
-  let pasted = isPrivate ? (wallet?.importedPrivateKey || "") : (wallet?.importedPublicKey || "");
-  let core = (isPrivate ? account.genericPrivate : account.genericPublic) || "";
-  let coreLabel = isPrivate ? account.genericPrivateLabel : account.genericPublicLabel;
-  let slip = account.hasAlternateExport ? (isPrivate ? account.primaryPrivate : account.primaryPublic) : "";
-  let slipLabel = isPrivate ? account.primaryPrivateLabel : account.primaryPublicLabel;
-  let field = isPrivate ? hodlPrivateFieldHtml : (name, value, vars, cls) => hodlPublicFieldHtml(name, value, vars, cls, true), parts = [];
+  if (isPrivate) return hodlSlip132PrivateFields(account, wallet, labelClass);
+  let pasted = wallet?.importedPublicKey || "";
+  let core = account.genericPublic || "";
+  let coreLabel = account.genericPublicLabel;
+  let slip = account.hasAlternateExport ? account.primaryPublic : "";
+  let slipLabel = account.primaryPublicLabel;
+  let field = (name, value, vars, cls) => hodlPublicFieldHtml(name, value, vars, cls, true), parts = [];
   if (pasted) parts.push(field("As pasted", pasted, void 0, labelClass));
   if (core && core !== pasted) parts.push(field(`Bitcoin Core ${coreLabel}`, core, void 0, labelClass));
   if (slip && slip !== pasted && slip !== core) parts.push(field(`SLIP-132 ${slipLabel}`, slip, void 0, labelClass));
   if (!parts.length && core) parts.push(field(`Account ${coreLabel}`, core, void 0, labelClass));
-  if (!isPrivate) parts.push(`<p class="muted slip132-note">Prefix swap only (same payload, new version bytes and checksum). Script lives in the descriptor, not the prefix. x = legacy, y = nested BIP49, z = native BIP84, Y = nested BIP48 nested-msig, Z = native BIP48 native-msig. Testnet: t / u / v / U / V. No Taproot SLIP prefix.</p>`);
+  parts.push(`<p class="muted slip132-note">Prefix swap only (same payload, new version bytes and checksum). Script lives in the descriptor, not the prefix. x = legacy, y = nested BIP49, z = native BIP84, Y = nested BIP48 nested-msig, Z = native BIP48 native-msig. Testnet: t / u / v / U / V. No Taproot SLIP prefix.</p>`);
+  return parts.join("");
+}
+// The private exports exist as the account's key node, not text, so whether
+// two of them would repeat is read from the prefix family: a pasted key is
+// the Core export when it was generic (x), and the SLIP-132 export when it
+// carried that family.
+function hodlSlip132PrivateFields(account, wallet, labelClass) {
+  let pasted = wallet?.importedPrivateKey || "", pastedFamily = pasted ? account.importedFamily : null, parts = [];
+  let field = (label, family) => hodlPrivateKeyFieldHtml(label, hodlExtendedKeyLength, () => hodlAccountPrivateKey(account, family), void 0, labelClass);
+  if (pasted) parts.push(hodlPrivateFieldHtml("As pasted", pasted, void 0, labelClass));
+  if (account.privateNode && pastedFamily !== "x") parts.push(field(`Bitcoin Core ${account.genericPrivateLabel}`, "x"));
+  if (account.privateNode && account.hasAlternateExport && pastedFamily !== account.primaryFamily) parts.push(field(`SLIP-132 ${account.primaryPrivateLabel}`, account.primaryFamily));
   return parts.join("");
 }
 function hodlSlip132WatchFields(account, wallet) {
@@ -1428,7 +1510,7 @@ function hodlShowAccount(id) {
   // repeats the first one. The pressed script type button names the account.
   let privateGroup = hasPrivate ? hodlKeyGroupMarkup("account-private", `${hodlT("Account private key exports")}${hodlPrivacyEyeMarkup()}`, `<p class="edge-note is-private account-private-warning"><strong>${hodlT("These exports can spend from this account.")}</strong> ${hodlT("They are shown only for a seed or extended private-key source.")} ${hodlT("Keep these exports together only in secure offline backups. An account extended public key combined with any non-hardened descendant private key, including a WIF shown in the address tables, can reconstruct that account's extended private key.")}</p>
       ${hodlSlip132Fields(account, hodlWalletResult, true)}
-      ${hodlAddressBranchDescriptorFields(branches, true)}
+      ${hodlAddressBranchDescriptorFields(branches, true, "label", account)}
       ${hodlAccountAdvancedExports(account, true)}`, hodlRevealPrivate ? "is-private is-revealed" : "is-private") : "";
   hodlElement("#acct").innerHTML = `
         ${hodlKeyGroupMarkup("hd-addresses", hasPrivate ? `${hodlT("Addresses")}${hodlPrivacyEyeMarkup()}` : hodlT("Addresses"), `<p class="edge-note is-public">${hodlT("Verify the first selected address on another trusted wallet or signing device before accepting bitcoin.")}</p>${hasPrivate ? `<p class="edge-note is-private"><strong>${hodlT("When private data is visible, these tables also show the WIF private key for each address.")}</strong> ${hodlT("Anyone who sees or copies a WIF can spend what that address holds.")}</p>` : ""}${hodlScriptBeginnerTexts[account.def.id] ? `<p class="label">${hodlT("Script type:")} <span class="label-value">${hodlScriptUiLabel(account.def)}</span></p><p class="muted label-description script-type-description">${hodlScriptBeginner(account.def)}</p>` : ""}${hodlAddressBranchTables(branches, hasPrivate, "hd")}${hodlAddressMatchMarkup()}`, hasPrivate ? hodlRevealPrivate ? "is-private is-revealed" : "is-private" : "")}
@@ -1462,6 +1544,11 @@ function hodlPrivateFieldHtml(label, value, vars, labelClass = "label") {
   let labelHtml = hodlEscapeHtml(hodlTText(label, vars));
   return `<p class="private-field"><span class="${labelClass}">${labelHtml}</span>${hodlPrivateValue(value)}</p>`;
 }
+// A private value held as key material, not text: hidden, it masks at its
+// known length; its text is built only while private values are revealed.
+function hodlPrivateKeyFieldHtml(label, length, reveal, vars, labelClass = "label") {
+  return hodlPrivateFieldHtml(label, hodlRevealPrivate ? reveal() : "\u2022".repeat(length), vars, labelClass);
+}
 function hodlDisplayDerivationPath(value) {
   return String(value ?? "").replace(/(^|\/)(\d+)[hH](?=\/|$)/g, "$1$2'");
 }
@@ -1480,12 +1567,22 @@ function hodlPrivateDataControls(descriptionId, scope = "wallet") {
     ${hodlWalletDatControl(privateSheet)}
   </div>`;
 }
+// wallet.dat reads the spending descriptors as text: this view carries them
+// for the one export that asks, and goes with it.
+function hodlWalletExportView(wallet) {
+  if (wallet?.kind !== "hd") return wallet;
+  return { ...wallet, accounts: wallet.accounts.map((account) => {
+    if (!account.privateNode) return account;
+    let descriptor = (branch) => account.addressBranches?.some((entry) => entry.branch === branch) ? hodlBranchPrivateDescriptor(account, branch) : null;
+    return { ...account, receiveDescriptorPriv: descriptor(0), changeDescriptorPriv: descriptor(1) };
+  }) };
+}
 function hodlWalletDatControl(includePrivate) {
   if (!hodlWalletExport.hasDescriptors(hodlWalletResult)) return "";
   // The secrets variant follows the material that actually exists, not just
   // the reveal toggle, so the label and filename never lie for an imported
   // watch-only wallet (issue #366).
-  const withSecrets = includePrivate && hodlWalletExport.hasPrivateDescriptors(hodlWalletResult);
+  const withSecrets = includePrivate && hodlWalletExport.hasPrivateDescriptors(hodlWalletExportView(hodlWalletResult));
   // A download carrying private material wears the destructive red.
   return `<button class="btn secondary ${withSecrets ? "red" : "green"} save-wallet-dat" id="download-wallet-dat" type="button" aria-describedby="recovery-sheet-disclosure wallet-dat-birthday-help">${hodlWalletExport.walletDatButtonLabel(withSecrets)}</button>`;
 }
@@ -1637,7 +1734,7 @@ function hodlHdWalletData(wallet, accountMarkup = "") {
   if (wallet.mnemonic && wallet.passphraseUsed && wallet.passphrase) privateFields.push(hodlPrivateFieldHtml("BIP39 passphrase", wallet.passphrase));
   if (wallet.entropyHex) privateFields.push(hodlPrivateFieldHtml("BIP39 entropy hex", wallet.entropyHex));
   if (wallet.seedHex) privateFields.push(hodlPrivateFieldHtml("Master seed hex", wallet.seedHex));
-  if (wallet.rootXprv) privateFields.push(hodlPrivateFieldHtml(`Root ${wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName}`, wallet.rootXprv));
+  if (wallet.rootNode) privateFields.push(hodlPrivateKeyFieldHtml(`Root ${wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName}`, hodlExtendedKeyLength, () => hodlResultRootXprv(wallet)));
   if (wallet.importedPrivateKey) privateFields.push(hodlPrivateFieldHtml(`Imported ${wallet.importedPrivateLabel || "extended private key"}`, wallet.importedPrivateKey));
   let hasAccountPrivate = wallet.accounts.some(hodlAccountHasPrivate), hasPrivate = privateFields.length > 0 || hasAccountPrivate;
   let source = wallet.mnemonic ? "" : `<p><span class="label">Source</span><br><span>Imported extended ${hasPrivate ? "private" : "public"} key; no seed phrase was entered.</span></p>`;
@@ -1707,9 +1804,10 @@ function hodlDownloadWalletDat() {
   // "now" is written only when the user confirms the keys are new (issue
   // #95). Multisig is watch-only even if the reveal toggle is on.
   let creationTime = hodlWalletDatBirthday === "now" ? Math.floor(Date.now() / 1000) : 0;
-  let withSecrets = hodlWalletResult.kind !== "msig" && hodlRevealPrivate && hodlWalletExport.hasPrivateDescriptors(hodlWalletResult);
+  let exported = hodlWalletResult.kind !== "msig" && hodlRevealPrivate ? hodlWalletExportView(hodlWalletResult) : hodlWalletResult;
+  let withSecrets = hodlWalletResult.kind !== "msig" && hodlRevealPrivate && hodlWalletExport.hasPrivateDescriptors(exported);
   try {
-    let bytes = hodlWalletExport.buildWalletDat(hodlWalletResult, withSecrets, hodlWalletDatDeps(), creationTime), blob = new Blob([bytes], { type: "application/octet-stream" }), url = URL.createObjectURL(blob), link = document.createElement("a");
+    let bytes = hodlWalletExport.buildWalletDat(exported, withSecrets, hodlWalletDatDeps(), creationTime), blob = new Blob([bytes], { type: "application/octet-stream" }), url = URL.createObjectURL(blob), link = document.createElement("a");
     link.href = url;
     link.download = hodlWalletExport.walletDatFilename(hodlWalletResult, withSecrets);
     link.click();
@@ -2028,7 +2126,7 @@ var hodlRecoverySheetText = function(wallet, revealPrivate) {
     lines.push("", "PUBLIC KEYS AND ADDRESSES", `Compressed public key:   ${wallet.pubkeyCompressed}`, `Uncompressed public key: ${wallet.pubkeyUncompressed}`, `Legacy uncompressed: ${wallet.p2pkhUncompressed}`, `Legacy compressed:   ${wallet.p2pkhCompressed}`, `Nested SegWit:       ${wallet.p2shP2wpkh}`, `Native SegWit:       ${wallet.p2wpkh}`, `Taproot:             ${wallet.p2tr}`);
     return lines.join("\n");
   }
-  let hasPrivate = Boolean(wallet.mnemonic || wallet.entropyHex || wallet.seedHex || wallet.rootXprv || wallet.importedPrivateKey || wallet.accounts.some(hodlAccountHasPrivate));
+  let hasPrivate = Boolean(wallet.mnemonic || wallet.entropyHex || wallet.seedHex || hodlResultHasRoot(wallet) || wallet.importedPrivateKey || wallet.accounts.some(hodlAccountHasPrivate));
   if (hasPrivate && revealPrivate) {
     lines.push("PRIVATE RECOVERY MATERIAL");
     if (wallet.mnemonic) {
@@ -2038,14 +2136,16 @@ var hodlRecoverySheetText = function(wallet, revealPrivate) {
     }
     if (wallet.entropyHex) lines.push("", "BIP39 ENTROPY HEX", wallet.entropyHex);
     if (wallet.seedHex) lines.push("", "MASTER SEED HEX (BIP39 PBKDF2, 512 bits)", wallet.seedHex);
-    if (wallet.rootXprv) lines.push("", `BIP32 ROOT ${(wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName).toUpperCase()}`, wallet.rootXprv);
+    if (hodlResultHasRoot(wallet)) lines.push("", `BIP32 ROOT ${(wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName).toUpperCase()}`, hodlResultRootXprv(wallet));
     if (wallet.importedPrivateKey) lines.push("", `IMPORTED ${(wallet.importedPrivateLabel || "EXTENDED PRIVATE KEY").toUpperCase()}`, wallet.importedPrivateKey);
     for (let account of wallet.accounts) {
       if (!hodlAccountHasPrivate(account)) continue;
       lines.push("", `-- ${account.def.label} (${account.imported ? account.def.bip : `Purpose ${hodlPathComponent(account.def.purpose, account.def.purposeHardened !== false)}`}) PRIVATE ACCOUNT MATERIAL --`);
-      if (account.primaryPrivate) lines.push(`${account.primaryPrivateLabel}: ${account.primaryPrivate}`);
-      if (account.hasAlternateExport && account.genericPrivate) lines.push(`Advanced ${account.genericPrivateLabel} descriptor export: ${account.genericPrivate}`);
-      for (let branch of hodlAccountAddressBranches(account)) if (branch.privateDescriptor) lines.push(`Spending ${hodlAddressBranchLabel(branch.branch).toLowerCase()} descriptor: ${branch.privateDescriptor}`);
+      if (account.privateNode) {
+        lines.push(`${account.primaryPrivateLabel}: ${hodlAccountPrivateKey(account, account.primaryFamily)}`);
+        if (account.hasAlternateExport) lines.push(`Advanced ${account.genericPrivateLabel} descriptor export: ${hodlAccountPrivateKey(account, "x")}`);
+        for (let branch of hodlAccountAddressBranches(account)) lines.push(`Spending ${hodlAddressBranchLabel(branch.branch).toLowerCase()} descriptor: ${hodlBranchPrivateDescriptor(account, branch.branch)}`);
+      }
       lines.push("Warning: An account extended public key plus a non-hardened descendant private key can reconstruct the account extended private key.");
       for (let branch of hodlAccountAddressBranches(account)) hodlSheetWifRows(lines, `${hodlAddressBranchLabel(branch.branch)}-address private keys (WIF)`, branch.rows);
     }
@@ -2470,7 +2570,7 @@ function hodlHandleDerivationButton(kind, derive) {
 async function hodlDeriveWithProgress(kind, derive) {
   if (hodlActiveDerivation) return;
   let multisig = kind === "msig", progress = document.getElementById(multisig ? "msig-derive-progress" : "derive-progress");
-  let control = { kind, cancelled: false, rowKeys: [] };
+  let control = { kind, cancelled: false, rowKeys: [], nodes: [] };
   hodlActiveDerivation = control;
   hodlResetDerivationProgress(kind, false);
   hodlSetDerivationButtonState(kind, "running");
@@ -8001,7 +8101,7 @@ function hodlSessionMsigKeys() {
         if (state.result.mnemonic) {
           seed = hodlMnemonicToSeed(state.result.mnemonic, "");
           root = hodlHDKey.fromMasterSeed(seed);
-        } else root = hodlParseExtendedKey(state.result.rootXprv).node;
+        } else root = hodlResultRootNode(state.result);
         state.result.multisigCosignerExports = hodlBuildMultisigCosignerExports(root, state.result.network, 0, state.result.masterFingerprint);
       } finally {
         root?.wipePrivateData();
@@ -8013,7 +8113,7 @@ function hodlSessionMsigKeys() {
   return keys;
 }
 function hodlSessionHdRootKeys() {
-  return [...hodlKeys.filter((state) => !state.isLab && state.result?.kind === "hd" && (state.result.mnemonic || state.result.rootXprv)),
+  return [...hodlKeys.filter((state) => !state.isLab && state.result?.kind === "hd" && (state.result.mnemonic || hodlResultHasRoot(state.result))),
     ...hodlBip85Children.map(hodlBip85SessionKeyState).filter((state) => state?.result.kind === "hd")];
 }
 function hodlBip85SessionKeyState(child) {
@@ -8082,7 +8182,7 @@ function hodlFillStationKeyPicker(id, selectedSource, onSelect, keys = hodlSessi
 // private key. Offering anything else would be a chip that only errors.
 function hodlPsbtSourceKeys() {
   return [...hodlKeys.filter((state) => !state.isLab && state.result && (
-    (state.result.kind === "hd" && (state.result.mnemonic || state.result.rootXprv)) ||
+    (state.result.kind === "hd" && (state.result.mnemonic || hodlResultHasRoot(state.result))) ||
     (state.result.kind === "single" && state.result.privHex))),
     ...hodlBip85Children.map(hodlBip85SessionKeyState).filter(Boolean)];
 }
@@ -8734,7 +8834,7 @@ function hodlRederiveMsigRowKey(row, parsed, originComponents) {
     if (state.result.masterFingerprint !== fingerprint) continue;
     let root = null, seed = null;
     try {
-      if (state.result.rootXprv) root = hodlParseExtendedKey(state.result.rootXprv).node;
+      if (hodlResultHasRoot(state.result)) root = hodlResultRootNode(state.result);
       else if (state.result.mnemonic) {
         seed = hodlMnemonicToSeed(state.result.mnemonic, "");
         root = hodlHDKey.fromMasterSeed(seed);
@@ -9898,7 +9998,7 @@ function hodlUseActiveKeyForPsbt(state = hodlKeys[hodlActiveKey]) {
     } finally {
       seed.fill(0);
     }
-  } else if (result.kind === "hd" && result.rootXprv) hodlPsbtHd = hodlHDKey.fromExtendedKey(hodlParseExtendedKey(result.rootXprv).xkey);
+  } else if (result.kind === "hd" && hodlResultHasRoot(result)) hodlPsbtHd = hodlResultRootNode(result);
   else if (result.kind === "hd" && result.importedPrivateKey) {
     hodlPsbtErrorSpec = { key: "The active key is an account-level extended private key. PSBT session signing needs origin-aware relative paths, which this version does not infer. Use the original seed or root xprv/tprv instead." };
     throw new Error(hodlTText("The active key is an account-level extended private key. PSBT session signing needs origin-aware relative paths, which this version does not infer. Use the original seed or root xprv/tprv instead."));
@@ -10304,8 +10404,8 @@ function hodlUseKeyForBip85(state) {
     // arrived as a mnemonic rather than a root xprv (issue #352).
     hodlBip85Testnet = hodlNetworkFamily(result.network) === "testnet";
     hodlBip85Note = "Parent: " + (state.name || "existing key") + (result.passphraseUsed || (state.fields.pass || "").length ? " with BIP-39 passphrase (COLDCARD does the same \u2014 children differ without it)." : ".") + " Kept in page memory only.";
-  } else if (result.kind === "hd" && result.rootXprv) {
-    hodlBip85Root = hodlHDKey.fromExtendedKey(hodlParseExtendedKey(result.rootXprv).xkey);
+  } else if (result.kind === "hd" && hodlResultHasRoot(result)) {
+    hodlBip85Root = hodlResultRootNode(result);
     hodlBip85Testnet = hodlNetworkFamily(result.network) === "testnet";
     hodlBip85Note = "Parent: root xprv from " + (state.name || "existing key") + ". Kept in page memory only.";
   } else if (result.kind === "hd") throw new Error("This key is not a BIP32 root. Import the original seed or root xprv.");
@@ -10317,7 +10417,7 @@ function hodlPickBip85SessionKey(state) {
   if (error) error.textContent = "";
   try {
     hodlUseKeyForBip85(state);
-    let rootXprv = state.result?.rootXprv || hodlBip85Root?.privateExtendedKey;
+    let rootXprv = hodlResultRootXprv(state.result) || hodlBip85Root?.privateExtendedKey;
     if (!rootXprv) throw new Error("This key does not expose a BIP32 root xprv/tprv.");
     document.getElementById("bip85-key").value = rootXprv;
   } catch (exception) {
@@ -10856,8 +10956,8 @@ function hodlSpUseKey(state) {
     let seed = hodlMnemonicToSeed(result.mnemonic, state.fields.pass || "");
     try { hodlSpHd = hodlHDKey.fromMasterSeed(seed); } finally { seed.fill(0); }
     hodlSpNote = "Session key from " + (state.name || "existing key") + " (BIP39 seed). Kept in page memory only.";
-  } else if (result.kind === "hd" && result.rootXprv) {
-    hodlSpHd = hodlHDKey.fromExtendedKey(hodlParseExtendedKey(result.rootXprv).xkey);
+  } else if (result.kind === "hd" && hodlResultHasRoot(result)) {
+    hodlSpHd = hodlResultRootNode(result);
     hodlSpNote = "Session key from " + (state.name || "existing key") + " (root xprv). Kept in page memory only.";
   } else throw new Error("SP Station needs a seed or root xprv. Account-level and single keys cannot derive m/352'.");
   hodlSpSource = "key:" + state.id;
@@ -10869,7 +10969,7 @@ function hodlPickSpSessionKey(state) {
   if (error) error.textContent = "";
   try {
     hodlSpUseKey(state);
-    document.getElementById("sp-key").value = state.result?.mnemonic || state.result?.rootXprv || "";
+    document.getElementById("sp-key").value = state.result?.mnemonic || hodlResultRootXprv(state.result) || "";
     document.getElementById("sp-pass").value = state.result?.mnemonic ? state.fields?.pass || "" : "";
     document.getElementById("sp-session").textContent = hodlSpNote;
   } catch (exception) {
@@ -11949,7 +12049,7 @@ function hodlKeyManagerDetails(state) {
     ["Network", result.network || state.fields?.network || "Unknown"],
     ["Derivation path", state.fields?.derivationPath || state.createdPath || "Not available"],
     ["Public root key", result.rootXpub || result.xpub || result.importedPublicKey || "Not available"],
-    ["Private material", result.rootXprv || result.importedPrivateKey || result.accounts?.some((account) => account.primaryPrivate) ? "Present in encrypted key file" : "Not present"],
+    ["Private material", hodlResultHasRoot(result) || result.importedPrivateKey || result.accounts?.some((account) => account.privateNode) ? "Present in encrypted key file" : "Not present"],
   ];
 }
 function hodlKeyManagerRenderIgnored() {
@@ -15705,7 +15805,7 @@ function hodlVanityPlan(state, method, scriptId) {
     } finally {
       seed.fill(0);
     }
-  } else if (result.rootXprv) root = hodlHDKey.fromExtendedKey(hodlParseExtendedKey(result.rootXprv).xkey);
+  } else if (hodlResultHasRoot(result)) root = hodlResultRootNode(result);
   else throw new Error(`Key ${label} carries neither seed words nor a root xprv.`);
   let parent = null;
   try {
@@ -16547,7 +16647,7 @@ function hodlInitSecretFieldAutoClear() {
     // Every derived wallet's row key bytes, shared results included: the
     // whole session is going (#546 B2). Before the Journal wipe, which empties
     // the Key Manager's pending keys.
-    for (let result of [hodlWalletResult, ...hodlKeys.map((state) => state.result), ...hodlKeyManagerPending.map((state) => state.result), ...hodlCommittedResults]) hodlZeroWalletRows(result);
+    for (let result of [hodlWalletResult, ...hodlKeys.map((state) => state.result), ...hodlKeyManagerPending.map((state) => state.result), ...hodlCommittedResults]) hodlWipeWalletKeys(result);
     hodlCommittedResults.clear();
     hodlJournalWipeMem();
     hodlKeys = hodlKeys.map((state) => {

@@ -160,6 +160,10 @@ export class HDKey {
   get privateKey() {
     return this._privateKey ? Uint8Array.from(this._privateKey) : null;
   }
+  // Whether the node holds a private key, without copying it out.
+  get hasPrivateKey() {
+    return Boolean(this._privateKey);
+  }
   get publicKey() {
     return this._publicKey ? Uint8Array.from(this._publicKey) : null;
   }

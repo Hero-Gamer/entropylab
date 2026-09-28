@@ -2222,13 +2222,13 @@ test("BIP-85 and SP Stations can bring in compatible existing roots", () => {
     assert.doesNotMatch(markup, /id="sp-use-calc"/);
   }
   assert.match(appSource, /function hodlSessionHdRootKeys\(\) \{/);
-  assert.match(appSource, /state\.result\?\.kind === "hd" && \(state\.result\.mnemonic \|\| state\.result\.rootXprv\)/);
+  assert.match(appSource, /state\.result\?\.kind === "hd" && \(state\.result\.mnemonic \|\| hodlResultHasRoot\(state\.result\)\)/);
   assert.match(appSource, /function hodlFillStationKeyPicker\(id, selectedSource, onSelect, keys = hodlSessionHdRootKeys\(\)\) \{/);
   assert.match(appSource, /hodlFillKeyTabLifehash\(image, fingerprint\)/);
   assert.match(appSource, /function hodlPickBip85SessionKey\(state\) \{/);
   assert.match(appSource, /function hodlPickSpSessionKey\(state\) \{/);
   assert.match(appSource, /document\.getElementById\("bip85-key"\)\.value = rootXprv;/);
-  assert.match(appSource, /document\.getElementById\("sp-key"\)\.value = state\.result\?\.mnemonic \|\| state\.result\?\.rootXprv \|\| "";/);
+  assert.match(appSource, /document\.getElementById\("sp-key"\)\.value = state\.result\?\.mnemonic \|\| hodlResultRootXprv\(state\.result\) \|\| "";/);
   assert.match(appSource, /document\.getElementById\("sp-pass"\)\.value = state\.result\?\.mnemonic \? state\.fields\?\.pass \|\| "" : "";/);
   assert.match(appSource, /document\.getElementById\("bip85-key"\)\.addEventListener\("input"/);
   assert.match(appSource, /document\.getElementById\("sp-key"\)\.addEventListener\("input", detachStationKey\)/);

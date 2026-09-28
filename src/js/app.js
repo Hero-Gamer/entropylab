@@ -1656,7 +1656,7 @@ function hodlPrivateDataControls(descriptionId, scope = "wallet") {
   let disclosure = privateSheet ? scope === "wallet" ? hodlT("The downloaded plain-text file is unencrypted and includes all available root and account private recovery material across every script type.") : hodlT("The downloaded plain-text file is unencrypted and includes every private key shown in this section.") : hodlT("The downloaded sheet omits all private recovery material.");
   return `<div class="wallet-data-actions no-print">
     <p class="label">${hodlT("Downloads")}</p>
-    <p class="edge-note ${privateSheet ? "is-private" : "is-public"} recovery-download-disclosure" id="recovery-sheet-disclosure"><strong>${privateSheet ? hodlT("Private export:") : hodlT("Watch-only export:")}</strong> ${disclosure}</p>
+    <div class="edge-note-titled recovery-download-disclosure" id="recovery-sheet-disclosure"><p class="edge-note-title ${privateSheet ? "is-private" : "is-public"}">${privateSheet ? hodlT("Private export") : hodlT("Watch-only export")}</p><p class="edge-note ${privateSheet ? "is-private" : "is-public"}">${disclosure}</p></div>
     ${hodlWalletDatBirthdayField()}
     <button class="btn secondary ${privateSheet ? "red" : "green"} save-recovery-sheet" id="save" type="button" aria-describedby="recovery-sheet-disclosure">${downloadLabel}</button>
     ${hodlWalletDatControl(privateSheet)}
@@ -1710,7 +1710,7 @@ function hodlWalletMessages(wallet, idPrefix) {
     let lines = [...warnings.map((message) => hodlFormatNote(message)), notes.map((message) => hodlFormatNote(message)).join(" ")].filter(Boolean).map((text) => `<p>${hodlEscapeHtml(text)}</p>`).join("");
     return `<section class="edge-note is-public wallet-result-messages" aria-label="${hodlTAttr("Safety notes")}">${lines}</section>`;
   }
-  return `<section class="edge-note is-private wallet-result-messages" aria-labelledby="${idPrefix}-safety-heading"><h3 id="${idPrefix}-safety-heading">Safety notes</h3><ul>${items}</ul></section>`;
+  return `<section class="edge-note-titled" aria-labelledby="${idPrefix}-safety-heading"><h3 class="edge-note-title is-private" id="${idPrefix}-safety-heading">Safety notes</h3><div class="edge-note is-private wallet-result-messages"><ul>${items}</ul></div></section>`;
 }
 // The privacy bar: one switch for every masked value in the key view, kept in
 // sight while the reader scrolls. A checkbox underneath, announced as a

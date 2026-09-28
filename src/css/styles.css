@@ -550,7 +550,6 @@ details.lab-entropy { margin-top: var(--space-section); }
 details.lab-entropy > summary {
   cursor: pointer; font-weight: 600; color: var(--fg);
 }
-details.lab-entropy .wallet-result-messages { margin-top: var(--space-control); }
 #brain-lab { font-family: var(--mono); letter-spacing: 0; }
 @media (min-width: 720px) {
   .choice-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1356,6 +1355,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-summary-text { flex: 1 1 auto; min-width: 0; }
 /* Edit sits at the top corner however tall the summary beside it grows. */
 .key-summary-edit { align-self: flex-start; }
+@media (max-width: 520px) { .key-summary-edit { flex: 1 1 100%; } }
 /* The co-signer column sets the block's height, so the summary beside it
    starts at the top rather than floating against the middle of the stack. */
 #msig-summary .key-summary-text { align-self: flex-start; }
@@ -2734,17 +2734,25 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .wallet-birthday-field { flex: 1 1 100%; }
 .wallet-birthday-field > .label { margin-top: 0; }
 .wallet-result-messages {
-  margin-top: 18px; padding: 14px 16px; border: 1px solid var(--notice-edge, color-mix(in oklab, var(--warn) 42%, var(--border)));
+  margin-top: 18px; padding: 14px 16px; border: 1px solid color-mix(in oklab, var(--warn) 42%, var(--border));
   background: color-mix(in oklab, var(--warn) 6%, var(--bg));
 }
-.wallet-result-messages h3 { margin: 0 0 8px; color: var(--notice-title, inherit); }
+.wallet-result-messages h3 { margin: 0 0 8px; }
+/* A note's title stands outside the box, above it on the text column:
+   capitals in the note's own colour. The group carries the note's
+   spacing, so the title and box read as one block. */
+.edge-note-titled { margin-top: var(--space-component); }
+.edge-note-titled > .edge-note { margin-top: 0; }
+.edge-note-title {
+  margin: 0 0 6px; padding: 0 14px; font: inherit; font-size: 13px; font-weight: 600; letter-spacing: normal;
+  text-transform: uppercase; color: var(--edge-note-color, inherit);
+}
+.edge-note-title.is-private { --edge-note-color: var(--danger-bright); }
+.edge-note-title.is-public { --edge-note-color: var(--ok-bright); }
 /* The multisig note leads the groups below it, whose first rule would
    otherwise sit tight against it. Scoped to that card so the key views'
    notes keep their own spacing. */
 .account-result-card > .wallet-result-messages { margin-bottom: var(--space-component); }
-/* A warning that guards funds rather than informs: square, edged and titled
-   in the alert red. The notice supplies only these three values. */
-.wallet-result-messages.is-danger { --notice-edge: var(--danger-bright); --notice-title: var(--danger-bright); }
 .address-match-field input { display: block; font-family: var(--mono); }
 .address-match-note { margin: 0; }
 .address-match-field .hint { display: block; margin-top: var(--space-control); }

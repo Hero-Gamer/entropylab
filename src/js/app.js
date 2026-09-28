@@ -2764,8 +2764,13 @@ function hodlInitDerivationControls() {
     hodlUpdateDerivationPathPreview();
   }
 }
+// Hidden, every word masks at the same width: BIP39 words are 3 to 8
+// letters, so a mask as long as each word would show its length, and a
+// length narrows a word from 2,048 candidates to at most 555. Five is about
+// the average word, so the hidden phrase keeps roughly its old size.
+var hodlSeedWordMaskLength = 5;
 function hodlSeedPhraseTokens(value, mask = false) {
-  return String(value ?? "").trim().split(/\s+/).filter(Boolean).map((word) => `<span class="seed-phrase-word">${mask ? "\u2022".repeat(Array.from(word).length) : hodlEscapeHtml(word)}</span>`).join(" ");
+  return String(value ?? "").trim().split(/\s+/).filter(Boolean).map((word) => `<span class="seed-phrase-word">${mask ? "\u2022".repeat(hodlSeedWordMaskLength) : hodlEscapeHtml(word)}</span>`).join(" ");
 }
 function hodlSeedPhraseField(label, value) {
   let text = String(value ?? "\u2014");

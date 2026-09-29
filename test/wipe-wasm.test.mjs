@@ -15,6 +15,7 @@ import { entropyToMnemonic, mnemonicToEntropy, mnemonicToSeedSync, validateMnemo
 import { hash160, hmacSha512, pbkdf2Sha512, sha256, sha512 } from "../src/js/hashes.js";
 import { base58checkDecode, base58checkEncode } from "../src/js/base58.js";
 import { PSBT_WASM_B64 } from "../src/js/psbt-wasm-b64.js";
+import { psbtInspectDoc, psbtLoaderHeap, psbtWasmStackTop } from "../src/js/psbt-wasm.js";
 import { VANITY_WASM_B64 } from "../src/js/vanity-wasm-b64.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -25,6 +26,17 @@ const wasmMemoryContains = (bytes) => Buffer.from(heap().buffer).indexOf(Buffer.
 const psbtBinary = new Uint8Array(Buffer.from(PSBT_WASM_B64, "base64"));
 const psbtWasm = new WebAssembly.Instance(new WebAssembly.Module(psbtBinary), {}).exports;
 const psbtHeap = () => new Uint8Array(psbtWasm.memory.buffer);
+// BIP-174 valid vector 2 (hex form), the same published vector psbt-wasm
+// tests run; here only as a load-bearing file for the memory scans.
+const VALID_PSBT = new Uint8Array(Buffer.from(
+  "70736274ff0100a00200000002ab0949a08c5af7c49b8212f417e2f15ab3f5c33dcf153821a8139f877a5b7be40000000000feffffff" +
+  "ab0949a08c5af7c49b8212f417e2f15ab3f5c33dcf153821a8139f877a5b7be40100000000feffffff02603bea0b000000001976a914768a40" +
+  "bbd740cbe81d988e71de2a4d5c71396b1d88ac8e240000000000001976a9146f4620b553fa095e721b9ee0efe9fa039cca459788ac00000000" +
+  "0001076a47304402204759661797c01b036b25928948686218347d89864b719e1f7fcf57d1e511658702205309eabf56aa4d8891ffd111fdf133" +
+  "6f3a29da866d7f8486d75546ceedaf93190121035cdc61fc7ba971c0b501a646a2a83b102cb43881217ca682dc86e2d73fa882920001012000e1" +
+  "f5050000000017a9143545e6e33b832c47050f24d3eeb93c9c03948bc787010416001485d13537f2e265405a34dbafa9e3dda01fb82308000000",
+  "hex",
+));
 
 test("el_free zeroes the linear-memory buffer before deallocating it", () => {
   const wasm = wasmExports();
@@ -138,6 +150,28 @@ test("the loaded module is stack-first: the region below the stack top holds onl
   assert.ok(wasm.__data_end.value >= top, "static data sits below the stack top");
   assert.ok(wasm.__heap_base.value >= top, "the heap starts below the stack top");
 });
+
+// The PSBT module sees files that can carry xprvs in proprietary fields, and
+// rust-bitcoin's parse frames spill into the shadow stack the same way the
+// crypto module's frames do. Its loader must scrub the stack region once per
+// task after any export ran — psbt_free alone reaches only the heap buffers.
+test("the PSBT module is stack-first too: the loader has a scrubbed region to zero", () => {
+  const top = stackRegion(psbtBinary);
+  assert.ok(top > 0 && top % 16 === 0, `implausible stack top ${top}`);
+  assert.ok(psbtWasm.__data_end.value >= top, "static data sits below the stack top");
+  assert.ok(psbtWasm.__heap_base.value >= top, "the heap starts below the stack top");
+});
+
+test("the PSBT loader zeroes the shadow stack once per task after an export ran", async () => {
+  const top = psbtWasmStackTop();
+  psbtLoaderHeap().fill(0xa5, 0, top); // no export is running, so the region is dead
+  await settled();
+  psbtInspectDoc(VALID_PSBT);
+  await settled();
+  assert.ok(psbtLoaderHeap().subarray(0, top).every((byte) => byte === 0), "the PSBT shadow stack was not scrubbed after the export settled");
+});
+
+
 
 // Minimal module: memory, one mutable i32 global (the stack pointer) at
 // 65536, and one-byte active data segments at `offsets` (several, so a

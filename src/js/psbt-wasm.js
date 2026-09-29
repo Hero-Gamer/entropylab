@@ -13,11 +13,17 @@
 //     Psbt::deserialize has accepted the rebuilt file.
 //
 // Nothing here holds keys or generates randomness; the module only ever sees
-// PSBT bytes and UTF-8 JSON. Loading mirrors secp256k1.js: browsers compile
+// PSBT bytes and UTF-8 JSON. But a pasted PSBT can carry an xprv in a
+// proprietary field, and rust-bitcoin's parse frames spill into the WASM
+// shadow stack, which lives in linear memory and is not erased when a frame
+// pops. psbt_free zeroes the heap buffers; the stack region is zeroed once
+// per task after any export ran, exactly as in entropylab-wasm.js
+// (wasm-stack-scrub.js). Loading mirrors entropylab-wasm.js: browsers compile
 // asynchronously (app boot waits for psbtWasmReady to settle, then runs the
 // PSBT self-test vectors if it loaded; see self-test.js), Node initializes
 // synchronously at import time so the test suite stays synchronous.
 import { PSBT_WASM_B64 } from "./psbt-wasm-b64.js";
+import { makeStackScrub } from "./wasm-stack-scrub.js";
 
 const wasmBytes = (() => {
   const binary = atob(PSBT_WASM_B64);
@@ -26,18 +32,25 @@ const wasmBytes = (() => {
   return bytes;
 })();
 
-let wasm = null; // WebAssembly exports; set by init below.
+const stack = makeStackScrub(wasmBytes);
+// Test-facing mirrors of the crypto module's scrubSurface assertions.
+export const psbtWasmStackTop = () => stack.stackTop;
+
+let wasm = null; // Wrapped WebAssembly exports; set by init below.
+
+const bind = (instance) => {
+  stack.bind(instance);
+  wasm = stack.guard(instance.exports);
+};
 
 const isNode = typeof process !== "undefined" && !!(process.versions && process.versions.node);
 if (isNode) {
   // Node has no synchronous-compilation size limit; tests stay synchronous.
-  wasm = new WebAssembly.Instance(new WebAssembly.Module(wasmBytes), {}).exports;
+  bind(new WebAssembly.Instance(new WebAssembly.Module(wasmBytes), {}));
 }
 export const psbtWasmReady = isNode
   ? Promise.resolve()
-  : WebAssembly.instantiate(wasmBytes, {}).then(({ instance }) => {
-      wasm = instance.exports;
-    });
+  : WebAssembly.instantiate(wasmBytes, {}).then(({ instance }) => bind(instance));
 
 const requireReady = () => {
   if (!wasm) throw new Error("PSBT WebAssembly is not initialized yet; await psbtWasmReady.");
@@ -45,6 +58,11 @@ const requireReady = () => {
 // The WASM heap can grow during a call, detaching earlier views; take a fresh
 // view of the whole buffer whenever memory is touched.
 const heap = () => new Uint8Array(wasm.memory.buffer);
+// The scrub tests observe the loader's own instance, not a second module.
+export const psbtLoaderHeap = () => {
+  requireReady();
+  return heap();
+};
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

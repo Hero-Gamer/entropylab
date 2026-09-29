@@ -486,13 +486,59 @@ test("BIP-85: a hidden BIP-39 child shows its word count and nothing of its word
 // own heap: the passphrase is made here at random and only its SHA-256 kept,
 // so any string in the heap that hashes to it is a copy the grinder holds.
 const digestOf = (text) => createHash("sha256").update(text).digest("hex");
+// Held means reachable from the heap's roots along strong edges. A string that
+// only a weak edge still reaches (a WeakRef target the collector has not yet
+// cleared) is not held: it once counted, and failed a CI run with a dropped
+// picker no later run reproduced. Anything really held is held on every
+// read, so a copy is read up to three times, a task apart, before it counts,
+// and what holds it is printed.
 async function heldCopies(digest, length) {
-  // A WeakRef keeps its target until the job that made it ends.
-  await new Promise((resolve) => setImmediate(resolve));
-  const chunks = [];
-  for await (const chunk of v8.getHeapSnapshot()) chunks.push(chunk);
-  const { strings } = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  return strings.filter((text) => text.length === length && digestOf(text) === digest).length;
+  let paths = [];
+  for (let read = 0; read < 3; read++) {
+    // A WeakRef keeps its target until the job that made it ends.
+    await new Promise((resolve) => setImmediate(resolve));
+    const chunks = [];
+    for await (const chunk of v8.getHeapSnapshot()) chunks.push(chunk);
+    paths = heldPaths(JSON.parse(Buffer.concat(chunks).toString("utf8")), (text) => text.length === length && digestOf(text) === digest);
+    if (!paths.length) return 0;
+  }
+  console.error(`held (${paths.length}):\n${paths.join("\n\n")}`);
+  return paths.length;
+}
+// The strong path from the root to each string node that matches, breadth
+// first over every edge but the weak ones.
+function heldPaths(snapshot, matches) {
+  const { meta } = snapshot.snapshot, { nodes, edges, strings } = snapshot;
+  const N = meta.node_fields.length, E = meta.edge_fields.length, nodeTypes = meta.node_types[0], edgeTypes = meta.edge_types[0];
+  const typeAt = meta.node_fields.indexOf("type"), nameAt = meta.node_fields.indexOf("name"), edgeCountAt = meta.node_fields.indexOf("edge_count");
+  const edgeTypeAt = meta.edge_fields.indexOf("type"), edgeNameAt = meta.edge_fields.indexOf("name_or_index"), edgeToAt = meta.edge_fields.indexOf("to_node");
+  const count = nodes.length / N, firstEdge = new Uint32Array(count);
+  for (let index = 0, total = 0; index < count; index++) {
+    firstEdge[index] = total;
+    total += nodes[index * N + edgeCountAt] * E;
+  }
+  const via = new Int32Array(count).fill(-1), viaEdge = new Int32Array(count).fill(-1), queue = [0], found = [];
+  via[0] = 0;
+  const label = (index) => `${nodeTypes[nodes[index * N + typeAt]]} ${strings[nodes[index * N + nameAt]].replace(/\s+/g, " ").slice(0, 60)}`;
+  for (let head = 0; head < queue.length; head++) {
+    const index = queue[head];
+    if (/string/.test(nodeTypes[nodes[index * N + typeAt]]) && matches(strings[nodes[index * N + nameAt]])) {
+      const path = [];
+      for (let at = index; at !== 0; at = via[at]) {
+        const edge = viaEdge[at], type = edgeTypes[edges[edge + edgeTypeAt]];
+        path.unshift(`  --${type} ${["element", "hidden"].includes(type) ? edges[edge + edgeNameAt] : strings[edges[edge + edgeNameAt]]}--> ${label(at)}`);
+      }
+      found.push(path.join("\n"));
+    }
+    for (let edge = firstEdge[index], end = edge + nodes[index * N + edgeCountAt] * E; edge < end; edge += E) {
+      const to = edges[edge + edgeToAt] / N;
+      if (edgeTypes[edges[edge + edgeTypeAt]] === "weak" || via[to] !== -1) continue;
+      via[to] = index;
+      viaEdge[to] = edge;
+      queue.push(to);
+    }
+  }
+  return found;
 }
 // Workers that report ready, take the job, and report done, as the page's do.
 function fakeWorkers() {

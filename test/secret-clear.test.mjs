@@ -380,6 +380,28 @@ test("dropping the vanity key pick clears the passphrase the source block showed
   assert.equal(elements.get("vanity-pass-note").textContent, "", "unpicking left the passphrase note behind");
 });
 
+test("journal Lock empties the private session snapshot", () => {
+  // With #journal-state-private ticked, #journal-state-text holds the whole
+  // session's recovery texts — seed words, xprvs, WIFs. Locking the journal
+  // without clearing it parks the snapshot in a readonly textarea until the
+  // global Clear or pagehide.
+  const elements = new Map([
+    ["journal-state-text", { value: "24 seed words and xprvs", dataset: {} }],
+    ["journal-state-private", { checked: true, dataset: {} }],
+    ["journal-status-note", { textContent: "", dataset: {} }],
+  ]);
+  const context = vm.createContext({
+    document: { getElementById: id => elements.get(id) ?? null },
+    hodlKeyManagerReset() {}, hodlJournalWipeNotebook() {}, hodlJournalClearFields() {},
+    hodlJournalHideEditor() {}, hodlJournalSetGate() {}, hodlJournalShowWork() {},
+    hodlSyncJournalTool() {}, hodlJournalLog() {},
+    hodlJournalTool: "book",
+  });
+  vm.runInContext(`${functionSource("hodlJournalLock")}\nhodlJournalLock();`, context);
+  assert.equal(elements.get("journal-state-text").value, "", "Lock left the session snapshot filled");
+  assert.equal(elements.get("journal-state-private").checked, false, "Lock left the private toggle ticked");
+});
+
 test("the key Wipe button drops the cached partial mnemonics", () => {
   // Runs the real hodlWipeActiveKey. The cache keys are near-complete seeds,
   // so the wipe must clear them itself rather than wait for pagehide, and it

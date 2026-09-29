@@ -15671,6 +15671,13 @@ function hodlJournalLock() {
   hodlJournalTool = "book";
   hodlJournalShowWork();
   hodlSyncJournalTool();
+  // While the private box is ticked, the snapshot textarea holds the whole
+  // session's recovery texts; a locked journal must not keep that copy.
+  // (The notepad and the log stay — unlocking restores them.)
+  let stateText = document.getElementById("journal-state-text");
+  if (stateText) stateText.value = "";
+  let privateBox = document.getElementById("journal-state-private");
+  if (privateBox) privateBox.checked = false;
   hodlJournalLog("journal-lock");
   document.getElementById("journal-status-note").textContent = "Journal locked. Password and entries were cleared (best effort).";
 }

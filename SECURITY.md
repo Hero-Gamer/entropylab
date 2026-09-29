@@ -84,14 +84,19 @@ material. Its security posture rests on the following model:
   including temporary BIP32 serialized key/chain-code views after master
   derivation, child derivation, and extended-key import (also on failure).
   Returned HDKey nodes keep independent copies; this cleanup does not wipe
-  caller-owned seed buffers. The layer also clears intermediate BIP32 path
-  nodes, per-address child keys, and the
+  caller-owned seed buffers. A derived wallet, a BIP-85 child, and each
+  station's copy of a key hold their secrets only as byte arrays and HDKey
+  nodes; words, WIF, xprv and hex text are built only where a secret is
+  shown, copied or exported, or where a tool takes it as text. The layer also
+  clears intermediate BIP32 path nodes, per-address child keys, and the
   PSBT/BIP-85/Silent-Payments session roots when a session ends or the page
-  unloads. The limits are structural: JavaScript strings and DOM values
-  (displayed seed phrases, WIF keys, typed input) cannot be overwritten, only
+  unloads. The limits are structural: JavaScript strings, BigInts and DOM
+  values (revealed secrets, typed input) cannot be overwritten, only
   dereferenced — the "(best effort)" the UI already states — and heap copies
   made inside dependency types that expose no erase (HMAC engines,
-  `bip39::Mnemonic`) remain until their memory is reused. Stack copies are
+  `bip39::Mnemonic`) remain until their memory is reused.
+  [What the page can and cannot erase](#what-the-page-can-and-cannot-erase)
+  lists each case in plain language. Stack copies are
   handled separately: Rust frames spill arguments and temporaries into the
   WASM shadow stack, which lives in linear memory and is not erased when a
   frame returns, so the loader wraps every export to zero the whole stack
@@ -251,6 +256,59 @@ material. Its security posture rests on the following model:
 - Material involving loss of funds (incorrect derivations, exfiltration of
   secret data, injected script execution in the generated HTML, unexpected
   network egress) is treated as a security issue.
+
+## What the page can and cannot erase
+
+EntropyLab overwrites the secrets it holds once you are done with them, but a
+web page cannot erase everything it touches. This is where the line is.
+
+**What the page erases.** While a key is loaded, the page holds its secrets as
+bytes it can overwrite: the seed's entropy and seed, private keys, HD key
+nodes, and a BIP39 passphrase or mini key you typed. Each station that uses
+the key holds a copy of its own, kept the same way. Clearing a key, clearing a station or ending its session, and leaving or
+closing the page overwrite those bytes with zeros; a key two tabs share is
+overwritten once neither uses it. The WebAssembly modules overwrite every
+buffer passed in or out, and the main module also overwrites its working
+stack after it runs. Vanity shuts its workers and their module down when a
+run ends.
+
+**What the page cannot erase.** Everything below stays in the browser's
+memory until the browser reuses that memory. The page can let go of it, but
+cannot overwrite it.
+
+- Text you type or paste. A field's value is text, and the browser's editor,
+  undo history, spell checker and on-screen keyboard may keep copies of their
+  own.
+- Text the page builds from a secret: revealed seed words, WIFs, xprvs and
+  hex, SeedQR, the recovery sheet, downloads, and what a copy button puts on
+  the clipboard. The few tools that take the words as text build them too:
+  the Silent Payments key field, the Vanity passphrase grind, and the
+  Journal.
+- The Journal and the Key Manager. The notepad and every entry are text, and
+  so is a file once it is decrypted.
+- JavaScript numbers. Some private key range checks and the Silent Payments
+  calculations turn a key into a `BigInt`, and briefly into hex text.
+- Copies made inside the libraries the WebAssembly module uses, where the
+  library offers no way to erase them (HMAC engines, `bip39::Mnemonic`).
+- The clipboard. It belongs to the operating system. Clipboard history
+  (Win+V), cloud clipboard sync, Apple's Universal Clipboard and clipboard
+  managers keep their own copies, possibly on other devices, and EntropyLab
+  cannot remove them.
+- Anything the operating system writes to disk. Swap, hibernation and crash
+  dumps can hold a copy of the browser's memory, and no web page can prevent
+  or erase that. Deleting the hibernation file afterwards does not reliably
+  erase it on an SSD.
+
+**What to do about it.**
+
+- For real funds, use a dedicated computer that stays offline, with full-disk
+  encryption on and hibernation off before you load a key.
+- Avoid the clipboard for secrets where you can. If you use it, turn off
+  clipboard history and sync first.
+- When you are done, close the browser and restart the computer. That is the
+  only reliable way to clear from memory what the page could not.
+- None of this protects a computer that is already compromised: malware or a
+  malicious browser extension can read a secret as you type it.
 
 ## Reporting a Vulnerability
 

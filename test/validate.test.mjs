@@ -607,6 +607,17 @@ test("the intentional low-entropy recovery behavior is documented", () => {
   assert.match(security, /does not claim that hashing a short input\s+makes it secure/i);
 });
 
+test("the limits of memory erasure are documented", () => {
+  const security = read("SECURITY.md");
+  const section = security.split(/^## What the page can and cannot erase$/m)[1]?.split(/^## /m)[0];
+  assert.ok(section, "SECURITY.md has no section on what the page cannot erase");
+  // The limits themselves, not the advice after them, which names some too.
+  const limits = section.split(/^\*\*What the page cannot erase\.\*\*/m)[1]?.split(/^\*\*/m)[0];
+  assert.ok(limits, "the section does not list what the page cannot erase");
+  for (const limit of [/typed? or paste/i, /clipboard history/i, /hibernation/i, /BigInt/]) assert.match(limits, limit);
+  assert.match(security, /\(#what-the-page-can-and-cannot-erase\)/);
+});
+
 const htmlFiles = [appFile];
 
 ensureBuild();

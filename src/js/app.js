@@ -12705,7 +12705,11 @@ function hodlCommitDerivedKey(action = "derive") {
     hodlActiveKey = existing;
   } else {
     let derived = hodlCloneDerivedKey(lab);
-    if (lab.editSourceId != null && hodlKeyNameTaken(derived.name, -1)) derived.name = hodlDefaultKeyName(derived.number);
+    if (lab.editSourceId != null && hodlKeyNameTaken(derived.name, -1)) {
+      let base = derived.name, suffix = 1;
+      do derived.name = base + " (" + suffix++ + ")";
+      while (hodlKeyNameTaken(derived.name, -1));
+    }
     hodlKeys[hodlActiveKey] = hodlNewLabState();
     hodlKeys.push(derived);
     hodlActiveKey = hodlKeys.length - 1;

@@ -138,13 +138,17 @@ test("an automatic fingerprint tab label follows a changed underlying key", () =
   assert.equal(context.hodlKeys[1].name, "bbccddee");
 });
 
-test("Derive New gives an identical key a distinct tab label", () => {
+test("Derive New numbers duplicate fingerprint labels from one", () => {
   const { context, original } = harness();
   original.name = original.result.masterFingerprint;
-  context.hodlEditKeyInputs();
-  context.hodlKeys[0].result = { ...original.result };
-  context.hodlCommitDerivedKey();
-  assert.notEqual(context.hodlKeys[2].name, original.name);
+  for (const suffix of [1, 2]) {
+    context.hodlActiveKey = 1;
+    context.hodlEditKeyInputs();
+    context.hodlKeys[0].result = { ...original.result };
+    context.hodlCommitDerivedKey();
+    assert.equal(context.hodlKeys[1 + suffix].name, `${original.result.masterFingerprint} (${suffix})`);
+    assert.equal(context.hodlKeys[1], original);
+  }
 });
 
 test("an invalid or missing edit context keeps Update unavailable and uses text-only status", () => {

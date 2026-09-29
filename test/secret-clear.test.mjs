@@ -48,6 +48,9 @@ function raceHarness() {
     hodlActiveDerivation: { kind: "key", cancelled: false }, hodlDerivationGeneration: 0, hodlCommittedResults: new Set(),
     hodlJournalGeneration: 0, hodlJournalKeys: {}, hodlJournal: {},
     hodlKeys: [{ id: 1, number: 1, fields: {}, result: null }], hodlActiveKey: 0, hodlKeyManagerPending: [],
+    hodlMsigs: [], hodlActiveMsig: -1,
+    hodlNewMsigState: (name, id, number) => ({ name, id, number, fields: { descriptor: "", xpubs: ["", "", ""] }, result: null }),
+    hodlNewMsigLabState: () => ({ isLab: true, fields: { descriptor: "", xpubs: ["", "", ""] }, result: null }),
     hodlKeyMode: "hex", hodlTargetWordCount: 24, hodlNetworkChoice: "mainnet",
     hodlWalletResult: null, hodlOutEl: { innerHTML: "" }, hodlLastWordCache: new Map(),
     hodlBip85Note: "", hodlSpNote: "",
@@ -73,7 +76,8 @@ function raceHarness() {
     "hodlFocusWalletResult", "hodlJournalLog", "hodlSetWorkspaceError", "hodlJournalSetStatus",
     "hodlKeyManagerStatus", "hodlPsbtWipeMem", "hodlBip85WipeMem", "hodlSpWipeMem",
     "hodlLnWipeMem", "hodlRenderBip85Tabs", "hodlSyncBip85View", "hodlVanityCancel",
-    "hodlVanitySyncSource", "hodlVanitySyncControls", "hodlRefreshStationKeyPickers", "hodlRefreshMsigSessionPickers", "hodlSyncPsbtControls"])
+    "hodlVanitySyncSource", "hodlVanitySyncControls", "hodlRefreshStationKeyPickers", "hodlRefreshMsigSessionPickers", "hodlSyncPsbtControls",
+    "hodlRestoreMsig"])
     context[name] = (...args) => { effects.push([name, ...args]); };
   vm.runInContext('class HodlDerivationCancelledError extends Error {}', context);
   for (const name of ["hodlInvalidateDerivation", "hodlAssertDerivationActive", "hodlCalculateKey",
@@ -435,6 +439,27 @@ test("pagehide and persisted pageshow end the PSBT session, reports included", (
   assert.deepEqual(errors.sort(), ["nonce", "psbt"], "session end left an error line");
   for (const id of ["psbt-key", "psbt-pass", "psbt-text", "psbt-ax-transcript", "nonce-key", "nonce-pass", "nonce-text"])
     assert.equal(elements.get(id).value, "", `session end left #${id} filled`);
+});
+
+test("pagehide and persisted pageshow reset every multisig tab", () => {
+  // The station is watch-only — the descriptor import refuses private keys —
+  // but a bfcache restore must not bring the session's form back: the
+  // lifecycle resets every tab the way the station's own Clear does, and
+  // re-renders the (empty) active one.
+  assert.match(lifecycle, /hodlMsigs\s*=\s*hodlMsigs\.map\(\(state\)\s*=>/);
+  assert.match(lifecycle, /state\.isLab \? hodlNewMsigLabState\(\) : hodlNewMsigState\(state\.name, state\.id, state\.number\)/);
+  assert.match(lifecycle, /hodlRestoreMsig\(\)/);
+  for (const type of ["pagehide", "pageshow"]) {
+    const { context, events } = raceHarness();
+    context.hodlMsigs = [{ isLab: false, name: "Vault", id: 7, number: 3, fields: { descriptor: "wsh(sortedmulti(1,xprv9s21ZrQH143K…/0/*))", xpubs: ["xpub661MyMwAqRbc…"] }, result: { mark: 1 } }];
+    events[type]({ persisted: type === "pageshow" });
+    const state = context.hodlMsigs[0];
+    assert.equal(state.name, "Vault", "the tab's name may not change on lifecycle reset");
+    assert.equal(state.id, 7, "the tab's id may not change on lifecycle reset");
+    assert.equal(state.fields.descriptor, "", `${type} left the descriptor in the tab state`);
+    assert.deepEqual(state.fields.xpubs, ["", "", ""], `${type} left cosigner keys in the tab state`);
+    assert.equal(state.result, null, `${type} left the derived multisig result`);
+  }
 });
 
 test("the key Wipe button drops the cached partial mnemonics", () => {

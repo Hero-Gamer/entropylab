@@ -16903,6 +16903,12 @@ function hodlInitSecretFieldAutoClear() {
     hodlRevealPrivate = false;
     hodlPickedLastWord = "";
     hodlDiceCoinPositions = [];
+    // MultiSig stations hold watch-only data (the descriptor import refuses
+    // private keys), but the same restore rule applies: a bfcache restore
+    // must not bring a session's form back. Reset every tab like the
+    // station's own Clear, then re-render the (empty) active one.
+    hodlMsigs = hodlMsigs.map((state) => (state.isLab ? hodlNewMsigLabState() : hodlNewMsigState(state.name, state.id, state.number)));
+    hodlRestoreMsig();
     for (let id of ["dice", "hex", "bin", "base4", "base8", "base32", "base64", "seed", "seed-numbers", "key", "pass", "cards", "direct-cards"]) {
       let field = document.getElementById(id);
       if (field) {

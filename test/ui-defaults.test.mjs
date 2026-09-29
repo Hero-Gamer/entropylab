@@ -1156,12 +1156,6 @@ test("the tools' closing button groups stack full width on narrow screens", () =
   );
 });
 
-test("private alternate account exports are visible without an accordion", () => {
-  assert.match(appWhitespace, /return privateExport\|\|publicExport/);
-  assert.doesNotMatch(app, /Advanced private export|Advanced watch-only export/);
-});
-
-
 test("the beta notice sits at the top of the page as a banner", () => {
   for (const markup of [shell]) {
     const wrapper = markup.indexOf('<div class="wrap">');

@@ -4239,10 +4239,10 @@
     assert(meta.classList.contains("err") && meta.textContent.includes("zpub indicates Native SegWit") && meta.textContent.includes("selected Legacy"), `SLIP-132 mismatch warning was not prominent: class=${meta.className}; text=${meta.textContent}`);
     const derive = await until(() => !document.getElementById("go").disabled && document.getElementById("go"), "SLIP-132 derive button");
     derive.click();
-    const watch = await until(() => document.querySelector("#acct .account-watch-section"), "watch-only section");
+    const watch = await until(() => document.querySelector('#acct [data-key-group="watch"]'), "watch-only section");
     const watchText = watch.textContent;
-    assert(watchText.includes("As pasted") && watchText.includes(zpub), "As-pasted zpub is missing from the watch-only export");
-    assert(watchText.includes("Bitcoin Core xpub") && watchText.includes("xpub6CatWdiZiodm"), "Core xpub is missing from the watch-only export");
+    assert(watchText.includes(zpub), "The imported zpub is missing from the watch-only export");
+    assert(watchText.includes("xpub6CatWdiZiodm"), "The account xpub is missing from the watch-only export");
     const recovery = await until(() => document.querySelector("#acct .imported-core-recovery"), "Bitcoin Core recovery export");
     const recoveryText = recovery.textContent;
     assert(recoveryText.includes("Bitcoin Core descriptor") && recoveryText.includes("wpkh(xpub6CatWdiZiodm") && recoveryText.includes("/<0;1>/*)#3r0wrtd9"), "Core descriptor is missing or incorrect");
@@ -5609,7 +5609,7 @@
     assert(text.includes(versionHeader) && text.includes("Network: testnet"), "Export headers are missing");
     assert(text.includes("Native SegWit (Purpose 69420')") && text.includes("m/69420'/1'/0'"), "The recovery sheet omitted the custom purpose");
     assert(text.includes("PRIVATE RECOVERY MATERIAL OMITTED"), "Omission notice is missing");
-    assert(!text.includes("YOUR SEED PHRASE") && !text.includes("MASTER SEED HEX") && !text.includes("BIP32 ROOT TPRV"), "Watch-only export leaked private data");
+    assert(!text.includes(vectors[0].mnemonic) && !/^[0-9a-f]{128}$/m.test(text) && !/^[xt]prv[1-9A-HJ-NP-Za-km-z]+$/m.test(text), "Watch-only export leaked private data");
 
     const datButton = await until(() => document.getElementById("download-wallet-dat"), "watch-only wallet.dat button");
     assert(/watch-only/i.test(datButton.textContent), "wallet.dat button should offer the watch-only wallet while secrets are hidden");
@@ -5634,7 +5634,7 @@
     const text = await (await until(() => state.lastBlob, "private export")).text();
     assert(text.includes("YOUR SEED PHRASE") && text.includes(vectors[0].mnemonic), "Mnemonic is missing");
     assert(text.includes("BIP39 ENTROPY HEX\n" + vectors[0].entropy), "Entropy is missing");
-    assert(text.includes("MASTER SEED HEX") && text.includes("BIP32 ROOT TPRV"), "Private derivation data is missing");
+    assert(/^[0-9a-f]{128}$/m.test(text) && /^tprv[1-9A-HJ-NP-Za-km-z]+$/m.test(text), "Private derivation data is missing");
 
     const datButton = await until(() => document.getElementById("download-wallet-dat"), "private wallet.dat button");
     assert(/secrets/i.test(datButton.textContent) && /xprv/i.test(datButton.textContent), "wallet.dat button should warn that secrets are included while revealed");

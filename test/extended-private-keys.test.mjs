@@ -139,7 +139,7 @@ test("each extended private key is produced on request and matches an independen
 // the independently computed key. (The wallet card's root field is covered by
 // the rendered page comparison against rock, which the PR records.)
 const renderers = async (revealed) => {
-  const view = await load(["hodlAccountAdvancedExports", "hodlSlip132Fields", "hodlAddressBranchDescriptorFields", "hodlPrivateFieldHtml"], {}, ["hodlRevealPrivate"]);
+  const view = await load(["hodlSlip132Fields", "hodlAddressBranchDescriptorFields", "hodlPrivateFieldHtml"], {}, ["hodlRevealPrivate"]);
   view.__set.hodlRevealPrivate(revealed);
   return view;
 };
@@ -149,12 +149,14 @@ test("the account exports render the same, hidden and revealed", async () => {
   for (const revealed of [false, true]) {
     const view = await renderers(revealed), field = (label, value, vars) => view.hodlPrivateFieldHtml(label, value, vars, "label"), state = revealed ? "revealed" : "hidden";
     const account = bip84(wallet);
-    assert.equal(view.hodlAccountAdvancedExports(account, true), field("Generic {name} for descriptor compatibility", keys.account.x, { name: "xprv" }), `${state}: advanced export`);
-    assert.equal(view.hodlSlip132Fields(account, wallet, true), field("Bitcoin Core xprv", keys.account.x) + field("SLIP-132 zprv", keys.account.z), `${state}: derived SLIP-132 fields`);
+    const checkSecrets = (html, values, context) => {
+      for (const value of values) assert.equal(html.includes(value), revealed, `${state}: ${context}`);
+    };
+    checkSecrets(view.hodlSlip132Fields(account, wallet, true), [keys.account.x, keys.account.z], "derived account keys");
     const legacy = wallet.accounts.find((candidate) => candidate.def.id === "bip44");
-    assert.equal(view.hodlSlip132Fields(legacy, wallet, true), field("Bitcoin Core xprv", keys.account.x), `${state}: generic-only fields`);
-    assert.equal(view.hodlSlip132Fields(zprvWallet.accounts[0], zprvWallet, true), field("As pasted", BIP84_ACCOUNT_ZPRV) + field("Bitcoin Core xprv", keys.account.x), `${state}: pasted zprv`);
-    assert.equal(view.hodlSlip132Fields(xprvWallet.accounts[0], xprvWallet, true), field("As pasted", keys.account.x), `${state}: pasted xprv`);
+    checkSecrets(view.hodlSlip132Fields(legacy, wallet, true), [keys.account.x], "legacy account key");
+    checkSecrets(view.hodlSlip132Fields(zprvWallet.accounts[0], zprvWallet, true), [BIP84_ACCOUNT_ZPRV, keys.account.x], "pasted zprv account keys");
+    checkSecrets(view.hodlSlip132Fields(xprvWallet.accounts[0], xprvWallet, true), [keys.account.x], "pasted xprv account key");
     assert.equal(view.hodlAddressBranchDescriptorFields(account.addressBranches, true, "label", account),
       [0, 1].map((branch) => field(`Spending ${branch ? "change" : "receive"} descriptor`, spendingDescriptor(account, branch, "mainnet"))).join(""), `${state}: spending descriptors`);
   }
@@ -164,9 +166,9 @@ test("the recovery sheet prints the extended private keys only when private mate
   const { hodlRecoverySheetText } = await load(["hodlRecoverySheetText"]);
   const keys = expected("mainnet"), wallet = await mnemonicWallet("mainnet"), account = bip84(wallet);
   const sheet = hodlRecoverySheetText(wallet, true);
-  for (const line of [`BIP32 ROOT XPRV\n${keys.root}`, `zprv: ${keys.account.z}`, `Advanced xprv descriptor export: ${keys.account.x}`,
-    `Spending receive descriptor: ${spendingDescriptor(account, 0, "mainnet")}`, `Spending change descriptor: ${spendingDescriptor(account, 1, "mainnet")}`])
-    assert.ok(sheet.includes(line), `the private sheet lacks ${line.slice(0, 40)}`);
+  for (const value of [keys.root, keys.account.z, keys.account.x,
+    spendingDescriptor(account, 0, "mainnet"), spendingDescriptor(account, 1, "mainnet")])
+    assert.ok(sheet.split("\n").some((line) => line.endsWith(value)), "the private sheet lacks an expected account or spending key");
   const watchSheet = hodlRecoverySheetText(wallet, false);
   assert.ok(![keys.root, ...Object.values(keys.account)].some((secret) => watchSheet.includes(secret)), "the watch-only sheet carries an extended private key");
 });

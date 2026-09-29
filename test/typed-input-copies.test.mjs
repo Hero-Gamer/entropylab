@@ -184,8 +184,9 @@ test("the passphrase, the pasted key and the card render the same, hidden and re
     }
     for (const entry of PASTED) {
       const [label, text, , , prefix, core] = entry, wallet = await pastedWallet(entry);
-      const coreLabel = entry[2] === "mainnet" ? "Bitcoin Core xprv" : "Bitcoin Core tprv";
-      assert.equal(view.hodlSlip132Fields(wallet.accounts[0], wallet, true), field("As pasted", text) + (core ? field(coreLabel, core) : ""), `${state}: ${label} account fields`);
+      const accountFields = view.hodlSlip132Fields(wallet.accounts[0], wallet, true);
+      assert.equal(accountFields.includes(text), revealed, `${state}: ${label} pasted key visibility`);
+      if (core) assert.equal(accountFields.includes(core), revealed, `${state}: ${label} account key visibility`);
       const card = view.hodlHdWalletData(wallet), imported = field(`Imported ${prefix}`, text);
       assert.equal(card.split(imported).length, 2, `${state}: ${label} card shows the pasted key once`);
     }

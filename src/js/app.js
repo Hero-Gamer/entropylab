@@ -1322,14 +1322,6 @@ function hodlAddressBranchTables(branches, includeWif, prefix) {
 function hodlAddressBranchVirtualConfigs(branches, includeWif, prefix) {
   return branches.map((branch) => ({ key: hodlAddressBranchKey(prefix, branch.branch), rows: branch.rows, includeWif }));
 }
-function hodlAccountAdvancedExports(account, includePrivate = false, labelClass = "label") {
-  if (!account.hasAlternateExport) return "";
-  let privateExport = includePrivate && account.privateNode ? hodlPrivateKeyFieldHtml("Generic {name} for descriptor compatibility", hodlExtendedKeyLength, () => hodlAccountPrivateKey(account, "x"), { name: account.genericPrivateLabel }, labelClass) : "";
-  let publicExport = !includePrivate && account.genericPublic ? hodlPublicFieldHtml("Generic {name} for descriptor compatibility", account.genericPublic, { name: account.genericPublicLabel }, labelClass, true) : "";
-  if (!privateExport && !publicExport) return "";
-  // One more field among the account exports, not a disclosure of its own.
-  return privateExport || publicExport;
-}
 function hodlImportedCoreRecoveryData(wallet, account) {
   if (!wallet?.importedPublicKey || !account?.imported || !["y", "z"].includes(account.primaryFamily) || !account.genericPublic || !account.def?.script) return null;
   return {
@@ -1571,7 +1563,7 @@ function hodlSlip132Fields(account, wallet, isPrivate = false, labelClass = "lab
   let slipLabel = account.primaryPublicLabel;
   let field = (name, value, vars, cls) => hodlPublicFieldHtml(name, value, vars, cls, true), parts = [];
   if (pasted) parts.push(field("As pasted", pasted, void 0, labelClass));
-  if (core && core !== pasted) parts.push(field(`Bitcoin Core ${coreLabel}`, core, void 0, labelClass));
+  if (core && core !== pasted) parts.push(field(`Account ${coreLabel}`, core, void 0, labelClass));
   if (slip && slip !== pasted && slip !== core) parts.push(field(`SLIP-132 ${slipLabel}`, slip, void 0, labelClass));
   if (!parts.length && core) parts.push(field(`Account ${coreLabel}`, core, void 0, labelClass));
   parts.push(`<p class="muted slip132-note">Prefix swap only (same payload, new version bytes and checksum). Script lives in the descriptor, not the prefix. x = legacy, y = nested BIP49, z = native BIP84, Y = nested BIP48 nested-msig, Z = native BIP48 native-msig. Testnet: t / u / v / U / V. No Taproot SLIP prefix.</p>`);
@@ -1585,7 +1577,7 @@ function hodlSlip132PrivateFields(account, wallet, labelClass) {
   let pasted = hodlResultHasImportedPrivate(wallet), pastedFamily = pasted ? account.importedFamily : null, parts = [];
   let field = (label, family) => hodlPrivateKeyFieldHtml(label, hodlExtendedKeyLength, () => hodlAccountPrivateKey(account, family), void 0, labelClass);
   if (pasted) parts.push(hodlPrivateKeyFieldHtml("As pasted", hodlExtendedKeyLength, () => hodlAccountPrivateKey(account, pastedFamily), void 0, labelClass));
-  if (account.privateNode && pastedFamily !== "x") parts.push(field(`Bitcoin Core ${account.genericPrivateLabel}`, "x"));
+  if (account.privateNode && pastedFamily !== "x") parts.push(field(`Account ${account.genericPrivateLabel}`, "x"));
   if (account.privateNode && account.hasAlternateExport && pastedFamily !== account.primaryFamily) parts.push(field(`SLIP-132 ${account.primaryPrivateLabel}`, account.primaryFamily));
   return parts.join("");
 }
@@ -1605,8 +1597,7 @@ function hodlShowAccount(id) {
   // repeats the first one. The pressed script type button names the account.
   let privateGroup = hasPrivate ? hodlKeyGroupMarkup("account-private", `${hodlT("Account private key exports")}${hodlPrivacyEyeMarkup()}`, `<p class="edge-note is-private account-private-warning"><strong>${hodlT("These exports can spend from this account.")}</strong> ${hodlT("They are shown only for a seed or extended private-key source.")} ${hodlT("Keep these exports together only in secure offline backups. An account extended public key combined with any non-hardened descendant private key, including a WIF shown in the address tables, can reconstruct that account's extended private key.")}</p>
       ${hodlSlip132Fields(account, hodlWalletResult, true)}
-      ${hodlAddressBranchDescriptorFields(branches, true, "label", account)}
-      ${hodlAccountAdvancedExports(account, true)}`, hodlRevealPrivate ? "is-private is-revealed" : "is-private") : "";
+      ${hodlAddressBranchDescriptorFields(branches, true, "label", account)}`, hodlRevealPrivate ? "is-private is-revealed" : "is-private") : "";
   hodlElement("#acct").innerHTML = `
         ${hodlKeyGroupMarkup("hd-addresses", hasPrivate ? `${hodlT("Addresses")}${hodlPrivacyEyeMarkup()}` : hodlT("Addresses"), `<p class="edge-note is-public">${hodlT("Verify the first selected address on another trusted wallet or signing device before accepting bitcoin.")}</p>${hasPrivate ? `<p class="edge-note is-private"><strong>${hodlT("When private data is visible, these tables also show the WIF private key for each address.")}</strong> ${hodlT("Anyone who sees or copies a WIF can spend what that address holds.")}</p>` : ""}${hodlScriptBeginnerTexts[account.def.id] ? `<p class="label">${hodlT("Script type:")} <span class="label-value">${hodlScriptUiLabel(account.def)}</span></p><p class="muted label-description script-type-description">${hodlScriptBeginner(account.def)}</p>` : ""}${hodlAddressBranchTables(branches, hasPrivate, "hd")}${hodlAddressMatchMarkup()}`, hasPrivate ? hodlRevealPrivate ? "is-private is-revealed" : "is-private" : "")}
         ${privateGroup}
@@ -1614,8 +1605,7 @@ function hodlShowAccount(id) {
         ${hodlSlip132WatchFields(account, hodlWalletResult)}
         ${hodlImportedCoreRecoveryExport(hodlWalletResult, account)}
         ${hodlRenderMultisigCosignerExport(hodlWalletResult.multisigCosignerExports, account.def.id)}
-        ${hodlWatchOnlyDescriptorExport(account.receiveDescriptor, account.changeDescriptor, branches, { collapsible: false })}
-        ${hodlAccountAdvancedExports(account, false)}`, "account-watch-section")}`;
+        ${hodlWatchOnlyDescriptorExport(account.receiveDescriptor, account.changeDescriptor, branches, { collapsible: false })}`, "account-watch-section")}`;
   hodlBindAddressVirtualization(hodlAddressBranchVirtualConfigs(branches, hasPrivate, "hd"));
   hodlBindAddressMatch();
   hodlBindWalletResultActions();
@@ -1847,14 +1837,14 @@ function hodlSeedRecoveryFields(wallet) {
 function hodlHdWalletData(wallet, accountMarkup = "") {
   let privateFields = [];
   privateFields.push(...hodlSeedRecoveryFields(wallet));
-  if (wallet.rootNode) privateFields.push(hodlPrivateKeyFieldHtml(`Root ${wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName}`, hodlExtendedKeyLength, () => hodlResultRootXprv(wallet)));
+  if (wallet.rootNode) privateFields.push(hodlPrivateKeyFieldHtml(`Master ${wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName}`, hodlExtendedKeyLength, () => hodlResultRootXprv(wallet)));
   if (hodlResultHasImportedPrivate(wallet)) privateFields.push(hodlPrivateKeyFieldHtml(`Imported ${wallet.importedPrivateLabel || "extended private key"}`, hodlExtendedKeyLength, () => hodlImportedPrivateKey(wallet)));
   let hasAccountPrivate = wallet.accounts.some(hodlAccountHasPrivate), hasPrivate = privateFields.length > 0 || hasAccountPrivate;
   let source = hodlResultHasSeed(wallet) ? "" : `<p><span class="label">Source</span><br><span>Imported extended ${hasPrivate ? "private" : "public"} key; no seed phrase was entered.</span></p>`;
   let fingerprint = wallet.masterFingerprint ? hodlPublicFieldHtml("Master fingerprint", wallet.masterFingerprint) : "";
   let parentFingerprint = !wallet.masterFingerprint && wallet.parentFingerprint ? hodlPublicFieldHtml("Encoded parent fingerprint (not a master fingerprint)", wallet.parentFingerprint) : "";
   let nodeFingerprint = !wallet.masterFingerprint && wallet.nodeFingerprint ? hodlPublicFieldHtml("Imported key fingerprint (not a master fingerprint)", wallet.nodeFingerprint) : "";
-  let rootPublic = wallet.rootXpub ? hodlPublicFieldHtml("Root {name}", wallet.rootXpub, { name: wallet.rootPublicLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.pubName }, "label", true) : "";
+  let rootPublic = wallet.rootXpub ? hodlPublicFieldHtml("Master {name}", wallet.rootXpub, { name: wallet.rootPublicLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.pubName }, "label", true) : "";
   let importedPublic = wallet.importedPublicKey ? hodlPublicFieldHtml("Imported {name}", wallet.importedPublicKey, { name: wallet.importedPublicLabel || hodlTText("extended public key") }) : "";
   // The toolbar holds the script type and the privacy bar, and sticks under the
   // header as one piece. Below it: what recovers the wallet, what identifies it,
@@ -2250,14 +2240,14 @@ var hodlRecoverySheetText = function(wallet, revealPrivate) {
     }
     if (wallet.entropy) lines.push("", "BIP39 ENTROPY HEX", hodlResultEntropyHex(wallet));
     if (wallet.seed) lines.push("", "MASTER SEED HEX (BIP39 PBKDF2, 512 bits)", hodlResultSeedHex(wallet));
-    if (hodlResultHasRoot(wallet)) lines.push("", `BIP32 ROOT ${(wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName).toUpperCase()}`, hodlResultRootXprv(wallet));
+    if (hodlResultHasRoot(wallet)) lines.push("", `MASTER ${(wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName).toUpperCase()}`, hodlResultRootXprv(wallet));
     if (hodlResultHasImportedPrivate(wallet)) lines.push("", `IMPORTED ${(wallet.importedPrivateLabel || "EXTENDED PRIVATE KEY").toUpperCase()}`, hodlImportedPrivateKey(wallet));
     for (let account of wallet.accounts) {
       if (!hodlAccountHasPrivate(account)) continue;
       lines.push("", `-- ${account.def.label} (${account.imported ? account.def.bip : `Purpose ${hodlPathComponent(account.def.purpose, account.def.purposeHardened !== false)}`}) PRIVATE ACCOUNT MATERIAL --`);
       if (account.privateNode) {
-        lines.push(`${account.primaryPrivateLabel}: ${hodlAccountPrivateKey(account, account.primaryFamily)}`);
-        if (account.hasAlternateExport) lines.push(`Advanced ${account.genericPrivateLabel} descriptor export: ${hodlAccountPrivateKey(account, "x")}`);
+        lines.push(`${account.hasAlternateExport ? `SLIP-132 ${account.primaryPrivateLabel}` : `Account ${account.primaryPrivateLabel}`}: ${hodlAccountPrivateKey(account, account.primaryFamily)}`);
+        if (account.hasAlternateExport) lines.push(`Account ${account.genericPrivateLabel}: ${hodlAccountPrivateKey(account, "x")}`);
         for (let branch of hodlAccountAddressBranches(account)) lines.push(`Spending ${hodlAddressBranchLabel(branch.branch).toLowerCase()} descriptor: ${hodlBranchPrivateDescriptor(account, branch.branch)}`);
       }
       lines.push("Warning: An account extended public key plus a non-hardened descendant private key can reconstruct the account extended private key.");
@@ -2272,7 +2262,7 @@ var hodlRecoverySheetText = function(wallet, revealPrivate) {
   if (wallet.masterFingerprint) lines.push(`Master fingerprint: ${wallet.masterFingerprint}`);
   if (wallet.parentFingerprint && !wallet.masterFingerprint) lines.push(`Encoded parent fingerprint (not a master fingerprint): ${wallet.parentFingerprint}`);
   if (wallet.nodeFingerprint && !wallet.masterFingerprint) lines.push(`Imported key fingerprint (not a master fingerprint): ${wallet.nodeFingerprint}`);
-  if (wallet.rootXpub) lines.push(`BIP32 root ${(wallet.rootPublicLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.pubName).toUpperCase()}: ${wallet.rootXpub}`);
+  if (wallet.rootXpub) lines.push(`Master ${wallet.rootPublicLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.pubName}: ${wallet.rootXpub}`);
   if (wallet.multisigCosignerExports?.length) {
     lines.push("", "MULTISIG CO-SIGNER EXPORTS", "Paste one complete value into a co-signer input. Legacy offers BIP45 without accounts and BIP87 with standardized accounts; use the same standard and account policy for every co-signer.");
     for (let item of wallet.multisigCosignerExports) lines.push(`${item.label} (${item.prefix}): ${item.value}`);
@@ -2283,9 +2273,9 @@ var hodlRecoverySheetText = function(wallet, revealPrivate) {
     if (account.masterFingerprint || wallet.masterFingerprint) lines.push(`Master fingerprint: ${account.masterFingerprint || wallet.masterFingerprint}`);
     else if (account.parentFingerprint) lines.push(`Encoded parent fingerprint (not a master fingerprint): ${account.parentFingerprint}`);
     if (!account.masterFingerprint && !wallet.masterFingerprint && account.nodeFingerprint) lines.push(`Imported key fingerprint (not a master fingerprint): ${account.nodeFingerprint}`);
-    lines.push("WATCH-ONLY EXPORTS", `${account.primaryPublicLabel}: ${account.primaryPublic}`, ...account.walletDescriptor ? [`Watch-only wallet descriptor: ${account.walletDescriptor}`] : []);
+    lines.push("WATCH-ONLY EXPORTS", `${account.hasAlternateExport ? `SLIP-132 ${account.primaryPublicLabel}` : `Account ${account.primaryPublicLabel}`}: ${account.primaryPublic}`, ...account.walletDescriptor ? [`Watch-only wallet descriptor: ${account.walletDescriptor}`] : []);
     for (let branch of hodlAccountAddressBranches(account)) if (branch.publicDescriptor) lines.push(`Watch-only ${hodlAddressBranchLabel(branch.branch).toLowerCase()} descriptor: ${branch.publicDescriptor}`);
-    if (account.hasAlternateExport) lines.push(`Advanced ${account.genericPublicLabel} descriptor export: ${account.genericPublic}`);
+    if (account.hasAlternateExport) lines.push(`Account ${account.genericPublicLabel}: ${account.genericPublic}`);
     lines.push("ADDRESSES");
     for (let branch of hodlAccountAddressBranches(account)) hodlSheetAddressRows(lines, hodlAddressBranchLabel(branch.branch), branch.rows);
   }
@@ -15981,7 +15971,7 @@ function hodlVanitySyncSource() {
     let label = hodlVanityKeyLabel(state), pass = String(state.fields?.pass ?? ""), hasMnemonic = hodlResultHasSeed(state.result);
     let name = document.getElementById("vanity-source-name"), kind = document.getElementById("vanity-source-kind"), image = document.getElementById("vanity-source-lifehash"), field = document.getElementById("vanity-pass"), passNote = document.getElementById("vanity-pass-note");
     if (name) name.textContent = label;
-    if (kind) kind.textContent = `${hasMnemonic ? "BIP39 seed words" : "Root xprv"}${state.name && state.name !== label ? ` · ${state.name}` : ""}`;
+    if (kind) kind.textContent = `${hasMnemonic ? "BIP39 seed words" : "Master xprv"}${state.name && state.name !== label ? ` · ${state.name}` : ""}`;
     let path = document.getElementById("vanity-source-path");
     if (path) path.textContent = hodlDisplayDerivationPath(state.fields?.derivationPath || state.fields?.derivationAccountPath || "");
     if (image) {

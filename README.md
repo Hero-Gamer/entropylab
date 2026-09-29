@@ -327,11 +327,12 @@ the limits of browser-memory cleanup.
   With sync off, every dice-roll method retains its own independent transcript.
 - SLIP-132 extended-key display is a prefix swap only (same payload, new
   version bytes and checksum). Import/derive shows the key as pasted, the
-  Bitcoin Core xprv/xpub or tprv/tpub, and the descriptor (script in the
-  descriptor, not the prefix). A generic xprv is re-prefixed only when the
-  path/script match: x = legacy, y = nested BIP49, z = native BIP84,
-  Y = nested BIP48 multisig, Z = native BIP48 native-msig. Testnet uses
-  t / u / v / U / V. There is no Taproot SLIP prefix.
+  account xpub/tpub, any account private-key export, and the descriptor
+  (script in the descriptor, not the prefix). The master xpub/tpub is at `m`;
+  the account xpub/tpub is at the selected account path. A generic xprv is
+  re-prefixed only when the path/script match: x = legacy, y = nested BIP49,
+  z = native BIP84, Y = nested BIP48 multisig, Z = native BIP48 native-msig.
+  Testnet uses t / u / v / U / V. There is no Taproot SLIP prefix.
 
 ## Usage
 

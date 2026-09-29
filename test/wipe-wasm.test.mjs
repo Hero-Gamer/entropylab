@@ -15,7 +15,8 @@ import { entropyToMnemonic, mnemonicToEntropy, mnemonicToSeedSync, validateMnemo
 import { hash160, hmacSha512, pbkdf2Sha512, sha256, sha512 } from "../src/js/hashes.js";
 import { base58checkDecode, base58checkEncode } from "../src/js/base58.js";
 import { PSBT_WASM_B64 } from "../src/js/psbt-wasm-b64.js";
-import { psbtInspectDoc, psbtLoaderHeap, psbtWasmStackTop } from "../src/js/psbt-wasm.js";
+import { psbtInspectDoc, psbtBuildBytes, psbtLoaderHeap, psbtWasmStackTop } from "../src/js/psbt-wasm.js";
+import { psbtEditorBuildDoc } from "../src/js/psbt-editor.js";
 import { VANITY_WASM_B64 } from "../src/js/vanity-wasm-b64.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -169,6 +170,27 @@ test("the PSBT loader zeroes the shadow stack once per task after an export ran"
   psbtInspectDoc(VALID_PSBT);
   await settled();
   assert.ok(psbtLoaderHeap().subarray(0, top).every((byte) => byte === 0), "the PSBT shadow stack was not scrubbed after the export settled");
+});
+
+test("the PSBT exports wipe their whole-document copies before returning", async () => {
+  // The pair value is a distinctive fixed pattern, not a key; it stands in
+  // for "the pasted or edited file carried an xprv in a proprietary field".
+  // (Pair-level residues inside serde_json's and rust-bitcoin's own
+  // structures — each a small allocation with no erase API — are a
+  // documented structural limit; what must not linger is the document
+  // itself: the rebuilt bytes, or the JSON the inspection assembled.)
+  const marker = pattern(64, 201);
+  const doc = psbtInspectDoc(VALID_PSBT);
+  doc.globals.push({ key: "fc016d00", value: Buffer.from(marker).toString("hex") });
+  const bytes = psbtBuildBytes(psbtEditorBuildDoc(doc));
+  await settled();
+  const afterBuild = Buffer.from(psbtLoaderHeap().buffer);
+  assert.equal(afterBuild.includes(Buffer.from(bytes)), false, "the rebuilt PSBT survived in module memory");
+  assert.equal(afterBuild.includes(Buffer.from(marker)), false, "the edited-in pair value survived the build");
+  psbtInspectDoc(bytes);
+  await settled();
+  const afterInspect = Buffer.from(psbtLoaderHeap().buffer);
+  assert.equal(afterInspect.includes(Buffer.from(bytes)), false, "the inspected PSBT survived in module memory");
 });
 
 

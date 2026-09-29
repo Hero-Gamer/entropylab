@@ -218,4 +218,13 @@ const verify = (signature, msghash, publicKey, options = {}) => {
   }
 };
 
-export const secp256k1 = { getPublicKey, sign, verify, Signature, Point };
+// Whether 32 bytes are a secret key, 1 to n - 1. libsecp256k1 decides, so
+// the key never becomes a BigInt or text here: it is copied into linear
+// memory for the call and zeroed when freed (#546).
+const isValidSecretKey = (secretKey) => {
+  requireReady();
+  if (!(secretKey instanceof Uint8Array) || secretKey.length !== 32) return false;
+  return withInput(secretKey, (s) => wasm().secp_seckey_valid(s)) === 1;
+};
+
+export const secp256k1 = { getPublicKey, sign, verify, Signature, Point, utils: { isValidSecretKey } };

@@ -20,14 +20,6 @@ export const HARDENED_OFFSET = 0x80000000;
 const MAX_DEPTH = 255;
 export const BITCOIN_VERSIONS = { private: 0x0488ade4, public: 0x0488b21e };
 
-const ORDER = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
-const bytesToBig = (bytes) => bytes.reduce((n, b) => (n << 8n) | BigInt(b), 0n);
-const isValidSecretKey = (bytes) => {
-  if (!(bytes instanceof Uint8Array) || bytes.length !== 32) return false;
-  const n = bytesToBig(bytes);
-  return n > 0n && n < ORDER;
-};
-
 const toU32 = (value, title) => {
   if (!Number.isSafeInteger(value) || value < 0 || value > 0xffffffff) throw new Error(`${title} must be a uint32`);
   return value;
@@ -135,7 +127,7 @@ export class HDKey {
     this.parentFingerprint = parentFingerprint;
     if (opt.publicKey && opt.privateKey) throw new Error("HDKey: publicKey and privateKey at same time.");
     if (opt.privateKey) {
-      if (!isValidSecretKey(opt.privateKey)) throw new Error("Invalid private key");
+      if (!secp256k1.utils.isValidSecretKey(opt.privateKey)) throw new Error("Invalid private key");
       // Don't alias caller-owned secret buffers.
       this._privateKey = Uint8Array.from(opt.privateKey);
       this._publicKey = secp256k1.getPublicKey(this._privateKey, true);

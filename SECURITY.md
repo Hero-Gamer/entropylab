@@ -292,8 +292,8 @@ cannot overwrite them:
   Journal.
 - The Journal and the Key Manager. The notepad and every entry are text, and
   so is a file once it is decrypted.
-- JavaScript numbers. Some private key range checks and the Silent Payments
-  calculations turn a key into a `BigInt`, and briefly into hex text.
+- JavaScript numbers. The Silent Payments calculations turn a key into a
+  `BigInt`, and briefly into hex text.
 - Copies made inside the libraries the WebAssembly module uses, where the
   library offers no way to erase them (HMAC engines, `bip39::Mnemonic`).
 

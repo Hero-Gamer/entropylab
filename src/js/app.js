@@ -195,7 +195,7 @@ function hodlLastWordCandidates(e) {
   for (let s of hodlBip39Wordlist) hodlIsValidMnemonic([...t, s].join(" "), hodlBip39Wordlist) && i.push(s);
   return { partialCount: t.length, completeCount: n, candidates: i };
 }
-var hodlBase58Check = { encode: base58checkEncode, decode: base58checkDecode }, hodlSecp256k1Order = BigInt("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141"), hodlScriptTypes = [{ id: "bip44", bip: "BIP44", label: "Legacy", short: "Legacy 1\u2026", beginner: hodlScriptBeginnerTexts.bip44, script: "p2pkh", purpose: 44, slip: "x" }, { id: "bip49", bip: "BIP49", label: "Nested SegWit", short: "Nested 3\u2026", beginner: hodlScriptBeginnerTexts.bip49, script: "p2sh-p2wpkh", purpose: 49, slip: "y" }, { id: "bip84", bip: "BIP84", label: "Native SegWit", short: "SegWit bc1q\u2026", beginner: hodlScriptBeginnerTexts.bip84, script: "p2wpkh", purpose: 84, slip: "z" }, { id: "bip86", bip: "BIP86", label: "Taproot", short: "Taproot bc1p\u2026", beginner: hodlScriptBeginnerTexts.bip86, script: "p2tr", purpose: 86, slip: "x" }], hodlExtendedKeyVersions = { mainnet: { x: { pub: 76067358, prv: 76066276, pubName: "xpub", prvName: "xprv" }, y: { pub: 77429938, prv: 77428856, pubName: "ypub", prvName: "yprv" }, z: { pub: 78792518, prv: 78791436, pubName: "zpub", prvName: "zprv" } }, testnet: { x: { pub: 70617039, prv: 70615956, pubName: "tpub", prvName: "tprv" }, y: { pub: 71979618, prv: 71978536, pubName: "upub", prvName: "uprv" }, z: { pub: 73342198, prv: 73341116, pubName: "vpub", prvName: "vprv" } } };
+var hodlBase58Check = { encode: base58checkEncode, decode: base58checkDecode }, hodlScriptTypes = [{ id: "bip44", bip: "BIP44", label: "Legacy", short: "Legacy 1\u2026", beginner: hodlScriptBeginnerTexts.bip44, script: "p2pkh", purpose: 44, slip: "x" }, { id: "bip49", bip: "BIP49", label: "Nested SegWit", short: "Nested 3\u2026", beginner: hodlScriptBeginnerTexts.bip49, script: "p2sh-p2wpkh", purpose: 49, slip: "y" }, { id: "bip84", bip: "BIP84", label: "Native SegWit", short: "SegWit bc1q\u2026", beginner: hodlScriptBeginnerTexts.bip84, script: "p2wpkh", purpose: 84, slip: "z" }, { id: "bip86", bip: "BIP86", label: "Taproot", short: "Taproot bc1p\u2026", beginner: hodlScriptBeginnerTexts.bip86, script: "p2tr", purpose: 86, slip: "x" }], hodlExtendedKeyVersions = { mainnet: { x: { pub: 76067358, prv: 76066276, pubName: "xpub", prvName: "xprv" }, y: { pub: 77429938, prv: 77428856, pubName: "ypub", prvName: "yprv" }, z: { pub: 78792518, prv: 78791436, pubName: "zpub", prvName: "zprv" } }, testnet: { x: { pub: 70617039, prv: 70615956, pubName: "tpub", prvName: "tprv" }, y: { pub: 71979618, prv: 71978536, pubName: "upub", prvName: "uprv" }, z: { pub: 73342198, prv: 73341116, pubName: "vpub", prvName: "vprv" } } };
 function hodlWifVersionByte(e) {
   return e === "mainnet" ? 128 : 239;
 }
@@ -414,8 +414,8 @@ function hodlConcatBytes(...e) {
 }
 function hodlAssertPrivateKey(e) {
   if (e.length !== 32) throw new Error("Private key must be 32 bytes.");
-  let t = BigInt("0x" + hodlHex.encode(e));
-  if (t === 0n || t >= hodlSecp256k1Order) throw hodlError("Private key is out of the secp256k1 range.");
+  // libsecp256k1 checks the range, so the key never becomes text or a BigInt (#546).
+  if (!hodlSecp256k1.utils.isValidSecretKey(e)) throw hodlError("Private key is out of the secp256k1 range.");
   hodlSecp256k1.getPublicKey(e, true);
 }
 function hodlAddressOrThrow(e, t, r) {

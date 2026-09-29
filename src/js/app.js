@@ -1836,10 +1836,9 @@ function hodlSeedRecoveryFields(wallet) {
   fields.push(hodlSeedPhraseField(`Your seed phrase \xB7 ${count} words`, words), hodlRevealPrivate ? hodlSeedQrExport(words, { passphraseUsed: wallet.passphraseUsed, entropyHex: hodlResultEntropyHex(wallet) }) : "");
   // The passphrase sits right under the words it belongs to: without it the
   // words recover a different wallet, so it is recovery material too.
-  // Hidden, it masks at its length in characters, which its UTF-8 bytes give
-  // without building it: every character starts at a byte that is not a
-  // continuation byte (10xxxxxx).
-  if (wallet.passphraseUsed && wallet.passphrase?.length) fields.push(hodlPrivateKeyFieldHtml("BIP39 passphrase", wallet.passphrase.reduce((count, byte) => count + ((byte & 0xc0) !== 0x80), 0), () => hodlResultPassphrase(wallet)));
+  // Hidden, it shows the fixed placeholder whatever its length, since a
+  // length narrows a search for the passphrase.
+  if (wallet.passphraseUsed && wallet.passphrase?.length) fields.push(hodlPrivateKeyFieldHtml("BIP39 passphrase", 0, () => hodlResultPassphrase(wallet)));
   if (wallet.entropy) fields.push(hodlPrivateKeyFieldHtml("BIP39 entropy hex", wallet.entropy.length * 2, () => hodlResultEntropyHex(wallet)));
   if (wallet.seed) fields.push(hodlPrivateKeyFieldHtml("Master seed hex", wallet.seed.length * 2, () => hodlResultSeedHex(wallet)));
   return fields;
@@ -2855,7 +2854,14 @@ var hodlSeedWordMaskLength = 5;
 // text is marked data-i18n-skip, because the translation sweep rewrites any
 // text that is a catalog key, and account, coin and online are keys (#610).
 function hodlSeedPhraseTokens(value, mask = false) {
-  return String(value ?? "").trim().split(/\s+/).filter(Boolean).map((word) => `<span class="seed-phrase-word" data-i18n-skip>${mask ? "\u2022".repeat(hodlSeedWordMaskLength) : hodlEscapeHtml(word)}</span>`).join(" ");
+  let words = String(value ?? "").trim().split(/\s+/).filter(Boolean);
+  if (mask) return hodlSeedPhraseMask(words.length);
+  return words.map((word) => `<span class="seed-phrase-word" data-i18n-skip>${hodlEscapeHtml(word)}</span>`).join(" ");
+}
+// A hidden phrase from its word count alone, so the BIP-85 station masks a
+// child the same way without building its words.
+function hodlSeedPhraseMask(count) {
+  return Array.from({ length: count }, () => `<span class="seed-phrase-word" data-i18n-skip>${"\u2022".repeat(hodlSeedWordMaskLength)}</span>`).join(" ");
 }
 function hodlSeedPhraseField(label, value) {
   let text = String(value ?? "\u2014");
@@ -10542,15 +10548,17 @@ function hodlBip85ChildFingerprint(result) {
   }
 }
 // The value is read only when shown: hidden, the mask takes its length, so
-// the text is never built (#546 B3).
-function hodlBip85PrivateValue(read, length) {
+// the text is never built (#546 B3). A phrase has no length to show, since
+// its length would narrow its words: it masks as the Key Station masks one,
+// word by word from its word count.
+function hodlBip85PrivateValue(read, length, words = 0) {
   let mask = "************";
   if (hodlBip85Reveal) return `<span class="secret private-field-value">${hodlEscapeHtml(String(read() ?? "\u2014"))}</span>`;
-  let bullets = "\u2022".repeat(Math.max(length, mask.length));
+  let bullets = words ? hodlSeedPhraseMask(words) : "\u2022".repeat(Math.max(length, mask.length));
   return `<span class="secret private-field-value secret-placeholder"><span class="secret-placeholder-mask" aria-hidden="true">${bullets}</span><span class="secret-placeholder-message" aria-hidden="true">${mask}</span><span class="secret-placeholder-label">${hodlT("Private value hidden")}</span></span>`;
 }
-function hodlBip85SecretField(label, read, length) {
-  return `<p class="private-field${hodlBip85Reveal ? " is-revealed" : ""}"><span class="label">${hodlEscapeHtml(label)}${hodlPrivacyEyeMarkup(hodlBip85Reveal)}</span>${hodlBip85PrivateValue(read, length)}</p>`;
+function hodlBip85SecretField(label, read, length, words = 0) {
+  return `<p class="private-field${hodlBip85Reveal ? " is-revealed" : ""}"><span class="label">${hodlEscapeHtml(label)}${hodlPrivacyEyeMarkup(hodlBip85Reveal)}</span>${hodlBip85PrivateValue(read, length, words)}</p>`;
 }
 function hodlBip85Spec() {
   let app = document.getElementById("bip85-app")?.value || "bip39";
@@ -10703,7 +10711,7 @@ function hodlRenderBip85Out() {
         </label>
       </div>
       <div class="wallet-data-fields">
-        ${hodlBip85SecretField(derived.secretLabel, () => derived.secret, bip85SecretLength(derived))}
+        ${hodlBip85SecretField(derived.secretLabel, () => derived.secret, bip85SecretLength(derived), derived.app === "bip39" ? derived.entropy.length * 3 / 4 : 0)}
         ${hodlBip85SecretField("Derived entropy", () => derived.entropyHex, derived.entropy.length * 2)}
       </div>
       <section class="edge-note-titled" aria-labelledby="bip85-copy-heading">
@@ -15459,10 +15467,12 @@ function hodlJournalShowEditor(entry) {
   hodlJournalEntryVariants = hodlJournalReadEntryVariants(entry);
   hodlJournalFillWallets(entry?.walletId ?? "");
 }
+// Hidden, the fixed placeholder: the field holds a seed phrase or a
+// passphrase, and its length would narrow a search for either.
 function hodlJournalPrivateValue(value) {
   let mask = "************", text = String(value ?? "\u2014");
   if (hodlJournalReveal) return `<span class="secret private-field-value">${hodlEscapeHtml(text)}</span>`;
-  let bullets = "\u2022".repeat(Math.max(Array.from(text).length, mask.length));
+  let bullets = "\u2022".repeat(mask.length);
   return `<span class="secret private-field-value secret-placeholder"><span class="secret-placeholder-mask" aria-hidden="true">${bullets}</span><span class="secret-placeholder-message" aria-hidden="true">${mask}</span><span class="secret-placeholder-label">Private value hidden</span></span>`;
 }
 function hodlJournalOpenView(id) {

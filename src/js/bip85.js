@@ -6,7 +6,7 @@
 //
 // English BIP-39, HD-seed WIF, XPRV, HEX, and BASE64/BASE85 passwords are
 // implemented. RSA, GPG, DRNG, Dice, and Nostr are out of scope here.
-import { hmacSha512, sha256 } from "./hashes.js";
+import { hmacSha512 } from "./hashes.js";
 import { hex as hexCoder, base64 as base64Coder } from "./coders.js";
 import { base58checkEncode } from "./base58.js";
 import { HDKey } from "./hdkey.js";
@@ -180,39 +180,17 @@ function result(fields) {
 }
 
 // The secret's length in characters, found without building it (the hidden
-// view masks at this length): a compressed WIF is always 52 characters and an
-// extended key 111, hex is two per byte, a password is the length asked for,
-// and a phrase is its words and the spaces between them.
+// view masks at this length). Each is fixed by the application and its
+// settings: a compressed WIF is always 52 characters and an extended key 111,
+// hex is two per byte, and a password is the length asked for. A phrase has
+// none to show, since its length would narrow its words: the view masks it
+// word by word instead.
 export function bip85SecretLength(derived) {
-  if (!derived || derived.wiped) return 0;
-  if (derived.app === "bip39") return mnemonicLength(derived.entropy);
+  if (!derived || derived.wiped || derived.app === "bip39") return 0;
   if (derived.app === "wif") return 52;
   if (derived.app === "xprv") return 111;
   if (derived.app === "hex") return derived.entropy.length * 2;
   return derived.passwordLength || 0;
-}
-
-// BIP39 reads a phrase from the entropy and then its first ENT/32 checksum
-// bits, 11 bits a word; only the word lengths are summed here.
-function mnemonicLength(entropy) {
-  let checksum = sha256(entropy), checksumBits = entropy.length / 4, characters = -1, buffer = 0, bits = 0;
-  let take = (value, width) => {
-    buffer = (buffer << width) | value;
-    bits += width;
-    while (bits >= 11) {
-      bits -= 11;
-      characters += bip39English[(buffer >> bits) & 2047].length + 1;
-      buffer &= (1 << bits) - 1;
-    }
-  };
-  try {
-    for (let index = 0; index < entropy.length; index++) take(entropy[index], 8);
-    take(checksum[0] >> (8 - checksumBits), checksumBits);
-    return characters;
-  } finally {
-    wipeBytes(checksum);
-    buffer = 0;
-  }
 }
 
 export function deriveBip39(root, { words = 24, index = 0, language = BIP39_LANGUAGE_ENGLISH } = {}) {

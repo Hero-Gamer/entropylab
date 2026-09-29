@@ -618,6 +618,25 @@ test("the limits of memory erasure are documented", () => {
   assert.match(security, /\(#what-the-page-can-and-cannot-erase\)/);
 });
 
+// CI cannot be the second machine, so the cross-machine claim rests on the
+// reproductions log: every row names a date, a commit and a full SHA-256, the
+// docs that make the claim point at the log, and a WASM claim needs a WASM
+// module rebuilt in the pinned image.
+test("cross-machine reproduction claims rest on the reproductions log", () => {
+  const log = read("docs/Reproductions.md");
+  const rows = log.split("\n").filter((line) => /^\| \d/.test(line));
+  assert.ok(rows.length > 0, "the log records no reproduction");
+  for (const row of rows) {
+    assert.match(row, /^\| \d{4}-\d{2}-\d{2} \| `[0-9a-f]{7,40}`[^|]*\|[^|]+\| `[0-9a-f]{64}` \|[^|]+\|[^|]+\|$/, `malformed row: ${row}`);
+  }
+  for (const file of ["SECURITY.md", "README.md", "CONTRIBUTING.md"]) {
+    const text = read(file);
+    assert.doesNotMatch(text, /Cross-machine (byte )?identity is not claimed/i, `${file} still disclaims what the log records`);
+    assert.match(text, /docs\/Reproductions\.md/, `${file} makes the claim without pointing at the log`);
+  }
+  assert.ok(rows.some((row) => /wasm-b64\.js/.test(row) && /dev image/i.test(row)), "the WASM claim needs a module rebuilt in the dev image");
+});
+
 const htmlFiles = [appFile];
 
 ensureBuild();

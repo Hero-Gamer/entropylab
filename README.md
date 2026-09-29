@@ -390,8 +390,9 @@ This rebuilds the HTML from source using the committed WASM modules as fixed
 inputs. Rebuilding those modules (`npm run build:wasm` inside the same image)
 uses the image's pinned clang. CI requires two such builds to match the
 modules it publishes: the artifact commit and the Pages deploy wait for that
-check. A host clang build is not those bytes, and a second machine has not
-yet been recorded as reproducing them.
+check. A host clang build is not those bytes. Rebuilds on other machines that
+matched the published hashes, the page and the modules alike, are recorded in
+[docs/Reproductions.md](docs/Reproductions.md), with how to add one.
 
 The checksum detects accidental corruption. The attestation (Sigstore) says
 this repository's CI built those bytes. OpenTimestamps says the digest
@@ -437,10 +438,11 @@ always pair it with the attestation or reproduce the build from reviewed
 source. For a given Git revision, `npm run build` deterministically assembles
 `entropylab.html` from committed inputs, including the committed WASM modules;
 the revision to check out is stamped in the generated file. Rebuilding those
-modules from their Rust/C sources (`npm run build:wasm`) is separate, and its
-output is not currently asserted to be byte-identical across machines. CI
-still rebuilds the modules from source and runs the WASM binding tests against
-the fresh build (see [Building from source](#building-from-source)).
+modules from their Rust/C sources (`npm run build:wasm`) is separate: CI
+asserts it inside the pinned image, and
+[docs/Reproductions.md](docs/Reproductions.md) records the rebuilds on other
+machines. CI also runs the WASM binding tests against the fresh build (see
+[Building from source](#building-from-source)).
 
 An online version is available at [entropylab.online](https://entropylab.online)
 for convenient access. Do not enter seed phrases, private keys, or other secret
@@ -542,8 +544,8 @@ rebuilds it inside the pinned dev image, runs its test suite against the
 fresh build, and commits that copy back to `rock` after each merge (the
 same flow as the site artifact). The image pins clang; a host clang build
 is not that copy. Build-host paths are remapped out of the binary.
-Cross-machine byte identity is not claimed until a second machine
-reproduces the published hashes in that image.
+[docs/Reproductions.md](docs/Reproductions.md) records the rebuilds of the
+published hashes in that image on other machines.
 
 PSBT parsing, typed field decoding, and re-serialization in the PSBT editor
 run on rust-bitcoin 0.32.102 compiled to WebAssembly from the pinned crate in

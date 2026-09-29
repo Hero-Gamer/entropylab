@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { HDKey } from "@scure/bip32";
-import { mnemonicToSeedSync } from "@scure/bip39";
+import { entropyToMnemonic, mnemonicToSeedSync } from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { hex } from "@scure/base";
 
 const app = readFileSync(new URL("../src/js/app.js", import.meta.url), "utf8");
@@ -40,10 +41,11 @@ function harness(parsed, reuse = false, sessionState = state) {
       return root;
     },
     hodlMnemonicToSeed: (words, pass) => (seedBytes = mnemonicToSeedSync(words, pass)), hodlHDKey: HDKey,
+    hodlEntropyToMnemonic: entropyToMnemonic, hodlBip39Wordlist: wordlist,
     hodlWipeBytes: (bytes) => bytes?.fill(0),
     hodlEq: (a, b) => Buffer.from(a).equals(Buffer.from(b)),
   });
-  for (const name of ["hodlMsigBaseKeyId", "hodlMsigSessionKeyMatches", "hodlMsigUsedBaseKeyIds", "hodlPickMsigSessionKey", "hodlRefreshMsigSessionPickers"]) {
+  for (const name of ["hodlResultHasSeed", "hodlResultMnemonic", "hodlSeedSessionRoot", "hodlMsigBaseKeyId", "hodlMsigSessionKeyMatches", "hodlMsigUsedBaseKeyIds", "hodlPickMsigSessionKey", "hodlRefreshMsigSessionPickers"]) {
     const source = app.match(new RegExp(`^function ${name}\\([^]*?^}`, "m"));
     if (source) vm.runInContext(source[0], context);
   }
@@ -85,7 +87,10 @@ test("appended public paths keep the exported key selected", () => {
 });
 
 test("a BIP85 mnemonic child keeps selection across path edits and wipes its temporary seed", () => {
-  const child = { id: "bip85:fixture", result: { masterFingerprint: "73c5da0a", mnemonic } };
+  // A BIP-85 child's session key carries its BIP39 entropy as bytes (#546 B3):
+  // the all-zero entropy, whose words are the vector above.
+  const child = { id: "bip85:fixture", result: { masterFingerprint: "73c5da0a", entropy: new Uint8Array(16) } };
+  assert.equal(entropyToMnemonic(child.result.entropy, wordlist), mnemonic);
   const ui = harness(parsedAt("m/87'/0'/1'"), false, child);
   assert.equal(ui.box.buttons[0].keyId, child.id);
   assert.equal(ui.box.buttons[0].pressed, "true");

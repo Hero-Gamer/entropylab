@@ -349,6 +349,8 @@ test("the key Wipe button drops the cached partial mnemonics", () => {
       hodlRestoreKey() {},
       hodlJournalLog() {},
       hodlWipeUnsharedWalletRows() {},
+      hodlRefreshStationKeyPickers() {},
+      hodlRefreshMsigSessionPickers() {},
     });
     vm.runInContext(`${functionSource("hodlWipeActiveKey")}\nhodlWipeActiveKey();`, context);
     assert.equal(cache.size, 0, `Wipe (active key ${activeKey}) left partial mnemonics in the last-word cache`);
@@ -417,6 +419,7 @@ test("Wipe zeroes a wallet's row key bytes unless another key tab still shows th
       hodlKeys: shared ? [active, { isLab: true, result }] : [active], hodlKeyManagerPending: [], hodlWalletResult: result,
       hodlNewKeyState: () => ({ result: null }), hodlNewLabState: () => ({ result: null }),
       hodlRestoreKey() { context.hodlWalletResult = context.hodlKeys[context.hodlActiveKey]?.result ?? null; }, hodlJournalLog() {},
+      hodlRefreshStationKeyPickers() {}, hodlRefreshMsigSessionPickers() {},
     });
     for (const name of ["hodlAccountAddressBranches", ...rowWipeHelpers.filter((name) => app.includes(`function ${name}(`))]) vm.runInContext(functionSource(name), context);
     vm.runInContext(`${functionSource("hodlWipeActiveKey")}\nhodlWipeActiveKey();`, context);
@@ -457,6 +460,7 @@ test("a Key Manager reset leaves the row key bytes of a wallet a station still s
   const context = vm.createContext({
     hodlKeyManagerIgnored: [], hodlKeyManagerIds: new Set(), hodlKeyManagerActiveId: "",
     document: { getElementById: () => null }, hodlKeyManagerStatus() {}, hodlKeyManagerRender() {},
+    hodlRefreshStationKeyPickers() {}, hodlRefreshMsigSessionPickers() {},
   });
   // The wipe tests bytes with instanceof, so they must come from the context's
   // own realm, as they do in the page.

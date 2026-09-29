@@ -6,7 +6,7 @@
 //
 // English BIP-39, HD-seed WIF, XPRV, HEX, and BASE64/BASE85 passwords are
 // implemented. RSA, GPG, DRNG, Dice, and Nostr are out of scope here.
-import { hmacSha512 } from "./hashes.js";
+import { hmacSha512, sha256 } from "./hashes.js";
 import { hex as hexCoder, base64 as base64Coder } from "./coders.js";
 import { base58checkEncode } from "./base58.js";
 import { HDKey } from "./hdkey.js";
@@ -144,17 +144,75 @@ export function encodeRfc1924Base85(bytes) {
   return out;
 }
 
+// A child keeps only bytes: its entropy, and an XPRV child its chain code. Its
+// text, the secret and the entropy hex, is built each time it is read and is
+// empty once the child is wiped. Strings cannot be erased; bytes can (#546 B3).
+class Bip85Child {
+  constructor(fields) {
+    this.app = fields.app;
+    this.path = fields.path;
+    this.entropy = fields.entropy;
+    if (fields.chainCode) this.chainCode = fields.chainCode;
+    this.testnet = Boolean(fields.testnet);
+    if (fields.passwordLength) this.passwordLength = fields.passwordLength;
+    this.secretLabel = fields.secretLabel;
+    this.notes = fields.notes || [];
+    this.warnings = fields.warnings || [];
+    this.wiped = false;
+  }
+  get secret() {
+    if (this.wiped) return "";
+    if (this.app === "bip39") return entropyToMnemonic(this.entropy, bip39English);
+    if (this.app === "wif") return encodeWifCompressed(this.entropy, this.testnet);
+    if (this.app === "xprv") return encodeXprv(this.chainCode, this.entropy, this.testnet);
+    if (this.app === "hex") return hexCoder.encode(this.entropy);
+    if (this.app === "pwd-base64") return base64Coder.encode(this.entropy).replace(/\s+/g, "").slice(0, this.passwordLength);
+    if (this.app === "pwd-base85") return encodeRfc1924Base85(this.entropy).slice(0, this.passwordLength);
+    return "";
+  }
+  get entropyHex() {
+    return this.wiped ? "" : hexCoder.encode(this.entropy);
+  }
+}
+
 function result(fields) {
-  return {
-    app: fields.app,
-    path: fields.path,
-    entropy: fields.entropy,
-    entropyHex: hexCoder.encode(fields.entropy),
-    secret: fields.secret,
-    secretLabel: fields.secretLabel,
-    notes: fields.notes || [],
-    warnings: fields.warnings || []
+  return new Bip85Child(fields);
+}
+
+// The secret's length in characters, found without building it (the hidden
+// view masks at this length): a compressed WIF is always 52 characters and an
+// extended key 111, hex is two per byte, a password is the length asked for,
+// and a phrase is its words and the spaces between them.
+export function bip85SecretLength(derived) {
+  if (!derived || derived.wiped) return 0;
+  if (derived.app === "bip39") return mnemonicLength(derived.entropy);
+  if (derived.app === "wif") return 52;
+  if (derived.app === "xprv") return 111;
+  if (derived.app === "hex") return derived.entropy.length * 2;
+  return derived.passwordLength || 0;
+}
+
+// BIP39 reads a phrase from the entropy and then its first ENT/32 checksum
+// bits, 11 bits a word; only the word lengths are summed here.
+function mnemonicLength(entropy) {
+  let checksum = sha256(entropy), checksumBits = entropy.length / 4, characters = -1, buffer = 0, bits = 0;
+  let take = (value, width) => {
+    buffer = (buffer << width) | value;
+    bits += width;
+    while (bits >= 11) {
+      bits -= 11;
+      characters += bip39English[(buffer >> bits) & 2047].length + 1;
+      buffer &= (1 << bits) - 1;
+    }
   };
+  try {
+    for (let index = 0; index < entropy.length; index++) take(entropy[index], 8);
+    take(checksum[0] >> (8 - checksumBits), checksumBits);
+    return characters;
+  } finally {
+    wipeBytes(checksum);
+    buffer = 0;
+  }
 }
 
 export function deriveBip39(root, { words = 24, index = 0, language = BIP39_LANGUAGE_ENGLISH } = {}) {
@@ -170,7 +228,6 @@ export function deriveBip39(root, { words = 24, index = 0, language = BIP39_LANG
       app: "bip39",
       path,
       entropy,
-      secret: entropyToMnemonic(entropy, bip39English),
       secretLabel: `BIP-39 seed phrase · ${wordCount} English words`,
       notes: [`English wordlist (0'). Path ${path}.`]
     });
@@ -183,12 +240,13 @@ export function deriveWif(root, { index = 0, testnet = false } = {}) {
   let path = bip85Path(BIP85_APPS.WIF, parseChildIndex(index));
   let digest = deriveBip85Entropy(root, path);
   try {
-    let entropy = truncateEntropy(digest, 32);
+    // A key outside the curve is a hard fail at derive time (BIP-85).
+    let entropy = assertValidSecp256k1Secret(truncateEntropy(digest, 32));
     return result({
       app: "wif",
       path,
       entropy,
-      secret: encodeWifCompressed(entropy, testnet),
+      testnet,
       secretLabel: testnet ? "Compressed WIF · testnet" : "Compressed WIF · mainnet",
       notes: ["Most-significant 256 bits as a compressed WIF hdseed (Bitcoin Core)."]
     });
@@ -203,12 +261,14 @@ export function deriveXprv(root, { index = 0, testnet = false } = {}) {
   let chainCode = digest.slice(0, 32), privateKey = digest.slice(32);
   try {
     // The published BIP "DERIVED ENTROPY" for XPRV is the private-key half.
-    let entropy = privateKey.slice();
+    // A key outside the curve is a hard fail at derive time (BIP-85).
+    let entropy = assertValidSecp256k1Secret(privateKey.slice());
     return result({
       app: "xprv",
       path,
       entropy,
-      secret: encodeXprv(chainCode, privateKey, testnet),
+      chainCode: chainCode.slice(),
+      testnet,
       secretLabel: testnet ? "BIP-32 TPRV" : "BIP-32 XPRV",
       notes: ["HMAC split is reversed from BIP32: first 32 bytes = chain code, last 32 = private key. Depth, fingerprint, and child number are zero."],
       warnings: testnet ? ["Input root is a testnet key, so this child is a tprv."] : []
@@ -231,7 +291,6 @@ export function deriveHex(root, { numBytes = 32, index = 0 } = {}) {
       app: "hex",
       path,
       entropy,
-      secret: hexCoder.encode(entropy),
       secretLabel: `Hex entropy · ${size} bytes`,
       notes: [`Leftmost ${size} bytes of the HMAC (trailing bytes discarded).`]
     });
@@ -249,12 +308,11 @@ export function derivePwdBase64(root, { length = 21, index = 0 } = {}) {
     // The password encodes all 64 HMAC bytes, so the result keeps its own
     // copy and the digest is wiped like in the other four apps.
     let entropy = digest.slice();
-    let encoded = base64Coder.encode(entropy).replace(/\s+/g, "");
     return result({
       app: "pwd-base64",
       path,
       entropy,
-      secret: encoded.slice(0, size),
+      passwordLength: size,
       secretLabel: `Password · Base64 · ${size} characters`,
       notes: ["RFC 4648 Base64 of all 64 HMAC bytes, then sliced to the requested length. Length ≤ 86 so the password never includes padding."]
     });
@@ -274,7 +332,7 @@ export function derivePwdBase85(root, { length = 12, index = 0 } = {}) {
       app: "pwd-base85",
       path,
       entropy,
-      secret: encodeRfc1924Base85(entropy).slice(0, size),
+      passwordLength: size,
       secretLabel: `Password · RFC1924 Base85 · ${size} characters`,
       notes: ["RFC 1924 Base85 of all 64 HMAC bytes (4-byte groups), then sliced to the requested length."]
     });
@@ -297,6 +355,6 @@ export function deriveApplication(root, spec = {}) {
 export function wipeBip85Result(derived) {
   if (!derived) return;
   wipeBytes(derived.entropy);
-  derived.entropyHex = "";
-  derived.secret = "";
+  wipeBytes(derived.chainCode);
+  derived.wiped = true;
 }

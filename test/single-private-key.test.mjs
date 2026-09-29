@@ -127,9 +127,8 @@ test("a station session gets its own copy of the key, which it can zero alone", 
   copy.fill(0);
   assert.deepEqual([...result.privateKey], [...WIKI_KEY], "zeroing the session copy zeroed the wallet's key");
   assert.equal(api.hodlResultHasSingleKey(result), true);
-  // A BIP-85 WIF child's session key carries its key as the BIP-85 Station's
-  // own hex output.
-  const child = { kind: "single", privHex: hex.encode(MINI_KEY) };
+  // A BIP-85 WIF child's session key carries its key as bytes (#546 B3).
+  const child = { kind: "single", privateKey: Uint8Array.from(MINI_KEY) };
   assert.equal(api.hodlResultHasSingleKey(child), true);
   assert.deepEqual([...api.hodlSinglePrivateKey(child)], [...MINI_KEY]);
   assert.equal(api.hodlResultHasSingleKey({ kind: "single" }), false);

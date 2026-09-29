@@ -10,6 +10,7 @@ import { hmacSha512 } from "./hashes.js";
 import { hex as hexCoder, base64 as base64Coder } from "./coders.js";
 import { base58checkEncode } from "./base58.js";
 import { HDKey } from "./hdkey.js";
+import { secp256k1 } from "./secp256k1.js";
 import { entropyToMnemonic } from "./bip39.js";
 import { wordlist as bip39English } from "./bip39-english.js";
 
@@ -65,11 +66,9 @@ export function bip85Path(app, ...rest) {
   return hardenedPath([BIP85_PURPOSE, app, ...rest]);
 }
 
+// libsecp256k1 checks the range, so the key never becomes a BigInt (#546).
 export function isValidSecp256k1Secret(bytes) {
-  if (!(bytes instanceof Uint8Array) || bytes.length !== 32) return false;
-  let n = 0n;
-  for (let i = 0; i < 32; i++) n = (n << 8n) | BigInt(bytes[i]);
-  return n > 0n && n < SECP256K1_ORDER;
+  return secp256k1.utils.isValidSecretKey(bytes);
 }
 
 export function assertValidSecp256k1Secret(bytes) {

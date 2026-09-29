@@ -310,6 +310,9 @@ the limits of browser-memory cleanup.
   **Update Existing Multisig** replaces that source tab after successful
   derivation; **Derive New Multisig** creates a separate tab and preserves
   existing multisigs, even when the inputs are identical.
+  Multisig tabs display their saved names, including renames; updating an
+  existing multisig preserves its name, and the edit note identifies it by
+  its current tab name.
 - An optional **Sync entropy across methods** checkbox (off by default) keeps
   direct dice, card, number-base, seed-word, and private-key representations in
   sync while input is entered. Each destination waits for enough bits to emit

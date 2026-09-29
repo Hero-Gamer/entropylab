@@ -13498,7 +13498,7 @@ function hodlSyncMsigResultView() {
 }
 function hodlCloneDerivedMsig(source, existing) {
   let state = existing ? { ...existing, fields: { ...existing.fields, xpubs: (existing.fields.xpubs || []).slice() } } : hodlNewMsigState();
-  let name = source.createdPolicy || hodlMsigPolicyName(source.result) || state.name;
+  let name = existing ? state.name : source.createdPolicy || hodlMsigPolicyName(source.result) || state.name;
   Object.assign(state, {
     isLab: false,
     name,
@@ -13740,7 +13740,7 @@ function hodlCreateMsigTabMark(state) {
   return stack;
 }
 function hodlCreateMsigTab(index) {
-  let state = hodlMsigs[index], active = index === hodlActiveMsig, button = document.createElement("button"), name = state.isLab ? "MS Station" : state.createdPolicy || state.name || "Multisig " + state.number, label = document.createElement("span");
+  let state = hodlMsigs[index], active = index === hodlActiveMsig, button = document.createElement("button"), name = state.isLab ? "MS Station" : state.name || state.createdPolicy || "Multisig " + state.number, label = document.createElement("span");
   button.type = "button";
   button.id = state.isLab ? "msig-tab-lab" : "msig-tab-" + (index + 1);
   button.className = "tab key-tab msig-tab" + (state.isLab ? " is-lab station-tab" : "") + (active ? " active" : "");
@@ -13792,6 +13792,7 @@ function hodlBeginMsigRename(index) {
   editor.setAttribute("aria-controls", "msig-card");
   input.type = "text";
   input.className = "key-tab-name-input msig-tab-name-input";
+  input.id = "msig-rename-input";
   input.value = previous;
   input.maxLength = 120;
   input.setAttribute("aria-label", "Rename " + previous);

@@ -5402,12 +5402,22 @@
     await until(() => document.querySelector("#msig-out .account-result-card"), "wallet result after editing its inputs");
     assert(document.getElementById("msig-lab").hidden, "Selecting the wallet did not return to its result view");
     const originalTab = walletTabs().at(-1), originalCount = walletTabs().length;
+    const renameSource = async (name) => {
+      document.getElementById(originalTab.id).dispatchEvent(new KeyboardEvent("keydown", { key: "F2", bubbles: true, cancelable: true }));
+      const editor = await until(() => document.getElementById("msig-rename-input"), "multisig rename editor");
+      input(editor, name);
+      editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+      await until(() => !document.getElementById("msig-rename-input"), "renamed multisig tab");
+      equal(document.getElementById(originalTab.id).textContent.trim(), name, "The multisig tab did not display its saved name");
+    };
+    await renameSource("Household savings");
     const addresses = () => [...document.querySelectorAll('#msig-out [data-address-table="msig-receive"] [data-copy-field]')].map((button) => button.textContent).join();
     const originalAddresses = addresses(), originalStart = document.getElementById("msig-address-start").value;
     document.getElementById("msig-edit-inputs").click();
     await until(() => !document.getElementById("msig-lab").hidden, "editable inputs in MS Station");
     const update = document.getElementById("msig-update"), note = document.getElementById("msig-edit-note");
     assert(!note.hidden && note.textContent.trim(), "Editing did not identify the populated inputs");
+    assert(note.textContent.includes("Household savings"), "The edit note did not use the source tab name");
     assert(!update.hidden && !update.disabled && !go.disabled, "Editing did not offer both derivation actions");
     assert(update.compareDocumentPosition(go) & Node.DOCUMENT_POSITION_FOLLOWING, "Update did not precede Derive New");
     equal(document.getElementById("msig-x-0").value, decorated.match(/\]([^/]+)/)[1], "Editing changed the co-signer key");
@@ -5432,8 +5442,10 @@
     document.getElementById(originalTab.id).click();
     await until(() => document.getElementById("msig-address-start").value === originalStart, "original multisig after deriving the duplicate");
     equal(addresses(), originalAddresses, "Deriving the duplicate overwrote the original multisig");
+    await renameSource("Family savings");
     document.getElementById("msig-edit-inputs").click();
     await until(() => !update.hidden && !update.disabled, "Update Existing after returning to source");
+    assert(note.textContent.includes("Family savings"), "The edit note retained an outdated tab name");
     input(document.getElementById("msig-address-start"), "23");
     input(document.getElementById("msig-address-range"), "1");
     update.click();
@@ -5441,6 +5453,7 @@
     assert(!document.getElementById("msig-error").textContent, "Updating the source failed to derive");
     equal(walletTabs().length, originalCount + 1, "Update Existing created another wallet tab");
     equal(document.querySelector('#msig-tabs [aria-selected="true"]').id, originalTab.id, "Update Existing selected a different wallet");
+    equal(document.getElementById(originalTab.id).textContent.trim(), "Family savings", "Update Existing lost the source tab name");
     equal(document.querySelector('#msig-out [data-address-table="msig-receive"] tbody th').textContent.trim(), "23", "Update Existing did not derive the changed window");
     document.getElementById("msig-tab-lab").click();
     assert(note.hidden && update.hidden, "A fresh station retained edit context after success");

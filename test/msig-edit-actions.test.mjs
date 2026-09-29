@@ -81,6 +81,7 @@ test("Update Existing replaces the source by stable id after its policy changes 
   assert.equal(context.hodlActiveMsig, 2);
   assert.equal(context.hodlMsigs[2].id, original.id);
   assert.equal(context.hodlMsigs[2].number, original.number);
+  assert.equal(context.hodlMsigs[2].name, original.name);
   assert.equal(context.hodlMsigs[2].fields.m, "1");
   assert.equal(context.hodlMsigs[2].fields.keyOrder, "listed");
   assert.equal(context.hodlMsigs[1], other);
@@ -140,6 +141,24 @@ test("ordinary station derivation retains existing identity-based replacement", 
   assert.equal(context.hodlMsigs.length, 2);
   assert.equal(context.hodlActiveMsig, 1);
   assert.equal(context.hodlMsigs[1].id, original.id);
+  assert.equal(context.hodlMsigs[1].name, original.name);
+});
+
+test("a multisig tab displays its stored name even when it has a saved quorum", () => {
+  const { context, original } = harness();
+  context.document = { createElement: () => ({
+    children: [], dataset: {}, attributes: {},
+    append(...children) { this.children.push(...children); },
+    setAttribute(name, value) { this.attributes[name] = value; },
+  }) };
+  context.hodlCreateMsigTabMark = () => ({});
+  vm.runInContext(app.match(/^function hodlCreateMsigTab\([^]*?^}/m)[0], context);
+  for (const name of ["Family savings", "Travel fund", "<b>Literal name</b>"]) {
+    original.name = name;
+    const button = context.hodlCreateMsigTab(1);
+    assert.equal(button.children[1].textContent, name);
+    assert.ok(button.attributes["aria-label"].includes(name));
+  }
 });
 
 function actionHarness() {

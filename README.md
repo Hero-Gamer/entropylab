@@ -303,6 +303,11 @@ the limits of browser-memory cleanup.
   descriptor checksum, receive address 0) so every signer can verify the
   policy before funding, and a BIP 388 wallet policy (template + xpubs) for
   wallets that register policies. Calculator export, not a generator.
+- On a derived key, **Edit Input** loads its inputs into Key Station.
+  **Derive New Key** creates a separate tab, including for identical inputs.
+  The secondary action, **Update Existing Key**, replaces only that source
+  tab after successful derivation. Custom tab names survive updates; a tab
+  still named for its fingerprint follows the key if that fingerprint changes.
 - MS Station keeps a session key selected when its co-signer derivation path
   changes. Clicking that selected key removes it; using it on another
   co-signer still requires opting into key reuse and distinct derivation paths.

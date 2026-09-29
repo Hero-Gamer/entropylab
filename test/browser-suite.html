@@ -1977,14 +1977,21 @@
       document.querySelector('#workspace [data-workspace="vanity"]').click();
       await until(() => !document.getElementById("vanity-card").hidden, "Vanity tool to open");
     };
-    // The Keys tab's own in-place edit: Edit Input, change the lab, Derive.
+    // The Keys tab's explicit update: Edit Input, change the lab, Update Existing.
     const rederive = async (edit, what) => {
       await openKeys();
       document.getElementById("key-edit-inputs").click();
       await until(() => document.getElementById("key-summary").hidden, "the key's inputs to open in the lab");
+      const update = document.getElementById("key-update"), go = document.getElementById("go"), note = document.getElementById("key-edit-note");
+      assert(!note.hidden && note.textContent.trim(), "Edit Input did not identify the populated key inputs");
+      assert(!update.hidden, "Edit Input did not offer Update Existing Key");
+      assert(go.compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING, "Derive New did not precede Update Existing");
+      equal(getComputedStyle(update).backgroundColor, getComputedStyle(document.getElementById("key-edit-inputs")).backgroundColor, "Update Existing did not use the secondary action treatment");
+      equal(parseFloat(getComputedStyle(note).marginTop), 0, "The key edit note added space above the card's padding");
+      equal(parseFloat(getComputedStyle(note).marginBottom), parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--space-component")), "The key edit note did not leave the shared component gap below");
       edit();
-      await until(() => !document.getElementById("go").disabled, "Derive Key to enable");
-      document.getElementById("go").click();
+      await until(() => !update.disabled && !go.disabled, "both key edit actions to enable");
+      update.click();
       await until(() => !document.getElementById("key-summary").hidden, what, 60000);
       equal(keyTabs(), "Key Station,ef94d090", "an in-place edit keeps the key's fingerprint and tab");
     };
@@ -2053,6 +2060,40 @@
     document.getElementById("delete-key").click();
     await until(() => keyTabs() === "Key Station", "the derived key to be deleted");
     input(document.getElementById("pass"), "");
+  });
+  await test("Key Station Edit Input offers a separate new tab without replacing its source", async () => {
+    const tabs = () => [...document.querySelectorAll("#key-tabs > *")].filter(tab => tab.id !== "key-tab-lab");
+    await chooseMode("Seed phrase");
+    chooseSeedWords(12);
+    input(document.getElementById("seed"), "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about");
+    input(document.getElementById("address-range"), "1");
+    await until(() => !document.getElementById("go").disabled, "initial key derivation");
+    document.getElementById("go").click();
+    await until(() => tabs().length === 1 && !document.getElementById("key-summary").hidden, "first key tab");
+    const originalName = tabs()[0].textContent.trim(), originalAddress = firstAcctAddress()?.address;
+    document.getElementById("key-edit-inputs").click();
+    const go = document.getElementById("go"), update = document.getElementById("key-update"), note = document.getElementById("key-edit-note");
+    await until(() => !note.hidden && !go.disabled && !update.disabled, "both edit actions");
+    assert(note.textContent.includes(originalName), "The edit note did not identify the source tab");
+    assert(go.compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING, "Derive New did not precede Update Existing");
+    input(document.getElementById("address-start"), "7");
+    await until(() => !go.disabled, "Derive New after address-window edit");
+    go.click();
+    await until(() => tabs().length === 2 && !document.getElementById("key-summary").hidden, "separate key tab");
+    assert(tabs()[0].textContent.trim() === originalName, "Derive New renamed the source key");
+    assert(tabs()[1].textContent.trim() !== originalName, "The duplicate key tabs are indistinguishable");
+    tabs()[0].click();
+    await until(() => firstAcctAddress()?.address === originalAddress, "original key address after Derive New");
+    document.getElementById("key-edit-inputs").click();
+    await until(() => !update.hidden && !update.disabled, "Update Existing from the original key");
+    assert(note.textContent.includes(originalName), "The note lost the source key's current name");
+    document.getElementById("key-tab-lab").click();
+    while (tabs().length) {
+      tabs()[0].click();
+      document.getElementById("delete-key").click();
+    }
+    document.getElementById("key-tab-lab").click();
+    document.getElementById("wipe").click();
   });
   await test("Journal notepad stamps notes, session state stays live, and the log omits secrets", async () => {
     document.querySelector('#workspace [data-workspace="journal"]').click();

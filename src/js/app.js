@@ -772,6 +772,7 @@ function hodlSyncKeyModeSelect() {
 var hodlSeedLengthSelectEl = hodlElement("#seed-length-select");
 hodlSeedLengthSelectEl.onchange = () => hodlSetSeedLength(Number(hodlSeedLengthSelectEl.value));
 hodlElement("#go").onclick = () => hodlHandleDerivationButton("key", hodlCalculateKey);
+hodlElement("#key-update").onclick = () => hodlHandleDerivationButton("key", (progress) => hodlCalculateKey(progress, "update"), "key-update");
 hodlElement("#wipe").onclick = hodlWipeActiveKey;
 function hodlElement(e) {
   let t = e.startsWith("#") ? e.slice(1) : e, r = document.getElementById(t);
@@ -2583,8 +2584,9 @@ function hodlSetDerivationButtonState(kind, state, button = hodlDerivationButton
     button.setAttribute("aria-label", kind === "msig" ? hodlTText("Stopping multisig derivation") : hodlTText("Stopping key derivation"));
     button.dataset.derivationState = "stopping";
   } else {
-    let label = hodlTText("Derive Key");
-    if (kind === "msig") label = button.id === "msig-update" ? hodlTText("Update Existing Multisig") : hodlMsigs[hodlActiveMsig]?.editSourceId != null ? hodlTText("Derive New Multisig") : hodlTText("Derive Multisig");
+    let label = kind === "msig"
+      ? button.id === "msig-update" ? hodlTText("Update Existing Multisig") : hodlMsigs[hodlActiveMsig]?.editSourceId != null ? hodlTText("Derive New Multisig") : hodlTText("Derive Multisig")
+      : button.id === "key-update" ? hodlTText("Update Existing Key") : hodlKeys[hodlActiveKey]?.editSourceId != null ? hodlTText("Derive New Key") : hodlTText("Derive Key");
     button.textContent = label;
     button.removeAttribute("aria-label");
     delete button.dataset.derivationState;
@@ -2676,7 +2678,7 @@ function hodlHandleDerivationButton(kind, derive, buttonId) {
   if (kind === "key" && hodlLowEntropyConfirm) {
     let warning = hodlLowEntropyWarning();
     if (warning && !hodlLowEntropyConfirm.isAcknowledged()) {
-      hodlLowEntropyConfirm.open(warning, () => hodlDeriveWithProgress(kind, derive));
+      hodlLowEntropyConfirm.open(warning, () => hodlDeriveWithProgress(kind, derive, buttonId));
       return;
     }
   }
@@ -6828,9 +6830,24 @@ function hodlLowEntropyWarning() {
   return null;
 }
 function hodlSyncDeriveButton() {
-  let button = document.getElementById("go");
+  let button = document.getElementById("go"), update = document.getElementById("key-update");
   if (!button) return;
+  let lab = hodlKeys[hodlActiveKey], editing = lab?.isLab && lab.editSourceId != null;
+  let source = editing ? hodlKeys.find((state) => !state.isLab && state.id === lab.editSourceId) : null;
+  let note = document.getElementById("key-edit-note");
+  if (note) {
+    note.hidden = !editing;
+    note.textContent = editing ? source ? hodlTText("The inputs below have been populated from {name}. You can update the existing key or derive a new key below.", { name: source.name }) : hodlTText("The key that supplied these inputs was deleted. You can still derive a new key below.") : "";
+  }
+  if (update) update.hidden = !editing;
   if (hodlActiveDerivation) {
+    let active = hodlDerivationButton("key");
+    for (let peer of [button, update]) {
+      if (!peer || peer === active && hodlActiveDerivation.kind === "key") continue;
+      peer.disabled = true;
+      peer.setAttribute("aria-disabled", "true");
+      peer.title = hodlTText("A derivation is already running.");
+    }
     if (hodlActiveDerivation.kind === "key") {
       hodlSetDerivationButtonState("key", hodlActiveDerivation.cancelled ? "stopping" : "running");
       return;
@@ -6841,10 +6858,16 @@ function hodlSyncDeriveButton() {
     button.title = hodlTText("A derivation is already running.");
     return;
   }
-  hodlSetDerivationButtonState("key", "idle");
+  hodlSetDerivationButtonState("key", "idle", button);
+  hodlSetDerivationButtonState("key", "idle", update);
   button.disabled = !hodlCanDeriveCurrentKey();
   button.title = "";
   button.setAttribute("aria-disabled", String(button.disabled));
+  if (update) {
+    update.disabled = button.disabled || !source;
+    update.setAttribute("aria-disabled", String(update.disabled));
+    update.title = !source ? hodlTText("The original key is no longer available.") : "";
+  }
 }
 var hodlMasterFingerprintTimer = 0, hodlMasterFingerprintRevision = 0;
 function hodlFingerprintMnemonic() {
@@ -7039,7 +7062,7 @@ function hodlThrowIfFailed(result) {
   if (error && typeof error === "object" && typeof error.key === "string") throw hodlError(error.key, error.vars);
   throw new Error(typeof error === "string" && error ? error : hodlT("Could not calculate"));
 }
-async function hodlCalculateKey(progress) {
+async function hodlCalculateKey(progress, action = "derive") {
   hodlSetWorkspaceError("key", null);
   // A fresh derivation restores the safe wallet.dat birthday default (scan
   // from genesis) so a previous "new keys" choice cannot leak into a
@@ -7154,7 +7177,7 @@ async function hodlCalculateKey(progress) {
     hodlCaptureKey();
     hodlJournalLog("derive", hodlWalletResult?.masterFingerprint || hodlWalletResult?.kind || "key");
     hodlSnapshotKeySummary();
-    hodlCommitDerivedKey();
+    hodlCommitDerivedKey(action);
     hodlJournalCaptureDerivedKey(hodlKeys[hodlActiveKey]);
     hodlDisposeDroppedWallets(); // the wallet this one replaced on its tab
     hodlFocusWalletResult();
@@ -12566,7 +12589,7 @@ function hodlCloneDerivedKey(source, existing) {
   let fingerprint = source.result?.masterFingerprint || "";
   Object.assign(state, {
     isLab: false,
-    name: fingerprint || state.name,
+    name: existing && state.name !== existing.result?.masterFingerprint ? state.name : fingerprint || state.name,
     mode: source.mode,
     diceMethod: source.diceMethod,
     cardMethod: source.cardMethod,
@@ -12663,7 +12686,7 @@ function hodlSpTabCollides(state) {
 function hodlKeyWalletIdentity(result) {
   return result?.masterIdentity || result?.rootXpub || null;
 }
-function hodlCommitDerivedKey() {
+function hodlCommitDerivedKey(action = "derive") {
   let lab = hodlKeys[hodlActiveKey];
   if (!lab?.isLab || !lab.result) {
     hodlRenderKeyTabs();
@@ -12672,13 +12695,17 @@ function hodlCommitDerivedKey() {
   }
   let imported = hodlKeyManagerPending.find((state) => state.id === lab.importedKeyId);
   let identity = hodlKeyWalletIdentity(lab.result);
-  let existing = identity ? hodlKeys.findIndex((state) => !state.isLab && hodlKeyWalletIdentity(state.result) === identity) : -1;
+  let existing = -1;
+  if (action === "update") existing = hodlKeys.findIndex((state) => !state.isLab && state.id === lab.editSourceId);
+  else if (lab.editSourceId == null && identity) existing = hodlKeys.findIndex((state) => !state.isLab && hodlKeyWalletIdentity(state.result) === identity);
+  if (action === "update" && existing < 0) throw new Error(hodlTText("The original key is no longer available. Derive a new key instead."));
   if (existing >= 0) {
     hodlKeys[existing] = hodlCloneDerivedKey(lab, hodlKeys[existing]);
     hodlKeys[hodlActiveKey] = hodlNewLabState();
     hodlActiveKey = existing;
   } else {
     let derived = hodlCloneDerivedKey(lab);
+    if (lab.editSourceId != null && hodlKeyNameTaken(derived.name, -1)) derived.name = hodlDefaultKeyName(derived.number);
     hodlKeys[hodlActiveKey] = hodlNewLabState();
     hodlKeys.push(derived);
     hodlActiveKey = hodlKeys.length - 1;
@@ -12708,7 +12735,7 @@ function hodlFillLabFromKey(source) {
   let labIndex = hodlKeys.findIndex((state) => state.isLab);
   let existing = labIndex >= 0 ? hodlKeys[labIndex] : hodlNewLabState();
   let lab = hodlCloneDerivedKey(source, existing);
-  Object.assign(lab, { isLab: true, name: "Key Station", result: null, importedKeyId: null, error: "", reveal: false, createdScript: "", createdPath: "" });
+  Object.assign(lab, { isLab: true, editSourceId: hodlKeys.includes(source) ? source.id : null, name: "Key Station", result: null, importedKeyId: null, error: "", reveal: false, createdScript: "", createdPath: "" });
   if (labIndex < 0) {
     hodlKeys.unshift(lab);
     labIndex = 0;
@@ -16432,7 +16459,7 @@ async function hodlVanityApplyMatch(index) {
   hodlVanityApplying = true;
   hodlRenderVanityOut();
   hodlVanitySyncControls();
-  let before = new Set(hodlKeys.map((candidate) => candidate.id)), lab = hodlKeys.find((candidate) => candidate.isLab) || null;
+  let lab = hodlKeys.find((candidate) => candidate.isLab) || null;
   try {
     let labIndex = hodlFillLabFromKey(state), draft = hodlKeys[labIndex];
     draft.fields.pass = match.passphrase;
@@ -16444,19 +16471,9 @@ async function hodlVanityApplyMatch(index) {
     hodlRenderKeyTabs();
     hodlRestoreKey();
     document.getElementById("calc-card").hidden = hodlWorkspace !== "calc";
-    await hodlDeriveWithProgress("key", hodlCalculateKey);
+    await hodlDeriveWithProgress("key", (progress) => hodlCalculateKey(progress, "update"));
     let active = hodlKeys[hodlActiveKey];
     if (!active || active.isLab || !active.result) throw new Error(active?.error || "Deriving the updated key failed.");
-    if (!before.has(active.id)) {
-      // A changed passphrase means a new fingerprint, which the Keys tab files
-      // as a new key; fold it back into the tab it came from.
-      let target = hodlKeys.findIndex((candidate) => candidate.id === state.id), fresh = hodlActiveKey;
-      if (target >= 0) {
-        hodlKeys[target] = { ...active, id: state.id, number: state.number, color: state.color, name: state.name && state.name !== hodlVanityKeyLabel(state) ? state.name : active.name };
-        hodlKeys.splice(fresh, 1);
-        hodlActiveKey = target > fresh ? target - 1 : target;
-      }
-    }
     let updated = hodlKeys[hodlActiveKey];
     match.savedTo = hodlVanityKeyLabel(updated);
     // A tool that had this key loaded is holding the old seed: reload it so

@@ -4,6 +4,7 @@
 // Run with `npm test` (part of the default and CI suites).
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { truncateText, expandSizeLabel, expandableHtml, EXPAND_LIMIT } from "../src/js/expandable.js";
 
 test("at or under the limit the text passes through untouched", () => {
@@ -59,4 +60,26 @@ test("markup from a hostile value stays inert", () => {
   assert.ok(!html.includes("<img"), "unescaped markup in cell");
   assert.ok(html.includes("&lt;img"), "value was not escaped");
   assert.ok(html.includes("key &quot;quoted&quot;"), "label was not escaped");
+});
+
+// The overlay is a body-level sibling that outlives the editor views whose
+// cells opened it, and a pasted PSBT can carry xprvs in proprietary fields:
+// once the dialog goes out of scope it must not keep the full value.
+// (Behavioral checks live in test/browser-suite.html; these pin the wiring.)
+test("closing the overlay releases the full value, the title and the size meta", () => {
+  const module = readFileSync(new URL("../src/js/expandable.js", import.meta.url), "utf8");
+  const release = module.slice(module.indexOf("const release = () => {"), module.indexOf("const close = () => {"));
+  assert.match(release, /text\.value = ""/, "release must clear #exp-text");
+  assert.match(release, /querySelector\("#exp-title"\)\.textContent = ""/, "release must clear #exp-title");
+  assert.match(release, /querySelector\("#exp-meta"\)\.textContent = ""/, "release must clear #exp-meta");
+  const close = module.slice(module.indexOf("const close = () => {"), module.indexOf("const open = (target) => {"));
+  assert.match(close, /release\(\)/, "close() must release the overlay contents");
+});
+
+test("pagehide and persisted pageshow release the overlay contents", () => {
+  const module = readFileSync(new URL("../src/js/expandable.js", import.meta.url), "utf8");
+  assert.match(module, /addEventListener\("pagehide"/, "the overlay must release on pagehide");
+  assert.match(module, /event\.persisted/, "a bfcache restore must release too");
+  const teardown = module.slice(module.indexOf("const teardown = () => {") >= 0 ? module.indexOf("const teardown = () => {") : Infinity, module.indexOf("const open = (target) => {"));
+  assert.match(teardown, /release\(\)/, "the teardown must run the same release as close()");
 });

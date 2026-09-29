@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { HDKey as ScureHDKey } from "@scure/bip32";
+import { createJournal, wipeJournal } from "../src/js/journal.js";
 import { createBase58check, hex } from "@scure/base";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { loadAppFunctions } from "./app-slice-harness.mjs";
@@ -48,6 +49,9 @@ function raceHarness() {
     hodlActiveDerivation: { kind: "key", cancelled: false }, hodlDerivationGeneration: 0, hodlCommittedResults: new Set(),
     hodlJournalGeneration: 0, hodlJournalKeys: {}, hodlJournal: {},
     hodlKeys: [{ id: 1, number: 1, fields: {}, result: null }], hodlActiveKey: 0, hodlKeyManagerPending: [],
+    hodlMsigs: [], hodlActiveMsig: -1,
+    hodlNewMsigState: (name, id, number) => ({ name, id, number, fields: { descriptor: "", xpubs: ["", "", ""] }, result: null }),
+    hodlNewMsigLabState: () => ({ isLab: true, fields: { descriptor: "", xpubs: ["", "", ""] }, result: null }),
     hodlKeyMode: "hex", hodlTargetWordCount: 24, hodlNetworkChoice: "mainnet",
     hodlWalletResult: null, hodlOutEl: { innerHTML: "" }, hodlLastWordCache: new Map(),
     hodlBip85Note: "", hodlSpNote: "",
@@ -73,7 +77,8 @@ function raceHarness() {
     "hodlFocusWalletResult", "hodlJournalLog", "hodlSetWorkspaceError", "hodlJournalSetStatus",
     "hodlKeyManagerStatus", "hodlPsbtWipeMem", "hodlBip85WipeMem", "hodlSpWipeMem",
     "hodlLnWipeMem", "hodlRenderBip85Tabs", "hodlSyncBip85View", "hodlVanityCancel",
-    "hodlVanitySyncSource", "hodlVanitySyncControls", "hodlRefreshStationKeyPickers", "hodlRefreshMsigSessionPickers", "hodlSyncPsbtControls"])
+    "hodlVanitySyncSource", "hodlVanitySyncControls", "hodlRefreshStationKeyPickers", "hodlRefreshMsigSessionPickers", "hodlSyncPsbtControls",
+    "hodlRestoreMsig"])
     context[name] = (...args) => { effects.push([name, ...args]); };
   vm.runInContext('class HodlDerivationCancelledError extends Error {}', context);
   for (const name of ["hodlInvalidateDerivation", "hodlAssertDerivationActive", "hodlCalculateKey",
@@ -146,6 +151,25 @@ test("pagehide and persisted pageshow erase rendered word copies", () => {
     mirrors.forEach(el => { el.textContent = "secret mnemonic"; });
     events[type]({ persisted: true });
     assert.ok(mirrors.every(el => el.textContent === ""));
+  }
+});
+
+test("pagehide and persisted pageshow erase transcript-render panels and progress lines", () => {
+  // The dealt-cards strip, the worked word/number calculations and the die
+  // fairness panel each render the typed transcript back (dealt faces,
+  // per-word BIP39 indices, roll counts), and the progress lines quote a
+  // rejected word or token in an error cue. Clearing the field alone leaves
+  // those rendered copies behind.
+  const panels = ["dealt-cards", "dice-manual-calculations", "cards-manual-calculations", "number-base-calculations", "dice-fairness"];
+  const metas = ["dice-meta", "cards-meta", "entropy-meta", "seed-meta", "seed-number-meta", "private-key-meta"];
+  for (const type of ["pagehide", "pageshow"]) {
+    const { events, fields } = raceHarness();
+    // The panel containers hold child nodes; in a real DOM a textContent
+    // assignment removes them all, so the stub models rendered content as
+    // textContent.
+    for (const id of [...panels, ...metas]) fields.set(id, { textContent: `rendered transcript fragment for ${id}`, dataset: {} });
+    events[type]({ persisted: true });
+    for (const id of [...panels, ...metas]) assert.equal(fields.get(id).textContent, "", `${type} left #${id} rendered`);
   }
 });
 
@@ -331,6 +355,127 @@ test("Vanity grinder salt, matches, and running workers are cleared", () => {
   assert.match(render, /box\.style\.removeProperty\("--vanity-pass-width"\)/);
   assert.match(lifecycle, /getElementById\("vanity-error"\)/);
   assert.match(lifecycle, /vanityError\.textContent\s*=\s*""/);
+});
+
+test("dropping the vanity key pick clears the passphrase the source block showed", () => {
+  // #vanity-pass shows the picked key's BIP39 passphrase verbatim. Hiding the
+  // block when the pick is dropped (chip toggle, wipe, station change) must
+  // not leave the passphrase parked in the hidden panel.
+  const elements = new Map();
+  for (const id of ["vanity-source-block", "vanity-session-note", "vanity-source-name", "vanity-source-kind", "vanity-pass", "vanity-pass-note", "vanity-source-path", "vanity-source-lifehash"])
+    elements.set(id, { textContent: "hunter2", hidden: false, disabled: false, dataset: {} });
+  const context = vm.createContext({
+    document: {
+      getElementById: id => elements.get(id) ?? null,
+      querySelector: () => null,
+      querySelectorAll: () => [],
+    },
+    hodlVanitySource: "1",
+    hodlVanitySourceState: () => null,
+    hodlVanitySourceKeys: () => [],
+    hodlTText: (text) => text,
+    hodlKeyStationMarker: "Keys",
+    hodlPaintKeyStationNote() {},
+    hodlVanitySyncMethod() {},
+    hodlVanitySyncControls() {},
+  });
+  vm.runInContext(`${functionSource("hodlVanitySyncSource")}\nhodlVanitySyncSource();`, context);
+  assert.equal(elements.get("vanity-source-block").hidden, true, "an unpicked source block must hide");
+  assert.equal(elements.get("vanity-pass").textContent, "", "unpicking left the shown passphrase behind");
+  assert.equal(elements.get("vanity-pass-note").textContent, "", "unpicking left the passphrase note behind");
+});
+
+test("journal Lock empties the snapshot, the notepad and the session log", () => {
+  // With #journal-state-private ticked, #journal-state-text holds the whole
+  // session's recovery texts — seed words, xprvs, WIFs. And the notepad plus
+  // the session log are free text the user pasted keystrokes into. #522:
+  // a locked journal keeps none of it (#625 review follow-up).
+  const elements = new Map([
+    ["journal-state-text", { value: "24 seed words and xprvs", dataset: {} }],
+    ["journal-state-private", { checked: true, dataset: {} }],
+    ["journal-status-note", { textContent: "", dataset: {} }],
+    ["journal-notes-text", { value: "dice rolls and brain text", dataset: {} }],
+    ["journal-log-out", { textContent: "journal-unlock 12:00", dataset: {} }],
+  ]);
+  const journal = createJournal();
+  journal.pages[0].notesText = "dice rolls and brain text";
+  journal.log.push({ kind: "journal-unlock" });
+  journal.stateText = "snapshot text";
+  const context = vm.createContext({
+    document: { getElementById: id => elements.get(id) ?? null },
+    hodlJournal: journal,
+    wipeJournal,
+    hodlKeyManagerReset() {}, hodlJournalWipeNotebook() {}, hodlJournalClearFields() {},
+    hodlJournalHideEditor() {}, hodlJournalSetGate() {}, hodlJournalShowWork() {},
+    hodlSyncJournalTool() {}, hodlJournalLog() {}, hodlRenderJournalPageTabs() {},
+    hodlJournalApplyPageStyle() {}, hodlJournalResetPendingNote(field, label) { field.dataset.pendingNote = label; },
+    hodlJournalTool: "book",
+  });
+  vm.runInContext(`${functionSource("hodlJournalLock")}\nhodlJournalLock();`, context);
+  assert.equal(elements.get("journal-state-text").value, "", "Lock left the session snapshot filled");
+  assert.equal(elements.get("journal-state-private").checked, false, "Lock left the private toggle ticked");
+  assert.equal(elements.get("journal-notes-text").value, "", "Lock left the notepad filled");
+  assert.equal(elements.get("journal-log-out").textContent, "No events yet.", "Lock left the session log rendered");
+  assert.equal(journal.pages.length, 1, "Lock left notepad pages behind");
+  assert.equal(journal.pages[0].notesText, "", "Lock left notepad text behind");
+  assert.equal(journal.log.length, 0, "Lock left the session log in memory");
+  assert.equal(journal.stateText, "", "Lock left the snapshot's in-memory text");
+});
+
+test("pagehide and persisted pageshow end the PSBT session, reports included", () => {
+  // The paste fields and the session key go on page hide, but the parsed
+  // report state (hodlPsbtLast — the typed decode the inspector re-renders
+  // from) and the rendered #psbt-out/#nonce-out views stayed: a bfcache
+  // restore re-showed an inspection whose fields were already empty. The
+  // lifecycle handler inside hodlInitPsbt must end the session, not only
+  // drop the key.
+  const start = app.indexOf("function hodlInitPsbt(");
+  const init = app.slice(start, app.indexOf("\nfunction ", start + 1));
+  const sweep = init.slice(init.indexOf("let clearSecretFields"));
+  assert.match(sweep, /hodlEndPsbtSession\(\)/, "the PSBT lifecycle sweep must end the whole session");
+
+  const elements = new Map();
+  for (const id of ["psbt-out", "nonce-out"]) elements.set(id, { innerHTML: "<table>report</table>", dataset: {} });
+  for (const id of ["psbt-key", "psbt-pass", "psbt-text", "psbt-ax-transcript", "nonce-key", "nonce-pass", "nonce-text"]) elements.set(id, { value: "session material", dataset: {} });
+  const errors = [];
+  const context = vm.createContext({
+    document: { getElementById: id => elements.get(id) ?? null },
+    hodlPsbtWipeMem() {}, hodlPsbtClearNonceHistory() {},
+    hodlPsbtLast: { rvalues: ["deadbeef"] }, hodlPsbtInspected: { psbt: "stamp" },
+    hodlPsbtSessionSpec: { key: "Session key" },
+    hodlSetPsbtError: () => errors.push("psbt"), hodlSetNonceError: () => errors.push("nonce"),
+    hodlPaintPsbtSession() {}, hodlRefreshStationKeyPickers() {}, hodlSyncPsbtControls() {},
+  });
+  vm.runInContext(`${functionSource("hodlEndPsbtSession")}\nhodlEndPsbtSession();`, context);
+  assert.equal(context.hodlPsbtLast, null, "session end left the parsed report state");
+  // (vm realms: assert.keys rather than deepEqual against a home-realm {}.)
+  assert.equal(Object.keys(context.hodlPsbtInspected || {}).length, 0, "session end left run stamps");
+  assert.equal(elements.get("psbt-out").innerHTML, "", "session end left the PSBT report rendered");
+  assert.equal(elements.get("nonce-out").innerHTML, "", "session end left the nonce report rendered");
+  assert.deepEqual(errors.sort(), ["nonce", "psbt"], "session end left an error line");
+  for (const id of ["psbt-key", "psbt-pass", "psbt-text", "psbt-ax-transcript", "nonce-key", "nonce-pass", "nonce-text"])
+    assert.equal(elements.get(id).value, "", `session end left #${id} filled`);
+});
+
+test("pagehide and persisted pageshow reset every multisig tab", () => {
+  // The station is watch-only — the descriptor import refuses private keys —
+  // but a bfcache restore must not bring the session's form back: the
+  // lifecycle resets every tab the way the station's own Clear does, and
+  // re-renders the (empty) active one.
+  assert.match(lifecycle, /hodlMsigs\s*=\s*hodlMsigs\.map\(\(state\)\s*=>/);
+  assert.match(lifecycle, /state\.isLab \? hodlNewMsigLabState\(\) : hodlNewMsigState\(state\.name, state\.id, state\.number\)/);
+  assert.match(lifecycle, /hodlRestoreMsig\(\)/);
+  for (const type of ["pagehide", "pageshow"]) {
+    const { context, events } = raceHarness();
+    context.hodlMsigs = [{ isLab: false, name: "Vault", id: 7, number: 3, fields: { descriptor: "wsh(sortedmulti(1,xprv9s21ZrQH143K…/0/*))", xpubs: ["xpub661MyMwAqRbc…"] }, result: { mark: 1 } }];
+    events[type]({ persisted: type === "pageshow" });
+    const state = context.hodlMsigs[0];
+    assert.equal(state.name, "Vault", "the tab's name may not change on lifecycle reset");
+    assert.equal(state.id, 7, "the tab's id may not change on lifecycle reset");
+    assert.equal(state.fields.descriptor, "", `${type} left the descriptor in the tab state`);
+    assert.deepEqual(state.fields.xpubs, ["", "", ""], `${type} left cosigner keys in the tab state`);
+    assert.equal(state.result, null, `${type} left the derived multisig result`);
+  }
 });
 
 test("the key Wipe button drops the cached partial mnemonics", () => {
@@ -703,6 +848,10 @@ async function stationHarness(options = {}) {
     Uint8Array,
     hodlJournalWipeNotebook() {}, hodlJournalClearFields() {}, hodlJournalHideEditor() {}, hodlJournalSetGate() {},
     hodlJournalShowWork() {}, hodlSyncJournalTool() {}, hodlJournalTool: "notes",
+    // Journal Lock wipes the session notepad/log (with the real wipeJournal
+    // on a real journal object); the DOM sides are absent elements here.
+    hodlJournal: createJournal(), wipeJournal,
+    hodlRenderJournalPageTabs() {}, hodlJournalApplyPageStyle() {}, hodlJournalResetPendingNote() {},
   });
   context.document.getElementById = ((byId, note = { textContent: "" }) => (id) => id === "journal-status-note" ? note : byId(id))(context.document.getElementById);
   for (const name of ["hodlCommitDerivedKey", "hodlCloneDerivedKey", "hodlKeyWalletIdentity", "hodlInvalidateLiveKeyResult",

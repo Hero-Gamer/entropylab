@@ -4,6 +4,7 @@
 // Run with `npm test` (part of the default and CI suites).
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { addressQrButtonHtml } from "../src/js/address-qr.js";
 
 const ADDRESS = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4";
@@ -44,4 +45,27 @@ test("a payload can ask the overlay for an animated sequence", () => {
   assert.ok(psbt.includes('data-address-qr-animate="psbt"'), "the PSBT button does not ask for a sequence");
   // The kind is attribute data like any other: it escapes.
   assert.ok(addressQrButtonHtml("x", "y", { animate: '"><img src=x>' }).includes("&quot;&gt;&lt;img"), "animate kind was not escaped");
+});
+
+// The overlay is a body-level sibling of every wiped view, and the payloads
+// it carries can be an edited PSBT (base64) — key material if the PSBT holds
+// an xprv. Once the dialog goes out of scope it must keep none of it.
+// (Behavioral checks live in test/browser-suite.html; these pin the wiring.)
+test("closing the overlay releases the address text and title", () => {
+  const module = readFileSync(new URL("../src/js/address-qr.js", import.meta.url), "utf8");
+  const close = module.slice(module.indexOf("const close = () => {"), module.indexOf("const open = (target) => {"));
+  assert.match(close, /text\.textContent = ""/, "close() must clear #addr-qr-address");
+  assert.match(close, /title\.textContent = ""/, "close() must clear #addr-qr-title");
+  assert.match(close, /note\.textContent = ""/, "close() must clear #addr-qr-note");
+  assert.match(close, /image\.replaceChildren\(\)/, "close() must drop the rendered QR");
+});
+
+test("pagehide and persisted pageshow release the overlay contents", () => {
+  const module = readFileSync(new URL("../src/js/address-qr.js", import.meta.url), "utf8");
+  assert.match(module, /addEventListener\("pagehide"/, "the overlay must release on pagehide");
+  assert.match(module, /event\.persisted/, "a bfcache restore must release too");
+  const teardown = module.slice(module.indexOf("const teardown = () => {") >= 0 ? module.indexOf("const teardown = () => {") : -1, module.indexOf("addEventListener(\"pagehide\""));
+  assert.match(teardown, /text\.textContent = ""/, "the teardown must clear the address text");
+  assert.match(teardown, /title\.textContent = ""/, "the teardown must clear the title");
+  assert.match(teardown, /payload = ""/, "the teardown must drop the payload");
 });

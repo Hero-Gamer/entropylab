@@ -10456,14 +10456,10 @@ function hodlInitPsbt() {
   document.getElementById("psbt-card").addEventListener("input", hodlSyncPsbtControls);
   document.getElementById("nonce-card").addEventListener("input", hodlSyncPsbtControls);
   hodlPsbtSyncNonceHistoryControls();
-  let clearSecretFields = () => {
-    hodlPsbtWipeMem();
-    hodlPsbtClearNonceHistory(true);
-    for (let id of ["psbt-key", "psbt-pass", "nonce-key", "nonce-pass"]) {
-      let field = document.getElementById(id);
-      if (field) field.value = "";
-    }
-  };
+  // Page hide ends the whole session: the key bytes, the paste fields, and
+  // also the parsed report state and the rendered views — a bfcache restore
+  // must not re-show an inspection whose fields were just emptied.
+  let clearSecretFields = () => hodlEndPsbtSession();
   addEventListener("pagehide", clearSecretFields);
   addEventListener("pageshow", (event) => {
     if (event.persisted) clearSecretFields();
@@ -15671,8 +15667,28 @@ function hodlJournalLock() {
   hodlJournalTool = "book";
   hodlJournalShowWork();
   hodlSyncJournalTool();
+  // While the private box is ticked, the snapshot textarea holds the whole
+  // session's recovery texts; a locked journal must not keep that copy —
+  // nor the notepad or the session log, free text the session pasted
+  // keystrokes into. The journal file itself can restore the notebook, but
+  // the unlocked session's loose text stays only while it stays unlocked
+  // (#522).
+  let stateText = document.getElementById("journal-state-text");
+  if (stateText) stateText.value = "";
+  let privateBox = document.getElementById("journal-state-private");
+  if (privateBox) privateBox.checked = false;
+  wipeJournal(hodlJournal);
+  let notes = document.getElementById("journal-notes-text");
+  if (notes) {
+    notes.value = "";
+    hodlJournalResetPendingNote(notes, "Add new note");
+  }
+  hodlRenderJournalPageTabs();
+  hodlJournalApplyPageStyle();
+  let log = document.getElementById("journal-log-out");
+  if (log) log.textContent = "No events yet.";
   hodlJournalLog("journal-lock");
-  document.getElementById("journal-status-note").textContent = "Journal locked. Password and entries were cleared (best effort).";
+  document.getElementById("journal-status-note").textContent = "Journal locked. Password, entries, notepad, and session log were cleared (best effort).";
 }
 function hodlInitJournalNotebook() {
   if (!document.getElementById("journal-create")) return;
@@ -15892,6 +15908,14 @@ function hodlVanitySyncSource() {
       : hodlTText("Derive a key in {station} or BIP-85 Station first. Seed words support both grind methods; a root xprv supports the derivation grind only.", { station: hodlKeyStationMarker }));
   }
   panel.hidden = !state;
+  if (!state) {
+    // The pick was dropped; the block is hidden, and the passphrase it
+    // showed is key material — it goes with the visibility.
+    for (let id of ["vanity-pass", "vanity-pass-note"]) {
+      let el = document.getElementById(id);
+      if (el) el.textContent = "";
+    }
+  }
   let passphraseOption = document.querySelector('#vanity-method-tabs [data-vanity-method-option="passphrase"]');
   if (state) {
     let label = hodlVanityKeyLabel(state), pass = String(state.fields?.pass ?? ""), hasMnemonic = hodlResultHasSeed(state.result);
@@ -16892,6 +16916,12 @@ function hodlInitSecretFieldAutoClear() {
     hodlRevealPrivate = false;
     hodlPickedLastWord = "";
     hodlDiceCoinPositions = [];
+    // MultiSig stations hold watch-only data (the descriptor import refuses
+    // private keys), but the same restore rule applies: a bfcache restore
+    // must not bring a session's form back. Reset every tab like the
+    // station's own Clear, then re-render the (empty) active one.
+    hodlMsigs = hodlMsigs.map((state) => (state.isLab ? hodlNewMsigLabState() : hodlNewMsigState(state.name, state.id, state.number)));
+    hodlRestoreMsig();
     for (let id of ["dice", "hex", "bin", "base4", "base8", "base32", "base64", "seed", "seed-numbers", "key", "pass", "cards", "direct-cards"]) {
       let field = document.getElementById(id);
       if (field) {
@@ -16966,6 +16996,14 @@ function hodlInitSecretFieldAutoClear() {
     document.querySelectorAll(".dice-input-highlight, .dice-word-grid, #last-words, #brain-lab-hex").forEach((highlight) => {
       highlight.textContent = "";
     });
+    // The dealt-cards strip, the worked word/number calculations and the die
+    // fairness panel render the typed transcript back (card faces, per-word
+    // BIP39 indices, roll counts), and a progress line quotes the rejected
+    // word or token in an error cue. Emptying the field leaves these copies.
+    for (let id of ["dealt-cards", "dice-manual-calculations", "cards-manual-calculations", "number-base-calculations", "dice-fairness", "dice-meta", "cards-meta", "entropy-meta", "seed-meta", "seed-number-meta", "private-key-meta"]) {
+      let panel = document.getElementById(id);
+      if (panel) panel.textContent = "";
+    }
     // Copy buttons keep the phrase/child secret in a data attribute.
     document.querySelectorAll("[data-phrase]").forEach((button) => button.removeAttribute("data-phrase"));
     hodlLastWordCache.clear(); // cached partial mnemonic phrases

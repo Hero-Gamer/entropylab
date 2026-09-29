@@ -90,10 +90,11 @@ test("the words, entropy hex and seed hex are produced on request and match BIP3
   assert.equal(api.hodlResultSeedHex(imported), null);
 });
 
-// The hidden view masks each word at the same width and each hex value at
-// its length; the revealed view is the value. Both are rendered with the
-// unchanged primitives around the independently computed values, in the
-// order the card has always used: words, SeedQR, passphrase, entropy, seed.
+// The hidden view masks each word at the same width, each hex value at its
+// length and the passphrase at the fixed placeholder (its length would
+// narrow a search for it); the revealed view is the value. Both are rendered
+// with the unchanged primitives around the independently computed values, in
+// the order the card has always used: words, SeedQR, passphrase, entropy, seed.
 test("the recovery fields render the same, hidden and revealed", async () => {
   // The QR renderer is the uqr package, which the slice loader does not import.
   const view = await load(["hodlSeedRecoveryFields", "hodlSeedPhraseField", "hodlSeedQrExport", "hodlPrivateFieldHtml"], { hodlUqrRenderSvg: renderSVG }, ["hodlRevealPrivate"]);
@@ -103,7 +104,7 @@ test("the recovery fields render the same, hidden and revealed", async () => {
       const expected = [
         view.hodlSeedPhraseField(`Your seed phrase \xB7 ${vector.words.split(" ").length} words`, vector.words),
         view.hodlSeedQrExport(vector.words, { passphraseUsed: true, entropyHex: vector.entropy }),
-        view.hodlPrivateFieldHtml("BIP39 passphrase", vector.pass),
+        view.hodlPrivateFieldHtml("BIP39 passphrase", revealed ? vector.pass : ""),
         view.hodlPrivateFieldHtml("BIP39 entropy hex", vector.entropy),
         view.hodlPrivateFieldHtml("Master seed hex", vector.seed),
       ].join("");

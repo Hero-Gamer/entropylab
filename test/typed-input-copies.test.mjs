@@ -163,9 +163,10 @@ test("the revealed passphrase is exactly what the wallet was derived with", asyn
   assert.notEqual(rootOf("\uFEFF"), rootOf(""));
 });
 
-// Hidden, each field is a mask as long as the value (a passphrase counts its
-// characters) and revealed it is the value, both rendered with the unchanged
-// private-field primitive around the independently known text. (The full card
+// Hidden, each field is a mask as long as the value (a passphrase shows the
+// fixed placeholder, whatever its length) and revealed it is the value, both
+// rendered with the unchanged private-field primitive around the independently
+// known text. (The full card
 // is covered by the rendered page comparison against rock, which the PR
 // records.)
 test("the passphrase, the pasted key and the card render the same, hidden and revealed", async () => {
@@ -179,7 +180,7 @@ test("the passphrase, the pasted key and the card render the same, hidden and re
     // A leading U+FEFF is part of the passphrase and shows as typed.
     for (const pass of [...PASSPHRASES, "\uFEFFTREZOR", "\uFEFF"]) {
       const fields = view.hodlSeedRecoveryFields(await seedWallet(pass));
-      assert.equal(fields[2], field("BIP39 passphrase", pass), `${state}: passphrase "${pass}"`);
+      assert.equal(fields[2], field("BIP39 passphrase", revealed ? pass : ""), `${state}: passphrase "${pass}"`);
     }
     for (const entry of PASTED) {
       const [label, text, , , prefix, core] = entry, wallet = await pastedWallet(entry);

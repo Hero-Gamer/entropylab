@@ -7,7 +7,8 @@
 // listener behind that keeps the old form and the key it showed; a BIP-85
 // child holds its secret only as bytes, building the text only to show, copy
 // or use it; and a finished vanity grind keeps no copy of the passphrase.
-// What each station shows, copies and derives does not change.
+// What each station shows, copies and derives does not change, except that a
+// hidden BIP-39 child shows its word count and no longer its length.
 //
 // Expected values: the published BIP39 vectors (trezor/python-mnemonic), the
 // BIP-84 vector wallet (its words are the all-zero entropy's, the words a
@@ -17,8 +18,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { HDKey as ScureHDKey } from "@scure/bip32";
-import { mnemonicToSeedSync } from "@scure/bip39";
-import { sha256 } from "@noble/hashes/sha2.js";
+import { entropyToMnemonic, mnemonicToSeedSync } from "@scure/bip39";
+import { wordlist as bip39English } from "@scure/bip39/wordlists/english.js";
+import { hmac } from "@noble/hashes/hmac.js";
+import { sha256, sha512 } from "@noble/hashes/sha2.js";
 import { HDKey as AppHDKey } from "../src/js/hdkey.js";
 import * as bip85 from "../src/js/bip85.js";
 import { createHash, randomBytes } from "node:crypto";
@@ -80,7 +83,7 @@ const vanityStation = await load(["hodlVanityClearResults"], {
   stubs: { hodlRenderVanityOut: () => {}, hodlVanitySetStatus: () => {}, hodlVanitySyncControls: () => {} },
   settable: ["hodlVanityGrinder", "hodlVanityRunning"],
 });
-const station = await load(["hodlRenderLastWordPicker", "hodlBip85SessionKeyState", "hodlResultMnemonic", "hodlSeedSessionRoot", "hodlResultRootXprv", "hodlResultRootNode", "hodlSinglePrivateKey", "hodlBip85ChildFingerprint", "hodlRenderBip85Out", "hodlBip85WipeMem"], {
+const station = await load(["hodlRenderLastWordPicker", "hodlBip85SessionKeyState", "hodlResultMnemonic", "hodlSeedSessionRoot", "hodlResultRootXprv", "hodlResultRootNode", "hodlSinglePrivateKey", "hodlBip85ChildFingerprint", "hodlRenderBip85Out", "hodlBip85WipeMem", "hodlSeedPhraseField"], {
   stubs: { hodlFillKeyTabLifehash: () => {} },
   settable: ["hodlBip85Children", "hodlActiveBip85", "hodlBip85Reveal"],
 });
@@ -327,8 +330,10 @@ for (const [name, spec, secret, entropyHex] of BIP85_CHILDREN) {
     assert.equal(child.entropyHex, entropyHex);
   });
 
-  test(`BIP-85 ${name}: the hidden mask length is the secret's, found without the text`, () => {
-    assert.equal(bip85.bip85SecretLength?.(deriveChild(spec)), Array.from(secret).length);
+  // A phrase has no length to mask at: its length would narrow its words, so
+  // the view masks it word by word instead (below).
+  test(`BIP-85 ${name}: the hidden mask length is the secret's fixed length, found without the text`, () => {
+    assert.equal(bip85.bip85SecretLength?.(deriveChild(spec)), spec.app === "bip39" ? 0 : Array.from(secret).length);
   });
 
   test(`BIP-85 ${name}: wiping the child zeroes every byte it holds and empties its text`, () => {
@@ -390,9 +395,10 @@ for (const [name, spec, secret, entropyHex] of BIP85_CHILDREN) {
   });
 }
 
-// The station view: hidden, it shows a mask as long as the secret (at least
-// 12) and never builds the text; revealed, it shows exactly the child. Reads
-// of the child's text are counted, wherever the child keeps it.
+// The station view: hidden, it masks a secret at its fixed length (at least
+// 12), a phrase word by word, and never builds the text; revealed, it shows
+// exactly the child. Reads of the child's text are counted, wherever the
+// child keeps it.
 function renderChild(document, spec, reveal) {
   document.body.innerHTML = '<div id="bip85-out"></div>';
   const state = childState(spec), reads = { secret: 0, entropyHex: 0 };
@@ -416,7 +422,8 @@ for (const [name, spec, secret, entropyHex] of BIP85_CHILDREN) {
       assert.deepEqual(reads, { secret: 0, entropyHex: 0 }, "the hidden view built the text");
       assert.equal(out.textContent.includes(secret) || out.textContent.includes(entropyHex), false);
       const masks = out.querySelectorAll("[aria-hidden=true]").map((node) => node.textContent).filter((text) => /^\u2022+$/.test(text)).map((text) => text.length);
-      assert.deepEqual(masks, [Math.max(Array.from(secret).length, 12), Math.max(entropyHex.length, 12)]);
+      // A phrase mask has a space between words, so only the entropy is here.
+      assert.deepEqual(masks, spec.app === "bip39" ? [Math.max(entropyHex.length, 12)] : [Math.max(Array.from(secret).length, 12), Math.max(entropyHex.length, 12)]);
     } finally {
       leave();
     }
@@ -434,6 +441,42 @@ for (const [name, spec, secret, entropyHex] of BIP85_CHILDREN) {
     }
   });
 }
+
+// A hidden BIP-39 child shows its word count, which the station form already
+// shows, and nothing of its words: a mask as long as the phrase narrowed them.
+// It masks exactly as the Key Station masks a hidden phrase. The children are
+// computed with the reference libraries (the first is the published vector),
+// and their lengths differ.
+const referenceChild = (words, index) => {
+  const node = ScureHDKey.fromExtendedKey(BIP85_PARENT).derive(`m/83696968'/39'/0'/${words}'/${index}'`);
+  const entropy = hmac(sha512, new TextEncoder().encode("bip-entropy-from-k"), node.privateKey).slice(0, words * 4 / 3);
+  return entropyToMnemonic(entropy, bip39English);
+};
+// The first mask in a view: bullets, and spaces between masked words.
+const firstMask = (root) => root.querySelectorAll("[aria-hidden=true]").map((node) => node.textContent).find((text) => /^\u2022[\u2022 ]*$/.test(text));
+test("BIP-85: a hidden BIP-39 child shows its word count and nothing of its words", () => {
+  const document = page();
+  try {
+    for (const words of [12, 24]) {
+      const phrases = [0, 1, 2, 3].map((index) => referenceChild(words, index));
+      if (words === 12) assert.equal(phrases[0], BIP85_CHILDREN[0][2]);
+      assert.ok(new Set(phrases.map((phrase) => phrase.length)).size > 1, "the children must differ in length");
+      const masks = phrases.map((phrase, index) => {
+        const reads = renderChild(document, { app: "bip39", words, index }, false), out = document.getElementById("bip85-out");
+        assert.equal(reads.secret, 0, `${words} words, index ${index}: the hidden view built the phrase`);
+        assert.ok(!out.textContent.includes(phrase), `${words} words, index ${index}: the view shows the phrase`);
+        return firstMask(out);
+      });
+      assert.equal(new Set(masks).size, 1, `${words} words: the mask depends on the words (${masks.map((mask) => mask.length).join(", ")} characters)`);
+      document.body.innerHTML = station.hodlSeedPhraseField("Your seed phrase", phrases[0]);
+      const keyStation = firstMask(document.body);
+      assert.equal(keyStation.split(" ").length, words);
+      assert.equal(masks[0], keyStation, `${words} words: the child is not masked as the Key Station masks a phrase`);
+    }
+  } finally {
+    leave();
+  }
+});
 
 // ---- A finished vanity grind keeps no copy of the passphrase ---------------
 

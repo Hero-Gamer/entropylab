@@ -164,3 +164,67 @@ test("the notices carry no storage, no links, and role=alert", async () => {
   assert.equal(typeof globalThis.localStorage, "undefined", "the test environment itself must not offer storage unexpectedly");
   assert.doesNotMatch(source, /localStorage|sessionStorage|indexedDB/i, "the module must not persist dismissal");
 });
+
+// ── Integration: the real handlers reach the notices (#631 review) ─────────
+// The module tests above pin the state machine; these drive production
+// handlers so a success path that skips its notice call is caught.
+
+// BIP32 test vector 1, chain m (published): a valid root xprv.
+const VECTOR1_XPRV = "xprv9s21ZrQH143K3QTDL4LXw2F7HEK3wJUD2nW2nRk4stbPy6cq3jPPqjiChkVvvNKmPGJxWUtg6LnF5kejMRNNU3TGtRBeJgk33yuGBxrMPHi";
+
+test("every successful PSBT session-key import records private material; a rejected one does not", async () => {
+  const { loadAppFunctions } = await import("./app-slice-harness.mjs");
+  const inert = new Proxy(function () {}, { get: (target, key) => key === Symbol.toPrimitive ? () => "" : key === "then" ? undefined : inert, apply: () => inert, construct: () => inert });
+  Object.assign(globalThis, { __ENTROPYLAB_TEST_HOOKS__: false, document: inert, window: inert });
+  let accepted = 0;
+  const { hodlLoadPsbtKey } = await loadAppFunctions(["hodlLoadPsbtKey"], { stubs: { sessionNoticePrivateMaterialAccepted: () => accepted++ } });
+  hodlLoadPsbtKey(VECTOR1_XPRV, "");
+  assert.equal(accepted, 1, "a root xprv session key skipped the pre-session notice");
+  hodlLoadPsbtKey("KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn", "");
+  assert.equal(accepted, 2, "a WIF session key skipped the pre-session notice");
+  hodlLoadPsbtKey("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", "");
+  assert.equal(accepted, 3, "a seed-phrase session key skipped the pre-session notice");
+  assert.throws(() => hodlLoadPsbtKey("not a key", ""));
+  assert.equal(accepted, 3, "a rejected key recorded private material");
+});
+
+test("Lightning copies of the entropy and root xprv fire the clipboard notice; the node pubkey stays quiet", async () => {
+  const placed = [], listeners = {}, elements = new Map();
+  const fakeEl = (id) => ({
+    id, value: "", textContent: "", innerHTML: "", hidden: false, dataset: {}, children: [], listeners: {},
+    setAttribute() {}, append(...kids) { this.children.push(...kids); }, remove() {},
+    addEventListener(type, callback) { this.listeners[type] = callback; },
+    insertAdjacentElement(_position, element) { placed.push(element); },
+  });
+  for (const id of ["ln-go", "ln-wipe", "ln-format", "ln-network", "ln-out", "ln-session", "beta-warning"]) elements.set(id, fakeEl(id));
+  // Decoded aezeed entropy is 16 bytes (32 hex): the classifier alone cannot
+  // see it, so the control must say it is secret.
+  elements.set("ln-entropy", Object.assign(fakeEl("ln-entropy"), { textContent: "0".repeat(32) }));
+  elements.set("ln-root-xprv", Object.assign(fakeEl("ln-root-xprv"), { textContent: VECTOR1_XPRV }));
+  elements.set("ln-node-pubkey", Object.assign(fakeEl("ln-node-pubkey"), { textContent: "02" + "1".repeat(64) }));
+  const copied = [];
+  Object.assign(globalThis, {
+    document: {
+      getElementById: (id) => elements.get(id) ?? null,
+      createElement: () => fakeEl(""),
+      addEventListener: (type, callback) => { listeners[type] = callback; },
+      body: { prepend: (element) => placed.push(element) },
+    },
+    addEventListener: (type, callback) => { listeners[type] = callback; },
+  });
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { clipboard: { writeText: async (text) => { copied.push(text); } } } });
+  const { initSessionNotices } = await import("../src/js/session-notices.js");
+  const { hodlInitLn } = await import("../src/js/lightning.js");
+  initSessionNotices();
+  hodlInitLn();
+  const copy = (target) => elements.get("ln-out").listeners.click({ target: { closest: () => ({ dataset: { lnCopy: target } }) } });
+  const clipboardNotices = () => placed.filter((element) => element.dataset.noticeKind === "clipboard").length;
+  copy("ln-node-pubkey");
+  assert.equal(clipboardNotices(), 0, "copying the public node key fired the clipboard notice");
+  copy("ln-entropy");
+  assert.equal(clipboardNotices(), 1, "copying the decoded aezeed entropy skipped the clipboard notice");
+  listeners.pagehide({}); // a fresh page session re-arms the once-per-session notice
+  copy("ln-root-xprv");
+  assert.equal(clipboardNotices(), 2, "copying the root xprv skipped the clipboard notice");
+  assert.equal(copied.length, 3, "the notice must never block the copy");
+});

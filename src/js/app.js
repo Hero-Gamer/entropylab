@@ -10218,6 +10218,7 @@ function hodlLoadPsbtKey(text, passphrase) {
         hodlPsbtHd = parsed.node;
         hodlPsbtSessionSpec = { key: "Session key: {prefix}. Kept in page memory only.", vars: { prefix: parsed.prefix || "xprv" } };
         hodlPsbtSource = "manual";
+        sessionNoticePrivateMaterialAccepted();
         return;
       }
     } catch {
@@ -15734,6 +15735,7 @@ function hodlJournalCommit() {
   }
 }
 function hodlJournalLock() {
+  sessionNoticeSessionEnded();
   hodlKeyManagerReset();
   hodlJournalWipeNotebook();
   hodlJournalClearFields();

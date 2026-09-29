@@ -414,8 +414,12 @@ test("journal Lock empties the snapshot, the notepad and the session log", () =>
   journal.pages[0].notesText = "dice rolls and brain text";
   journal.log.push({ kind: "journal-unlock" });
   journal.stateText = "snapshot text";
+  let sessionEnded = 0;
   const context = vm.createContext({
     ...noticeStubs,
+    // Lock is a user-requested teardown of private material: it owes the
+    // post-session reminder like every station wipe (#631 review).
+    sessionNoticeSessionEnded() { sessionEnded++; },
     document: { getElementById: id => elements.get(id) ?? null },
     hodlJournal: journal,
     wipeJournal,
@@ -434,6 +438,7 @@ test("journal Lock empties the snapshot, the notepad and the session log", () =>
   assert.equal(journal.pages[0].notesText, "", "Lock left notepad text behind");
   assert.equal(journal.log.length, 0, "Lock left the session log in memory");
   assert.equal(journal.stateText, "", "Lock left the snapshot's in-memory text");
+  assert.equal(sessionEnded, 1, "Lock did not end the session for the post-session reminder");
 });
 
 test("pagehide and persisted pageshow end the PSBT session, reports included", () => {

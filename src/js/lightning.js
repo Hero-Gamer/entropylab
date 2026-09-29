@@ -24,7 +24,7 @@ import { aezeedDecode, BITCOIN_GENESIS_TIMESTAMP } from "./aezeed.js";
 import { wordlist as bip39English } from "./bip39-english.js";
 import { hex } from "./coders.js";
 import { t } from "./i18n.js";
-import { sessionNoticePrivateMaterialAccepted, sessionNoticeSecretCopyText, sessionNoticeSessionEnded } from "./session-notices.js";
+import { sessionNoticePrivateMaterialAccepted, sessionNoticeSecretCopied, sessionNoticeSessionEnded } from "./session-notices.js";
 
 // ── Derivations (DOM-free, unit-tested directly) ────────────────────────────
 
@@ -252,7 +252,9 @@ export function hodlInitLn({ journalLog } = {}) {
     if (!button) return;
     const node = document.getElementById(button.dataset.lnCopy);
     if (!node) return;
-    sessionNoticeSecretCopyText(node.textContent || ""); // a revealed root xprv
+    // The entropy (16 bytes, the BIP32 master seed) is too short for the
+    // shape classifier, so the controls say which copies are secret.
+    if (button.dataset.lnCopy !== "ln-node-pubkey") sessionNoticeSecretCopied();
     navigator.clipboard?.writeText(node.textContent || "").catch(() => {});
   });
   document.getElementById("ln-session").textContent = hodlLnNote;

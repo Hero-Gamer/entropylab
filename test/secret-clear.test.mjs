@@ -352,6 +352,34 @@ test("Vanity grinder salt, matches, and running workers are cleared", () => {
   assert.match(lifecycle, /vanityError\.textContent\s*=\s*""/);
 });
 
+test("dropping the vanity key pick clears the passphrase the source block showed", () => {
+  // #vanity-pass shows the picked key's BIP39 passphrase verbatim. Hiding the
+  // block when the pick is dropped (chip toggle, wipe, station change) must
+  // not leave the passphrase parked in the hidden panel.
+  const elements = new Map();
+  for (const id of ["vanity-source-block", "vanity-session-note", "vanity-source-name", "vanity-source-kind", "vanity-pass", "vanity-pass-note", "vanity-source-path", "vanity-source-lifehash"])
+    elements.set(id, { textContent: "hunter2", hidden: false, disabled: false, dataset: {} });
+  const context = vm.createContext({
+    document: {
+      getElementById: id => elements.get(id) ?? null,
+      querySelector: () => null,
+      querySelectorAll: () => [],
+    },
+    hodlVanitySource: "1",
+    hodlVanitySourceState: () => null,
+    hodlVanitySourceKeys: () => [],
+    hodlTText: (text) => text,
+    hodlKeyStationMarker: "Keys",
+    hodlPaintKeyStationNote() {},
+    hodlVanitySyncMethod() {},
+    hodlVanitySyncControls() {},
+  });
+  vm.runInContext(`${functionSource("hodlVanitySyncSource")}\nhodlVanitySyncSource();`, context);
+  assert.equal(elements.get("vanity-source-block").hidden, true, "an unpicked source block must hide");
+  assert.equal(elements.get("vanity-pass").textContent, "", "unpicking left the shown passphrase behind");
+  assert.equal(elements.get("vanity-pass-note").textContent, "", "unpicking left the passphrase note behind");
+});
+
 test("the key Wipe button drops the cached partial mnemonics", () => {
   // Runs the real hodlWipeActiveKey. The cache keys are near-complete seeds,
   // so the wipe must clear them itself rather than wait for pagehide, and it

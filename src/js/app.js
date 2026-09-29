@@ -15892,6 +15892,14 @@ function hodlVanitySyncSource() {
       : hodlTText("Derive a key in {station} or BIP-85 Station first. Seed words support both grind methods; a root xprv supports the derivation grind only.", { station: hodlKeyStationMarker }));
   }
   panel.hidden = !state;
+  if (!state) {
+    // The pick was dropped; the block is hidden, and the passphrase it
+    // showed is key material — it goes with the visibility.
+    for (let id of ["vanity-pass", "vanity-pass-note"]) {
+      let el = document.getElementById(id);
+      if (el) el.textContent = "";
+    }
+  }
   let passphraseOption = document.querySelector('#vanity-method-tabs [data-vanity-method-option="passphrase"]');
   if (state) {
     let label = hodlVanityKeyLabel(state), pass = String(state.fields?.pass ?? ""), hasMnemonic = hodlResultHasSeed(state.result);

@@ -409,12 +409,10 @@ words, pick one of the checksum words.</span></span>
           <p class="key-summary-meta" id="msig-summary-script"></p>
           <div class="msig-summary-cosigners" id="msig-summary-cosigners" hidden></div>
         </div>
-        <div class="row key-summary-edit">
-          <button class="btn secondary" id="msig-edit-inputs" type="button">Edit Input</button>
-          <button class="btn secondary" id="msig-duplicate" type="button">Duplicate</button>
-        </div>
+        <button class="btn secondary key-summary-edit" id="msig-edit-inputs" type="button">Edit Input</button>
       </div>
       <div class="msig-lab" id="msig-lab">
+      <p class="edge-note is-public" id="msig-edit-note" role="status" hidden></p>
       <details class="msig-import" id="msig-import" open>
         <summary>Import existing multisig wallet</summary>
         <label class="field"><span class="muted label-value">Paste a wallet-exported multisig descriptor here — the quorum, script type, key order, and co-signer xpubs will be filled in below.</span>
@@ -510,6 +508,7 @@ words, pick one of the checksum words.</span></span>
       <p class="field-note address-estimate derivation-estimate edge-note is-muted" id="msig-address-estimate" role="status">Measuring this device…</p>
       <p class="edge-note is-private msig-spec-warning" id="msig-spec-warning" role="status" hidden></p>
       <div class="row current-item-actions tool-actions">
+        <button class="btn primary" id="msig-update" type="button" aria-describedby="msig-edit-note msig-script-warning msig-spec-warning" hidden disabled aria-disabled="true">Update Existing Multisig</button>
         <button class="btn primary" id="msig-go" type="button" aria-describedby="msig-script-warning msig-spec-warning" disabled aria-disabled="true">Derive Multisig</button>
         <div class="derive-progress" id="msig-derive-progress" role="progressbar" aria-label="Multisig derivation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete" hidden><span class="derive-progress-track"><span class="derive-progress-bar"></span></span><span class="derive-progress-label">0%</span></div>
         <button class="btn red clear-current-action" id="msig-wipe" type="button" disabled aria-disabled="true">Clear Current Multisig</button>

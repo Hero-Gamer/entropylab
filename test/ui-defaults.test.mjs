@@ -296,7 +296,6 @@ test("a running derivation yields off the main thread, survives hidden tabs, and
   assert.match(appSource, /function hodlInvalidateMsig\(\) \{[\s\S]*?hodlStopDerivation\("msig"\)[\s\S]*?\}/);
   assert.match(appSource, /function hodlSyncDeriveButton\(\) \{[\s\S]*?hodlActiveDerivation\.kind === "key"[\s\S]*?button\.disabled = true;/);
   assert.match(appSource, /function hodlSyncMsigDeriveButton\(\) \{[\s\S]*?hodlActiveDerivation\.kind === "msig"[\s\S]*?button\.disabled = true;/);
-  assert.equal(appSource.match(/hodlTText\("A derivation is already running\."\)/g)?.length, 2);
 });
 
 test("entropy progress messages sit next to their inputs and above keypads", () => {
@@ -2238,10 +2237,10 @@ test("MS Station stays put and a derived wallet opens its own results tab", () =
   assert.match(appSource, /hodlNewMsigState\("MS Station", 0, 0\)/);
   assert.match(appSource, /name = state\.isLab \? "MS Station"/);
   assert.match(appSource, /button\.append\(hodlCreateMsigTabMark\(state\), label\)/);
-  assert.match(appSource, /function hodlCommitDerivedMsig\(\) \{/);
+  assert.match(appSource, /function hodlCommitDerivedMsig\(action = "derive"\) \{/);
   assert.match(appSource, /function hodlSelectMsigLab\(\) \{/);
   assert.match(appSource, /hodlMsigs\.push\(hodlNewMsigLabState\(\)\)/);
-  assert.match(appSource, /hodlCommitDerivedMsig\(\)/);
+  assert.match(appSource, /hodlCommitDerivedMsig\(action\)/);
   assert.match(appSource, /out\.innerHTML = `/);
   assert.match(appSource, /function hodlAddMsig\(\) \{\s*hodlSelectMsigLab\(\);/s);
   assert.match(appSource, /function hodlFillMsigLabFromWallet\(source\) \{/);

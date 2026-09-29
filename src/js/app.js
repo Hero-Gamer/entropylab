@@ -2560,10 +2560,10 @@ function hodlAssertDerivationActive(generation, control) {
   if (generation !== hodlDerivationGeneration || control?.cancelled) throw new HodlDerivationCancelledError();
 }
 function hodlDerivationButton(kind) {
-  return document.getElementById(kind === "msig" ? "msig-go" : "go");
+  let id = hodlActiveDerivation?.kind === kind ? hodlActiveDerivation.buttonId : null;
+  return document.getElementById(id || (kind === "msig" ? "msig-go" : "go"));
 }
-function hodlSetDerivationButtonState(kind, state) {
-  let button = hodlDerivationButton(kind);
+function hodlSetDerivationButtonState(kind, state, button = hodlDerivationButton(kind)) {
   if (!button) return;
   if (state === "running") {
     if (!button.dataset.derivationWidth) {
@@ -2585,7 +2585,9 @@ function hodlSetDerivationButtonState(kind, state) {
     button.setAttribute("aria-label", kind === "msig" ? hodlTText("Stopping multisig derivation") : hodlTText("Stopping key derivation"));
     button.dataset.derivationState = "stopping";
   } else {
-    button.textContent = kind === "msig" ? hodlTText("Derive Multisig") : hodlTText("Derive Key");
+    let label = hodlTText("Derive Key");
+    if (kind === "msig") label = button.id === "msig-update" ? hodlTText("Update Existing Multisig") : hodlMsigs[hodlActiveMsig]?.editSourceId != null ? hodlTText("Derive New Multisig") : hodlTText("Derive Multisig");
+    button.textContent = label;
     button.removeAttribute("aria-label");
     delete button.dataset.derivationState;
     delete button.dataset.derivationWidth;
@@ -2664,7 +2666,7 @@ function hodlStopDerivation(kind) {
   hodlActiveDerivation.cancelled = true;
   hodlSetDerivationButtonState(kind, "stopping");
 }
-function hodlHandleDerivationButton(kind, derive) {
+function hodlHandleDerivationButton(kind, derive, buttonId) {
   if (hodlActiveDerivation) {
     hodlStopDerivation(kind);
     return;
@@ -2680,16 +2682,17 @@ function hodlHandleDerivationButton(kind, derive) {
       return;
     }
   }
-  return hodlDeriveWithProgress(kind, derive);
+  return hodlDeriveWithProgress(kind, derive, buttonId);
 }
-async function hodlDeriveWithProgress(kind, derive) {
+async function hodlDeriveWithProgress(kind, derive, buttonId) {
   if (hodlActiveDerivation) return;
   let multisig = kind === "msig", progress = document.getElementById(multisig ? "msig-derive-progress" : "derive-progress");
-  let control = { kind, cancelled: false, rowKeys: [], nodes: [] };
+  let control = { kind, buttonId, cancelled: false, rowKeys: [], nodes: [] };
   hodlActiveDerivation = control;
   hodlResetDerivationProgress(kind, false);
   hodlSetDerivationButtonState(kind, "running");
-  (multisig ? hodlSyncDeriveButton : hodlSyncMsigDeriveButton)();
+  hodlSyncDeriveButton();
+  hodlSyncMsigDeriveButton();
   try {
     await hodlDerivationPause();
     await hodlDerivationPause();
@@ -2707,8 +2710,8 @@ async function hodlDeriveWithProgress(kind, derive) {
     else throw error;
   } finally {
     hodlSettleDerivationKeys(control);
-    if (hodlActiveDerivation === control) hodlActiveDerivation = null;
     hodlSetDerivationButtonState(kind, "idle");
+    if (hodlActiveDerivation === control) hodlActiveDerivation = null;
     hodlSyncDeriveButton();
     hodlSyncMsigDeriveButton();
   }
@@ -7802,9 +7805,24 @@ function hodlUpdateMsigPurposeDetection() {
   return { purposes, mixed, purpose };
 }
 function hodlSyncMsigDeriveButton() {
-  let button = document.getElementById("msig-go");
+  let button = document.getElementById("msig-go"), update = document.getElementById("msig-update");
   if (!button) return;
+  let lab = hodlMsigs[hodlActiveMsig], editing = lab?.isLab && lab.editSourceId != null;
+  let source = editing ? hodlMsigs.find((state) => !state.isLab && state.id === lab.editSourceId) : null;
+  let note = document.getElementById("msig-edit-note");
+  if (note) {
+    note.hidden = !editing;
+    note.textContent = editing ? source ? hodlTText("The inputs below have been populated from {name}. You can update the existing multisig or derive a new multisig below.", { name: source.name }) : hodlTText("The multisig that supplied these inputs was deleted. You can still derive a new multisig below.") : "";
+  }
+  if (update) update.hidden = !editing;
   if (hodlActiveDerivation) {
+    let active = hodlDerivationButton("msig");
+    for (let peer of [button, update]) {
+      if (!peer || peer === active && hodlActiveDerivation.kind === "msig") continue;
+      peer.disabled = true;
+      peer.setAttribute("aria-disabled", "true");
+      peer.title = hodlTText("A derivation is already running.");
+    }
     if (hodlActiveDerivation.kind === "msig") {
       hodlSetDerivationButtonState("msig", hodlActiveDerivation.cancelled ? "stopping" : "running");
       return;
@@ -7815,7 +7833,8 @@ function hodlSyncMsigDeriveButton() {
     button.title = hodlTText("A derivation is already running.");
     return;
   }
-  hodlSetDerivationButtonState("msig", "idle");
+  hodlSetDerivationButtonState("msig", "idle", button);
+  hodlSetDerivationButtonState("msig", "idle", update);
   // A refusal that belongs to the wallet, not one card (co-signers on
   // different specs, or BIP45 beside Custom), leaves every card looking
   // valid: say it on the page above Derive, since a disabled button's title
@@ -7837,6 +7856,11 @@ function hodlSyncMsigDeriveButton() {
   button.disabled = !ready;
   button.setAttribute("aria-disabled", String(!ready));
   button.title = ready ? "" : reason;
+  if (update) {
+    update.disabled = !ready || !source;
+    update.setAttribute("aria-disabled", String(update.disabled));
+    update.title = !source ? hodlTText("The original multisig is no longer available.") : ready ? "" : reason;
+  }
 }
 function hodlUpdateMsigScriptDetection() {
   if (!document.getElementById("msig-script-tabs")) return hodlSummarizeMultisigScriptKinds([]);
@@ -9195,6 +9219,7 @@ function hodlInitMsig() {
   }));
   hodlResetMsigForm();
   hodlElement("#msig-go").onclick = () => hodlHandleDerivationButton("msig", hodlBuildMsig);
+  hodlElement("#msig-update").onclick = () => hodlHandleDerivationButton("msig", (progress) => hodlBuildMsig(progress, "update"), "msig-update");
   hodlElement("#msig-wipe").onclick = hodlWipeActiveMsig;
   document.getElementById("msig-descriptor-import")?.addEventListener("click", hodlImportMsigDescriptor);
   document.getElementById("msig-descriptor")?.addEventListener("input", () => {
@@ -9316,7 +9341,7 @@ function hodlValidatedMsigInputs() {
   let customWarning = customCosigners.length ? hodlTText("Custom spec: co-signer paths not checked against a spec ({list}). Keep the descriptor with every seed backup: a wallet restoring from the seeds alone will not find these addresses.", { list: customCosigners.join(", ") }) : "";
   return { network, coinType, count, addressStart, branchStart, branchRange, hardening, n, m, kind, purpose, legacyStandard, nodes, xpubs, keyTokens, accountSummary, accountWarning, customWarning, specCustom: customCosigners.length > 0 };
 }
-async function hodlBuildMsig(progress) {
+async function hodlBuildMsig(progress, action = "derive") {
   let generation = hodlDerivationGeneration, control = hodlActiveDerivation;
   let error = document.getElementById("msig-error");
   hodlSetWorkspaceError("msig", null);
@@ -9394,7 +9419,7 @@ async function hodlBuildMsig(progress) {
     hodlCaptureMsig();
     hodlJournalLog("derive", hodlWalletResult.m && hodlWalletResult.n ? `${hodlWalletResult.m}-of-${hodlWalletResult.n}` : "msig");
     hodlSnapshotMsigSummary();
-    hodlCommitDerivedMsig();
+    hodlCommitDerivedMsig(action);
     hodlFocusWalletResult();
     return true;
   } catch (exception) {
@@ -13411,7 +13436,7 @@ function hodlSnapshotMsigSummary(state = hodlMsigs[hodlActiveMsig]) {
   state.createdPolicy = hodlMsigPolicyName(state.result);
   state.createdScript = hodlMsigScriptLabel(state.result.script);
   state.createdNetwork = state.result.network || "";
-  // The co-signers in descriptor order, kept with the rest of the
+  // The co-signers as the script orders them, kept with the rest of the
   // summary so the view keeps naming what was derived after the form moves on.
   state.createdCosigners = Array.isArray(state.result.scriptOrder) ? state.result.scriptOrder.slice() : [];
 }
@@ -13430,16 +13455,16 @@ function hodlPaintMsigSummary() {
   if (cosigners) {
     // Each key the multisig needs, named by its master fingerprint and its
     // LifeHash: the same pair the pickers and the key tabs identify a key by.
-    // Both policies list the descriptor's inputs with their exported paths.
-    // sortedmulti sorts the derived public keys separately at each address.
-    let entries = state?.createdCosigners || state?.result?.scriptOrder || [];
+    // Under multi the order is part of the script, so the keys stack in that
+    // order, each with the path it was exported at.
+    let entries = state?.createdCosigners || state?.result?.scriptOrder || [], listed = state?.result?.sorted === false;
+    cosigners.classList.toggle("is-listed", listed);
     let heading = document.createElement("p");
     heading.className = "label msig-summary-cosigners-label";
     heading.textContent = hodlTText("Co-signers");
     cosigners.replaceChildren(heading, ...entries.map((entry) => {
       let item = document.createElement("span"), image = document.createElement("img"), label = document.createElement("code");
       item.className = "msig-summary-cosigner";
-      item.dataset.msigCosigner = String(entry.position);
       image.className = "key-tab-lifehash";
       image.width = 22;
       image.height = 22;
@@ -13447,12 +13472,11 @@ function hodlPaintMsigSummary() {
       image.hidden = true;
       if (entry.fingerprint) hodlFillKeyTabLifehash(image, entry.fingerprint);
       label.textContent = entry.fingerprint || "";
-      if (entry.path) {
+      if (listed && entry.path) {
         let text = document.createElement("span"), path = document.createElement("code");
         text.className = "msig-summary-cosigner-text";
         path.className = "msig-summary-cosigner-path";
         path.textContent = "m/" + hodlDisplayDerivationPath(entry.path);
-        path.dataset.msigCosignerPath = "";
         text.append(label, path);
         let order = document.createElement("span");
         order.className = "msig-summary-cosigner-order";
@@ -13464,8 +13488,6 @@ function hodlPaintMsigSummary() {
     cosigners.hidden = !entries.length;
   }
   if (edit) edit.onclick = hodlEditMsigInputs;
-  let duplicate = document.getElementById("msig-duplicate");
-  if (duplicate) duplicate.onclick = hodlDuplicateMsigInputs;
 }
 function hodlSyncMsigResultView() {
   let card = document.getElementById("msig-card"), lab = document.getElementById("msig-lab"), summary = document.getElementById("msig-summary"), result = hodlMsigHasResult();
@@ -13503,7 +13525,7 @@ function hodlMsigIdentity(state) {
   let fields = state?.fields || {};
   return [fields.m, fields.n, fields.script, ...(Array.isArray(fields.xpubs) ? fields.xpubs : [])].join("|");
 }
-function hodlCommitDerivedMsig() {
+function hodlCommitDerivedMsig(action = "derive") {
   let lab = hodlMsigs[hodlActiveMsig];
   if (!lab?.isLab || !lab.result || lab.result.kind !== "msig") {
     hodlRenderMsigTabs();
@@ -13511,7 +13533,10 @@ function hodlCommitDerivedMsig() {
     return hodlActiveMsig;
   }
   let identity = hodlMsigIdentity(lab);
-  let existing = lab.duplicateOnDerive ? -1 : hodlMsigs.findIndex((state) => !state.isLab && hodlMsigIdentity(state) === identity);
+  let existing = -1;
+  if (action === "update") existing = hodlMsigs.findIndex((state) => !state.isLab && state.id === lab.editSourceId);
+  else if (lab.editSourceId == null) existing = hodlMsigs.findIndex((state) => !state.isLab && hodlMsigIdentity(state) === identity);
+  if (action === "update" && existing < 0) throw new Error(hodlTText("The original multisig is no longer available. Derive a new multisig instead."));
   if (existing >= 0) {
     hodlMsigs[existing] = hodlCloneDerivedMsig(lab, hodlMsigs[existing]);
     hodlMsigs[hodlActiveMsig] = hodlNewMsigLabState();
@@ -13541,7 +13566,7 @@ function hodlFillMsigLabFromWallet(source) {
   let labIndex = hodlMsigs.findIndex((state) => state.isLab);
   let existing = labIndex >= 0 ? hodlMsigs[labIndex] : hodlNewMsigLabState();
   let lab = hodlCloneDerivedMsig(source, existing);
-  Object.assign(lab, { isLab: true, duplicateOnDerive: false, name: "MS Station", result: null, error: "", createdPolicy: "", createdScript: "", createdNetwork: "" });
+  Object.assign(lab, { isLab: true, editSourceId: source.id, name: "MS Station", result: null, error: "", createdPolicy: "", createdScript: "", createdNetwork: "" });
   if (labIndex < 0) {
     hodlMsigs.unshift(lab);
     labIndex = 0;
@@ -13557,11 +13582,6 @@ function hodlEditMsigInputs() {
   }
   hodlCaptureMsig();
   hodlSelectMsig(hodlFillMsigLabFromWallet(hodlMsigs[hodlActiveMsig]));
-}
-function hodlDuplicateMsigInputs() {
-  if (!hodlMsigHasResult()) return;
-  hodlEditMsigInputs();
-  hodlMsigs[hodlActiveMsig].duplicateOnDerive = true;
 }
 function hodlMsigStateNeedsClear(state) {
   if (!state) return !1;

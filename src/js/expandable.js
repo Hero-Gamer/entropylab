@@ -78,11 +78,31 @@ export const initExpandable = () => {
   const text = overlay.querySelector("#exp-text"), apply = overlay.querySelector("#exp-apply");
   let cell = null;
 
+  // A cell value can hold an entire previous transaction, or a pasted PSBT
+  // carrying an xprv in a proprietary field; once the dialog is out of scope
+  // (closed, or the page going away) it keeps none of it.
+  const release = () => {
+    text.value = "";
+    overlay.querySelector("#exp-title").textContent = "";
+    overlay.querySelector("#exp-meta").textContent = "";
+  };
   const close = () => {
     overlay.hidden = true;
+    release();
     cell?.focus({ preventScroll: true });
     cell = null;
   };
+  // The overlay is a body-level sibling of every wiped view, so station and
+  // editor wipes cannot reach it; it tears itself down with the page.
+  const teardown = () => {
+    overlay.hidden = true;
+    release();
+    cell = null;
+  };
+  addEventListener("pagehide", teardown);
+  addEventListener("pageshow", (event) => {
+    if (event.persisted) teardown();
+  });
   const open = (target) => {
     cell = target;
     const value = target.dataset.exp ?? "";

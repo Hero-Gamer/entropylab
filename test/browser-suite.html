@@ -4057,6 +4057,11 @@
     assert(document.getElementById("exp-text").readOnly && document.getElementById("exp-apply").hidden, "key cell opened editable");
     document.getElementById("exp-text").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     assert(overlay.hidden, "Escape did not close the overlay");
+    // A closed overlay keeps none of the expanded value: the field can carry
+    // an entire previous transaction or a pasted xprv.
+    equal(document.getElementById("exp-text").value, "", "closed overlay still holds the full value");
+    equal(document.getElementById("exp-title").textContent, "", "closed overlay still holds the title");
+    equal(document.getElementById("exp-meta").textContent, "", "closed overlay still holds the size meta");
     input(box, "");
     document.getElementById("psbted-wipe").click();
     document.querySelector('#workspace [data-workspace="calc"]').click();

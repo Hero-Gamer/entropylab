@@ -8380,12 +8380,39 @@ function hodlMsigSessionKeyOption(state) {
     return { state, value: "", baseId: "" };
   }
 }
-function hodlMsigUsedBaseKeyIds(exceptRow = null) {
+function hodlMsigSessionKeyMatches(option, parsed) {
+  if (!parsed || !option.baseId) return false;
+  if (option.baseId === hodlMsigBaseKeyId(parsed)) return true;
+  let result = option.state.result;
+  if (!parsed.origin || parsed.origin.fingerprint !== result.masterFingerprint) return false;
+  // An edited origin changes the account key. Prove its session root by
+  // both public key and chain code; a fingerprint alone is not identity.
+  let root = null, seed = null, current = null;
+  try {
+    if (hodlResultHasRoot(result)) root = hodlResultRootNode(result);
+    else if (result.mnemonic) {
+      seed = hodlMnemonicToSeed(result.mnemonic, "");
+      root = hodlHDKey.fromMasterSeed(seed);
+    } else return false;
+    current = root.derive("m/" + parsed.origin.path.replace(/h/g, "'"));
+    return hodlEq(current.publicKey, parsed.node.publicKey) && hodlEq(current.chainCode, parsed.node.chainCode);
+  } catch {
+    return false;
+  } finally {
+    current?.wipePrivateData();
+    root?.wipePrivateData();
+    hodlWipeBytes(seed);
+  }
+}
+function hodlMsigUsedBaseKeyIds(exceptRow = null, options = []) {
   let used = new Set();
   document.querySelectorAll("#msig-keys .msig-key-row").forEach((row) => {
     if (row === exceptRow) return;
     let parsed = hodlParseMsigRowKey(row);
-    if (parsed) used.add(hodlMsigBaseKeyId(parsed));
+    if (parsed) {
+      used.add(hodlMsigBaseKeyId(parsed));
+      for (let option of options) if (hodlMsigSessionKeyMatches(option, parsed)) used.add(option.baseId);
+    }
   });
   return used;
 }
@@ -8671,8 +8698,7 @@ function hodlPickMsigSessionKey(option, row) {
     hodlMsigKeyStatus(row, false, hodlTText("That key has no compatible multisig export for the selected script type."));
     return;
   }
-  let parsed = hodlParseMsigRowKey(row), currentBaseId = parsed ? hodlMsigBaseKeyId(parsed) : "";
-  let deselect = option.baseId && option.baseId === currentBaseId;
+  let parsed = hodlParseMsigRowKey(row), deselect = hodlMsigSessionKeyMatches(option, parsed);
   // A reused key arrives as exported; the co-signer's own path then sets it
   // apart, re-deriving the key for a new account or appending a public step.
   // The card keeps its spec: a key exported under another one is re-derived
@@ -8700,12 +8726,12 @@ function hodlMsigBaseKeyId(parsed) {
 function hodlRefreshMsigSessionPickers() {
   let options = hodlSessionMsigKeys().map(hodlMsigSessionKeyOption), reuse = Boolean(document.getElementById("msig-reuse-session-keys")?.checked);
   document.querySelectorAll("#msig-keys .msig-key-row").forEach((row) => {
-    let box = row.querySelector(".msig-session-keys"), parsed = hodlParseMsigRowKey(row), currentBaseId = parsed ? hodlMsigBaseKeyId(parsed) : "", usedElsewhere = hodlMsigUsedBaseKeyIds(row);
+    let box = row.querySelector(".msig-session-keys"), parsed = hodlParseMsigRowKey(row), usedElsewhere = hodlMsigUsedBaseKeyIds(row, options);
     if (!box) return;
     box.replaceChildren();
     box.hidden = !options.length;
     options.forEach((option) => {
-      let active = Boolean(option.baseId) && option.baseId === currentBaseId;
+      let active = hodlMsigSessionKeyMatches(option, parsed);
       let unavailable = !reuse && !active && Boolean(option.baseId) && usedElsewhere.has(option.baseId);
       box.appendChild(hodlCreateMsigSessionKeyButton(option, "msig-session-key", active, unavailable, () => hodlPickMsigSessionKey(option, row), (fingerprint, selected, used) => used ? `Key ${fingerprint} is already selected for another co-signer` : `${selected ? "Remove" : "Use"} key ${fingerprint} ${selected ? "from" : "for"} this co-signer`));
     });

@@ -149,6 +149,25 @@ test("pagehide and persisted pageshow erase rendered word copies", () => {
   }
 });
 
+test("pagehide and persisted pageshow erase transcript-render panels and progress lines", () => {
+  // The dealt-cards strip, the worked word/number calculations and the die
+  // fairness panel each render the typed transcript back (dealt faces,
+  // per-word BIP39 indices, roll counts), and the progress lines quote a
+  // rejected word or token in an error cue. Clearing the field alone leaves
+  // those rendered copies behind.
+  const panels = ["dealt-cards", "dice-manual-calculations", "cards-manual-calculations", "number-base-calculations", "dice-fairness"];
+  const metas = ["dice-meta", "cards-meta", "entropy-meta", "seed-meta", "seed-number-meta", "private-key-meta"];
+  for (const type of ["pagehide", "pageshow"]) {
+    const { events, fields } = raceHarness();
+    // The panel containers hold child nodes; in a real DOM a textContent
+    // assignment removes them all, so the stub models rendered content as
+    // textContent.
+    for (const id of [...panels, ...metas]) fields.set(id, { textContent: `rendered transcript fragment for ${id}`, dataset: {} });
+    events[type]({ persisted: true });
+    for (const id of [...panels, ...metas]) assert.equal(fields.get(id).textContent, "", `${type} left #${id} rendered`);
+  }
+});
+
 test("pagehide and persisted pageshow drop the dice previousValue leftover", () => {
   // #423 leftover: the wipe blanked dice.value and left dataset.previousValue
   // holding the rolls. That is the raw entropy the visible field just lost.

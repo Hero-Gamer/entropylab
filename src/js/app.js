@@ -16966,6 +16966,14 @@ function hodlInitSecretFieldAutoClear() {
     document.querySelectorAll(".dice-input-highlight, .dice-word-grid, #last-words, #brain-lab-hex").forEach((highlight) => {
       highlight.textContent = "";
     });
+    // The dealt-cards strip, the worked word/number calculations and the die
+    // fairness panel render the typed transcript back (card faces, per-word
+    // BIP39 indices, roll counts), and a progress line quotes the rejected
+    // word or token in an error cue. Emptying the field leaves these copies.
+    for (let id of ["dealt-cards", "dice-manual-calculations", "cards-manual-calculations", "number-base-calculations", "dice-fairness", "dice-meta", "cards-meta", "entropy-meta", "seed-meta", "seed-number-meta", "private-key-meta"]) {
+      let panel = document.getElementById(id);
+      if (panel) panel.textContent = "";
+    }
     // Copy buttons keep the phrase/child secret in a data attribute.
     document.querySelectorAll("[data-phrase]").forEach((button) => button.removeAttribute("data-phrase"));
     hodlLastWordCache.clear(); // cached partial mnemonic phrases

@@ -132,12 +132,32 @@ export const initAddressQr = (renderQr, icons = {}, { frames = null } = {}) => {
     clearInterval(frameTimer);
     frameTimer = 0;
     note.textContent = "";
+    // The payload can be an edited PSBT: no textual copy stays either.
+    title.textContent = "";
+    text.textContent = "";
     image.replaceChildren(); // drop the rendered QR so a closed overlay holds no stale address
     payload = "";
     resetCopied();
     button?.focus({ preventScroll: true });
     button = null;
   };
+  // The overlay is a body-level sibling of every wiped view, so station and
+  // editor wipes cannot reach it; it tears itself down with the page.
+  const teardown = () => {
+    overlay.hidden = true;
+    clearInterval(frameTimer);
+    frameTimer = 0;
+    note.textContent = "";
+    title.textContent = "";
+    text.textContent = "";
+    image.replaceChildren();
+    payload = "";
+    button = null;
+  };
+  addEventListener("pagehide", teardown);
+  addEventListener("pageshow", (event) => {
+    if (event.persisted) teardown();
+  });
   const open = (target) => {
     const value = target.dataset.addressQr ?? "";
     if (!value) return;

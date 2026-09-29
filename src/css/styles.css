@@ -2410,8 +2410,8 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    a place you are, not an action you take. */
 .current-item-actions { align-items: center; width: 100%; }
 .current-item-actions .clear-current-action { margin-inline-start: auto; }
-.btn.primary[data-derivation-state="running"],
-.btn.primary[data-derivation-state="stopping"] {
+.btn:is(.primary, .secondary)[data-derivation-state="running"],
+.btn:is(.primary, .secondary)[data-derivation-state="stopping"] {
   background: var(--danger); border-color: var(--danger); color: #fff;
 }
 .derive-progress {
@@ -2437,6 +2437,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* Descriptor import comes before manual policy setup: importing establishes
    the policy, while skipping it leaves the quorum controls editable. */
 .msig-import { margin: 0 0 var(--space-section); padding: 0 0 var(--space-component); border-bottom: 1px solid var(--border); }
+#msig-edit-note { --edge-note-space-before: 0px; --edge-note-space-after: var(--space-component); }
 .msig-import textarea { min-height: 72px; }
 /* An edge note that opens a disclosure's revealed content takes no gap above
    it — whether it sits straight under the summary or inside the first field. */
@@ -2781,7 +2782,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    the privacy bar can hide (the groups with the eye), green everywhere else.
    Each note supplies only its colour. */
 .edge-note {
-  margin: var(--space-component) 0 0; padding: 12px 14px; border: 0; border-left: 3px solid var(--edge-note-color, var(--border));
+  margin: var(--edge-note-space-before, var(--space-component)) 0 var(--edge-note-space-after, 0); padding: 12px 14px; border: 0; border-left: 3px solid var(--edge-note-color, var(--border));
   font-size: 14px; line-height: 1.5;
   /* Lift the ground a little before tinting it: on pure black a mix this
      faint is invisible, and on pure white it has nowhere to go. */

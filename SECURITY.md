@@ -9,8 +9,8 @@ always use the latest version, available from the
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.1.3   | :white_check_mark: |
-| < 0.1.3 | :x:                |
+| 1.0.0   | :white_check_mark: |
+| < 1.0.0 | :x:                |
 
 ## Security Considerations
 
@@ -70,11 +70,24 @@ material. Its security posture rests on the following model:
   release its entire WASM instance.
 - Clearing a Key or Multisig station invalidates pending derivation work.
   Pagehide and persisted-page restoration also invalidate derivations and
-  clear rendered seed-word grids, checksum choices, and brain-lab hex.
-  Journal teardown (including Lock) invalidates pending notebook and Key
-  Manager imports at both file-read and decryption boundaries. Obsolete
-  completions cannot restore cleared state; this is not guaranteed erasure
-  of immutable strings or browser-managed memory.
+  clear rendered seed-word grids, checksum choices, and brain-lab hex — and
+  the secondary renderings of a typed transcript: the dealt-cards strip, the
+  "show calculations" work-outs, the die-fairness panel, and the progress
+  lines (which quote a rejected word or token in an error cue). The same
+  boundary ends the whole PSBT/Nonce session (key bytes, paste fields, the
+  parsed report and its rendered views), resets every Multisig tab, and the
+  two body-level overlays — the expand editor (whose value can be an entire
+  previous transaction) and the QR dialog — release their contents on close
+  and on page hide because station wipes cannot reach them. Locking the
+  Journal empties the session's unsecured text: the snapshot (which can
+  hold the whole session's recovery texts), the notepad, and the session
+  log; the notebook's own entries come back from the journal file on
+  unlock. The
+  Vanity source block drops the passphrase it displayed the moment the key
+  pick is dropped. Journal teardown (including Lock) invalidates pending
+  notebook and Key Manager imports at both file-read and decryption
+  boundaries. Obsolete completions cannot restore cleared state; this is
+  not guaranteed erasure of immutable strings or browser-managed memory.
 - Secret byte buffers are overwritten after use, on a best-effort basis. The
   WASM bindings zero every linear-memory buffer before freeing it
   (`el_free`/`psbt_free` use volatile writes) and erase their own secret
@@ -84,21 +97,35 @@ material. Its security posture rests on the following model:
   including temporary BIP32 serialized key/chain-code views after master
   derivation, child derivation, and extended-key import (also on failure).
   Returned HDKey nodes keep independent copies; this cleanup does not wipe
-  caller-owned seed buffers. The layer also clears intermediate BIP32 path
-  nodes, per-address child keys, and the
+  caller-owned seed buffers. A derived wallet, a BIP-85 child, and each
+  station's copy of a key hold their secrets only as byte arrays and HDKey
+  nodes; words, WIF, xprv and hex text are built only where a secret is
+  shown, copied or exported, or where a tool takes it as text. The layer also
+  clears intermediate BIP32 path nodes, per-address child keys, and the
   PSBT/BIP-85/Silent-Payments session roots when a session ends or the page
-  unloads. The limits are structural: JavaScript strings and DOM values
-  (displayed seed phrases, WIF keys, typed input) cannot be overwritten, only
-  dereferenced — the "(best effort)" the UI already states — and heap copies
+  unloads (when `pagehide` fires, which browsers do not guarantee). The
+  limits are structural: JavaScript strings, BigInts and DOM values
+  (revealed secrets, typed input) cannot be overwritten, only dereferenced
+  — the "(best effort)" the UI already states — and heap copies
   made inside dependency types that expose no erase (HMAC engines,
-  `bip39::Mnemonic`) remain until their memory is reused. Stack copies are
+  `bip39::Mnemonic`) remain until their memory is reused; the PSBT module
+  adds pair-level residues of that class, inside rust-bitcoin's parsed
+  structures and serde_json's value trees (its exports do wipe the
+  whole-document copies — the assembled inspection JSON and the rebuilt PSBT
+  bytes — before returning, and the suite scans for that; the small per-pair
+  copies inside the dependencies remain until heap reuse).
+  [What the page can and cannot erase](#what-the-page-can-and-cannot-erase)
+  lists each case in plain language. Stack copies are
   handled separately: Rust frames spill arguments and temporaries into the
   WASM shadow stack, which lives in linear memory and is not erased when a
-  frame returns, so the loader wraps every export to zero the whole stack
-  region once per task after any export ran (the Node suite asserts BIP39
-  entropy, the PBKDF2 passphrase salt, HMAC and hash inputs, and WIF keys are
-  absent from linear memory once the task settles). None of this protects
-  against a compromised machine.
+  frame returns, so the loaders of both the crypto module and the PSBT module
+  wrap every export to zero the whole stack region once per task after any
+  export ran (the Node suite asserts BIP39 entropy, the PBKDF2 passphrase
+  salt, HMAC and hash inputs, and WIF keys are absent from linear memory once
+  the task settles, and for the PSBT module that its stack region is zeroed
+  and that the two whole-document copies its exports assemble — the
+  inspection JSON and the rebuilt PSBT bytes — are gone once the task
+  settles). None of this protects against a compromised machine.
 - The on-screen result of any derivation can only be as trustworthy as the
   code that produced it. Review the source, build from `src/`, and test the
   tool with published vectors before relying on it.
@@ -251,6 +278,79 @@ material. Its security posture rests on the following model:
 - Material involving loss of funds (incorrect derivations, exfiltration of
   secret data, injected script execution in the generated HTML, unexpected
   network egress) is treated as a security issue.
+
+## What the page can and cannot erase
+
+EntropyLab overwrites the secrets it holds once you are done with them, on a
+best-effort basis, but a web page cannot erase everything it touches. This
+is where the line is.
+
+**What the page erases.** While a key is loaded, the page holds its secrets as
+bytes it can overwrite: the seed's entropy and seed, private keys, HD key
+nodes, and a BIP39 passphrase or mini key you typed. Each station that uses
+the key holds a copy of its own, kept the same way. Clearing a key, clearing
+a station or ending its session overwrites those bytes with zeros; a key two
+tabs share is overwritten once neither uses it. Leaving or closing the page
+does the same when the browser runs the page's cleanup, which it does not
+always do: a mobile browser that ends a tab in the background, or a browser
+that crashes, skips it. That same cleanup ends the PSBT/Nonce session
+completely (its reports included), resets every Multisig form, and empties
+the panels that echo what you typed (dealt cards, the worked calculations,
+the fairness tally, the progress lines) and the two dialogs (the value
+editor and the QR view) — the dialogs also drop their contents the moment
+you close them. Locking the Journal empties the session snapshot, the
+notepad, and the session log; what an unlock restores is the notebook the
+journal file holds, nothing looser. The WebAssembly modules overwrite every
+buffer passed in or out and their working stacks after they run, and the
+PSBT module also wipes the whole-file copies its exports assemble. Vanity
+shuts its workers and their module down when a run ends. The
+browser can still make copies of its own while it manages memory, which the
+page cannot reach.
+
+**What the page cannot erase.** Some copies stay in the browser's memory
+until the browser reuses that memory. The page can let go of them, but
+cannot overwrite them:
+
+- Text you type or paste. A field's value is text, and the browser's editor,
+  undo history, spell checker and on-screen keyboard may keep copies of their
+  own.
+- Text the page builds from a secret: revealed seed words, WIFs, xprvs and
+  hex, SeedQR, the recovery sheet, downloads, and what a copy button puts on
+  the clipboard. The few tools that take the words as text build them too:
+  the Silent Payments key field, the Vanity passphrase grind, and the
+  Journal.
+- The Journal and the Key Manager. The notepad and every entry are text, and
+  so is a file once it is decrypted.
+- JavaScript numbers. The Silent Payments calculations turn a key into a
+  `BigInt`, and briefly into hex text.
+- Copies made inside the libraries the WebAssembly modules use, where the
+  library offers no way to erase them (HMAC engines, `bip39::Mnemonic`, and
+  the per-pair copies rust-bitcoin and serde_json make while the PSBT module
+  parses or rebuilds a file).
+
+Other copies are outside the browser, where the page cannot reach them at
+all. They can outlast the page and the browser, and some outlast a restart:
+
+- The clipboard. It belongs to the operating system. Clipboard history
+  (Win+V), cloud clipboard sync, Apple's Universal Clipboard and clipboard
+  managers keep their own copies, possibly on other devices, and EntropyLab
+  cannot remove them.
+- Anything the operating system writes to disk. Swap, hibernation and crash
+  dumps can hold a copy of the browser's memory, and no web page can prevent
+  or erase that. Deleting the hibernation file afterwards does not reliably
+  erase it on an SSD.
+
+**What to do about it.**
+
+- For real funds, use a dedicated computer that stays offline, with full-disk
+  encryption on and hibernation off before you load a key.
+- Avoid the clipboard for secrets where you can. If you use it, turn off
+  clipboard history and sync first.
+- When you are done, close the browser and restart the computer. That is a
+  precaution, not a guarantee: a restart does not erase memory, and its
+  contents can survive a short power-off.
+- None of this protects a computer that is already compromised: malware or a
+  malicious browser extension can read a secret as you type it.
 
 ## Reporting a Vulnerability
 

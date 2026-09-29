@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { HDKey } from "@scure/bip32";
-import { validateMnemonic } from "@scure/bip39";
+import { entropyToMnemonic, validateMnemonic } from "@scure/bip39";
 import { wordlist as bip39English } from "@scure/bip39/wordlists/english.js";
 import { hex as hexCoder } from "@scure/base";
 import {
@@ -224,8 +224,8 @@ test("the mnemonic load path follows the session network like the xprv path", ()
     throw new Error(name);
   };
   const hodlUseKeyForBip85 = new Function(
-    "hodlBip85WipeParent", "hodlMnemonicToSeed", "hodlHDKey", "hodlWipeBytes", "hodlNetworkFamily", "hodlParseExtendedKey", "hodlResultRootNode",
-    `${slice("hodlNetworkFamily")}; ${slice("hodlResultHasSeed")}; ${slice("hodlSeedSessionRoot")}; ${slice("hodlUseKeyForBip85")}; return hodlUseKeyForBip85;`,
+    "hodlBip85WipeParent", "hodlMnemonicToSeed", "hodlHDKey", "hodlWipeBytes", "hodlNetworkFamily", "hodlParseExtendedKey", "hodlResultRootNode", "hodlEntropyToMnemonic", "hodlBip39Wordlist",
+    `${slice("hodlNetworkFamily")}; ${slice("hodlResultHasSeed")}; ${slice("hodlResultMnemonic")}; ${slice("hodlSeedSessionRoot")}; ${slice("hodlUseKeyForBip85")}; return hodlUseKeyForBip85;`,
   )(
     () => {},
     () => new Uint8Array(64), // a stand-in seed; only the flag is under test
@@ -233,9 +233,12 @@ test("the mnemonic load path follows the session network like the xprv path", ()
     (bytes) => bytes.fill(0),
     undefined, // hodlNetworkFamily is sliced in
     undefined, // hodlParseExtendedKey is not reached by the mnemonic branch
-    undefined, // hodlResultRootNode is not reached: these results carry words, not a root node
+    undefined, // hodlResultRootNode is not reached: these results carry seed entropy, not a root node
+    entropyToMnemonic,
+    bip39English,
   );
-  const state = (network) => ({ id: "k1", name: "test", fields: { pass: "" }, result: { kind: "hd", mnemonic: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", network } });
+  // A seed key as a station session carries it: its BIP39 entropy as bytes (#546 B3).
+  const state = (network) => ({ id: "k1", name: "test", fields: { pass: "" }, result: { kind: "hd", entropy: new Uint8Array(16), network } });
   hodlUseKeyForBip85(state("testnet"));
   assert.equal(globalThis.hodlBip85Testnet, true, "a testnet mnemonic session must yield testnet-version children");
   hodlUseKeyForBip85(state("mainnet"));

@@ -7,7 +7,7 @@ offline, air-gapped use. It converts user-supplied entropy, seed phrases, and
 private keys into wallet recovery information without intentionally sending
 sensitive data to a server.
 
-Current version: **v0.1.3**
+Current version: **v1.0.0**
 
 Official website: [entropylab.online](https://entropylab.online)
 
@@ -307,9 +307,10 @@ the limits of browser-memory cleanup.
   changes. Clicking that selected key removes it; using it on another
   co-signer still requires opting into key reuse and distinct derivation paths.
   On a derived multisig, **Edit Input** loads its inputs into MS Station.
-  **Update Existing Multisig** replaces that source tab after successful
-  derivation; **Derive New Multisig** creates a separate tab and preserves
-  existing multisigs, even when the inputs are identical.
+  **Derive New Multisig** creates a separate tab and preserves existing
+  multisigs, even when the inputs are identical. The secondary action,
+  **Update Existing Multisig**, replaces that source tab after successful
+  derivation.
   Multisig tabs display their saved names, including renames; updating an
   existing multisig preserves its name, and the edit note identifies it by
   its current tab name.

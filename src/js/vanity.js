@@ -383,6 +383,9 @@ export class VanityGrinder {
 
   #terminate() {
     this.wipe?.();
+    // A run shares one scope among its closures, and it holds the passphrase
+    // as text: once the key bytes are zeroed, nothing keeps it (#546 B3).
+    this.wipe = null;
     for (const worker of this.workers) worker.terminate();
     for (const url of this.urls) URL.revokeObjectURL(url);
     this.workers = [];

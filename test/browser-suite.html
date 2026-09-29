@@ -1160,6 +1160,40 @@
     document.getElementById("wipe").click();
   });
 
+  // #546 B3: a wiped key's bytes are zeroed, and a station handed them would
+  // read the all-zero wallet, whose keys are public. Wipe withdraws the key
+  // from every station's key picker.
+  await test("wiping a Key Station key withdraws it from every station's key picker", async () => {
+    const pickers = ["bip85-session-keys", "sp-session-keys", "psbt-session-keys", "nonce-session-keys", "vanity-session-keys", "msig-keys"];
+    const offered = (id) => [...document.querySelectorAll(`#${id} [data-key-id]`)].map((chip) => chip.dataset.keyId);
+    const before = new Set(pickers.flatMap(offered));
+    let keyId = null;
+    try {
+      document.querySelector('#workspace [data-workspace="calc"]').click();
+      await until(() => !document.getElementById("key-manager").hidden, "key workspace");
+      chooseSeedWords(12);
+      await chooseMode("Seed phrase");
+      input(document.getElementById("seed"), "legal winner thank year wave sausage worth useful legal winner thank yellow");
+      await until(() => !document.getElementById("go").disabled, "Derive Key to enable");
+      document.getElementById("go").click();
+      keyId = await until(() => offered("sp-session-keys").find((id) => !before.has(id)), "the derived key in the SP picker");
+      for (const id of pickers.slice(0, 5)) assert(offered(id).includes(keyId), `#${id} did not offer the derived key`);
+      await until(() => !document.getElementById("wipe").disabled, "Wipe to enable");
+      document.getElementById("wipe").click();
+      await wait(0);
+      for (const id of pickers) assert(!offered(id).includes(keyId), `#${id} still offers the wiped key`);
+    } finally {
+      // Leave the Key Station as the tests that follow expect it, even when
+      // this one fails: the derived key's tab (active since it was derived)
+      // goes, and the length returns to 24 words.
+      if (keyId) {
+        await until(() => !document.getElementById("delete-key").disabled, "Delete current key to enable");
+        document.getElementById("delete-key").click();
+      }
+      chooseSeedWords(24);
+    }
+  });
+
   await test("Base64 uses the shared case, number, and symbol keyboard", async () => {
     chooseSeedWords(24);
     await chooseMode("Number bases");
@@ -3405,6 +3439,10 @@
     equal(document.getElementById("addr-qr-note").textContent, "", "a small PSBT was split into a sequence");
     document.getElementById("addr-qr-close").click();
     await until(() => document.getElementById("addr-qr-overlay").hidden, "PSBT QR overlay did not close");
+    // A closed overlay keeps no copy of the payload, seen or shortened.
+    equal(document.getElementById("addr-qr-address").textContent, "", "closed overlay still holds the payload text");
+    equal(document.getElementById("addr-qr-title").textContent, "", "closed overlay still holds the payload title");
+    equal(document.getElementById("addr-qr-image").children.length, 0, "closed overlay still holds the rendered QR");
     // The consensus layer reports on the loaded file (this vector is clean),
     // and the Insane editing switch sits at the top of the card, off.
     const insaneToggle = document.getElementById("psbted-insane");
@@ -4023,6 +4061,11 @@
     assert(document.getElementById("exp-text").readOnly && document.getElementById("exp-apply").hidden, "key cell opened editable");
     document.getElementById("exp-text").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     assert(overlay.hidden, "Escape did not close the overlay");
+    // A closed overlay keeps none of the expanded value: the field can carry
+    // an entire previous transaction or a pasted xprv.
+    equal(document.getElementById("exp-text").value, "", "closed overlay still holds the full value");
+    equal(document.getElementById("exp-title").textContent, "", "closed overlay still holds the title");
+    equal(document.getElementById("exp-meta").textContent, "", "closed overlay still holds the size meta");
     input(box, "");
     document.getElementById("psbted-wipe").click();
     document.querySelector('#workspace [data-workspace="calc"]').click();
@@ -5419,7 +5462,12 @@
     assert(!note.hidden && note.textContent.trim(), "Editing did not identify the populated inputs");
     assert(note.textContent.includes("Household savings"), "The edit note did not use the source tab name");
     assert(!update.hidden && !update.disabled && !go.disabled, "Editing did not offer both derivation actions");
-    assert(update.compareDocumentPosition(go) & Node.DOCUMENT_POSITION_FOLLOWING, "Update did not precede Derive New");
+    assert(go.compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING, "Derive New did not precede Update");
+    equal(getComputedStyle(update).backgroundColor, getComputedStyle(document.getElementById("msig-edit-inputs")).backgroundColor, "Update did not use the secondary action treatment");
+    assert(getComputedStyle(update).backgroundColor !== getComputedStyle(go).backgroundColor, "The two edit actions were styled alike");
+    const noteStyle = getComputedStyle(note);
+    equal(parseFloat(noteStyle.marginTop), 0, "The edit note added space above the card's padding");
+    equal(parseFloat(noteStyle.marginBottom), parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--space-component")), "The edit note did not leave the shared component gap below");
     equal(document.getElementById("msig-x-0").value, decorated.match(/\]([^/]+)/)[1], "Editing changed the co-signer key");
     equal(document.getElementById("msig-address-start").value, originalStart, "Editing changed the address window");
     equal(walletTabs().length, originalCount, "Editing committed a tab before derivation");

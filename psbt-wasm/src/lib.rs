@@ -101,6 +101,14 @@ unsafe fn wipe(ptr: *mut u8, len: usize) {
     std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
 }
 
+/// Volatile-zero an owned byte buffer before it deallocates: a dropped Vec
+/// keeps its contents readable until the heap cell is reused, and the buffers
+/// wiped this way can hold a whole pasted PSBT or its JSON form.
+fn wipe_vec(bytes: &mut Vec<u8>) {
+    // Soundness: writes stay within the Vec's owned `len` bytes.
+    unsafe { wipe(bytes.as_mut_ptr(), bytes.len()) };
+}
+
 /// Copies the last error message into `out` (two-call convention: null `out`
 /// returns the required capacity). Returns the byte length, 0 when there is
 /// no error, or -1 (and a fresh "buffer too small" error) when `out` is
@@ -133,7 +141,15 @@ pub unsafe extern "C" fn psbt_inspect(
     clear_error();
     let input = std::slice::from_raw_parts(in_ptr, in_len);
     match inspect(input) {
-        Ok(json) => write_out(json.as_bytes(), out, out_cap),
+        // The finished JSON names every pair value in the file, including a
+        // proprietary field's pasted xprv; into_bytes reowns the String's
+        // allocation so the dropped copy leaves nothing behind.
+        Ok(json) => {
+            let mut bytes = json.into_bytes();
+            let written = write_out(&bytes, out, out_cap);
+            wipe_vec(&mut bytes);
+            written
+        }
         Err(message) => set_error(message),
     }
 }
@@ -151,7 +167,13 @@ pub unsafe extern "C" fn psbt_build(
     clear_error();
     let input = std::slice::from_raw_parts(in_ptr, in_len);
     match build(input) {
-        Ok(bytes) => write_out(&bytes, out, out_cap),
+        // The finished file keeps whatever the pasted or edited PSBT
+        // carried; wipe the owned copy before it deallocates.
+        Ok(mut bytes) => {
+            let written = write_out(&bytes, out, out_cap);
+            wipe_vec(&mut bytes);
+            written
+        }
         Err(message) => set_error(message),
     }
 }

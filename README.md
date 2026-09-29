@@ -303,6 +303,9 @@ the limits of browser-memory cleanup.
   descriptor checksum, receive address 0) so every signer can verify the
   policy before funding, and a BIP 388 wallet policy (template + xpubs) for
   wallets that register policies. Calculator export, not a generator.
+- MS Station keeps a session key selected when its co-signer derivation path
+  changes. Clicking that selected key removes it; using it on another
+  co-signer still requires opting into key reuse and distinct derivation paths.
 - An optional **Sync entropy across methods** checkbox (off by default) keeps
   direct dice, card, number-base, seed-word, and private-key representations in
   sync while input is entered. Each destination waits for enough bits to emit

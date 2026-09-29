@@ -4843,6 +4843,9 @@
     input(accountStep(rows[1]), "1'");
     const accountOneKey = second.value;
     assert(/^m\/\d+'\/\d+'\/1'/.test(secondPath.value) && accountOneKey !== first.value && /^[A-Za-z]pub/.test(accountOneKey), `Changing the account step did not re-derive the co-signer key (${secondPath.value})`);
+    const selectedSessionKeyId = secondOption.dataset.keyId;
+    const selectedSessionChip = () => rows[1].querySelector(`[data-key-id="${selectedSessionKeyId}"]`);
+    equal(selectedSessionChip().getAttribute("aria-pressed"), "true", "The session key lost selection after an account edit");
     assert(msigKeyStatus(second).classList.contains("ok"), `The re-derived co-signer did not validate: ${msigKeyStatus(second).textContent}`);
     const accountHarden = accountStep(rows[1]).closest("label").querySelector('input[type="checkbox"]');
     const specSelect = rows[1].querySelector("[data-msig-spec]"), standardSpec = specSelect.value;
@@ -4875,6 +4878,7 @@
     const shallowKey = second.value;
     extraStep.closest("label").querySelector('input[type="checkbox"]').click();
     assert(/\/3'$/.test(secondPath.value) && second.value !== shallowKey && !msigKeyStatus(second).classList.contains("bad"), "Hardening an extra path step did not re-derive the key");
+    equal(selectedSessionChip().getAttribute("aria-pressed"), "true", "The session key lost selection after depth and hardening edits");
     input(secondPath, secondPath.value.replace(/\/3'$/, ""));
     assert(second.value === accountOneKey, "Removing the extra step did not return to the account key");
     setSpec(standardSpec);
@@ -4905,6 +4909,12 @@
     setSpec(standardSpec);
     assert(secondPath.value === accountOnePath && second.value === accountOneKey, `Choosing the spec again did not keep the card's account (${secondPath.value})`);
     assert(msigKeyStatus(second).classList.contains("ok"), "Returning from a custom path did not restore the standard account key");
+    equal(selectedSessionChip().getAttribute("aria-pressed"), "true", "The session key lost selection after spec changes");
+    selectedSessionChip().click();
+    equal(second.value, "", "Clicking the selected key after path edits reloaded it instead of removing it");
+    equal(selectedSessionChip().getAttribute("aria-pressed"), "false", "Removing an edited session key left it selected");
+    selectedSessionChip().click();
+    input(secondPath, accountOnePath);
     // A key the session does not derive at its stated origin is never
     // re-derived, even under the session's own fingerprint: here the account-1
     // key is pasted bare onto the default account-0 path.

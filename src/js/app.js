@@ -10456,14 +10456,10 @@ function hodlInitPsbt() {
   document.getElementById("psbt-card").addEventListener("input", hodlSyncPsbtControls);
   document.getElementById("nonce-card").addEventListener("input", hodlSyncPsbtControls);
   hodlPsbtSyncNonceHistoryControls();
-  let clearSecretFields = () => {
-    hodlPsbtWipeMem();
-    hodlPsbtClearNonceHistory(true);
-    for (let id of ["psbt-key", "psbt-pass", "nonce-key", "nonce-pass"]) {
-      let field = document.getElementById(id);
-      if (field) field.value = "";
-    }
-  };
+  // Page hide ends the whole session: the key bytes, the paste fields, and
+  // also the parsed report state and the rendered views — a bfcache restore
+  // must not re-show an inspection whose fields were just emptied.
+  let clearSecretFields = () => hodlEndPsbtSession();
   addEventListener("pagehide", clearSecretFields);
   addEventListener("pageshow", (event) => {
     if (event.persisted) clearSecretFields();

@@ -402,6 +402,41 @@ test("journal Lock empties the private session snapshot", () => {
   assert.equal(elements.get("journal-state-private").checked, false, "Lock left the private toggle ticked");
 });
 
+test("pagehide and persisted pageshow end the PSBT session, reports included", () => {
+  // The paste fields and the session key go on page hide, but the parsed
+  // report state (hodlPsbtLast — the typed decode the inspector re-renders
+  // from) and the rendered #psbt-out/#nonce-out views stayed: a bfcache
+  // restore re-showed an inspection whose fields were already empty. The
+  // lifecycle handler inside hodlInitPsbt must end the session, not only
+  // drop the key.
+  const start = app.indexOf("function hodlInitPsbt(");
+  const init = app.slice(start, app.indexOf("\nfunction ", start + 1));
+  const sweep = init.slice(init.indexOf("let clearSecretFields"));
+  assert.match(sweep, /hodlEndPsbtSession\(\)/, "the PSBT lifecycle sweep must end the whole session");
+
+  const elements = new Map();
+  for (const id of ["psbt-out", "nonce-out"]) elements.set(id, { innerHTML: "<table>report</table>", dataset: {} });
+  for (const id of ["psbt-key", "psbt-pass", "psbt-text", "psbt-ax-transcript", "nonce-key", "nonce-pass", "nonce-text"]) elements.set(id, { value: "session material", dataset: {} });
+  const errors = [];
+  const context = vm.createContext({
+    document: { getElementById: id => elements.get(id) ?? null },
+    hodlPsbtWipeMem() {}, hodlPsbtClearNonceHistory() {},
+    hodlPsbtLast: { rvalues: ["deadbeef"] }, hodlPsbtInspected: { psbt: "stamp" },
+    hodlPsbtSessionSpec: { key: "Session key" },
+    hodlSetPsbtError: () => errors.push("psbt"), hodlSetNonceError: () => errors.push("nonce"),
+    hodlPaintPsbtSession() {}, hodlRefreshStationKeyPickers() {}, hodlSyncPsbtControls() {},
+  });
+  vm.runInContext(`${functionSource("hodlEndPsbtSession")}\nhodlEndPsbtSession();`, context);
+  assert.equal(context.hodlPsbtLast, null, "session end left the parsed report state");
+  // (vm realms: assert.keys rather than deepEqual against a home-realm {}.)
+  assert.equal(Object.keys(context.hodlPsbtInspected || {}).length, 0, "session end left run stamps");
+  assert.equal(elements.get("psbt-out").innerHTML, "", "session end left the PSBT report rendered");
+  assert.equal(elements.get("nonce-out").innerHTML, "", "session end left the nonce report rendered");
+  assert.deepEqual(errors.sort(), ["nonce", "psbt"], "session end left an error line");
+  for (const id of ["psbt-key", "psbt-pass", "psbt-text", "psbt-ax-transcript", "nonce-key", "nonce-pass", "nonce-text"])
+    assert.equal(elements.get(id).value, "", `session end left #${id} filled`);
+});
+
 test("the key Wipe button drops the cached partial mnemonics", () => {
   // Runs the real hodlWipeActiveKey. The cache keys are near-complete seeds,
   // so the wipe must clear them itself rather than wait for pagehide, and it

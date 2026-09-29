@@ -172,6 +172,26 @@ test("the PSBT loader zeroes the shadow stack once per task after an export ran"
   assert.ok(psbtLoaderHeap().subarray(0, top).every((byte) => byte === 0), "the PSBT shadow stack was not scrubbed after the export settled");
 });
 
+// The facade hands JSON.parse the document text; the bytes the Rust side
+// assembled are retrievable only from a raw instance's output buffer.
+const rawInspectJson = (psbt) => {
+  const inPtr = psbtWasm.psbt_alloc(psbt.length);
+  psbtHeap().set(psbt, inPtr);
+  try {
+    const needed = psbtWasm.psbt_inspect(inPtr, psbt.length, 0, 0);
+    if (needed <= 0) throw new Error("raw psbt_inspect refused the fixture");
+    const outPtr = psbtWasm.psbt_alloc(needed);
+    try {
+      const length = psbtWasm.psbt_inspect(inPtr, psbt.length, outPtr, needed);
+      return Buffer.from(psbtHeap().slice(outPtr, outPtr + length));
+    } finally {
+      psbtWasm.psbt_free(outPtr, needed);
+    }
+  } finally {
+    psbtWasm.psbt_free(inPtr, psbt.length);
+  }
+};
+
 test("the PSBT exports wipe their whole-document copies before returning", async () => {
   // The pair value is a distinctive fixed pattern, not a key; it stands in
   // for "the pasted or edited file carried an xprv in a proprietary field".
@@ -191,6 +211,25 @@ test("the PSBT exports wipe their whole-document copies before returning", async
   await settled();
   const afterInspect = Buffer.from(psbtLoaderHeap().buffer);
   assert.equal(afterInspect.includes(Buffer.from(bytes)), false, "the inspected PSBT survived in module memory");
+});
+
+test("the inspection's assembled JSON is absent from module memory once the task settles", async () => {
+  // An inspection's JSON names every pair value the file carried: it is the
+  // single most concentrated copy a proprietary xprv could sit in. The scan
+  // needs those exact bytes, read off a second, raw instance (#625 review).
+  const marker = pattern(64, 201);
+  const doc = psbtInspectDoc(VALID_PSBT);
+  doc.globals.push({ key: "fc016d00", value: Buffer.from(marker).toString("hex") });
+  const psbt = psbtBuildBytes(psbtEditorBuildDoc(doc));
+  const json = rawInspectJson(psbt);
+  assert.ok(json.length > 200, "the fixture's JSON should be substantial");
+  const head = json.subarray(0, 200);
+  assert.ok(Buffer.from(head).indexOf(Buffer.from('{"')) === 0, "the fixture did not produce the expected JSON document");
+  await settled();
+  psbtInspectDoc(psbt);
+  await settled();
+  const view = Buffer.from(psbtLoaderHeap().buffer);
+  assert.equal(view.includes(head), false, "the inspection JSON's head survived in module memory");
 });
 
 

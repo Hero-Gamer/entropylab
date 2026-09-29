@@ -120,9 +120,11 @@ material. Its security posture rests on the following model:
   frame returns, so the loaders of both the crypto module and the PSBT module
   wrap every export to zero the whole stack region once per task after any
   export ran (the Node suite asserts BIP39 entropy, the PBKDF2 passphrase
-  salt, HMAC and hash inputs, WIF keys, and parsed PSBT content are absent
-  from linear memory once the task settles). None of this protects
-  against a compromised machine.
+  salt, HMAC and hash inputs, and WIF keys are absent from linear memory once
+  the task settles, and for the PSBT module that its stack region is zeroed
+  and that the two whole-document copies its exports assemble — the
+  inspection JSON and the rebuilt PSBT bytes — are gone once the task
+  settles). None of this protects against a compromised machine.
 - The on-screen result of any derivation can only be as trustworthy as the
   code that produced it. Review the source, build from `src/`, and test the
   tool with published vectors before relying on it.

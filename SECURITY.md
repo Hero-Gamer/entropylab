@@ -9,8 +9,8 @@ always use the latest version, available from the
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.1.3   | :white_check_mark: |
-| < 0.1.3 | :x:                |
+| 1.0.0   | :white_check_mark: |
+| < 1.0.0 | :x:                |
 
 ## Security Considerations
 

@@ -7,7 +7,7 @@ offline, air-gapped use. It converts user-supplied entropy, seed phrases, and
 private keys into wallet recovery information without intentionally sending
 sensitive data to a server.
 
-Current version: **v0.1.3**
+Current version: **v1.0.0**
 
 Official website: [entropylab.online](https://entropylab.online)
 

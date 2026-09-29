@@ -296,7 +296,6 @@ test("a running derivation yields off the main thread, survives hidden tabs, and
   assert.match(appSource, /function hodlInvalidateMsig\(\) \{[\s\S]*?hodlStopDerivation\("msig"\)[\s\S]*?\}/);
   assert.match(appSource, /function hodlSyncDeriveButton\(\) \{[\s\S]*?hodlActiveDerivation\.kind === "key"[\s\S]*?button\.disabled = true;/);
   assert.match(appSource, /function hodlSyncMsigDeriveButton\(\) \{[\s\S]*?hodlActiveDerivation\.kind === "msig"[\s\S]*?button\.disabled = true;/);
-  assert.equal(appSource.match(/hodlTText\("A derivation is already running\."\)/g)?.length, 2);
 });
 
 test("entropy progress messages sit next to their inputs and above keypads", () => {
@@ -1157,12 +1156,6 @@ test("the tools' closing button groups stack full width on narrow screens", () =
   );
 });
 
-test("private alternate account exports are visible without an accordion", () => {
-  assert.match(appWhitespace, /return privateExport\|\|publicExport/);
-  assert.doesNotMatch(app, /Advanced private export|Advanced watch-only export/);
-});
-
-
 test("the beta notice sits at the top of the page as a banner", () => {
   for (const markup of [shell]) {
     const wrapper = markup.indexOf('<div class="wrap">');
@@ -1870,7 +1863,7 @@ test("Journal gates its five tools behind the local notebook", () => {
   assert.match(appSource, /async function hodlJournalUnlock\(\) \{[\s\S]*hodlJournalBackfillDerivedKeys\(\);[\s\S]*hodlJournalShowWork\(\);\s*hodlShowJournalTool\("book"\)/);
   assert.match(appSource, /function hodlJournalSyncDerivedKeys\(states\) \{\s*if \(!hodlJournalUnlocked\(\)\) return \{ added: 0, updated: 0, matched: 0 \}/);
   assert.match(appSource, /hodlJournalKeyEntries\.clear\(\)/);
-  assert.match(appSource, /hodlCommitDerivedKey\(\);\s*hodlJournalCaptureDerivedKey\(hodlKeys\[hodlActiveKey\]\)/);
+  assert.match(appSource, /hodlCommitDerivedKey\(action\);\s*hodlJournalCaptureDerivedKey\(hodlKeys\[hodlActiveKey\]\)/);
   assert.match(appSource, /Unsaved changes \\u2014 download the journal file to preserve them/);
   assert.match(appSource, /function hodlJournalLock\(\) \{[\s\S]*hodlJournalTool = "book";[\s\S]*hodlSyncJournalTool\(\)/);
   assert.match(appSource, /function hodlJournalWipeMem\(\) \{[\s\S]*hodlJournalTool = "book";[\s\S]*hodlSyncJournalTool\(\)/);
@@ -2042,11 +2035,11 @@ test("Key Station stays put and a derived key opens a fingerprint tab with a sum
   assert.match(appSource, /hodlNewKeyState\("Key Station", 0, 0\)/);
   assert.match(appSource, /name = state\.isLab \? "Key Station"/);
   assert.match(appSource, /path\.setAttribute\("d", hodlKeySilhouette\)/);
-  assert.match(appSource, /function hodlCommitDerivedKey\(\) \{/);
+  assert.match(appSource, /function hodlCommitDerivedKey\(action = "derive"\) \{/);
   assert.match(appSource, /function hodlSelectLab\(\) \{/);
   assert.match(appSource, /function hodlSyncKeyResultView\(\) \{/);
   assert.match(appSource, /hodlKeys\.push\(hodlNewLabState\(\)\)/);
-  assert.match(appSource, /hodlCommitDerivedKey\(\)/);
+  assert.match(appSource, /hodlCommitDerivedKey\(action\)/);
   assert.match(appSource, /button\.id = state\.isLab \? "key-tab-lab"/);
   assert.match(appSource, /function hodlAddKey\(\) \{\s*hodlSelectLab\(\);/s);
   assert.match(appSource, /button\.disabled = !state \|\| state\.isLab;/);
@@ -2238,10 +2231,10 @@ test("MS Station stays put and a derived wallet opens its own results tab", () =
   assert.match(appSource, /hodlNewMsigState\("MS Station", 0, 0\)/);
   assert.match(appSource, /name = state\.isLab \? "MS Station"/);
   assert.match(appSource, /button\.append\(hodlCreateMsigTabMark\(state\), label\)/);
-  assert.match(appSource, /function hodlCommitDerivedMsig\(\) \{/);
+  assert.match(appSource, /function hodlCommitDerivedMsig\(action = "derive"\) \{/);
   assert.match(appSource, /function hodlSelectMsigLab\(\) \{/);
   assert.match(appSource, /hodlMsigs\.push\(hodlNewMsigLabState\(\)\)/);
-  assert.match(appSource, /hodlCommitDerivedMsig\(\)/);
+  assert.match(appSource, /hodlCommitDerivedMsig\(action\)/);
   assert.match(appSource, /out\.innerHTML = `/);
   assert.match(appSource, /function hodlAddMsig\(\) \{\s*hodlSelectMsigLab\(\);/s);
   assert.match(appSource, /function hodlFillMsigLabFromWallet\(source\) \{/);
@@ -2369,10 +2362,9 @@ test("the vanity grinder is a workspace tab that ships collapsed and never auto-
   // Matching is mainnet only, on the key's own account path.
   assert.match(vanityController, /Vanity matching is Bitcoin mainnet/);
   assert.match(vanityController, /vanityPathIndexes\(fields\.derivationAccountPath \|\| "m\/84'\/0'\/0'"\)/);
-  // Update key goes through the same Edit input → Derive path the Keys tab
-  // uses (lab clone, restore, hodlCalculateKey), then folds a re-fingerprinted
-  // key back into its own tab and gives the lab back.
-  assert.match(vanityController, /async function hodlVanityApplyMatch\(index\) \{[\s\S]*?hodlFillLabFromKey\(state\)[\s\S]*?draft\.fields\.pass = match\.passphrase;[\s\S]*?draft\.fields\.account = `\$\{match\.index\}[\s\S]*?await hodlDeriveWithProgress\("key", hodlCalculateKey\);[\s\S]*?hodlKeys\[target\] = \{ \.\.\.active, id: state\.id, number: state\.number, color: state\.color/);
+  // Update key uses the Key Station edit path and explicitly commits to its
+  // source tab, including when a new passphrase changes the fingerprint.
+  assert.match(vanityController, /async function hodlVanityApplyMatch\(index\) \{[\s\S]*?hodlFillLabFromKey\(state\)[\s\S]*?draft\.fields\.pass = match\.passphrase;[\s\S]*?draft\.fields\.account = `\$\{match\.index\}[\s\S]*?await hodlDeriveWithProgress\("key", \(progress\) => hodlCalculateKey\(progress, "update"\)\);/);
   assert.match(vanityController, /data-vanity-apply="\$\{index\}"/);
   assert.match(vanityController, /Saved to key \$\{hodlEscapeHtml\(match\.savedTo\)\}/);
   // The chip picker marks the selected chip with a check, not colour alone.

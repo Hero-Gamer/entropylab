@@ -86,6 +86,7 @@
         <button class="btn secondary key-summary-edit" id="key-edit-inputs" type="button">Edit Input</button>
       </div>
       <div class="key-lab" id="key-lab">
+      <p class="edge-note is-public" id="key-edit-note" role="status" hidden></p>
       <div class="global-sync-host" id="global-sync-host"></div>
       <section class="seed-length-control" id="seed-length" aria-labelledby="seed-length-label">
         <p class="label" id="seed-length-label">Seed phrase length</p>
@@ -204,6 +205,7 @@ words, pick one of the checksum words.</span></span>
       <div class="derive-progress" id="derive-progress" role="progressbar" aria-label="Key derivation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete" hidden><span class="derive-progress-track"><span class="derive-progress-bar"></span></span><span class="derive-progress-label">0%</span></div>
       <div class="row key-action-row current-item-actions tool-actions">
         <button class="btn primary" id="go" disabled aria-disabled="true">Derive Key</button>
+        <button class="btn secondary" id="key-update" type="button" aria-describedby="key-edit-note" hidden disabled aria-disabled="true">Update Existing Key</button>
         <button class="btn red clear-current-action" id="wipe" type="button" disabled aria-disabled="true">Clear Current Key</button>
       </div>
       <p class="err" id="error"></p>
@@ -412,6 +414,7 @@ words, pick one of the checksum words.</span></span>
         <button class="btn secondary key-summary-edit" id="msig-edit-inputs" type="button">Edit Input</button>
       </div>
       <div class="msig-lab" id="msig-lab">
+      <p class="edge-note is-public" id="msig-edit-note" role="status" hidden></p>
       <details class="msig-import" id="msig-import" open>
         <summary>Import existing multisig wallet</summary>
         <label class="field"><span class="muted label-value">Paste a wallet-exported multisig descriptor here — the quorum, script type, key order, and co-signer xpubs will be filled in below.</span>
@@ -508,6 +511,7 @@ words, pick one of the checksum words.</span></span>
       <p class="edge-note is-private msig-spec-warning" id="msig-spec-warning" role="status" hidden></p>
       <div class="row current-item-actions tool-actions">
         <button class="btn primary" id="msig-go" type="button" aria-describedby="msig-script-warning msig-spec-warning" disabled aria-disabled="true">Derive Multisig</button>
+        <button class="btn secondary" id="msig-update" type="button" aria-describedby="msig-edit-note msig-script-warning msig-spec-warning" hidden disabled aria-disabled="true">Update Existing Multisig</button>
         <div class="derive-progress" id="msig-derive-progress" role="progressbar" aria-label="Multisig derivation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="0% complete" hidden><span class="derive-progress-track"><span class="derive-progress-bar"></span></span><span class="derive-progress-label">0%</span></div>
         <button class="btn red clear-current-action" id="msig-wipe" type="button" disabled aria-disabled="true">Clear Current Multisig</button>
       </div>

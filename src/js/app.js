@@ -772,6 +772,7 @@ function hodlSyncKeyModeSelect() {
 var hodlSeedLengthSelectEl = hodlElement("#seed-length-select");
 hodlSeedLengthSelectEl.onchange = () => hodlSetSeedLength(Number(hodlSeedLengthSelectEl.value));
 hodlElement("#go").onclick = () => hodlHandleDerivationButton("key", hodlCalculateKey);
+hodlElement("#key-update").onclick = () => hodlHandleDerivationButton("key", (progress) => hodlCalculateKey(progress, "update"), "key-update");
 hodlElement("#wipe").onclick = hodlWipeActiveKey;
 function hodlElement(e) {
   let t = e.startsWith("#") ? e.slice(1) : e, r = document.getElementById(t);
@@ -1321,14 +1322,6 @@ function hodlAddressBranchTables(branches, includeWif, prefix) {
 function hodlAddressBranchVirtualConfigs(branches, includeWif, prefix) {
   return branches.map((branch) => ({ key: hodlAddressBranchKey(prefix, branch.branch), rows: branch.rows, includeWif }));
 }
-function hodlAccountAdvancedExports(account, includePrivate = false, labelClass = "label") {
-  if (!account.hasAlternateExport) return "";
-  let privateExport = includePrivate && account.privateNode ? hodlPrivateKeyFieldHtml("Generic {name} for descriptor compatibility", hodlExtendedKeyLength, () => hodlAccountPrivateKey(account, "x"), { name: account.genericPrivateLabel }, labelClass) : "";
-  let publicExport = !includePrivate && account.genericPublic ? hodlPublicFieldHtml("Generic {name} for descriptor compatibility", account.genericPublic, { name: account.genericPublicLabel }, labelClass, true) : "";
-  if (!privateExport && !publicExport) return "";
-  // One more field among the account exports, not a disclosure of its own.
-  return privateExport || publicExport;
-}
 function hodlImportedCoreRecoveryData(wallet, account) {
   if (!wallet?.importedPublicKey || !account?.imported || !["y", "z"].includes(account.primaryFamily) || !account.genericPublic || !account.def?.script) return null;
   return {
@@ -1570,7 +1563,7 @@ function hodlSlip132Fields(account, wallet, isPrivate = false, labelClass = "lab
   let slipLabel = account.primaryPublicLabel;
   let field = (name, value, vars, cls) => hodlPublicFieldHtml(name, value, vars, cls, true), parts = [];
   if (pasted) parts.push(field("As pasted", pasted, void 0, labelClass));
-  if (core && core !== pasted) parts.push(field(`Bitcoin Core ${coreLabel}`, core, void 0, labelClass));
+  if (core && core !== pasted) parts.push(field(`Account ${coreLabel}`, core, void 0, labelClass));
   if (slip && slip !== pasted && slip !== core) parts.push(field(`SLIP-132 ${slipLabel}`, slip, void 0, labelClass));
   if (!parts.length && core) parts.push(field(`Account ${coreLabel}`, core, void 0, labelClass));
   parts.push(`<p class="muted slip132-note">Prefix swap only (same payload, new version bytes and checksum). Script lives in the descriptor, not the prefix. x = legacy, y = nested BIP49, z = native BIP84, Y = nested BIP48 nested-msig, Z = native BIP48 native-msig. Testnet: t / u / v / U / V. No Taproot SLIP prefix.</p>`);
@@ -1584,7 +1577,7 @@ function hodlSlip132PrivateFields(account, wallet, labelClass) {
   let pasted = hodlResultHasImportedPrivate(wallet), pastedFamily = pasted ? account.importedFamily : null, parts = [];
   let field = (label, family) => hodlPrivateKeyFieldHtml(label, hodlExtendedKeyLength, () => hodlAccountPrivateKey(account, family), void 0, labelClass);
   if (pasted) parts.push(hodlPrivateKeyFieldHtml("As pasted", hodlExtendedKeyLength, () => hodlAccountPrivateKey(account, pastedFamily), void 0, labelClass));
-  if (account.privateNode && pastedFamily !== "x") parts.push(field(`Bitcoin Core ${account.genericPrivateLabel}`, "x"));
+  if (account.privateNode && pastedFamily !== "x") parts.push(field(`Account ${account.genericPrivateLabel}`, "x"));
   if (account.privateNode && account.hasAlternateExport && pastedFamily !== account.primaryFamily) parts.push(field(`SLIP-132 ${account.primaryPrivateLabel}`, account.primaryFamily));
   return parts.join("");
 }
@@ -1604,8 +1597,7 @@ function hodlShowAccount(id) {
   // repeats the first one. The pressed script type button names the account.
   let privateGroup = hasPrivate ? hodlKeyGroupMarkup("account-private", `${hodlT("Account private key exports")}${hodlPrivacyEyeMarkup()}`, `<p class="edge-note is-private account-private-warning"><strong>${hodlT("These exports can spend from this account.")}</strong> ${hodlT("They are shown only for a seed or extended private-key source.")} ${hodlT("Keep these exports together only in secure offline backups. An account extended public key combined with any non-hardened descendant private key, including a WIF shown in the address tables, can reconstruct that account's extended private key.")}</p>
       ${hodlSlip132Fields(account, hodlWalletResult, true)}
-      ${hodlAddressBranchDescriptorFields(branches, true, "label", account)}
-      ${hodlAccountAdvancedExports(account, true)}`, hodlRevealPrivate ? "is-private is-revealed" : "is-private") : "";
+      ${hodlAddressBranchDescriptorFields(branches, true, "label", account)}`, hodlRevealPrivate ? "is-private is-revealed" : "is-private") : "";
   hodlElement("#acct").innerHTML = `
         ${hodlKeyGroupMarkup("hd-addresses", hasPrivate ? `${hodlT("Addresses")}${hodlPrivacyEyeMarkup()}` : hodlT("Addresses"), `<p class="edge-note is-public">${hodlT("Verify the first selected address on another trusted wallet or signing device before accepting bitcoin.")}</p>${hasPrivate ? `<p class="edge-note is-private"><strong>${hodlT("When private data is visible, these tables also show the WIF private key for each address.")}</strong> ${hodlT("Anyone who sees or copies a WIF can spend what that address holds.")}</p>` : ""}${hodlScriptBeginnerTexts[account.def.id] ? `<p class="label">${hodlT("Script type:")} <span class="label-value">${hodlScriptUiLabel(account.def)}</span></p><p class="muted label-description script-type-description">${hodlScriptBeginner(account.def)}</p>` : ""}${hodlAddressBranchTables(branches, hasPrivate, "hd")}${hodlAddressMatchMarkup()}`, hasPrivate ? hodlRevealPrivate ? "is-private is-revealed" : "is-private" : "")}
         ${privateGroup}
@@ -1613,8 +1605,7 @@ function hodlShowAccount(id) {
         ${hodlSlip132WatchFields(account, hodlWalletResult)}
         ${hodlImportedCoreRecoveryExport(hodlWalletResult, account)}
         ${hodlRenderMultisigCosignerExport(hodlWalletResult.multisigCosignerExports, account.def.id)}
-        ${hodlWatchOnlyDescriptorExport(account.receiveDescriptor, account.changeDescriptor, branches, { collapsible: false })}
-        ${hodlAccountAdvancedExports(account, false)}`, "account-watch-section")}`;
+        ${hodlWatchOnlyDescriptorExport(account.receiveDescriptor, account.changeDescriptor, branches, { collapsible: false })}`, "account-watch-section")}`;
   hodlBindAddressVirtualization(hodlAddressBranchVirtualConfigs(branches, hasPrivate, "hd"));
   hodlBindAddressMatch();
   hodlBindWalletResultActions();
@@ -1846,14 +1837,14 @@ function hodlSeedRecoveryFields(wallet) {
 function hodlHdWalletData(wallet, accountMarkup = "") {
   let privateFields = [];
   privateFields.push(...hodlSeedRecoveryFields(wallet));
-  if (wallet.rootNode) privateFields.push(hodlPrivateKeyFieldHtml(`Root ${wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName}`, hodlExtendedKeyLength, () => hodlResultRootXprv(wallet)));
+  if (wallet.rootNode) privateFields.push(hodlPrivateKeyFieldHtml(`Master ${wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName}`, hodlExtendedKeyLength, () => hodlResultRootXprv(wallet)));
   if (hodlResultHasImportedPrivate(wallet)) privateFields.push(hodlPrivateKeyFieldHtml(`Imported ${wallet.importedPrivateLabel || "extended private key"}`, hodlExtendedKeyLength, () => hodlImportedPrivateKey(wallet)));
   let hasAccountPrivate = wallet.accounts.some(hodlAccountHasPrivate), hasPrivate = privateFields.length > 0 || hasAccountPrivate;
   let source = hodlResultHasSeed(wallet) ? "" : `<p><span class="label">Source</span><br><span>Imported extended ${hasPrivate ? "private" : "public"} key; no seed phrase was entered.</span></p>`;
   let fingerprint = wallet.masterFingerprint ? hodlPublicFieldHtml("Master fingerprint", wallet.masterFingerprint) : "";
   let parentFingerprint = !wallet.masterFingerprint && wallet.parentFingerprint ? hodlPublicFieldHtml("Encoded parent fingerprint (not a master fingerprint)", wallet.parentFingerprint) : "";
   let nodeFingerprint = !wallet.masterFingerprint && wallet.nodeFingerprint ? hodlPublicFieldHtml("Imported key fingerprint (not a master fingerprint)", wallet.nodeFingerprint) : "";
-  let rootPublic = wallet.rootXpub ? hodlPublicFieldHtml("Root {name}", wallet.rootXpub, { name: wallet.rootPublicLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.pubName }, "label", true) : "";
+  let rootPublic = wallet.rootXpub ? hodlPublicFieldHtml("Master {name}", wallet.rootXpub, { name: wallet.rootPublicLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.pubName }, "label", true) : "";
   let importedPublic = wallet.importedPublicKey ? hodlPublicFieldHtml("Imported {name}", wallet.importedPublicKey, { name: wallet.importedPublicLabel || hodlTText("extended public key") }) : "";
   // The toolbar holds the script type and the privacy bar, and sticks under the
   // header as one piece. Below it: what recovers the wallet, what identifies it,
@@ -2249,14 +2240,14 @@ var hodlRecoverySheetText = function(wallet, revealPrivate) {
     }
     if (wallet.entropy) lines.push("", "BIP39 ENTROPY HEX", hodlResultEntropyHex(wallet));
     if (wallet.seed) lines.push("", "MASTER SEED HEX (BIP39 PBKDF2, 512 bits)", hodlResultSeedHex(wallet));
-    if (hodlResultHasRoot(wallet)) lines.push("", `BIP32 ROOT ${(wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName).toUpperCase()}`, hodlResultRootXprv(wallet));
+    if (hodlResultHasRoot(wallet)) lines.push("", `MASTER ${(wallet.rootPrivateLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.prvName).toUpperCase()}`, hodlResultRootXprv(wallet));
     if (hodlResultHasImportedPrivate(wallet)) lines.push("", `IMPORTED ${(wallet.importedPrivateLabel || "EXTENDED PRIVATE KEY").toUpperCase()}`, hodlImportedPrivateKey(wallet));
     for (let account of wallet.accounts) {
       if (!hodlAccountHasPrivate(account)) continue;
       lines.push("", `-- ${account.def.label} (${account.imported ? account.def.bip : `Purpose ${hodlPathComponent(account.def.purpose, account.def.purposeHardened !== false)}`}) PRIVATE ACCOUNT MATERIAL --`);
       if (account.privateNode) {
-        lines.push(`${account.primaryPrivateLabel}: ${hodlAccountPrivateKey(account, account.primaryFamily)}`);
-        if (account.hasAlternateExport) lines.push(`Advanced ${account.genericPrivateLabel} descriptor export: ${hodlAccountPrivateKey(account, "x")}`);
+        lines.push(`${account.hasAlternateExport ? `SLIP-132 ${account.primaryPrivateLabel}` : `Account ${account.primaryPrivateLabel}`}: ${hodlAccountPrivateKey(account, account.primaryFamily)}`);
+        if (account.hasAlternateExport) lines.push(`Account ${account.genericPrivateLabel}: ${hodlAccountPrivateKey(account, "x")}`);
         for (let branch of hodlAccountAddressBranches(account)) lines.push(`Spending ${hodlAddressBranchLabel(branch.branch).toLowerCase()} descriptor: ${hodlBranchPrivateDescriptor(account, branch.branch)}`);
       }
       lines.push("Warning: An account extended public key plus a non-hardened descendant private key can reconstruct the account extended private key.");
@@ -2271,7 +2262,7 @@ var hodlRecoverySheetText = function(wallet, revealPrivate) {
   if (wallet.masterFingerprint) lines.push(`Master fingerprint: ${wallet.masterFingerprint}`);
   if (wallet.parentFingerprint && !wallet.masterFingerprint) lines.push(`Encoded parent fingerprint (not a master fingerprint): ${wallet.parentFingerprint}`);
   if (wallet.nodeFingerprint && !wallet.masterFingerprint) lines.push(`Imported key fingerprint (not a master fingerprint): ${wallet.nodeFingerprint}`);
-  if (wallet.rootXpub) lines.push(`BIP32 root ${(wallet.rootPublicLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.pubName).toUpperCase()}: ${wallet.rootXpub}`);
+  if (wallet.rootXpub) lines.push(`Master ${wallet.rootPublicLabel || hodlExtendedKeyVersions[hodlNetworkFamily(wallet.network)].x.pubName}: ${wallet.rootXpub}`);
   if (wallet.multisigCosignerExports?.length) {
     lines.push("", "MULTISIG CO-SIGNER EXPORTS", "Paste one complete value into a co-signer input. Legacy offers BIP45 without accounts and BIP87 with standardized accounts; use the same standard and account policy for every co-signer.");
     for (let item of wallet.multisigCosignerExports) lines.push(`${item.label} (${item.prefix}): ${item.value}`);
@@ -2282,9 +2273,9 @@ var hodlRecoverySheetText = function(wallet, revealPrivate) {
     if (account.masterFingerprint || wallet.masterFingerprint) lines.push(`Master fingerprint: ${account.masterFingerprint || wallet.masterFingerprint}`);
     else if (account.parentFingerprint) lines.push(`Encoded parent fingerprint (not a master fingerprint): ${account.parentFingerprint}`);
     if (!account.masterFingerprint && !wallet.masterFingerprint && account.nodeFingerprint) lines.push(`Imported key fingerprint (not a master fingerprint): ${account.nodeFingerprint}`);
-    lines.push("WATCH-ONLY EXPORTS", `${account.primaryPublicLabel}: ${account.primaryPublic}`, ...account.walletDescriptor ? [`Watch-only wallet descriptor: ${account.walletDescriptor}`] : []);
+    lines.push("WATCH-ONLY EXPORTS", `${account.hasAlternateExport ? `SLIP-132 ${account.primaryPublicLabel}` : `Account ${account.primaryPublicLabel}`}: ${account.primaryPublic}`, ...account.walletDescriptor ? [`Watch-only wallet descriptor: ${account.walletDescriptor}`] : []);
     for (let branch of hodlAccountAddressBranches(account)) if (branch.publicDescriptor) lines.push(`Watch-only ${hodlAddressBranchLabel(branch.branch).toLowerCase()} descriptor: ${branch.publicDescriptor}`);
-    if (account.hasAlternateExport) lines.push(`Advanced ${account.genericPublicLabel} descriptor export: ${account.genericPublic}`);
+    if (account.hasAlternateExport) lines.push(`Account ${account.genericPublicLabel}: ${account.genericPublic}`);
     lines.push("ADDRESSES");
     for (let branch of hodlAccountAddressBranches(account)) hodlSheetAddressRows(lines, hodlAddressBranchLabel(branch.branch), branch.rows);
   }
@@ -2558,10 +2549,10 @@ function hodlAssertDerivationActive(generation, control) {
   if (generation !== hodlDerivationGeneration || control?.cancelled) throw new HodlDerivationCancelledError();
 }
 function hodlDerivationButton(kind) {
-  return document.getElementById(kind === "msig" ? "msig-go" : "go");
+  let id = hodlActiveDerivation?.kind === kind ? hodlActiveDerivation.buttonId : null;
+  return document.getElementById(id || (kind === "msig" ? "msig-go" : "go"));
 }
-function hodlSetDerivationButtonState(kind, state) {
-  let button = hodlDerivationButton(kind);
+function hodlSetDerivationButtonState(kind, state, button = hodlDerivationButton(kind)) {
   if (!button) return;
   if (state === "running") {
     if (!button.dataset.derivationWidth) {
@@ -2583,7 +2574,10 @@ function hodlSetDerivationButtonState(kind, state) {
     button.setAttribute("aria-label", kind === "msig" ? hodlTText("Stopping multisig derivation") : hodlTText("Stopping key derivation"));
     button.dataset.derivationState = "stopping";
   } else {
-    button.textContent = kind === "msig" ? hodlTText("Derive Multisig") : hodlTText("Derive Key");
+    let label = kind === "msig"
+      ? button.id === "msig-update" ? hodlTText("Update Existing Multisig") : hodlMsigs[hodlActiveMsig]?.editSourceId != null ? hodlTText("Derive New Multisig") : hodlTText("Derive Multisig")
+      : button.id === "key-update" ? hodlTText("Update Existing Key") : hodlKeys[hodlActiveKey]?.editSourceId != null ? hodlTText("Derive New Key") : hodlTText("Derive Key");
+    button.textContent = label;
     button.removeAttribute("aria-label");
     delete button.dataset.derivationState;
     delete button.dataset.derivationWidth;
@@ -2662,7 +2656,7 @@ function hodlStopDerivation(kind) {
   hodlActiveDerivation.cancelled = true;
   hodlSetDerivationButtonState(kind, "stopping");
 }
-function hodlHandleDerivationButton(kind, derive) {
+function hodlHandleDerivationButton(kind, derive, buttonId) {
   if (hodlActiveDerivation) {
     hodlStopDerivation(kind);
     return;
@@ -2674,20 +2668,21 @@ function hodlHandleDerivationButton(kind, derive) {
   if (kind === "key" && hodlLowEntropyConfirm) {
     let warning = hodlLowEntropyWarning();
     if (warning && !hodlLowEntropyConfirm.isAcknowledged()) {
-      hodlLowEntropyConfirm.open(warning, () => hodlDeriveWithProgress(kind, derive));
+      hodlLowEntropyConfirm.open(warning, () => hodlDeriveWithProgress(kind, derive, buttonId));
       return;
     }
   }
-  return hodlDeriveWithProgress(kind, derive);
+  return hodlDeriveWithProgress(kind, derive, buttonId);
 }
-async function hodlDeriveWithProgress(kind, derive) {
+async function hodlDeriveWithProgress(kind, derive, buttonId) {
   if (hodlActiveDerivation) return;
   let multisig = kind === "msig", progress = document.getElementById(multisig ? "msig-derive-progress" : "derive-progress");
-  let control = { kind, cancelled: false, rowKeys: [], nodes: [] };
+  let control = { kind, buttonId, cancelled: false, rowKeys: [], nodes: [] };
   hodlActiveDerivation = control;
   hodlResetDerivationProgress(kind, false);
   hodlSetDerivationButtonState(kind, "running");
-  (multisig ? hodlSyncDeriveButton : hodlSyncMsigDeriveButton)();
+  hodlSyncDeriveButton();
+  hodlSyncMsigDeriveButton();
   try {
     await hodlDerivationPause();
     await hodlDerivationPause();
@@ -2705,8 +2700,8 @@ async function hodlDeriveWithProgress(kind, derive) {
     else throw error;
   } finally {
     hodlSettleDerivationKeys(control);
-    if (hodlActiveDerivation === control) hodlActiveDerivation = null;
     hodlSetDerivationButtonState(kind, "idle");
+    if (hodlActiveDerivation === control) hodlActiveDerivation = null;
     hodlSyncDeriveButton();
     hodlSyncMsigDeriveButton();
   }
@@ -6825,9 +6820,24 @@ function hodlLowEntropyWarning() {
   return null;
 }
 function hodlSyncDeriveButton() {
-  let button = document.getElementById("go");
+  let button = document.getElementById("go"), update = document.getElementById("key-update");
   if (!button) return;
+  let lab = hodlKeys[hodlActiveKey], editing = lab?.isLab && lab.editSourceId != null;
+  let source = editing ? hodlKeys.find((state) => !state.isLab && state.id === lab.editSourceId) : null;
+  let note = document.getElementById("key-edit-note");
+  if (note) {
+    note.hidden = !editing;
+    note.textContent = editing ? source ? hodlTText("The inputs below have been populated from {name}. You can update the existing key or derive a new key below.", { name: source.name }) : hodlTText("The key that supplied these inputs was deleted. You can still derive a new key below.") : "";
+  }
+  if (update) update.hidden = !editing;
   if (hodlActiveDerivation) {
+    let active = hodlDerivationButton("key");
+    for (let peer of [button, update]) {
+      if (!peer || peer === active && hodlActiveDerivation.kind === "key") continue;
+      peer.disabled = true;
+      peer.setAttribute("aria-disabled", "true");
+      peer.title = hodlTText("A derivation is already running.");
+    }
     if (hodlActiveDerivation.kind === "key") {
       hodlSetDerivationButtonState("key", hodlActiveDerivation.cancelled ? "stopping" : "running");
       return;
@@ -6838,10 +6848,16 @@ function hodlSyncDeriveButton() {
     button.title = hodlTText("A derivation is already running.");
     return;
   }
-  hodlSetDerivationButtonState("key", "idle");
+  hodlSetDerivationButtonState("key", "idle", button);
+  hodlSetDerivationButtonState("key", "idle", update);
   button.disabled = !hodlCanDeriveCurrentKey();
   button.title = "";
   button.setAttribute("aria-disabled", String(button.disabled));
+  if (update) {
+    update.disabled = button.disabled || !source;
+    update.setAttribute("aria-disabled", String(update.disabled));
+    update.title = !source ? hodlTText("The original key is no longer available.") : "";
+  }
 }
 var hodlMasterFingerprintTimer = 0, hodlMasterFingerprintRevision = 0;
 function hodlFingerprintMnemonic() {
@@ -7036,7 +7052,7 @@ function hodlThrowIfFailed(result) {
   if (error && typeof error === "object" && typeof error.key === "string") throw hodlError(error.key, error.vars);
   throw new Error(typeof error === "string" && error ? error : hodlT("Could not calculate"));
 }
-async function hodlCalculateKey(progress) {
+async function hodlCalculateKey(progress, action = "derive") {
   hodlSetWorkspaceError("key", null);
   // A fresh derivation restores the safe wallet.dat birthday default (scan
   // from genesis) so a previous "new keys" choice cannot leak into a
@@ -7151,7 +7167,7 @@ async function hodlCalculateKey(progress) {
     hodlCaptureKey();
     hodlJournalLog("derive", hodlWalletResult?.masterFingerprint || hodlWalletResult?.kind || "key");
     hodlSnapshotKeySummary();
-    hodlCommitDerivedKey();
+    hodlCommitDerivedKey(action);
     hodlJournalCaptureDerivedKey(hodlKeys[hodlActiveKey]);
     hodlDisposeDroppedWallets(); // the wallet this one replaced on its tab
     hodlFocusWalletResult();
@@ -7835,9 +7851,24 @@ function hodlUpdateMsigPurposeDetection() {
   return { purposes, mixed, purpose };
 }
 function hodlSyncMsigDeriveButton() {
-  let button = document.getElementById("msig-go");
+  let button = document.getElementById("msig-go"), update = document.getElementById("msig-update");
   if (!button) return;
+  let lab = hodlMsigs[hodlActiveMsig], editing = lab?.isLab && lab.editSourceId != null;
+  let source = editing ? hodlMsigs.find((state) => !state.isLab && state.id === lab.editSourceId) : null;
+  let note = document.getElementById("msig-edit-note");
+  if (note) {
+    note.hidden = !editing;
+    note.textContent = editing ? source ? hodlTText("The inputs below have been populated from {name}. You can update the existing multisig or derive a new multisig below.", { name: source.name }) : hodlTText("The multisig that supplied these inputs was deleted. You can still derive a new multisig below.") : "";
+  }
+  if (update) update.hidden = !editing;
   if (hodlActiveDerivation) {
+    let active = hodlDerivationButton("msig");
+    for (let peer of [button, update]) {
+      if (!peer || peer === active && hodlActiveDerivation.kind === "msig") continue;
+      peer.disabled = true;
+      peer.setAttribute("aria-disabled", "true");
+      peer.title = hodlTText("A derivation is already running.");
+    }
     if (hodlActiveDerivation.kind === "msig") {
       hodlSetDerivationButtonState("msig", hodlActiveDerivation.cancelled ? "stopping" : "running");
       return;
@@ -7848,7 +7879,8 @@ function hodlSyncMsigDeriveButton() {
     button.title = hodlTText("A derivation is already running.");
     return;
   }
-  hodlSetDerivationButtonState("msig", "idle");
+  hodlSetDerivationButtonState("msig", "idle", button);
+  hodlSetDerivationButtonState("msig", "idle", update);
   // A refusal that belongs to the wallet, not one card (co-signers on
   // different specs, or BIP45 beside Custom), leaves every card looking
   // valid: say it on the page above Derive, since a disabled button's title
@@ -7870,6 +7902,11 @@ function hodlSyncMsigDeriveButton() {
   button.disabled = !ready;
   button.setAttribute("aria-disabled", String(!ready));
   button.title = ready ? "" : reason;
+  if (update) {
+    update.disabled = !ready || !source;
+    update.setAttribute("aria-disabled", String(update.disabled));
+    update.title = !source ? hodlTText("The original multisig is no longer available.") : ready ? "" : reason;
+  }
 }
 function hodlUpdateMsigScriptDetection() {
   if (!document.getElementById("msig-script-tabs")) return hodlSummarizeMultisigScriptKinds([]);
@@ -9239,6 +9276,7 @@ function hodlInitMsig() {
   }));
   hodlResetMsigForm();
   hodlElement("#msig-go").onclick = () => hodlHandleDerivationButton("msig", hodlBuildMsig);
+  hodlElement("#msig-update").onclick = () => hodlHandleDerivationButton("msig", (progress) => hodlBuildMsig(progress, "update"), "msig-update");
   hodlElement("#msig-wipe").onclick = hodlWipeActiveMsig;
   document.getElementById("msig-descriptor-import")?.addEventListener("click", hodlImportMsigDescriptor);
   document.getElementById("msig-descriptor")?.addEventListener("input", () => {
@@ -9360,7 +9398,7 @@ function hodlValidatedMsigInputs() {
   let customWarning = customCosigners.length ? hodlTText("Custom spec: co-signer paths not checked against a spec ({list}). Keep the descriptor with every seed backup: a wallet restoring from the seeds alone will not find these addresses.", { list: customCosigners.join(", ") }) : "";
   return { network, coinType, count, addressStart, branchStart, branchRange, hardening, n, m, kind, purpose, legacyStandard, nodes, xpubs, keyTokens, accountSummary, accountWarning, customWarning, specCustom: customCosigners.length > 0 };
 }
-async function hodlBuildMsig(progress) {
+async function hodlBuildMsig(progress, action = "derive") {
   let generation = hodlDerivationGeneration, control = hodlActiveDerivation;
   let error = document.getElementById("msig-error");
   hodlSetWorkspaceError("msig", null);
@@ -9438,7 +9476,7 @@ async function hodlBuildMsig(progress) {
     hodlCaptureMsig();
     hodlJournalLog("derive", hodlWalletResult.m && hodlWalletResult.n ? `${hodlWalletResult.m}-of-${hodlWalletResult.n}` : "msig");
     hodlSnapshotMsigSummary();
-    hodlCommitDerivedMsig();
+    hodlCommitDerivedMsig(action);
     hodlFocusWalletResult();
     return true;
   } catch (exception) {
@@ -12541,7 +12579,7 @@ function hodlCloneDerivedKey(source, existing) {
   let fingerprint = source.result?.masterFingerprint || "";
   Object.assign(state, {
     isLab: false,
-    name: fingerprint || state.name,
+    name: existing && state.name !== existing.result?.masterFingerprint ? state.name : fingerprint || state.name,
     mode: source.mode,
     diceMethod: source.diceMethod,
     cardMethod: source.cardMethod,
@@ -12638,7 +12676,7 @@ function hodlSpTabCollides(state) {
 function hodlKeyWalletIdentity(result) {
   return result?.masterIdentity || result?.rootXpub || null;
 }
-function hodlCommitDerivedKey() {
+function hodlCommitDerivedKey(action = "derive") {
   let lab = hodlKeys[hodlActiveKey];
   if (!lab?.isLab || !lab.result) {
     hodlRenderKeyTabs();
@@ -12647,13 +12685,21 @@ function hodlCommitDerivedKey() {
   }
   let imported = hodlKeyManagerPending.find((state) => state.id === lab.importedKeyId);
   let identity = hodlKeyWalletIdentity(lab.result);
-  let existing = identity ? hodlKeys.findIndex((state) => !state.isLab && hodlKeyWalletIdentity(state.result) === identity) : -1;
+  let existing = -1;
+  if (action === "update") existing = hodlKeys.findIndex((state) => !state.isLab && state.id === lab.editSourceId);
+  else if (lab.editSourceId == null && identity) existing = hodlKeys.findIndex((state) => !state.isLab && hodlKeyWalletIdentity(state.result) === identity);
+  if (action === "update" && existing < 0) throw new Error(hodlTText("The original key is no longer available. Derive a new key instead."));
   if (existing >= 0) {
     hodlKeys[existing] = hodlCloneDerivedKey(lab, hodlKeys[existing]);
     hodlKeys[hodlActiveKey] = hodlNewLabState();
     hodlActiveKey = existing;
   } else {
     let derived = hodlCloneDerivedKey(lab);
+    if (lab.editSourceId != null && hodlKeyNameTaken(derived.name, -1)) {
+      let base = derived.name, suffix = 1;
+      do derived.name = base + " (" + suffix++ + ")";
+      while (hodlKeyNameTaken(derived.name, -1));
+    }
     hodlKeys[hodlActiveKey] = hodlNewLabState();
     hodlKeys.push(derived);
     hodlActiveKey = hodlKeys.length - 1;
@@ -12683,7 +12729,7 @@ function hodlFillLabFromKey(source) {
   let labIndex = hodlKeys.findIndex((state) => state.isLab);
   let existing = labIndex >= 0 ? hodlKeys[labIndex] : hodlNewLabState();
   let lab = hodlCloneDerivedKey(source, existing);
-  Object.assign(lab, { isLab: true, name: "Key Station", result: null, importedKeyId: null, error: "", reveal: false, createdScript: "", createdPath: "" });
+  Object.assign(lab, { isLab: true, editSourceId: hodlKeys.includes(source) ? source.id : null, name: "Key Station", result: null, importedKeyId: null, error: "", reveal: false, createdScript: "", createdPath: "" });
   if (labIndex < 0) {
     hodlKeys.unshift(lab);
     labIndex = 0;
@@ -13519,7 +13565,7 @@ function hodlSyncMsigResultView() {
 }
 function hodlCloneDerivedMsig(source, existing) {
   let state = existing ? { ...existing, fields: { ...existing.fields, xpubs: (existing.fields.xpubs || []).slice() } } : hodlNewMsigState();
-  let name = source.createdPolicy || hodlMsigPolicyName(source.result) || state.name;
+  let name = existing ? state.name : source.createdPolicy || hodlMsigPolicyName(source.result) || state.name;
   Object.assign(state, {
     isLab: false,
     name,
@@ -13528,7 +13574,7 @@ function hodlCloneDerivedMsig(source, existing) {
     createdPolicy: source.createdPolicy,
     createdScript: source.createdScript,
     createdNetwork: source.createdNetwork,
-    fields: { ...source.fields, xpubs: (source.fields.xpubs || []).slice() }
+    fields: { ...source.fields, xpubs: (source.fields.xpubs || []).slice(), specs: (source.fields.specs || []).slice() }
   });
   let skip = existing ? hodlMsigs.indexOf(existing) : -1;
   if (hodlMsigNameTaken(state.name, skip)) state.name = hodlUniqueMsigName(state.name, skip);
@@ -13546,7 +13592,7 @@ function hodlMsigIdentity(state) {
   let fields = state?.fields || {};
   return [fields.m, fields.n, fields.script, ...(Array.isArray(fields.xpubs) ? fields.xpubs : [])].join("|");
 }
-function hodlCommitDerivedMsig() {
+function hodlCommitDerivedMsig(action = "derive") {
   let lab = hodlMsigs[hodlActiveMsig];
   if (!lab?.isLab || !lab.result || lab.result.kind !== "msig") {
     hodlRenderMsigTabs();
@@ -13554,7 +13600,10 @@ function hodlCommitDerivedMsig() {
     return hodlActiveMsig;
   }
   let identity = hodlMsigIdentity(lab);
-  let existing = hodlMsigs.findIndex((state) => !state.isLab && hodlMsigIdentity(state) === identity);
+  let existing = -1;
+  if (action === "update") existing = hodlMsigs.findIndex((state) => !state.isLab && state.id === lab.editSourceId);
+  else if (lab.editSourceId == null) existing = hodlMsigs.findIndex((state) => !state.isLab && hodlMsigIdentity(state) === identity);
+  if (action === "update" && existing < 0) throw new Error(hodlTText("The original multisig is no longer available. Derive a new multisig instead."));
   if (existing >= 0) {
     hodlMsigs[existing] = hodlCloneDerivedMsig(lab, hodlMsigs[existing]);
     hodlMsigs[hodlActiveMsig] = hodlNewMsigLabState();
@@ -13584,7 +13633,7 @@ function hodlFillMsigLabFromWallet(source) {
   let labIndex = hodlMsigs.findIndex((state) => state.isLab);
   let existing = labIndex >= 0 ? hodlMsigs[labIndex] : hodlNewMsigLabState();
   let lab = hodlCloneDerivedMsig(source, existing);
-  Object.assign(lab, { isLab: true, name: "MS Station", result: null, error: "", createdPolicy: "", createdScript: "", createdNetwork: "" });
+  Object.assign(lab, { isLab: true, editSourceId: source.id, name: "MS Station", result: null, error: "", createdPolicy: "", createdScript: "", createdNetwork: "" });
   if (labIndex < 0) {
     hodlMsigs.unshift(lab);
     labIndex = 0;
@@ -13758,7 +13807,7 @@ function hodlCreateMsigTabMark(state) {
   return stack;
 }
 function hodlCreateMsigTab(index) {
-  let state = hodlMsigs[index], active = index === hodlActiveMsig, button = document.createElement("button"), name = state.isLab ? "MS Station" : state.createdPolicy || state.name || "Multisig " + state.number, label = document.createElement("span");
+  let state = hodlMsigs[index], active = index === hodlActiveMsig, button = document.createElement("button"), name = state.isLab ? "MS Station" : state.name || state.createdPolicy || "Multisig " + state.number, label = document.createElement("span");
   button.type = "button";
   button.id = state.isLab ? "msig-tab-lab" : "msig-tab-" + (index + 1);
   button.className = "tab key-tab msig-tab" + (state.isLab ? " is-lab station-tab" : "") + (active ? " active" : "");
@@ -13810,6 +13859,7 @@ function hodlBeginMsigRename(index) {
   editor.setAttribute("aria-controls", "msig-card");
   input.type = "text";
   input.className = "key-tab-name-input msig-tab-name-input";
+  input.id = "msig-rename-input";
   input.value = previous;
   input.maxLength = 120;
   input.setAttribute("aria-label", "Rename " + previous);
@@ -15921,7 +15971,7 @@ function hodlVanitySyncSource() {
     let label = hodlVanityKeyLabel(state), pass = String(state.fields?.pass ?? ""), hasMnemonic = hodlResultHasSeed(state.result);
     let name = document.getElementById("vanity-source-name"), kind = document.getElementById("vanity-source-kind"), image = document.getElementById("vanity-source-lifehash"), field = document.getElementById("vanity-pass"), passNote = document.getElementById("vanity-pass-note");
     if (name) name.textContent = label;
-    if (kind) kind.textContent = `${hasMnemonic ? "BIP39 seed words" : "Root xprv"}${state.name && state.name !== label ? ` · ${state.name}` : ""}`;
+    if (kind) kind.textContent = `${hasMnemonic ? "BIP39 seed words" : "Master xprv"}${state.name && state.name !== label ? ` · ${state.name}` : ""}`;
     let path = document.getElementById("vanity-source-path");
     if (path) path.textContent = hodlDisplayDerivationPath(state.fields?.derivationPath || state.fields?.derivationAccountPath || "");
     if (image) {
@@ -16403,7 +16453,7 @@ async function hodlVanityApplyMatch(index) {
   hodlVanityApplying = true;
   hodlRenderVanityOut();
   hodlVanitySyncControls();
-  let before = new Set(hodlKeys.map((candidate) => candidate.id)), lab = hodlKeys.find((candidate) => candidate.isLab) || null;
+  let lab = hodlKeys.find((candidate) => candidate.isLab) || null;
   try {
     let labIndex = hodlFillLabFromKey(state), draft = hodlKeys[labIndex];
     draft.fields.pass = match.passphrase;
@@ -16415,19 +16465,9 @@ async function hodlVanityApplyMatch(index) {
     hodlRenderKeyTabs();
     hodlRestoreKey();
     document.getElementById("calc-card").hidden = hodlWorkspace !== "calc";
-    await hodlDeriveWithProgress("key", hodlCalculateKey);
+    await hodlDeriveWithProgress("key", (progress) => hodlCalculateKey(progress, "update"));
     let active = hodlKeys[hodlActiveKey];
     if (!active || active.isLab || !active.result) throw new Error(active?.error || "Deriving the updated key failed.");
-    if (!before.has(active.id)) {
-      // A changed passphrase means a new fingerprint, which the Keys tab files
-      // as a new key; fold it back into the tab it came from.
-      let target = hodlKeys.findIndex((candidate) => candidate.id === state.id), fresh = hodlActiveKey;
-      if (target >= 0) {
-        hodlKeys[target] = { ...active, id: state.id, number: state.number, color: state.color, name: state.name && state.name !== hodlVanityKeyLabel(state) ? state.name : active.name };
-        hodlKeys.splice(fresh, 1);
-        hodlActiveKey = target > fresh ? target - 1 : target;
-      }
-    }
     let updated = hodlKeys[hodlActiveKey];
     match.savedTo = hodlVanityKeyLabel(updated);
     // A tool that had this key loaded is holding the old seed: reload it so

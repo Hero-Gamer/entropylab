@@ -1977,14 +1977,21 @@
       document.querySelector('#workspace [data-workspace="vanity"]').click();
       await until(() => !document.getElementById("vanity-card").hidden, "Vanity tool to open");
     };
-    // The Keys tab's own in-place edit: Edit Input, change the lab, Derive.
+    // The Keys tab's explicit update: Edit Input, change the lab, Update Existing.
     const rederive = async (edit, what) => {
       await openKeys();
       document.getElementById("key-edit-inputs").click();
       await until(() => document.getElementById("key-summary").hidden, "the key's inputs to open in the lab");
+      const update = document.getElementById("key-update"), go = document.getElementById("go"), note = document.getElementById("key-edit-note");
+      assert(!note.hidden && note.textContent.trim(), "Edit Input did not identify the populated key inputs");
+      assert(!update.hidden, "Edit Input did not offer Update Existing Key");
+      assert(go.compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING, "Derive New did not precede Update Existing");
+      equal(getComputedStyle(update).backgroundColor, getComputedStyle(document.getElementById("key-edit-inputs")).backgroundColor, "Update Existing did not use the secondary action treatment");
+      equal(parseFloat(getComputedStyle(note).marginTop), 0, "The key edit note added space above the card's padding");
+      equal(parseFloat(getComputedStyle(note).marginBottom), parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--space-component")), "The key edit note did not leave the shared component gap below");
       edit();
-      await until(() => !document.getElementById("go").disabled, "Derive Key to enable");
-      document.getElementById("go").click();
+      await until(() => !update.disabled && !go.disabled, "both key edit actions to enable");
+      update.click();
       await until(() => !document.getElementById("key-summary").hidden, what, 60000);
       equal(keyTabs(), "Key Station,ef94d090", "an in-place edit keeps the key's fingerprint and tab");
     };
@@ -2053,6 +2060,40 @@
     document.getElementById("delete-key").click();
     await until(() => keyTabs() === "Key Station", "the derived key to be deleted");
     input(document.getElementById("pass"), "");
+  });
+  await test("Key Station Edit Input offers a separate new tab without replacing its source", async () => {
+    const tabs = () => [...document.querySelectorAll("#key-tabs > *")].filter(tab => tab.id !== "key-tab-lab");
+    await chooseMode("Seed phrase");
+    chooseSeedWords(12);
+    input(document.getElementById("seed"), "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about");
+    input(document.getElementById("address-range"), "1");
+    await until(() => !document.getElementById("go").disabled, "initial key derivation");
+    document.getElementById("go").click();
+    await until(() => tabs().length === 1 && !document.getElementById("key-summary").hidden, "first key tab");
+    const originalName = tabs()[0].textContent.trim(), originalAddress = firstAcctAddress()?.address;
+    document.getElementById("key-edit-inputs").click();
+    const go = document.getElementById("go"), update = document.getElementById("key-update"), note = document.getElementById("key-edit-note");
+    await until(() => !note.hidden && !go.disabled && !update.disabled, "both edit actions");
+    assert(note.textContent.includes(originalName), "The edit note did not identify the source tab");
+    assert(go.compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING, "Derive New did not precede Update Existing");
+    input(document.getElementById("address-start"), "7");
+    await until(() => !go.disabled, "Derive New after address-window edit");
+    go.click();
+    await until(() => tabs().length === 2 && !document.getElementById("key-summary").hidden, "separate key tab");
+    assert(tabs()[0].textContent.trim() === originalName, "Derive New renamed the source key");
+    assert(tabs()[1].textContent.trim() !== originalName, "The duplicate key tabs are indistinguishable");
+    tabs()[0].click();
+    await until(() => firstAcctAddress()?.address === originalAddress, "original key address after Derive New");
+    document.getElementById("key-edit-inputs").click();
+    await until(() => !update.hidden && !update.disabled, "Update Existing from the original key");
+    assert(note.textContent.includes(originalName), "The note lost the source key's current name");
+    document.getElementById("key-tab-lab").click();
+    while (tabs().length) {
+      tabs()[0].click();
+      document.getElementById("delete-key").click();
+    }
+    document.getElementById("key-tab-lab").click();
+    document.getElementById("wipe").click();
   });
   await test("Journal notepad stamps notes, session state stays live, and the log omits secrets", async () => {
     document.querySelector('#workspace [data-workspace="journal"]').click();
@@ -4198,10 +4239,10 @@
     assert(meta.classList.contains("err") && meta.textContent.includes("zpub indicates Native SegWit") && meta.textContent.includes("selected Legacy"), `SLIP-132 mismatch warning was not prominent: class=${meta.className}; text=${meta.textContent}`);
     const derive = await until(() => !document.getElementById("go").disabled && document.getElementById("go"), "SLIP-132 derive button");
     derive.click();
-    const watch = await until(() => document.querySelector("#acct .account-watch-section"), "watch-only section");
+    const watch = await until(() => document.querySelector('#acct [data-key-group="watch"]'), "watch-only section");
     const watchText = watch.textContent;
-    assert(watchText.includes("As pasted") && watchText.includes(zpub), "As-pasted zpub is missing from the watch-only export");
-    assert(watchText.includes("Bitcoin Core xpub") && watchText.includes("xpub6CatWdiZiodm"), "Core xpub is missing from the watch-only export");
+    assert(watchText.includes(zpub), "The imported zpub is missing from the watch-only export");
+    assert(watchText.includes("xpub6CatWdiZiodm"), "The account xpub is missing from the watch-only export");
     const recovery = await until(() => document.querySelector("#acct .imported-core-recovery"), "Bitcoin Core recovery export");
     const recoveryText = recovery.textContent;
     assert(recoveryText.includes("Bitcoin Core descriptor") && recoveryText.includes("wpkh(xpub6CatWdiZiodm") && recoveryText.includes("/<0;1>/*)#3r0wrtd9"), "Core descriptor is missing or incorrect");
@@ -5444,6 +5485,67 @@
     walletTabs().at(-1).click();
     await until(() => document.querySelector("#msig-out .account-result-card"), "wallet result after editing its inputs");
     assert(document.getElementById("msig-lab").hidden, "Selecting the wallet did not return to its result view");
+    const originalTab = walletTabs().at(-1), originalCount = walletTabs().length;
+    const renameSource = async (name) => {
+      document.getElementById(originalTab.id).dispatchEvent(new KeyboardEvent("keydown", { key: "F2", bubbles: true, cancelable: true }));
+      const editor = await until(() => document.getElementById("msig-rename-input"), "multisig rename editor");
+      input(editor, name);
+      editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+      await until(() => !document.getElementById("msig-rename-input"), "renamed multisig tab");
+      equal(document.getElementById(originalTab.id).textContent.trim(), name, "The multisig tab did not display its saved name");
+    };
+    await renameSource("Household savings");
+    const addresses = () => [...document.querySelectorAll('#msig-out [data-address-table="msig-receive"] [data-copy-field]')].map((button) => button.textContent).join();
+    const originalAddresses = addresses(), originalStart = document.getElementById("msig-address-start").value;
+    document.getElementById("msig-edit-inputs").click();
+    await until(() => !document.getElementById("msig-lab").hidden, "editable inputs in MS Station");
+    const update = document.getElementById("msig-update"), note = document.getElementById("msig-edit-note");
+    assert(!note.hidden && note.textContent.trim(), "Editing did not identify the populated inputs");
+    assert(note.textContent.includes("Household savings"), "The edit note did not use the source tab name");
+    assert(!update.hidden && !update.disabled && !go.disabled, "Editing did not offer both derivation actions");
+    assert(go.compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING, "Derive New did not precede Update");
+    equal(getComputedStyle(update).backgroundColor, getComputedStyle(document.getElementById("msig-edit-inputs")).backgroundColor, "Update did not use the secondary action treatment");
+    assert(getComputedStyle(update).backgroundColor !== getComputedStyle(go).backgroundColor, "The two edit actions were styled alike");
+    const noteStyle = getComputedStyle(note);
+    equal(parseFloat(noteStyle.marginTop), 0, "The edit note added space above the card's padding");
+    equal(parseFloat(noteStyle.marginBottom), parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--space-component")), "The edit note did not leave the shared component gap below");
+    equal(document.getElementById("msig-x-0").value, decorated.match(/\]([^/]+)/)[1], "Editing changed the co-signer key");
+    equal(document.getElementById("msig-address-start").value, originalStart, "Editing changed the address window");
+    equal(walletTabs().length, originalCount, "Editing committed a tab before derivation");
+    input(document.getElementById("msig-x-0"), "invalid");
+    assert(update.disabled && go.disabled, "The two actions did not share input validation");
+    input(document.getElementById("msig-x-0"), decorated);
+    await until(() => !update.disabled && !go.disabled, "valid edit actions");
+    update.click();
+    await until(() => update.dataset.derivationState === "running", "update derivation starts");
+    assert(go.disabled, "Derive New remained enabled during Update");
+    update.click();
+    await until(() => !update.dataset.derivationState && !update.disabled, "update derivation stopped");
+    equal(walletTabs().length, originalCount, "Stopping Update changed the wallet tabs");
+    input(document.getElementById("msig-address-start"), "17");
+    input(document.getElementById("msig-address-range"), "1");
+    go.click();
+    await until(() => walletTabs().length === originalCount + 1 || document.getElementById("msig-error").textContent, "separate duplicated multisig result");
+    assert(!document.getElementById("msig-error").textContent, "Duplicated multisig failed to derive");
+    equal(document.querySelector('#msig-out [data-address-table="msig-receive"] tbody th').textContent.trim(), "17", "The duplicate did not derive its changed address window");
+    document.getElementById(originalTab.id).click();
+    await until(() => document.getElementById("msig-address-start").value === originalStart, "original multisig after deriving the duplicate");
+    equal(addresses(), originalAddresses, "Deriving the duplicate overwrote the original multisig");
+    await renameSource("Family savings");
+    document.getElementById("msig-edit-inputs").click();
+    await until(() => !update.hidden && !update.disabled, "Update Existing after returning to source");
+    assert(note.textContent.includes("Family savings"), "The edit note retained an outdated tab name");
+    input(document.getElementById("msig-address-start"), "23");
+    input(document.getElementById("msig-address-range"), "1");
+    update.click();
+    await until(() => document.getElementById("msig-lab").hidden || document.getElementById("msig-error").textContent, "updated source result");
+    assert(!document.getElementById("msig-error").textContent, "Updating the source failed to derive");
+    equal(walletTabs().length, originalCount + 1, "Update Existing created another wallet tab");
+    equal(document.querySelector('#msig-tabs [aria-selected="true"]').id, originalTab.id, "Update Existing selected a different wallet");
+    equal(document.getElementById(originalTab.id).textContent.trim(), "Family savings", "Update Existing lost the source tab name");
+    equal(document.querySelector('#msig-out [data-address-table="msig-receive"] tbody th').textContent.trim(), "23", "Update Existing did not derive the changed window");
+    document.getElementById("msig-tab-lab").click();
+    assert(note.hidden && update.hidden, "A fresh station retained edit context after success");
     document.querySelector('#workspace [data-workspace="calc"]').click();
     await until(() => !document.getElementById("calc-card").hidden, "key workspace");
   });
@@ -5507,7 +5609,7 @@
     assert(text.includes(versionHeader) && text.includes("Network: testnet"), "Export headers are missing");
     assert(text.includes("Native SegWit (Purpose 69420')") && text.includes("m/69420'/1'/0'"), "The recovery sheet omitted the custom purpose");
     assert(text.includes("PRIVATE RECOVERY MATERIAL OMITTED"), "Omission notice is missing");
-    assert(!text.includes("YOUR SEED PHRASE") && !text.includes("MASTER SEED HEX") && !text.includes("BIP32 ROOT TPRV"), "Watch-only export leaked private data");
+    assert(!text.includes(vectors[0].mnemonic) && !/^[0-9a-f]{128}$/m.test(text) && !/^[xt]prv[1-9A-HJ-NP-Za-km-z]+$/m.test(text), "Watch-only export leaked private data");
 
     const datButton = await until(() => document.getElementById("download-wallet-dat"), "watch-only wallet.dat button");
     assert(/watch-only/i.test(datButton.textContent), "wallet.dat button should offer the watch-only wallet while secrets are hidden");
@@ -5532,7 +5634,7 @@
     const text = await (await until(() => state.lastBlob, "private export")).text();
     assert(text.includes("YOUR SEED PHRASE") && text.includes(vectors[0].mnemonic), "Mnemonic is missing");
     assert(text.includes("BIP39 ENTROPY HEX\n" + vectors[0].entropy), "Entropy is missing");
-    assert(text.includes("MASTER SEED HEX") && text.includes("BIP32 ROOT TPRV"), "Private derivation data is missing");
+    assert(/^[0-9a-f]{128}$/m.test(text) && /^tprv[1-9A-HJ-NP-Za-km-z]+$/m.test(text), "Private derivation data is missing");
 
     const datButton = await until(() => document.getElementById("download-wallet-dat"), "private wallet.dat button");
     assert(/secrets/i.test(datButton.textContent) && /xprv/i.test(datButton.textContent), "wallet.dat button should warn that secrets are included while revealed");

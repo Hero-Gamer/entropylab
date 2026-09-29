@@ -16,6 +16,21 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const app = readFileSync(join(root, "src/js/app.js"), "utf8");
 
 
+// Whether the ")" at `index` closes the header of an if, for, while or with:
+// a statement starts after it, so a "/" there opens a regex, not a division
+// (for (let n of e) /\s/.test(n) ...).
+function closesControlHeader(index) {
+  if (app[index] !== ")") return false;
+  let depth = 0, at = index;
+  for (; at >= 0; at--) {
+    if (app[at] === ")") depth++;
+    else if (app[at] === "(" && --depth === 0) break;
+  }
+  let word = at - 1;
+  while (word >= 0 && /\s/.test(app[word])) word--;
+  return /\b(?:if|for|while|with)$/.test(app.slice(Math.max(0, word - 5), word + 1));
+}
+
 // Index just past the literal or comment starting at `index`, or -1 when none
 // starts there. Braces inside strings, templates, regexes and comments must
 // not count toward a declaration's extent.
@@ -49,7 +64,7 @@ function skipLiteral(index) {
     // A regex literal follows an operator or an opening bracket, never a value.
     let before = index - 1;
     while (before >= 0 && /\s/.test(app[before])) before--;
-    if (before < 0 || /[(,=:[!&|?{};+\-*%<>~^]/.test(app[before]) || /\b(?:return|typeof|case|in|of)$/.test(app.slice(Math.max(0, before - 6), before + 1))) {
+    if (before < 0 || /[(,=:[!&|?{};+\-*%<>~^]/.test(app[before]) || /\b(?:return|typeof|case|in|of)$/.test(app.slice(Math.max(0, before - 6), before + 1)) || closesControlHeader(before)) {
       let inClass = false;
       for (let i = index + 1; i < app.length; i++) {
         if (app[i] === "\\") i++;
@@ -85,7 +100,8 @@ function sourceAt(kind, start) {
     } else if ("}])".includes(char)) {
       depth--;
       if (kind === "function" && opened && depth === 0) return app.slice(start, index + 1);
-    } else if (kind === "variable" && depth === 0 && (char === ";" || (char === "\n" && opened))) return app.slice(start, index + (char === ";" ? 1 : 0));
+    // A line ending in a comma continues the statement (var a = 1,\n  b = 2).
+    } else if (kind === "variable" && depth === 0 && (char === ";" || (char === "\n" && opened && !/,\s*$/.test(app.slice(start, index))))) return app.slice(start, index + (char === ";" ? 1 : 0));
   }
   throw new Error(`unterminated declaration at ${start}`);
 }

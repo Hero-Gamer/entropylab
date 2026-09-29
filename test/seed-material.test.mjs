@@ -78,9 +78,9 @@ test("the words, entropy hex and seed hex are produced on request and match BIP3
     assert.equal(api.hodlResultEntropyHex(wallet), vector.entropy, `${label}: entropy hex`);
     assert.equal(api.hodlResultSeedHex(wallet), vector.seed, `${label}: seed hex`);
   }
-  // A BIP-85 child's session key carries its words as the BIP-85 Station's
-  // text output; an imported root carries no seed material.
-  const child = { kind: "hd", mnemonic: VECTORS[1].words };
+  // A BIP-85 child's session key carries the child's BIP39 entropy as bytes
+  // (#546 B3); an imported root carries no seed material.
+  const child = { kind: "hd", entropy: hex.decode(VECTORS[1].entropy) };
   assert.equal(api.hodlResultHasSeed(child), true);
   assert.equal(api.hodlResultMnemonic(child), VECTORS[1].words);
   const imported = await builders.hodlImportedWalletWithProgress(rootOf(VECTORS[0].words, "").privateExtendedKey, "mainnet", 2, 0, 0, tracker, 84, 0);
@@ -114,9 +114,10 @@ test("the recovery fields render the same, hidden and revealed", async () => {
     const expected = view.hodlSeedPhraseField("Your seed phrase \xB7 12 words", vector.words) + view.hodlSeedQrExport(vector.words, { passphraseUsed: false, entropyHex: vector.entropy })
       + view.hodlPrivateFieldHtml("BIP39 entropy hex", vector.entropy) + view.hodlPrivateFieldHtml("Master seed hex", seed);
     assert.equal(view.hodlSeedRecoveryFields(wallet).join(""), expected, `${revealed ? "revealed" : "hidden"}, no passphrase`);
-    // A BIP-85 child's session key carries its words as text.
-    const words = VECTORS[2].words, child = { kind: "hd", mnemonic: words, passphraseUsed: false };
-    assert.equal(view.hodlSeedRecoveryFields(child).join(""), view.hodlSeedPhraseField("Your seed phrase \xB7 24 words", words) + (revealed ? view.hodlSeedQrExport(words, { passphraseUsed: false, entropyHex: null }) : ""), `${revealed ? "revealed" : "hidden"}, BIP-85 child words`);
+    // A BIP-85 child's session key carries the child's entropy as bytes (#546 B3).
+    const words = VECTORS[2].words, child = { kind: "hd", entropy: hex.decode(VECTORS[2].entropy), passphraseUsed: false };
+    assert.equal(view.hodlSeedRecoveryFields(child).join(""), view.hodlSeedPhraseField("Your seed phrase \xB7 24 words", words) + view.hodlSeedQrExport(words, { passphraseUsed: false, entropyHex: VECTORS[2].entropy })
+      + view.hodlPrivateFieldHtml("BIP39 entropy hex", VECTORS[2].entropy), `${revealed ? "revealed" : "hidden"}, BIP-85 child words`);
   }
 });
 
@@ -131,8 +132,8 @@ test("the recovery sheet carries the seed material only when private material is
 });
 
 // A station takes a key's root. A Key Station wallet hands over a copy of
-// the root it was derived with; a BIP-85 child's session key still derives
-// one from its words.
+// the root it was derived with; a BIP-85 child's session key derives one from
+// the child's entropy, which it keeps as bytes (#546 B3).
 test("a station session gets its own copy of the wallet's root", async () => {
   const { hodlSeedSessionRoot } = await load(["hodlSeedSessionRoot"]);
   const vector = VECTORS[1], wallet = await fromWords(vector), expected = rootOf(vector.words, vector.pass).privateExtendedKey;
@@ -140,7 +141,7 @@ test("a station session gets its own copy of the wallet's root", async () => {
   assert.equal(root.privateExtendedKey, expected);
   root.wipePrivateData();
   assert.equal(hodlSeedSessionRoot(wallet, vector.pass).privateExtendedKey, expected, "wiping the session copy wiped the wallet's root");
-  const child = hodlSeedSessionRoot({ kind: "hd", mnemonic: vector.words }, "");
+  const child = hodlSeedSessionRoot({ kind: "hd", entropy: hex.decode(vector.entropy) }, "");
   assert.equal(child.privateExtendedKey, rootOf(vector.words, "").privateExtendedKey, "a BIP-85 child's words");
 });
 

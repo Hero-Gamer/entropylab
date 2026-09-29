@@ -13,12 +13,26 @@
 //   - `document.createTreeWalker` walks text nodes, so the app's own
 //     translation sweep (i18n.js) runs over the fixture;
 //   - a select reports its options, selected index and value, so the custom
-//     select (enhanced-inputs.js) can mirror one.
+//     select (enhanced-inputs.js) can mirror one;
+//   - listeners added to an element or the document are recorded (never
+//     dispatched), so a test can count what a re-render leaves behind.
 // Selectors: tag, #id, .class, [attr], [attr=value], compounds, descendant
 // chains and comma lists. Anything else throws, so an unsupported selector
 // fails loudly rather than matching nothing.
 const state = new WeakMap();
 const me = (node) => state.get(node);
+// Listeners are recorded on elements and on the document, so a test can count
+// what a re-render leaves registered; held by their target, as in a browser, a
+// listener keeps what it holds alive exactly as long as the target lives.
+const listeners = new WeakMap();
+function addListener(target, type, listener) {
+  if (!listeners.has(target)) listeners.set(target, new Map());
+  const byType = listeners.get(target);
+  if (!byType.has(type)) byType.set(type, new Set());
+  byType.get(type).add(listener);
+}
+const removeListener = (target, type, listener) => listeners.get(target)?.get(type)?.delete(listener);
+const countListeners = (target, type) => listeners.get(target)?.get(type)?.size ?? 0;
 const camel = (name) => name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
 const dataName = (key) => "data-" + key.replace(/[A-Z]/g, (letter) => "-" + letter.toLowerCase());
 const VOID = new Set(["img", "input", "br", "hr", "meta", "link"]);
@@ -26,13 +40,14 @@ const unescapeText = (text) => text.replace(/&(amp|lt|gt|quot|#39|apos);/g, (_, 
 
 function parseSelector(text) {
   return text.split(",").map((part) => part.trim().split(/\s+/).map((compound) => {
-    const parsed = { tag: null, id: null, classes: [], attrs: [] };
+    const parsed = { tag: null, id: null, classes: [], attrs: [], checked: false };
     let rest = compound;
     while (rest) {
       let match;
       if ((match = rest.match(/^#([\w-]+)/))) parsed.id = match[1];
       else if ((match = rest.match(/^\.([\w-]+)/))) parsed.classes.push(match[1]);
       else if ((match = rest.match(/^\[([\w-]+)(?:=(?:"([^"]*)"|'([^']*)'|([^\]]*)))?\]/))) parsed.attrs.push([match[1], match[2] ?? match[3] ?? match[4] ?? null]);
+      else if ((match = rest.match(/^:checked/))) parsed.checked = true;
       else if ((match = rest.match(/^([a-zA-Z][\w-]*|\*)/))) parsed.tag = match[1] === "*" ? null : match[1].toLowerCase();
       else throw new Error(`mini-dom: unsupported selector "${text}"`);
       rest = rest.slice(match[0].length);
@@ -46,6 +61,7 @@ function matchesCompound(element, compound) {
   if (compound.id !== null && own.attrs.get("id") !== compound.id) return false;
   const classes = (own.attrs.get("class") || "").split(/\s+/);
   if (!compound.classes.every((name) => classes.includes(name))) return false;
+  if (compound.checked && !(element.checked ?? own.attrs.has("checked"))) return false;
   return compound.attrs.every(([name, value]) => own.attrs.has(name) && (value === null || own.attrs.get(name) === value));
 }
 function matchesChain(element, chain, index) {
@@ -187,6 +203,9 @@ export class MiniElement {
     const own = me(this);
     if (own.tag === "select") return this.options[this.selectedIndex]?.value ?? "";
     if (own.tag === "option" && !own.valueSet) return this.getAttribute("value") ?? this.textContent;
+    // Until set, an input's value is its value attribute and a textarea's its text.
+    if (!own.valueSet && own.tag === "input") return this.getAttribute("value") ?? "";
+    if (!own.valueSet && own.tag === "textarea") return this.textContent;
     return own.value;
   }
   set value(value) {
@@ -238,7 +257,9 @@ export class MiniElement {
     return found;
   }
   querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
-  addEventListener() {}
+  addEventListener(type, listener) { addListener(this, type, listener); }
+  removeEventListener(type, listener) { removeListener(this, type, listener); }
+  listenerCount(type) { return countListeners(this, type); }
   focus() {}
   select() {}
   click() {
@@ -299,7 +320,9 @@ export class MiniDocument {
   createElementNS(_namespace, tag) { return new MiniElement(tag, this); }
   createDocumentFragment() { return new MiniFragment(this); }
   createTextNode(text) { return new MiniText(text); }
-  addEventListener() {}
+  addEventListener(type, listener) { addListener(this, type, listener); }
+  removeEventListener(type, listener) { removeListener(this, type, listener); }
+  listenerCount(type) { return countListeners(this, type); }
   getElementById(id) { return this.body.querySelector(`#${id}`); }
   querySelector(selector) { return this.body.querySelector(selector); }
   querySelectorAll(selector) { return this.body.querySelectorAll(selector); }

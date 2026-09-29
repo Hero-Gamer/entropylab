@@ -73,7 +73,7 @@ import { initLowEntropyConfirm } from "./low-entropy-confirm.js";
 import { initFingerprintCollisionConfirm } from "./fingerprint-collision-confirm.js";
 import { NONCE_HISTORY_MAX_TEXT, compareNonceHistory, mergeNonceHistory, nonceHistoryRecord, parseNonceHistory, serializeNonceHistory } from "./nonce-history.js";
 import { renderSVG as hodlUqrRenderSvg } from "uqr";
-import { BIP39_LANGUAGE_ENGLISH, BIP85_APPS, bip85Path, deriveApplication, parseChildIndex, wipeBip85Result, wipeBytes as hodlWipeBytes } from "./bip85.js";
+import { BIP39_LANGUAGE_ENGLISH, BIP85_APPS, bip85Path, bip85SecretLength, deriveApplication, parseChildIndex, wipeBip85Result, wipeBytes as hodlWipeBytes } from "./bip85.js";
 import { VANITY_HARDENED, VANITY_MAX_INDEX, VANITY_METHODS, VANITY_SCRIPTS, VanityGrinder, estimateVanityWork, validateVanityIndexRange, validateVanityMnemonic, validateVanityPassphrase, validateVanityPrefix, validateVanityRange, vanityBenchmark, vanityPathIndexes, vanityPathString } from "./vanity.js";
 import { tHtml as hodlT, t as hodlTText, tAttr as hodlTAttr, hodlInitLocale, hodlFillLocaleSelect, hodlGetLocale } from "./i18n.js";
 import { hodlSanitizeCatalogHtml } from "./i18n-sanitize.js";
@@ -479,15 +479,14 @@ function hodlSingleWif(wallet, compressed) {
 function hodlSinglePrivateHex(wallet) {
   return wallet?.privateKey ? hodlHex.encode(wallet.privateKey) : null;
 }
-// A BIP-85 WIF child's session key still carries its key as the BIP-85
-// Station's hex output; a Key Station single key carries bytes.
+// A single key carries its private key as bytes: a Key Station single key, and
+// a BIP-85 WIF child's session key (#546 B3).
 function hodlResultHasSingleKey(result) {
-  return Boolean(result?.privateKey || result?.privHex);
+  return Boolean(result?.privateKey);
 }
 // A station session's own copy of a single key, which the station zeroes.
 function hodlSinglePrivateKey(result) {
-  if (result?.privateKey) return Uint8Array.from(result.privateKey);
-  return result?.privHex ? hodlHex.decode(result.privHex) : null;
+  return result?.privateKey ? Uint8Array.from(result.privateKey) : null;
 }
 // The byte arrays a wallet result keeps its own secrets in: a single key and
 // its typed mini key, or a seed wallet's BIP39 entropy, seed and typed
@@ -549,6 +548,9 @@ function hodlWipeUnsharedWalletRows(result) {
 var hodlCommittedResults = new Set();
 function hodlDisposeDroppedWallets() {
   for (let result of hodlCommittedResults) hodlWipeUnsharedWalletRows(result);
+  // The stations offer only the keys the Key Station still has (#546 B3).
+  hodlRefreshStationKeyPickers();
+  hodlRefreshMsigSessionPickers();
 }
 // Wipes the private keys a derivation made that no station shows (its row
 // keys, its result's secret bytes, and the root and account nodes its result
@@ -882,30 +884,27 @@ function hodlBranchPrivateDescriptor(account, branch, keyText = hodlAccountPriva
 function hodlBranchPrivateDescriptorLength(account, branch) {
   return account?.privateNode ? hodlBranchPrivateDescriptor(account, branch, account.genericPublic).length : 0;
 }
-// A BIP-85 child's session key still carries its root as text (the BIP-85
-// Station's own output); a Key Station wallet carries a node.
+// A wallet carries its BIP32 root as a node: a Key Station wallet, and a
+// BIP-85 XPRV child's session key (#546 B3).
 function hodlResultHasRoot(result) {
-  return Boolean(result?.rootNode || result?.rootXprv);
+  return Boolean(result?.rootNode);
 }
 function hodlResultRootXprv(result) {
-  if (result?.rootNode) return hodlSerializeExtendedKey(result.rootNode.privateExtendedKey, result.network, "x", true);
-  return result?.rootXprv || null;
+  return result?.rootNode ? hodlSerializeExtendedKey(result.rootNode.privateExtendedKey, result.network, "x", true) : null;
 }
 // A station session's own copy of a key's BIP32 root, which the station wipes.
 function hodlResultRootNode(result) {
-  if (result?.rootNode) return hodlCopyPrivateNode(result.rootNode);
-  return result?.rootXprv ? hodlHDKey.fromExtendedKey(hodlParseExtendedKey(result.rootXprv).xkey) : null;
+  return result?.rootNode ? hodlCopyPrivateNode(result.rootNode) : null;
 }
 // A seed wallet keeps its BIP39 entropy and seed as bytes, never as text: the
 // words, entropy hex and seed hex are built only where one is shown, copied
 // or exported, or handed to a station that takes the words as text. A BIP-85
-// child's session key still carries its words as the BIP-85 Station's text.
+// child's session key keeps the child's entropy the same way (#546 B3).
 function hodlResultHasSeed(result) {
-  return Boolean(result?.entropy || result?.mnemonic);
+  return Boolean(result?.entropy);
 }
 function hodlResultMnemonic(result) {
-  if (result?.entropy) return hodlEntropyToMnemonic(result.entropy, hodlBip39Wordlist);
-  return result?.mnemonic || null;
+  return result?.entropy ? hodlEntropyToMnemonic(result.entropy, hodlBip39Wordlist) : null;
 }
 function hodlResultEntropyHex(result) {
   return result?.entropy ? hodlHex.encode(result.entropy) : null;
@@ -918,7 +917,7 @@ function hodlResultSeedHex(result) {
 // derived with produced, or a BIP-85 child's words with the given passphrase.
 function hodlSeedSessionRoot(result, passphrase = "") {
   if (result?.rootNode) return hodlResultRootNode(result);
-  let seed = hodlMnemonicToSeed(result.mnemonic, passphrase);
+  let seed = hodlMnemonicToSeed(hodlResultMnemonic(result), passphrase);
   try {
     return hodlHDKey.fromMasterSeed(seed);
   } finally {
@@ -1832,7 +1831,7 @@ function hodlSingleWalletData(wallet) {
 // four bytes of entropy; a BIP-85 child's session key carries its words.
 function hodlSeedRecoveryFields(wallet) {
   if (!hodlResultHasSeed(wallet)) return [];
-  let count = wallet.entropy ? wallet.entropy.length * 3 / 4 : String(wallet.mnemonic).trim().split(/\s+/).length;
+  let count = wallet.entropy.length * 3 / 4;
   let words = hodlRevealPrivate ? hodlResultMnemonic(wallet) : Array(count).fill("\u2022").join(" "), fields = [];
   fields.push(hodlSeedPhraseField(`Your seed phrase \xB7 ${count} words`, words), hodlRevealPrivate ? hodlSeedQrExport(words, { passphraseUsed: wallet.passphraseUsed, entropyHex: hodlResultEntropyHex(wallet) }) : "");
   // The passphrase sits right under the words it belongs to: without it the
@@ -4915,9 +4914,32 @@ function hodlBindSeedKeyboardDelete(getInput, button, applyDelete = hodlApplySee
     remove();
   });
 }
+// The listeners the Key Station form adds outside itself, by owner (an
+// on-screen keyboard, or the key fields): on the document, and on controls
+// that outlive the form (the network select, the passphrase field). The form is
+// rebuilt on every render, so they are kept here, where the next bind of the
+// same owner replaces them and the next form render lets them all go. Left in
+// place, each stayed for the rest of the session and held the old form, its
+// typed seed words or private key, and the key state that form showed (#546 B3).
+var hodlFormListeners = new Map();
+function hodlFormListen(owner, target, events, handler) {
+  if (!target) return;
+  let entries = hodlFormListeners.get(owner) || [];
+  entries.push({ target, events, handler });
+  hodlFormListeners.set(owner, entries);
+  events.forEach((type) => target.addEventListener(type, handler));
+}
+function hodlReleaseFormListeners(owner) {
+  for (let id of owner ? [owner] : [...hodlFormListeners.keys()]) {
+    for (let { target, events, handler } of hodlFormListeners.get(id) || []) events.forEach((type) => target.removeEventListener(type, handler));
+    hodlFormListeners.delete(id);
+  }
+}
 function hodlBindSeedKeyboard(input, targetWords = hodlTargetWordCount) {
   let toggle = document.getElementById("seed-keyboard-toggle"), keyboard = document.getElementById("seed-keyboard"), modeButton = keyboard?.querySelector("[data-seed-keyboard-mode]"), passphrase = document.getElementById("pass");
   if (!toggle || !keyboard || !input) return;
+  // Its listeners from the last bind go before this bind adds its own.
+  hodlReleaseFormListeners(keyboard.id);
   let activeInput = input, passphraseField = () => document.getElementById("pass") || passphrase, isPassphrase = () => {
     let field = passphraseField();
     return Boolean(field && activeInput === field);
@@ -4951,23 +4973,23 @@ function hodlBindSeedKeyboard(input, targetWords = hodlTargetWordCount) {
     refresh();
   };
   input.onfocus = () => activate(input);
-  // Delegated so the passphrase field is found whenever it renders, and stored on
-  // the keyboard so re-binding replaces the handler rather than stacking another.
+  // Delegated so the passphrase field is found whenever it renders, and kept by
+  // keyboard id so re-binding replaces the handler rather than stacking another.
   // Typing and clicking retarget as well as focus, because a headless browser
   // does not always deliver focus events to a document that is not foremost.
   let activityEvents = ["focusin", "input", "click", "keyup", "select"];
-  if (keyboard.hodlKeyboardActivity) activityEvents.forEach((type) => document.removeEventListener(type, keyboard.hodlKeyboardActivity));
-  keyboard.hodlKeyboardActivity = (event) => {
+  hodlFormListen(keyboard.id, document, activityEvents, (event) => {
     let field = passphraseField();
     if (field && event.target === field) activate(field);
     else if (event.target === input) activate(input);
-  };
-  activityEvents.forEach((type) => document.addEventListener(type, keyboard.hodlKeyboardActivity));
+  });
   activate(input);
 }
 function hodlBindPassphraseKeyboard(inputId = "pass", toggleId = "passphrase-keyboard-toggle", inputName = "passphrase", keyboardId = "passphrase-keyboard") {
   let toggle = document.getElementById(toggleId), keyboard = document.getElementById(keyboardId), input = document.getElementById(inputId), modeButton = keyboard?.querySelector("[data-seed-keyboard-mode]");
   if (!toggle || !keyboard || !input) return;
+  // Its listeners from the last bind go before this bind adds its own.
+  hodlReleaseFormListeners(keyboard.id);
   let privateKey = inputId === "key", activeInput = input,
     // Resolved on demand: the passphrase field is not always in the document
     // when this binds, and it is only a target while it is actually shown.
@@ -4997,18 +5019,18 @@ function hodlBindPassphraseKeyboard(inputId = "pass", toggleId = "passphrase-key
       refresh();
     };
   }
-  ["input", "focus", "blur", "click", "keyup", "select"].forEach((type) => input.addEventListener(type, () => {
+  // The input may be the passphrase field, which outlives the form.
+  hodlFormListen(keyboard.id, input, ["input", "focus", "blur", "click", "keyup", "select"], () => {
     activeInput = input;
     refresh();
-  }));
+  });
   if (privateKey) {
-    document.querySelectorAll('input[name="kk"]').forEach((radio) => radio.addEventListener("change", refresh));
-    document.getElementById("network")?.addEventListener("change", refresh);
+    document.querySelectorAll('input[name="kk"]').forEach((radio) => hodlFormListen(keyboard.id, radio, ["change"], refresh));
+    // The network select outlives the form (#621 review).
+    hodlFormListen(keyboard.id, document.getElementById("network"), ["change"], refresh);
     // Delegated so a passphrase field that renders later is still picked up, and
-    // stored on the keyboard so re-binding replaces the handler.
-    let events = ["focusin", "input", "click", "keyup", "select"];
-    if (keyboard.hodlKeyboardActivity) events.forEach((type) => document.removeEventListener(type, keyboard.hodlKeyboardActivity));
-    keyboard.hodlKeyboardActivity = (event) => {
+    // kept by keyboard id so re-binding replaces the handler.
+    hodlFormListen(keyboard.id, document, ["focusin", "input", "click", "keyup", "select"], (event) => {
       let target = passphraseTarget();
       if (target && event.target === target) activeInput = target;
       else if (event.target === input) activeInput = input;
@@ -5016,8 +5038,7 @@ function hodlBindPassphraseKeyboard(inputId = "pass", toggleId = "passphrase-key
       // Announce the field it is actually typing into.
       keyboard.setAttribute("aria-label", `On-screen ${keyboard.dataset.seedKeyboardLayout || "lower"} ${onPassphrase() ? "passphrase" : inputName} keyboard`);
       refresh();
-    };
-    events.forEach((type) => document.addEventListener(type, keyboard.hodlKeyboardActivity));
+    });
   }
   refresh();
 }
@@ -5956,6 +5977,9 @@ function hodlSetSeedLength(words) {
   hodlQueueMasterFingerprintPreview(0);
 }
 function hodlRenderKeyForm() {
+  // The form and its on-screen keyboards are replaced: the listeners they
+  // added outside the form go with them (#546 B3).
+  hodlReleaseFormListeners();
   let config = hodlSeedConfig(), keyboardHost = document.getElementById("passphrase-keyboard-host"), toggleHost = document.getElementById("passphrase-keyboard-toggle-host");
   if (keyboardHost) {
     keyboardHost.hidden = true;
@@ -6577,6 +6601,8 @@ function hodlRenderPrivateKeyInputState(input) {
   return analysis;
 }
 function hodlBindKeyFields() {
+  // Its listener from the last bind goes before this bind adds its own.
+  hodlReleaseFormListeners("key-fields");
   let dice = document.getElementById("dice");
   if (dice) {
     dice.setAttribute("inputmode", hodlDiceMethod === "dplus" ? "text" : "numeric");
@@ -6667,7 +6693,8 @@ function hodlBindKeyFields() {
       hodlInvalidateLiveKeyResult();
       refreshBrain();
     };
-    document.getElementById("network")?.addEventListener("change", apply);
+    // The network select outlives the form (#621 review).
+    hodlFormListen("key-fields", document.getElementById("network"), ["change"], apply);
     let trim = document.getElementById("brain-wallet-trim");
     if (trim) trim.onchange = () => {
       // Trimming changes the hashed bytes, so it changes the wallet: retract
@@ -8211,16 +8238,12 @@ function hodlSessionMsigKeys() {
     let state = hodlBip85SessionKeyState(child);
     if (!state || state.result.kind !== "hd") continue;
     if (!state.result.multisigCosignerExports) {
-      let root = null, seed = null;
+      let root = null;
       try {
-        if (state.result.mnemonic) {
-          seed = hodlMnemonicToSeed(state.result.mnemonic, "");
-          root = hodlHDKey.fromMasterSeed(seed);
-        } else root = hodlResultRootNode(state.result);
+        root = hodlResultHasSeed(state.result) ? hodlSeedSessionRoot(state.result, "") : hodlResultRootNode(state.result);
         state.result.multisigCosignerExports = hodlBuildMultisigCosignerExports(root, state.result.network, 0, state.result.masterFingerprint);
       } finally {
         root?.wipePrivateData();
-        hodlWipeBytes(seed);
       }
     }
     if (state.result.multisigCosignerExports.length) keys.push(state);
@@ -8239,12 +8262,24 @@ function hodlBip85SessionKeyState(child) {
     id: `bip85:${child.id}`, isBip85Child: true, parentFingerprint: child.parentFingerprint,
     name: `BIP-85 ${hodlBip85AppLabel(app)} ${fingerprint}`,
     fields: { pass: "", derivationAccountPath: `m/84'/${network === "testnet" ? 1 : 0}'/0'`, branchStart: "0", addressStart: "0", branchHarden: false, addressHarden: false },
+    // The child's own bytes, as a Key Station wallet keeps them, never its text:
+    // the BIP39 entropy, the root as a node, or the private key (#546 B3).
     result: { kind: app === "wif" ? "single" : "hd", network, masterFingerprint: fingerprint,
-      mnemonic: app === "bip39" ? child.result.secret : null,
-      rootXprv: app === "xprv" ? child.result.secret : null,
-      privHex: app === "wif" ? child.result.entropyHex : null }
+      entropy: app === "bip39" ? child.result.entropy : null,
+      rootNode: app === "xprv" ? new hodlHDKey({ chainCode: child.result.chainCode, privateKey: child.result.entropy }) : null,
+      privateKey: app === "wif" ? child.result.entropy : null }
   };
   return child.sessionKey;
+}
+// A child the station drops: its bytes are zeroed, and its session key lets go
+// of them, so a station holding the key gets nothing rather than the all-zero
+// key (#546 B3).
+function hodlBip85DropChild(state) {
+  wipeBip85Result(state?.result);
+  let session = state?.sessionKey?.result;
+  if (!session) return;
+  session.rootNode?.wipePrivateData();
+  session.entropy = session.rootNode = session.privateKey = null;
 }
 function hodlAppendSessionKeyLifehashes(button, state, fingerprint) {
   let append = (value) => {
@@ -8267,12 +8302,16 @@ function hodlAppendSessionKeyLifehashes(button, state, fingerprint) {
   }
   if (fingerprint) append(fingerprint);
 }
-function hodlFillStationKeyPicker(id, selectedSource, onSelect, keys = hodlSessionHdRootKeys()) {
-  let box = document.getElementById(id);
+// A chip keeps only its key id, and hands the station that key as it is when
+// clicked. A key the Key Station has dropped since (wiped, deleted, edited or
+// re-derived) has zeroed bytes, which would read as the all-zero wallet: it
+// never reaches a station, and no chip holds on to it (#546 B3).
+function hodlFillStationKeyPicker(id, selectedSource, onSelect, keys = hodlSessionHdRootKeys) {
+  let box = document.getElementById(id), offered = keys();
   if (!box) return;
   box.replaceChildren();
-  box.hidden = !keys.length;
-  keys.forEach((state) => {
+  box.hidden = !offered.length;
+  offered.forEach((state) => {
     let master = state.result?.masterFingerprint || "", fingerprint = master || state.name || "Key " + state.number, button = document.createElement("button"), label = document.createElement("span"), selected = selectedSource === "key:" + state.id;
     button.type = "button";
     button.className = "session-key-option" + (selected ? " active" : "");
@@ -8289,7 +8328,12 @@ function hodlFillStationKeyPicker(id, selectedSource, onSelect, keys = hodlSessi
     check.setAttribute("aria-hidden", "true");
     check.innerHTML = hodlCopiedIconMarkup();
     button.append(label, check);
-    button.onclick = () => onSelect(state);
+    let keyId = String(state.id);
+    button.onclick = () => {
+      let current = keys().find((candidate) => String(candidate.id) === keyId);
+      if (current) onSelect(current);
+      else hodlRefreshStationKeyPickers();
+    };
     box.appendChild(button);
   });
 }
@@ -8357,9 +8401,9 @@ function hodlOpenKeyStation() {
 function hodlRefreshStationKeyPickers() {
   hodlFillStationKeyPicker("bip85-session-keys", hodlBip85Source, hodlPickBip85SessionKey);
   hodlFillStationKeyPicker("sp-session-keys", hodlSpSource, hodlPickSpSessionKey);
-  hodlFillStationKeyPicker("vanity-session-keys", hodlVanitySource, hodlPickVanitySessionKey, hodlVanitySourceKeys());
-  hodlFillStationKeyPicker("psbt-session-keys", hodlPsbtSource, hodlPickPsbtSessionKey, hodlPsbtSourceKeys());
-  hodlFillStationKeyPicker("nonce-session-keys", hodlPsbtSource, hodlPickPsbtSessionKey, hodlPsbtSourceKeys());
+  hodlFillStationKeyPicker("vanity-session-keys", hodlVanitySource, hodlPickVanitySessionKey, hodlVanitySourceKeys);
+  hodlFillStationKeyPicker("psbt-session-keys", hodlPsbtSource, hodlPickPsbtSessionKey, hodlPsbtSourceKeys);
+  hodlFillStationKeyPicker("nonce-session-keys", hodlPsbtSource, hodlPickPsbtSessionKey, hodlPsbtSourceKeys);
   hodlPaintPsbtKeyNotes();
   hodlPaintKeyStationNote("sp-session-keys-note", !hodlSessionHdRootKeys().length, hodlTText("Choose a compatible HD-root key from the {station}, or enter a seed phrase or root extended private key below.", { station: hodlKeyStationMarker }));
   hodlSyncSpControls();
@@ -8387,13 +8431,11 @@ function hodlMsigSessionKeyMatches(option, parsed) {
   if (!parsed.origin || parsed.origin.fingerprint !== result.masterFingerprint) return false;
   // An edited origin changes the account key. Prove its session root by
   // both public key and chain code; a fingerprint alone is not identity.
-  let root = null, seed = null, current = null;
+  let root = null, current = null;
   try {
     if (hodlResultHasRoot(result)) root = hodlResultRootNode(result);
-    else if (result.mnemonic) {
-      seed = hodlMnemonicToSeed(result.mnemonic, "");
-      root = hodlHDKey.fromMasterSeed(seed);
-    } else return false;
+    else if (hodlResultHasSeed(result)) root = hodlSeedSessionRoot(result, "");
+    else return false;
     current = root.derive("m/" + parsed.origin.path.replace(/h/g, "'"));
     return hodlEq(current.publicKey, parsed.node.publicKey) && hodlEq(current.chainCode, parsed.node.chainCode);
   } catch {
@@ -8401,7 +8443,6 @@ function hodlMsigSessionKeyMatches(option, parsed) {
   } finally {
     current?.wipePrivateData();
     root?.wipePrivateData();
-    hodlWipeBytes(seed);
   }
 }
 function hodlMsigUsedBaseKeyIds(exceptRow = null, options = []) {
@@ -8981,18 +9022,15 @@ function hodlRederiveMsigRowKey(row, parsed, originComponents) {
   if (!/^[0-9a-f]{8}$/.test(fingerprint) || previous.length !== parsed.node.depth || pathOf(previous) === pathOf(originComponents)) return "";
   for (let state of hodlSessionMsigKeys()) {
     if (state.result.masterFingerprint !== fingerprint) continue;
-    let root = null, seed = null;
+    let root = null;
     try {
       if (hodlResultHasRoot(state.result)) root = hodlResultRootNode(state.result);
-      else if (state.result.mnemonic) {
-        seed = hodlMnemonicToSeed(state.result.mnemonic, "");
-        root = hodlHDKey.fromMasterSeed(seed);
-      } else continue;
+      else if (hodlResultHasSeed(state.result)) root = hodlSeedSessionRoot(state.result, "");
+      else continue;
       let key = hodlMsigRederivedKey(root, parsed.node, pathOf(previous), pathOf(originComponents), parsed.network);
       if (key) return key;
     } finally {
       root?.wipePrivateData();
-      hodlWipeBytes(seed);
     }
   }
   return "";
@@ -10440,7 +10478,7 @@ function hodlBip85WipeMem() {
   let wiped = /* @__PURE__ */ new Set();
   for (let state of hodlBip85Children) {
     if (!state.result || wiped.has(state.result)) continue;
-    wipeBip85Result(state.result);
+    hodlBip85DropChild(state);
     wiped.add(state.result);
   }
   if (hodlBip85Result && !wiped.has(hodlBip85Result)) wipeBip85Result(hodlBip85Result);
@@ -10474,20 +10512,20 @@ function hodlBip85AppLabel(app) {
   return "BIP-85 child";
 }
 function hodlBip85ChildFingerprint(result) {
-  let seed = null, node = null, payload = null, privateKey = null, digest = null;
+  let seed = null, node = null, privateKey = null, digest = null;
   try {
     if (result.app === "bip39") {
       seed = hodlMnemonicToSeed(result.secret, "");
       node = hodlHDKey.fromMasterSeed(seed);
       return { value: hodlFingerprintHex(node.fingerprint), kind: "master" };
     }
+    // The key children from their bytes, never through their text (#546 B3).
     if (result.app === "xprv") {
-      node = hodlHDKey.fromExtendedKey(hodlParseExtendedKey(result.secret).xkey);
+      node = new hodlHDKey({ chainCode: result.chainCode, privateKey: result.entropy });
       return { value: hodlFingerprintHex(node.fingerprint), kind: "master" };
     }
     if (result.app === "wif") {
-      payload = hodlBase58Check.decode(result.secret);
-      privateKey = payload.slice(1, 33);
+      privateKey = Uint8Array.from(result.entropy);
       node = new hodlHDKey({ privateKey });
       return { value: hodlFingerprintHex(node.fingerprint), kind: "key" };
     }
@@ -10499,19 +10537,20 @@ function hodlBip85ChildFingerprint(result) {
     } catch {
     }
     hodlWipeBytes(seed);
-    hodlWipeBytes(payload);
     hodlWipeBytes(privateKey);
     hodlWipeBytes(digest);
   }
 }
-function hodlBip85PrivateValue(value) {
-  let mask = "************", text = String(value ?? "\u2014");
-  if (hodlBip85Reveal) return `<span class="secret private-field-value">${hodlEscapeHtml(text)}</span>`;
-  let bullets = "\u2022".repeat(Math.max(Array.from(text).length, mask.length));
+// The value is read only when shown: hidden, the mask takes its length, so
+// the text is never built (#546 B3).
+function hodlBip85PrivateValue(read, length) {
+  let mask = "************";
+  if (hodlBip85Reveal) return `<span class="secret private-field-value">${hodlEscapeHtml(String(read() ?? "\u2014"))}</span>`;
+  let bullets = "\u2022".repeat(Math.max(length, mask.length));
   return `<span class="secret private-field-value secret-placeholder"><span class="secret-placeholder-mask" aria-hidden="true">${bullets}</span><span class="secret-placeholder-message" aria-hidden="true">${mask}</span><span class="secret-placeholder-label">${hodlT("Private value hidden")}</span></span>`;
 }
-function hodlBip85SecretField(label, value) {
-  return `<p class="private-field${hodlBip85Reveal ? " is-revealed" : ""}"><span class="label">${hodlEscapeHtml(label)}${hodlPrivacyEyeMarkup(hodlBip85Reveal)}</span>${hodlBip85PrivateValue(value)}</p>`;
+function hodlBip85SecretField(label, read, length) {
+  return `<p class="private-field${hodlBip85Reveal ? " is-revealed" : ""}"><span class="label">${hodlEscapeHtml(label)}${hodlPrivacyEyeMarkup(hodlBip85Reveal)}</span>${hodlBip85PrivateValue(read, length)}</p>`;
 }
 function hodlBip85Spec() {
   let app = document.getElementById("bip85-app")?.value || "bip39";
@@ -10664,8 +10703,8 @@ function hodlRenderBip85Out() {
         </label>
       </div>
       <div class="wallet-data-fields">
-        ${hodlBip85SecretField(derived.secretLabel, derived.secret)}
-        ${hodlBip85SecretField("Derived entropy", derived.entropyHex)}
+        ${hodlBip85SecretField(derived.secretLabel, () => derived.secret, bip85SecretLength(derived))}
+        ${hodlBip85SecretField("Derived entropy", () => derived.entropyHex, derived.entropy.length * 2)}
       </div>
       <section class="edge-note-titled" aria-labelledby="bip85-copy-heading">
         <h3 class="edge-note-title is-private" id="bip85-copy-heading">${hodlT("Important!")}</h3>
@@ -10862,7 +10901,7 @@ function hodlDeleteActiveBip85() {
       hodlVanitySource = "";
     }
     hodlBip85Result = null;
-    wipeBip85Result(state.result);
+    hodlBip85DropChild(state);
   }, () => {
     hodlRefreshMsigSessionPickers();
     hodlRefreshStationKeyPickers();
@@ -12828,6 +12867,9 @@ function hodlWipeActiveKey() {
   hodlKeys[hodlActiveKey] = state.isLab ? hodlNewLabState() : hodlNewKeyState(state.name, state.id, state.number);
   hodlRestoreKey();
   hodlWipeUnsharedWalletRows(state.result);
+  // The stations offer only the keys the Key Station still has (#546 B3).
+  hodlRefreshStationKeyPickers();
+  hodlRefreshMsigSessionPickers();
   hodlJournalLog("clear", `key-${state.number}`, "calc");
 }
 function hodlCaptureKey() {
@@ -13904,7 +13946,7 @@ function hodlShowWorkspace(id) {
     hodlBip85SyncOptions();
   } else if (id === "vanity") {
     // Keys may have been derived, renamed, or re-passphrased since the picker last filled.
-    hodlFillStationKeyPicker("vanity-session-keys", hodlVanitySource, hodlPickVanitySessionKey, hodlVanitySourceKeys());
+    hodlFillStationKeyPicker("vanity-session-keys", hodlVanitySource, hodlPickVanitySessionKey, hodlVanitySourceKeys);
     hodlVanitySyncSource();
     hodlVanityStartBenchmark();
   }
@@ -16201,6 +16243,9 @@ function hodlVanityClearResults(status = "Idle. No range has been ground this se
   hodlVanityFound = 0;
   hodlVanityReveal = false;
   hodlVanityRun = null;
+  // A finished grinder keeps its run, words and passphrase included, through
+  // its callbacks: the station drops it with the results (#546 B3).
+  if (!hodlVanityRunning) hodlVanityGrinder = null;
   hodlRenderVanityOut();
   hodlVanitySetStatus(status);
   hodlVanitySyncControls();

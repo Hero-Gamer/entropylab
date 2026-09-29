@@ -2220,7 +2220,7 @@ test("BIP-85 and SP Stations can bring in compatible existing roots", () => {
   }
   assert.match(appSource, /function hodlSessionHdRootKeys\(\) \{/);
   assert.match(appSource, /state\.result\?\.kind === "hd" && \(hodlResultHasSeed\(state\.result\) \|\| hodlResultHasRoot\(state\.result\)\)/);
-  assert.match(appSource, /function hodlFillStationKeyPicker\(id, selectedSource, onSelect, keys = hodlSessionHdRootKeys\(\)\) \{/);
+  assert.match(appSource, /function hodlFillStationKeyPicker\(id, selectedSource, onSelect, keys = hodlSessionHdRootKeys\) \{/);
   assert.match(appSource, /hodlFillKeyTabLifehash\(image, fingerprint\)/);
   assert.match(appSource, /function hodlPickBip85SessionKey\(state\) \{/);
   assert.match(appSource, /function hodlPickSpSessionKey\(state\) \{/);
@@ -2273,7 +2273,8 @@ test("BIP-85 Station retains each child in a LifeHash fingerprint tab", () => {
   assert.match(appSource, /\["left-leaf",/);
   assert.match(appSource, /\["right-leaf",/);
   assert.match(appSource, /hodlBip85Children\.push\(state\)/);
-  assert.match(appSource, /function hodlDeleteActiveBip85\(\) \{[\s\S]*wipeBip85Result\(state\.result\)/);
+  assert.match(appSource, /function hodlDeleteActiveBip85\(\) \{[\s\S]*hodlBip85DropChild\(state\)/);
+  assert.match(appSource, /function hodlBip85DropChild\(state\) \{\s*wipeBip85Result\(state\?\.result\)/);
   assert.match(appSource, /state\.reveal = hodlBip85Reveal/);
 });
 
@@ -2359,7 +2360,7 @@ test("the vanity grinder is a workspace tab that ships collapsed and never auto-
   assert.match(read("src/js/vanity.js"), /new Blob\(\[VANITY_WORKER_SOURCE\]/);
   // The picker rides the shared station-key plumbing and lists derived HD-root
   // keys only — the Key Station lab tab is a work surface, never a chip.
-  assert.match(appSource, /hodlFillStationKeyPicker\("vanity-session-keys", hodlVanitySource, hodlPickVanitySessionKey, hodlVanitySourceKeys\(\)\)/);
+  assert.match(appSource, /hodlFillStationKeyPicker\("vanity-session-keys", hodlVanitySource, hodlPickVanitySessionKey, hodlVanitySourceKeys\)/);
   assert.match(appSource, /function hodlVanitySourceKeys\(\) \{\s*return hodlSessionHdRootKeys\(\);/);
   // The selected key's passphrase is read from its state, never retyped: the
   // source panel shows it verbatim and the plan reads it again at start.

@@ -1160,6 +1160,40 @@
     document.getElementById("wipe").click();
   });
 
+  // #546 B3: a wiped key's bytes are zeroed, and a station handed them would
+  // read the all-zero wallet, whose keys are public. Wipe withdraws the key
+  // from every station's key picker.
+  await test("wiping a Key Station key withdraws it from every station's key picker", async () => {
+    const pickers = ["bip85-session-keys", "sp-session-keys", "psbt-session-keys", "nonce-session-keys", "vanity-session-keys", "msig-keys"];
+    const offered = (id) => [...document.querySelectorAll(`#${id} [data-key-id]`)].map((chip) => chip.dataset.keyId);
+    const before = new Set(pickers.flatMap(offered));
+    let keyId = null;
+    try {
+      document.querySelector('#workspace [data-workspace="calc"]').click();
+      await until(() => !document.getElementById("key-manager").hidden, "key workspace");
+      chooseSeedWords(12);
+      await chooseMode("Seed phrase");
+      input(document.getElementById("seed"), "legal winner thank year wave sausage worth useful legal winner thank yellow");
+      await until(() => !document.getElementById("go").disabled, "Derive Key to enable");
+      document.getElementById("go").click();
+      keyId = await until(() => offered("sp-session-keys").find((id) => !before.has(id)), "the derived key in the SP picker");
+      for (const id of pickers.slice(0, 5)) assert(offered(id).includes(keyId), `#${id} did not offer the derived key`);
+      await until(() => !document.getElementById("wipe").disabled, "Wipe to enable");
+      document.getElementById("wipe").click();
+      await wait(0);
+      for (const id of pickers) assert(!offered(id).includes(keyId), `#${id} still offers the wiped key`);
+    } finally {
+      // Leave the Key Station as the tests that follow expect it, even when
+      // this one fails: the derived key's tab (active since it was derived)
+      // goes, and the length returns to 24 words.
+      if (keyId) {
+        await until(() => !document.getElementById("delete-key").disabled, "Delete current key to enable");
+        document.getElementById("delete-key").click();
+      }
+      chooseSeedWords(24);
+    }
+  });
+
   await test("Base64 uses the shared case, number, and symbol keyboard", async () => {
     chooseSeedWords(24);
     await chooseMode("Number bases");

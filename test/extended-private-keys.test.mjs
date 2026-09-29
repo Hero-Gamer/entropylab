@@ -125,12 +125,13 @@ test("each extended private key is produced on request and matches an independen
     }
   }
   assert.equal(api.hodlAccountPrivateKey(bip84(await mnemonicWallet("mainnet")), "z"), BIP84_ACCOUNT_ZPRV);
-  // Watch-only sources have none, and a BIP-85 child's session key keeps its root as text.
+  // Watch-only sources have none, and a BIP-85 XPRV child's session key keeps
+  // its root as a node, like a Key Station wallet (#546 B3).
   const watch = await importedWallet(reversion(scureRoot.derive("m/84'/0'/0'").publicExtendedKey, VERSIONS.mainnet.z[1]));
   assert.equal(api.hodlAccountPrivateKey(watch.accounts[0], "x"), null);
   assert.equal(api.hodlBranchPrivateDescriptor(watch.accounts[0], 0), null);
   assert.equal(api.hodlResultRootXprv(watch), null);
-  assert.equal(api.hodlResultRootXprv({ rootXprv: expected("mainnet").root }), expected("mainnet").root);
+  assert.equal(api.hodlResultRootXprv({ network: "mainnet", rootNode: HDKey.fromExtendedKey(expected("mainnet").root) }), expected("mainnet").root);
 });
 
 // The hidden view is a mask as long as the value, and the revealed view is
@@ -231,9 +232,9 @@ test("a station session gets its own copy of the root, which it can wipe alone",
     assert.equal(second.privateExtendedKey, scureRoot.privateExtendedKey);
     second.wipePrivateData();
   }
-  const child = api.hodlResultRootNode({ kind: "hd", rootXprv: expected("mainnet").root });
-  assert.equal(child.privateExtendedKey, scureRoot.privateExtendedKey, "a BIP-85 child's text root");
-  assert.equal(api.hodlResultRootNode({ kind: "hd", rootXprv: null }), null);
+  const child = api.hodlResultRootNode({ kind: "hd", rootNode: HDKey.fromExtendedKey(expected("mainnet").root) });
+  assert.equal(child.privateExtendedKey, scureRoot.privateExtendedKey, "a BIP-85 child's root node");
+  assert.equal(api.hodlResultRootNode({ kind: "hd", rootNode: null }), null);
 });
 
 // Every copy is built from the key and chain code the source node hands out,

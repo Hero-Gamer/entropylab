@@ -94,3 +94,22 @@ export const hodlFairnessVerdictLabels = Object.freeze({
   unsure: "Not sure; roll some more",
   biased: "Looks biased",
 });
+
+// Session notices (#627), indexed by session-notices.js's kind.
+export const hodlSessionNoticeTexts = Object.freeze({
+  clipboard: Object.freeze({
+    title: "Clipboard keeps copies",
+    body: "Clipboard history and sync may have kept a copy of what you pasted or copied — possibly on other devices. EntropyLab cannot remove it.",
+    dismiss: "Dismiss the clipboard notice",
+  }),
+  "pre-session": Object.freeze({
+    title: "Before private keys enter memory",
+    body: "The operating system can write memory to disk through swap and hibernation, and the browser cannot prevent it. For real funds, the machine should have full-disk encryption on and hibernation off before you continue — ideally a dedicated, offline machine.",
+    dismiss: "Dismiss the machine notice",
+  }),
+  "post-session": Object.freeze({
+    title: "Session ended — leftovers may persist",
+    body: "Close the browser and restart the computer as a precaution. It is a precaution, not a guarantee: a restart does not erase memory.",
+    dismiss: "Dismiss the restart reminder",
+  }),
+});

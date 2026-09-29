@@ -35,12 +35,24 @@ function functionSource(name) {
   return (app.slice(start - 6, start) === "async " ? "async " : "") + app.slice(start, end);
 }
 
+// The session-notice module is a UI side effect (#627); slice contexts
+// execute functions that call it, so they get the neutral stubs.
+const noticeStubs = {
+  sessionNoticeSessionEnded() {}, sessionNoticePrivateMaterialAccepted() {},
+  sessionNoticeSecretCopied() {}, sessionNoticeSecretCopyText() {},
+};
+
 function raceHarness() {
   const pending = deferred(), decryptStarted = deferred(), events = {}, effects = [];
   const fields = new Map();
   const mirrors = [".dice-input-highlight", ".dice-word-grid", "#last-words", "#brain-lab-hex"]
     .map(selector => ({ selector, textContent: "secret mnemonic" }));
   const context = vm.createContext({
+    ...noticeStubs,
+    // Synthetic commit results have no markers; the notice call on the
+    // derive path must see "no private material" rather than throw.
+    hodlResultHasSeed: () => false, hodlResultHasRoot: () => false,
+    hodlResultHasSingleKey: () => false, hodlResultHasImportedPrivate: () => false,
     document: {
       getElementById: id => fields.get(id) ?? null,
       querySelectorAll: selector => mirrors.filter(el => selector.split(", ").includes(el.selector)),
@@ -365,6 +377,7 @@ test("dropping the vanity key pick clears the passphrase the source block showed
   for (const id of ["vanity-source-block", "vanity-session-note", "vanity-source-name", "vanity-source-kind", "vanity-pass", "vanity-pass-note", "vanity-source-path", "vanity-source-lifehash"])
     elements.set(id, { textContent: "hunter2", hidden: false, disabled: false, dataset: {} });
   const context = vm.createContext({
+    ...noticeStubs,
     document: {
       getElementById: id => elements.get(id) ?? null,
       querySelector: () => null,
@@ -402,6 +415,7 @@ test("journal Lock empties the snapshot, the notepad and the session log", () =>
   journal.log.push({ kind: "journal-unlock" });
   journal.stateText = "snapshot text";
   const context = vm.createContext({
+    ...noticeStubs,
     document: { getElementById: id => elements.get(id) ?? null },
     hodlJournal: journal,
     wipeJournal,
@@ -439,6 +453,7 @@ test("pagehide and persisted pageshow end the PSBT session, reports included", (
   for (const id of ["psbt-key", "psbt-pass", "psbt-text", "psbt-ax-transcript", "nonce-key", "nonce-pass", "nonce-text"]) elements.set(id, { value: "session material", dataset: {} });
   const errors = [];
   const context = vm.createContext({
+    ...noticeStubs,
     document: { getElementById: id => elements.get(id) ?? null },
     hodlPsbtWipeMem() {}, hodlPsbtClearNonceHistory() {},
     hodlPsbtLast: { rvalues: ["deadbeef"] }, hodlPsbtInspected: { psbt: "stamp" },
@@ -485,6 +500,7 @@ test("the key Wipe button drops the cached partial mnemonics", () => {
   for (const activeKey of [-1, 0]) {
     const cache = new Map([["24:abandon abandon abandon", { candidates: [] }]]);
     const context = vm.createContext({
+    ...noticeStubs,
       hodlLastWordCache: cache,
       hodlInvalidateDerivation() {},
       hodlActiveKey: activeKey,
@@ -560,6 +576,7 @@ test("Wipe zeroes a wallet's row key bytes unless another key tab still shows th
     const { rows, result } = walletWithRows();
     const active = { name: "Key 1", id: 1, number: 1, isLab: false, result };
     const context = vm.createContext({
+    ...noticeStubs,
       hodlLastWordCache: new Map(), hodlInvalidateDerivation() {}, hodlActiveKey: 0,
       hodlKeys: shared ? [active, { isLab: true, result }] : [active], hodlKeyManagerPending: [], hodlWalletResult: result,
       hodlNewKeyState: () => ({ result: null }), hodlNewLabState: () => ({ result: null }),
@@ -603,6 +620,7 @@ test("an ignored key's saved copy carries no key bytes", async () => {
 // its pending keys reach; it must not reach rows a station still shows.
 test("a Key Manager reset leaves the row key bytes of a wallet a station still shows", () => {
   const context = vm.createContext({
+    ...noticeStubs,
     hodlKeyManagerIgnored: [], hodlKeyManagerIds: new Set(), hodlKeyManagerActiveId: "",
     document: { getElementById: () => null }, hodlKeyManagerStatus() {}, hodlKeyManagerRender() {},
     hodlRefreshStationKeyPickers() {}, hodlRefreshMsigSessionPickers() {},

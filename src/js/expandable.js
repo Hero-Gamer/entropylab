@@ -1,4 +1,5 @@
 import { trapModalFocus } from "./modal-focus.js";
+import { sessionNoticeSecretCopyText } from "./session-notices.js";
 // Expandable cells: one standard truncation for long text in dense UI tables,
 // with a click-to-expand overlay window for viewing (and, when the cell is
 // editable, editing) the full value.
@@ -129,6 +130,7 @@ export const initExpandable = () => {
   });
   overlay.querySelector("#exp-close").addEventListener("click", close);
   overlay.querySelector("#exp-copy").addEventListener("click", () => {
+    sessionNoticeSecretCopyText(text.value); // an expanded pair value can be a pasted xprv
     navigator.clipboard?.writeText(text.value).catch(() => {});
   });
   apply.addEventListener("click", () => {

@@ -306,6 +306,10 @@ the limits of browser-memory cleanup.
 - MS Station keeps a session key selected when its co-signer derivation path
   changes. Clicking that selected key removes it; using it on another
   co-signer still requires opting into key reuse and distinct derivation paths.
+  On a derived multisig, **Duplicate** loads the same inputs into MS Station
+  and derives a new wallet tab, preserving existing multisigs. Both sorted
+  and listed multisig summaries show numbered co-signers with LifeHashes,
+  fingerprints, and derivation paths in descriptor input order.
 - An optional **Sync entropy across methods** checkbox (off by default) keeps
   direct dice, card, number-base, seed-word, and private-key representations in
   sync while input is entered. Each destination waits for enough bits to emit

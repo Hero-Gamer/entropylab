@@ -1359,19 +1359,15 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 #msig-summary .key-summary-text { align-self: flex-start; }
 .key-summary-fingerprint { display: block; font-family: var(--mono); font-weight: 700; letter-spacing: 0.04em; color: var(--fg); }
 .key-summary-meta { margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
-/* The keys the multisig was built from, in the order its script uses them.
+/* The keys the multisig was built from, in descriptor input order.
    Readouts rather than controls: no edge and no corner of their own, the
    LifeHash carrying the only radius. */
-.msig-summary-cosigners { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-control); margin-top: var(--space-section); }
+.msig-summary-cosigners { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-control); margin-top: var(--space-section); }
 /* The title takes its own line above the marks, and the row's gap sets it
    off them, so it adds no margin of its own. */
 .msig-summary-cosigners-label { flex: 1 1 100%; margin: 0; }
 .msig-summary-cosigners[hidden] { display: none; }
-/* Sorted keys share one row: a wider step between marks than above them. */
-.msig-summary-cosigners:not(.is-listed) { column-gap: var(--space-component); }
 .msig-summary-cosigner { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-family: var(--mono); font-size: 12px; }
-/* Under multi the order is the script's: one key per line, its path beneath. */
-.msig-summary-cosigners.is-listed { flex-direction: column; align-items: flex-start; }
 .msig-summary-cosigner-text { display: grid; }
 .msig-summary-cosigner-text > :first-child { color: var(--fg); }
 .msig-summary-cosigner-path { word-break: break-all; }

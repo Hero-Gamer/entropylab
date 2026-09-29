@@ -13411,7 +13411,7 @@ function hodlSnapshotMsigSummary(state = hodlMsigs[hodlActiveMsig]) {
   state.createdPolicy = hodlMsigPolicyName(state.result);
   state.createdScript = hodlMsigScriptLabel(state.result.script);
   state.createdNetwork = state.result.network || "";
-  // The co-signers as the script orders them, kept with the rest of the
+  // The co-signers in descriptor order, kept with the rest of the
   // summary so the view keeps naming what was derived after the form moves on.
   state.createdCosigners = Array.isArray(state.result.scriptOrder) ? state.result.scriptOrder.slice() : [];
 }
@@ -13430,16 +13430,16 @@ function hodlPaintMsigSummary() {
   if (cosigners) {
     // Each key the multisig needs, named by its master fingerprint and its
     // LifeHash: the same pair the pickers and the key tabs identify a key by.
-    // Under multi the order is part of the script, so the keys stack in that
-    // order, each with the path it was exported at.
-    let entries = state?.createdCosigners || state?.result?.scriptOrder || [], listed = state?.result?.sorted === false;
-    cosigners.classList.toggle("is-listed", listed);
+    // Both policies list the descriptor's inputs with their exported paths.
+    // sortedmulti sorts the derived public keys separately at each address.
+    let entries = state?.createdCosigners || state?.result?.scriptOrder || [];
     let heading = document.createElement("p");
     heading.className = "label msig-summary-cosigners-label";
     heading.textContent = hodlTText("Co-signers");
     cosigners.replaceChildren(heading, ...entries.map((entry) => {
       let item = document.createElement("span"), image = document.createElement("img"), label = document.createElement("code");
       item.className = "msig-summary-cosigner";
+      item.dataset.msigCosigner = String(entry.position);
       image.className = "key-tab-lifehash";
       image.width = 22;
       image.height = 22;
@@ -13447,11 +13447,12 @@ function hodlPaintMsigSummary() {
       image.hidden = true;
       if (entry.fingerprint) hodlFillKeyTabLifehash(image, entry.fingerprint);
       label.textContent = entry.fingerprint || "";
-      if (listed && entry.path) {
+      if (entry.path) {
         let text = document.createElement("span"), path = document.createElement("code");
         text.className = "msig-summary-cosigner-text";
         path.className = "msig-summary-cosigner-path";
         path.textContent = "m/" + hodlDisplayDerivationPath(entry.path);
+        path.dataset.msigCosignerPath = "";
         text.append(label, path);
         let order = document.createElement("span");
         order.className = "msig-summary-cosigner-order";
@@ -13463,6 +13464,8 @@ function hodlPaintMsigSummary() {
     cosigners.hidden = !entries.length;
   }
   if (edit) edit.onclick = hodlEditMsigInputs;
+  let duplicate = document.getElementById("msig-duplicate");
+  if (duplicate) duplicate.onclick = hodlDuplicateMsigInputs;
 }
 function hodlSyncMsigResultView() {
   let card = document.getElementById("msig-card"), lab = document.getElementById("msig-lab"), summary = document.getElementById("msig-summary"), result = hodlMsigHasResult();
@@ -13482,7 +13485,7 @@ function hodlCloneDerivedMsig(source, existing) {
     createdPolicy: source.createdPolicy,
     createdScript: source.createdScript,
     createdNetwork: source.createdNetwork,
-    fields: { ...source.fields, xpubs: (source.fields.xpubs || []).slice() }
+    fields: { ...source.fields, xpubs: (source.fields.xpubs || []).slice(), specs: (source.fields.specs || []).slice() }
   });
   let skip = existing ? hodlMsigs.indexOf(existing) : -1;
   if (hodlMsigNameTaken(state.name, skip)) state.name = hodlUniqueMsigName(state.name, skip);
@@ -13508,7 +13511,7 @@ function hodlCommitDerivedMsig() {
     return hodlActiveMsig;
   }
   let identity = hodlMsigIdentity(lab);
-  let existing = hodlMsigs.findIndex((state) => !state.isLab && hodlMsigIdentity(state) === identity);
+  let existing = lab.duplicateOnDerive ? -1 : hodlMsigs.findIndex((state) => !state.isLab && hodlMsigIdentity(state) === identity);
   if (existing >= 0) {
     hodlMsigs[existing] = hodlCloneDerivedMsig(lab, hodlMsigs[existing]);
     hodlMsigs[hodlActiveMsig] = hodlNewMsigLabState();
@@ -13538,7 +13541,7 @@ function hodlFillMsigLabFromWallet(source) {
   let labIndex = hodlMsigs.findIndex((state) => state.isLab);
   let existing = labIndex >= 0 ? hodlMsigs[labIndex] : hodlNewMsigLabState();
   let lab = hodlCloneDerivedMsig(source, existing);
-  Object.assign(lab, { isLab: true, name: "MS Station", result: null, error: "", createdPolicy: "", createdScript: "", createdNetwork: "" });
+  Object.assign(lab, { isLab: true, duplicateOnDerive: false, name: "MS Station", result: null, error: "", createdPolicy: "", createdScript: "", createdNetwork: "" });
   if (labIndex < 0) {
     hodlMsigs.unshift(lab);
     labIndex = 0;
@@ -13554,6 +13557,11 @@ function hodlEditMsigInputs() {
   }
   hodlCaptureMsig();
   hodlSelectMsig(hodlFillMsigLabFromWallet(hodlMsigs[hodlActiveMsig]));
+}
+function hodlDuplicateMsigInputs() {
+  if (!hodlMsigHasResult()) return;
+  hodlEditMsigInputs();
+  hodlMsigs[hodlActiveMsig].duplicateOnDerive = true;
 }
 function hodlMsigStateNeedsClear(state) {
   if (!state) return !1;

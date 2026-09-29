@@ -89,9 +89,13 @@ const CLEARING_PATHS = [
     },
   },
   {
-    ids: ["journal-notes-text"],
-    why: "Session notepad text (free-form; may hold pasted secrets)",
-    probe: (id) => assert.ok(journalWipe.includes(`"${id}"`), `#${id} missing from the journal full wipe`),
+    ids: ["journal-notes-text", "journal-log-out"],
+    why: "Session notepad and session log — free text; Lock drops them with the password (#522)",
+    probe: (id) => {
+      assert.ok(journalWipe.includes(`"${id}"`), `#${id} missing from the journal full wipe`);
+      assert.match(journalLock, /wipeJournal\(hodlJournal\)/, "Lock must wipe the journal's in-memory session text");
+      assert.match(journalLock, new RegExp(`getElementById\\("${id}"\\)`), `#${id} missing from the journal Lock`);
+    },
   },
   {
     ids: ["msig-descriptor"],
@@ -215,8 +219,11 @@ test("every shell field is classified as secret (cleared) or public (settings)",
     assert.ok(known.has(id), `#${id} is unclassified: add it to SECRET_FIELDS (with a clearing path) or PUBLIC_FIELDS (with a reason)`);
   }
   // No stale entries either: a removed field must not linger in the lists.
+  // (The completeness sweep reads input/textarea tags; a registry id may be
+  // another element, like the pre the session log renders into.)
+  const inShell = (id) => shell.includes(`id="${id}"`);
   for (const id of known) {
-    assert.ok(fields.includes(id) || ["hex", "bin", "base4", "base8", "base32", "base64", "seed", "seed-numbers", "key", "cards", "direct-cards", "exp-text"].includes(id),
+    assert.ok(inShell(id) || ["hex", "bin", "base4", "base8", "base32", "base64", "seed", "seed-numbers", "key", "cards", "direct-cards", "exp-text"].includes(id),
       `#${id} is classified but no longer in the shell`);
   }
 });

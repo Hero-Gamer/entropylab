@@ -79,9 +79,10 @@ material. Its security posture rests on the following model:
   two body-level overlays — the expand editor (whose value can be an entire
   previous transaction) and the QR dialog — release their contents on close
   and on page hide because station wipes cannot reach them. Locking the
-  Journal empties the session snapshot, which can hold the whole session's
-  recovery texts; the notepad and log stay through a Lock by design (a Lock
-  is meant to be reversible) and go with Clear journal or page hide. The
+  Journal empties the session's unsecured text: the snapshot (which can
+  hold the whole session's recovery texts), the notepad, and the session
+  log; the notebook's own entries come back from the journal file on
+  unlock. The
   Vanity source block drops the passphrase it displayed the moment the key
   pick is dropped. Journal teardown (including Lock) invalidates pending
   notebook and Key Manager imports at both file-read and decryption
@@ -297,9 +298,9 @@ completely (its reports included), resets every Multisig form, and empties
 the panels that echo what you typed (dealt cards, the worked calculations,
 the fairness tally, the progress lines) and the two dialogs (the value
 editor and the QR view) — the dialogs also drop their contents the moment
-you close them. Locking the Journal empties the session snapshot; the
-notepad and log survive a Lock so you can unlock again, and go with Clear
-journal or when the page goes away. The WebAssembly modules overwrite every
+you close them. Locking the Journal empties the session snapshot, the
+notepad, and the session log; what an unlock restores is the notebook the
+journal file holds, nothing looser. The WebAssembly modules overwrite every
 buffer passed in or out and their working stacks after they run, and the
 PSBT module also wipes the whole-file copies its exports assemble. Vanity
 shuts its workers and their module down when a run ends. The

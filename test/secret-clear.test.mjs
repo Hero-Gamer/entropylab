@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { HDKey as ScureHDKey } from "@scure/bip32";
+import { createJournal, wipeJournal } from "../src/js/journal.js";
 import { createBase58check, hex } from "@scure/base";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { loadAppFunctions } from "./app-slice-harness.mjs";
@@ -384,26 +385,41 @@ test("dropping the vanity key pick clears the passphrase the source block showed
   assert.equal(elements.get("vanity-pass-note").textContent, "", "unpicking left the passphrase note behind");
 });
 
-test("journal Lock empties the private session snapshot", () => {
+test("journal Lock empties the snapshot, the notepad and the session log", () => {
   // With #journal-state-private ticked, #journal-state-text holds the whole
-  // session's recovery texts — seed words, xprvs, WIFs. Locking the journal
-  // without clearing it parks the snapshot in a readonly textarea until the
-  // global Clear or pagehide.
+  // session's recovery texts — seed words, xprvs, WIFs. And the notepad plus
+  // the session log are free text the user pasted keystrokes into. #522:
+  // a locked journal keeps none of it (#625 review follow-up).
   const elements = new Map([
     ["journal-state-text", { value: "24 seed words and xprvs", dataset: {} }],
     ["journal-state-private", { checked: true, dataset: {} }],
     ["journal-status-note", { textContent: "", dataset: {} }],
+    ["journal-notes-text", { value: "dice rolls and brain text", dataset: {} }],
+    ["journal-log-out", { textContent: "journal-unlock 12:00", dataset: {} }],
   ]);
+  const journal = createJournal();
+  journal.pages[0].notesText = "dice rolls and brain text";
+  journal.log.push({ kind: "journal-unlock" });
+  journal.stateText = "snapshot text";
   const context = vm.createContext({
     document: { getElementById: id => elements.get(id) ?? null },
+    hodlJournal: journal,
+    wipeJournal,
     hodlKeyManagerReset() {}, hodlJournalWipeNotebook() {}, hodlJournalClearFields() {},
     hodlJournalHideEditor() {}, hodlJournalSetGate() {}, hodlJournalShowWork() {},
-    hodlSyncJournalTool() {}, hodlJournalLog() {},
+    hodlSyncJournalTool() {}, hodlJournalLog() {}, hodlRenderJournalPageTabs() {},
+    hodlJournalApplyPageStyle() {}, hodlJournalResetPendingNote(field, label) { field.dataset.pendingNote = label; },
     hodlJournalTool: "book",
   });
   vm.runInContext(`${functionSource("hodlJournalLock")}\nhodlJournalLock();`, context);
   assert.equal(elements.get("journal-state-text").value, "", "Lock left the session snapshot filled");
   assert.equal(elements.get("journal-state-private").checked, false, "Lock left the private toggle ticked");
+  assert.equal(elements.get("journal-notes-text").value, "", "Lock left the notepad filled");
+  assert.equal(elements.get("journal-log-out").textContent, "No events yet.", "Lock left the session log rendered");
+  assert.equal(journal.pages.length, 1, "Lock left notepad pages behind");
+  assert.equal(journal.pages[0].notesText, "", "Lock left notepad text behind");
+  assert.equal(journal.log.length, 0, "Lock left the session log in memory");
+  assert.equal(journal.stateText, "", "Lock left the snapshot's in-memory text");
 });
 
 test("pagehide and persisted pageshow end the PSBT session, reports included", () => {
@@ -832,6 +848,10 @@ async function stationHarness(options = {}) {
     Uint8Array,
     hodlJournalWipeNotebook() {}, hodlJournalClearFields() {}, hodlJournalHideEditor() {}, hodlJournalSetGate() {},
     hodlJournalShowWork() {}, hodlSyncJournalTool() {}, hodlJournalTool: "notes",
+    // Journal Lock wipes the session notepad/log (with the real wipeJournal
+    // on a real journal object); the DOM sides are absent elements here.
+    hodlJournal: createJournal(), wipeJournal,
+    hodlRenderJournalPageTabs() {}, hodlJournalApplyPageStyle() {}, hodlJournalResetPendingNote() {},
   });
   context.document.getElementById = ((byId, note = { textContent: "" }) => (id) => id === "journal-status-note" ? note : byId(id))(context.document.getElementById);
   for (const name of ["hodlCommitDerivedKey", "hodlCloneDerivedKey", "hodlKeyWalletIdentity", "hodlInvalidateLiveKeyResult",

@@ -15668,14 +15668,27 @@ function hodlJournalLock() {
   hodlJournalShowWork();
   hodlSyncJournalTool();
   // While the private box is ticked, the snapshot textarea holds the whole
-  // session's recovery texts; a locked journal must not keep that copy.
-  // (The notepad and the log stay — unlocking restores them.)
+  // session's recovery texts; a locked journal must not keep that copy —
+  // nor the notepad or the session log, free text the session pasted
+  // keystrokes into. The journal file itself can restore the notebook, but
+  // the unlocked session's loose text stays only while it stays unlocked
+  // (#522).
   let stateText = document.getElementById("journal-state-text");
   if (stateText) stateText.value = "";
   let privateBox = document.getElementById("journal-state-private");
   if (privateBox) privateBox.checked = false;
+  wipeJournal(hodlJournal);
+  let notes = document.getElementById("journal-notes-text");
+  if (notes) {
+    notes.value = "";
+    hodlJournalResetPendingNote(notes, "Add new note");
+  }
+  hodlRenderJournalPageTabs();
+  hodlJournalApplyPageStyle();
+  let log = document.getElementById("journal-log-out");
+  if (log) log.textContent = "No events yet.";
   hodlJournalLog("journal-lock");
-  document.getElementById("journal-status-note").textContent = "Journal locked. Password and entries were cleared (best effort).";
+  document.getElementById("journal-status-note").textContent = "Journal locked. Password, entries, notepad, and session log were cleared (best effort).";
 }
 function hodlInitJournalNotebook() {
   if (!document.getElementById("journal-create")) return;

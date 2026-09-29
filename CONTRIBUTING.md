@@ -78,8 +78,9 @@ browser test that asserts this must stay green.
   the modules the `build-wasm` job compiled in that same image. The artifact
   commit and the Pages deploy wait for that job. The image pins one clang
   version. A host `npm run build:wasm` is not the release
-  bytes. Cross-machine identity is not claimed until a second machine
-  reproduces the published hashes in that image.
+  bytes. Rebuilds on other machines that matched the published hashes are
+  recorded in [docs/Reproductions.md](docs/Reproductions.md); add a row when
+  you reproduce a release.
 
 ```sh
 git clone https://github.com/OogaBoogaX/entropylab.git && cd entropylab

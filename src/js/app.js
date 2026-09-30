@@ -13036,6 +13036,11 @@ function hodlWipeActiveKey() {
   let state = hodlKeys[hodlActiveKey];
   hodlKeys[hodlActiveKey] = state.isLab ? hodlNewLabState() : hodlNewKeyState(state.name, state.id, state.number);
   hodlRestoreKey();
+  // Restoring the fresh state re-renders the form; dropping the still-filled
+  // seed field fires its blur, whose final-word analysis re-caches the partial
+  // phrase — so the cache goes again after the restore, not only before it
+  // (audit A35-2).
+  hodlLastWordCache.clear();
   hodlWipeUnsharedWalletRows(state.result);
   // The stations offer only the keys the Key Station still has (#546 B3).
   hodlRefreshStationKeyPickers();

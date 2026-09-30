@@ -46,9 +46,10 @@ const memoryStorage = (initial = {}) => ({
   dump: () => initial,
 });
 
-// A fake disclaimer overlay and accept button recording what the gate did.
+// A fake disclaimer overlay recording what the gate did: two step cards, the
+// first step's accept button and the second step's confirm button.
 const disclaimerDom = () => {
-  const calls = { shown: false, focused: false, dismissed: false, removed: 0, onClick: null };
+  const calls = { shown: false, focused: false, confirmFocused: false, dismissed: false, removed: 0, onClick: null, onConfirm: null };
   const overlay = {
     hidden: true,
     classList: {
@@ -72,9 +73,46 @@ const disclaimerDom = () => {
       if (type === "click") calls.onClick = fn;
     },
   };
+  const confirm = {
+    disabled: true,
+    setAttribute: () => {},
+    focus: () => {
+      calls.confirmFocused = true;
+    },
+    addEventListener: (type, fn) => {
+      if (type === "click") calls.onConfirm = fn;
+    },
+  };
+  const attributes = {};
+  overlay.setAttribute = (name, value) => {
+    attributes[name] = value;
+  };
+  const proof = {
+    value: "",
+    focus: () => {
+      calls.proofFocused = true;
+    },
+    addEventListener: (type, fn) => {
+      if (type === "input") calls.onProofInput = fn;
+    },
+  };
+  // What the reader types into the proof field, then the input event it fires.
+  calls.type = (value) => {
+    proof.value = value;
+    calls.onProofInput?.();
+  };
+  const stepOne = { hidden: false }, stepTwo = { hidden: true };
   return {
     calls,
-    elements: { "beta-disclaimer": overlay, "beta-disclaimer-accept": accept },
+    attributes,
+    elements: {
+      "beta-disclaimer": overlay,
+      "beta-disclaimer-accept": accept,
+      "beta-disclaimer-step-1": stepOne,
+      "beta-disclaimer-step-2": stepTwo,
+      "beta-disclaimer-confirm": confirm,
+      "beta-disclaimer-proof": proof,
+    },
   };
 };
 
@@ -316,15 +354,45 @@ test("the compiled application ships the inlined barrage", () => {
 // The source token {{VERSION}} stands in for the running release here; the
 // build substitutes the package version into the compiled artifact (asserted
 // below), so acceptance recorded under one release never silences the next.
+// Security contract: the page is entered only after both acknowledgements.
+// The first "I Understand" must not store acceptance or dismiss the gate: it
+// only swaps in the second step, which names what the browser cannot protect.
+// Only the second acknowledgement stores acceptance and removes the gate.
 test("the beta disclaimer shows on first boot and acceptance is stored for the running version", () => {
-  const { calls, elements } = disclaimerDom();
+  const { calls, elements, attributes } = disclaimerDom();
   const storage = memoryStorage();
   loadModule({ elements, storage });
   assert.equal(elements["beta-disclaimer"].hidden, false, "the overlay was not revealed");
   assert.ok(calls.shown, "the fade-in class was not applied");
   assert.ok(calls.focused, "the accept button was not focused");
+  assert.equal(elements["beta-disclaimer-step-2"].hidden, true, "the second step showed before the first was accepted");
   assert.equal(typeof calls.onClick, "function", "no accept handler was registered");
   calls.onClick();
+  // Step one accepted: step two shows, and nothing is stored or dismissed yet.
+  assert.equal(storage.dump()["entropylab-beta-accepted"], undefined, "the first acknowledgement stored acceptance");
+  assert.equal(calls.dismissed, false, "the first acknowledgement dismissed the gate");
+  assert.equal(calls.removed, 0, "the first acknowledgement removed the gate");
+  assert.equal(elements["beta-disclaimer-step-1"].hidden, true, "the first step stayed visible");
+  assert.equal(elements["beta-disclaimer-step-2"].hidden, false, "the second step did not show");
+  assert.ok(calls.proofFocused, "the second step's proof field was not focused");
+  assert.equal(attributes["aria-labelledby"], "beta-disclaimer-confirm-title", "the dialog is not named by the second step");
+  assert.equal(attributes["aria-describedby"], "beta-disclaimer-confirm-text", "the dialog is not described by the second step");
+  assert.equal(typeof calls.onConfirm, "function", "no confirm handler was registered");
+  // The second acknowledgement waits for proof of reading: the number three.
+  const confirm = elements["beta-disclaimer-confirm"];
+  assert.equal(confirm.disabled, true, "the second step's button was enabled before the proof");
+  calls.onConfirm();
+  assert.equal(storage.dump()["entropylab-beta-accepted"], undefined, "an unproven click stored acceptance");
+  assert.equal(calls.dismissed, false, "an unproven click dismissed the gate");
+  for (const wrong of ["4", "three", "33", "0"]) {
+    calls.type(wrong);
+    assert.equal(confirm.disabled, true, `the button enabled for ${JSON.stringify(wrong)}`);
+    calls.onConfirm();
+    assert.equal(storage.dump()["entropylab-beta-accepted"], undefined, `${JSON.stringify(wrong)} passed the gate`);
+  }
+  calls.type(" 3 ");
+  assert.equal(confirm.disabled, false, "the button stayed disabled after typing 3");
+  calls.onConfirm();
   assert.equal(storage.dump()["entropylab-beta-accepted"], "{{VERSION}}");
   assert.ok(calls.dismissed, "the fade-out class was not applied");
   assert.equal(calls.removed, 1, "the overlay was not removed after the fade");
@@ -359,6 +427,9 @@ test("unavailable storage fails open: the disclaimer still shows and dismissal s
   assert.equal(elements["beta-disclaimer"].hidden, false, "the overlay stayed hidden");
   assert.ok(calls.shown, "the disclaimer did not show");
   calls.onClick();
+  assert.equal(calls.dismissed, false, "the first acknowledgement dismissed the gate");
+  calls.type("3");
+  calls.onConfirm();
   assert.ok(calls.dismissed, "the fade-out class was not applied");
   assert.equal(calls.removed, 1, "the overlay was not removed after the fade");
 });

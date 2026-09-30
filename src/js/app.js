@@ -113,7 +113,6 @@ import {
   wipeJournal,
 } from "./journal.js";
 import { keyVaultIdentity, parseKeyVault, serializeKeyVault } from "./keymanager.js";
-import { initSessionNotices, sessionNoticeSecretCopied, sessionNoticeSecretCopyText, sessionNoticePrivateMaterialAccepted, sessionNoticeSessionEnded } from "./session-notices.js";
 const hodlBip39Wordlist = Object.freeze(bip39English);
 function hodlNote(key, vars) {
   return vars == null ? { key } : { key, vars };
@@ -1031,7 +1030,6 @@ function hodlInitDescriptorCopy() {
       note = button.closest("[data-copy-group]")?.querySelector(".copy-field-status") || button.parentElement?.querySelector(":scope > .copy-field-status") || button.previousElementSibling?.querySelector(".copy-field-status");
     if (!value || value === "\u2014") return;
     let done = () => {
-      sessionNoticeSecretCopyText(value); // a WIF/xprv/hex-key copy earns the clipboard notice
       if (!note) return;
       note.innerHTML = `${hodlCopiedIconMarkup()}${note.classList.contains("is-icon-only") ? "" : hodlT("Copied")}`;
       clearTimeout(note.hodlCopiedTimer);
@@ -5784,7 +5782,6 @@ function hodlCopySeedPhraseButton(button) {
   let phrase = button && hodlSeedButtonPhrase(button);
   if (!phrase || button.disabled) return;
   let done = () => {
-    sessionNoticeSecretCopied();
     hodlShowSeedPhraseCopied(button);
   };
   let fallback = () => {
@@ -7169,9 +7166,6 @@ async function hodlCalculateKey(progress, action = "derive") {
     hodlAssertDerivationActive(generation, control);
     hodlWalletResult = result;
     hodlCommittedResults.add(result);
-    // The station now holds key material: the machine notice goes first
-    // (#627 §2) so the choice of host is made before more keys arrive.
-    if (hodlResultHasSeed(result) || hodlResultHasRoot(result) || hodlResultHasSingleKey(result) || hodlResultHasImportedPrivate(result)) sessionNoticePrivateMaterialAccepted();
     hodlRevealPrivate = false;
     hodlSetSelectedScriptType(scriptType);
     hodlCaptureKey();
@@ -10273,7 +10267,6 @@ function hodlLoadPsbtKey(text, passphrase) {
         hodlPsbtHd = parsed.node;
         hodlPsbtSessionSpec = { key: "Session key: {prefix}. Kept in page memory only.", vars: { prefix: parsed.prefix || "xprv" } };
         hodlPsbtSource = "manual";
-        sessionNoticePrivateMaterialAccepted();
         return;
       }
     } catch {
@@ -10292,7 +10285,6 @@ function hodlLoadPsbtKey(text, passphrase) {
     hodlPsbtSessionSpec = { key: passphrase ? "Session key: BIP39 seed + passphrase. Kept in page memory only." : "Session key: BIP39 seed. Kept in page memory only." };
   }
   hodlPsbtSource = "manual";
-  sessionNoticePrivateMaterialAccepted();
 }
 function hodlUseActiveKeyForPsbt(state = hodlKeys[hodlActiveKey]) {
   if (!state || !state.result) {
@@ -10408,7 +10400,6 @@ function hodlSetNonceError(spec) {
 // Ending the session is one act wherever it starts: the shared key goes, and
 // so does everything either card holds.
 function hodlEndPsbtSession() {
-  sessionNoticeSessionEnded();
   hodlPsbtWipeMem();
   hodlPsbtClearNonceHistory(true);
   hodlPsbtLast = null;
@@ -10708,7 +10699,6 @@ function hodlBip85LoadXprv(text) {
   hodlBip85Testnet = /^[tuvn]prv/i.test(value);
   hodlBip85Source = "manual";
   hodlBip85Note = "Parent: pasted root " + (hodlBip85Testnet ? "tprv" : "xprv") + ". Kept in page memory only.";
-  sessionNoticePrivateMaterialAccepted();
 }
 function hodlUseKeyForBip85(state) {
   if (!state || !state.result) throw new Error("Derive a key in Key Station first, then return to BIP-85 Station.");
@@ -10749,7 +10739,6 @@ function hodlCopyBip85Child(button) {
   let phrase = button && hodlBip85ActiveState()?.result?.secret;
   if (!phrase || button.disabled) return;
   let done = () => {
-    sessionNoticeSecretCopied();
     let note = document.getElementById("bip85-copy-status");
     if (note) note.innerHTML = `${hodlCopiedIconMarkup()}${hodlT("Copied")}`;
     clearTimeout(button.hodlCopiedTimer);
@@ -11071,7 +11060,6 @@ function hodlInitBip85() {
   });
   go.onclick = hodlRunBip85;
   document.getElementById("bip85-wipe").onclick = () => {
-    sessionNoticeSessionEnded();
     hodlBip85WipeParent();
     document.getElementById("bip85-key").value = "";
     document.getElementById("bip85-error").textContent = "";
@@ -11254,7 +11242,6 @@ function hodlSpLoadKey(text, passphrase) {
     hodlSpHd = parsed.node;
     hodlSpSource = "manual";
     hodlSpNote = `Session key: root ${parsed.prefix}. Kept in page memory only.`;
-    sessionNoticePrivateMaterialAccepted();
     return;
   }
   let mnemonic = hodlValidateMnemonic(value);
@@ -11270,7 +11257,6 @@ function hodlSpLoadKey(text, passphrase) {
   }
   hodlSpSource = "manual";
   hodlSpNote = "Session key: BIP39 seed" + (passphrase ? " + passphrase" : "") + ". Kept in page memory only.";
-  sessionNoticePrivateMaterialAccepted();
 }
 function hodlSpUseKey(state) {
   if (!state || !state.result) throw new Error("Derive a key in Key Station first, then return to SP Station.");
@@ -11702,7 +11688,6 @@ function hodlInitSp() {
   document.getElementById("sp-send-go").onclick = () => { hodlSpMode = "send"; hodlRunSp(); };
   document.getElementById("sp-verify-go").onclick = () => { hodlSpMode = "verify"; hodlRunSp(); };
   document.getElementById("sp-wipe").onclick = () => {
-    sessionNoticeSessionEnded();
     hodlSpResetStation("Session ended and accessible fields were cleared (best effort).");
   };
   document.getElementById("add-sp").onclick = () => hodlSelectStationBench(hodlSpTabs);
@@ -11714,7 +11699,6 @@ function hodlInitSp() {
     if (!button) return;
     let node = document.getElementById(button.dataset.spCopy);
     if (!node) return;
-    sessionNoticeSecretCopyText(node.textContent || ""); // revealed scan/spend keys
     navigator.clipboard?.writeText(node.textContent || "").catch(() => {});
   });
   hodlSpSetMode("receive");
@@ -13028,7 +13012,6 @@ function hodlSyncKeyClearButton(capture = false) {
   button.setAttribute("aria-disabled", String(button.disabled));
 }
 function hodlWipeActiveKey() {
-  sessionNoticeSessionEnded();
   hodlInvalidateDerivation();
   // Cache keys are partial mnemonics (23 of 24 words, 11 of 12): wiping a key
   // must not leave its seed, minus the last word, referenced until pagehide.
@@ -13885,7 +13868,6 @@ function hodlRestoreMsig() {
   hodlSyncMsigClearButton();
 }
 function hodlWipeActiveMsig() {
-  sessionNoticeSessionEnded();
   hodlInvalidateDerivation();
   if (hodlActiveMsig < 0 || !hodlMsigs[hodlActiveMsig]) return;
   let state = hodlMsigs[hodlActiveMsig];
@@ -14893,7 +14875,6 @@ async function hodlKeyManagerImportFile(file) {
     hodlKeyManagerActiveId = hodlKeyManagerActiveId || keyVaultIdentity(hodlKeyManagerStates()[0]);
     hodlKeyManagerRender();
     hodlKeyManagerStatus(hodlTText("{n} unverified input set(s) imported. Use “Load inputs to derive” for each key. Cached outputs were discarded.", { n: added }));
-    sessionNoticePrivateMaterialAccepted();
     hodlJournalLog("key-manager-import", `${added} unverified inputs`, "journal");
   } catch (error) {
     if (generation !== hodlJournalGeneration) return;
@@ -15406,7 +15387,6 @@ function hodlJournalCopy(button, label) {
   let phrase = button?.dataset.phrase;
   if (phrase == null || button.disabled) return;
   let done = () => {
-    sessionNoticeSecretCopied();
     button.textContent = "Copied";
     clearTimeout(button.hodlCopiedTimer);
     button.hodlCopiedTimer = setTimeout(() => {
@@ -15763,7 +15743,6 @@ async function hodlJournalCreate() {
     hodlJournalHideEditor();
     hodlJournalShowWork();
     hodlShowJournalTool("book");
-    sessionNoticePrivateMaterialAccepted();
     hodlJournalLog("journal-create");
   } catch (exception) {
     hodlJournalError(exception.message || String(exception));
@@ -15788,7 +15767,6 @@ async function hodlJournalUnlock() {
     hodlJournalHideEditor();
     hodlJournalShowWork();
     hodlShowJournalTool("book");
-    sessionNoticePrivateMaterialAccepted();
     hodlJournalLog("journal-unlock", `${opened.doc.entries.length} entries`);
   } catch (exception) {
     hodlJournalError(exception.message || String(exception));
@@ -15840,7 +15818,6 @@ function hodlJournalCommit() {
   }
 }
 function hodlJournalLock() {
-  sessionNoticeSessionEnded();
   hodlKeyManagerReset();
   hodlJournalWipeNotebook();
   hodlJournalClearFields();
@@ -15907,7 +15884,6 @@ function hodlInitJournalNotebook() {
   hodlJournalShowWork();
 }
 function hodlJournalWipeMem() {
-  sessionNoticeSessionEnded();
   wipeJournal(hodlJournal);
   hodlKeyManagerReset();
   hodlJournalWipeNotebook();
@@ -16284,7 +16260,6 @@ function hodlVanityInputsReady() {
 function hodlCopyVanityValue(button, value, label) {
   if (!value || !button || button.disabled) return;
   let done = () => {
-    sessionNoticeSecretCopied(); // a found passphrase is key material; an index is a mild over-notice
     let note = button.closest(".vanity-secret")?.querySelector(".vanity-copied");
     button.classList.add("is-copied");
     button.innerHTML = hodlCopiedIconMarkup();
@@ -16638,7 +16613,6 @@ function hodlInitVanity() {
   go.onclick = () => hodlVanityRunning ? hodlVanityStop() : hodlRunVanity();
   document.getElementById("vanity-first").onchange = hodlVanityStopFirstChanged;
   document.getElementById("vanity-wipe").onclick = () => {
-    sessionNoticeSessionEnded();
     hodlVanityClearResults();
   };
   workersField?.addEventListener("input", hodlVanityEstimate);
@@ -16897,28 +16871,30 @@ function hodlInitIntroDismiss() {
     intro.hidden = true;
   };
 }
-// The sources list opens by default and remembers being shut, keyed to no
-// particular build: it is reference material, not an announcement, so a new
-// release has no reason to reopen it. Restoring a closed list happens at boot
-// rather than in the head script, because CSS cannot un-open a <details> the
-// markup ships open; the list is the last thing on a long page, so the moment
-// before it closes is below the fold.
-var hodlSourcesStorageKey = "entropylab-sources-open";
-function hodlInitSourcesToggle() {
-  let sources = document.getElementById("sources");
-  if (!sources) return;
-  let stored = "";
-  try {
-    stored = localStorage.getItem(hodlSourcesStorageKey) || "";
-  } catch (e) {
-  }
-  if (stored === "0") sources.open = false;
-  sources.addEventListener("toggle", () => {
+// The Sources list and the Important fine print open by default and remember
+// being shut, keyed to no particular build: they are reference material, not
+// an announcement, so a new release has no reason to reopen them. Restoring a
+// closed disclosure happens at boot rather than in the head script, because
+// CSS cannot un-open a <details> the markup ships open; both sit at the foot
+// of a long page, so the moment before they close is below the fold.
+var hodlRememberedDisclosures = [["sources", "entropylab-sources-open"], ["important", "entropylab-important-open"]];
+function hodlInitRememberedDisclosures() {
+  for (let [id, key] of hodlRememberedDisclosures) {
+    let disclosure = document.getElementById(id);
+    if (!disclosure) continue;
+    let stored = "";
     try {
-      localStorage.setItem(hodlSourcesStorageKey, sources.open ? "1" : "0");
+      stored = localStorage.getItem(key) || "";
     } catch (e) {
     }
-  });
+    if (stored === "0") disclosure.open = false;
+    disclosure.addEventListener("toggle", () => {
+      try {
+        localStorage.setItem(key, disclosure.open ? "1" : "0");
+      } catch (e) {
+      }
+    });
+  }
 }
 function hodlInitBetaWarningDismiss() {
   let banner = document.getElementById("beta-warning");
@@ -17284,14 +17260,13 @@ async function hodlBoot() {
   hodlInitTheme();
   hodlInitBetaWarningDismiss();
   hodlInitIntroDismiss();
-  hodlInitSourcesToggle();
+  hodlInitRememberedDisclosures();
   hodlInitMasterFingerprintPreview();
   hodlInitDerivationControls();
   hodlInitAddressBenchmark();
   hodlInitSegmentedControls();
   initQrReferences();
   hodlInitDescriptorCopy();
-  initSessionNotices();
   hodlInitLocale(hodlApplyLocale);
 }
 // Curve operations need the WebAssembly module instantiated first (async in

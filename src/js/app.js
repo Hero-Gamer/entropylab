@@ -16394,7 +16394,9 @@ function hodlRenderVanityOut() {
   // The matches sit in the card like its other content, not in a frame.
   // The passphrase column holds its width through the privacy switch: the
   // text box is as wide as the longer of the mask and the longest passphrase.
-  let passWidth = Math.max(12, ...hodlVanityMatches.map((match) => Array.from(match.passphrase ?? "").length));
+  // Masked, the width is the mask's own — sizing it by the passphrases would
+  // leak their lengths through the computed style (audit A35-3).
+  let passWidth = hodlVanityReveal ? Math.max(12, ...hodlVanityMatches.map((match) => Array.from(match.passphrase ?? "").length)) : 12;
   box.style.setProperty("--vanity-pass-width", `${passWidth}ch`);
   box.innerHTML = `<p class="muted label-description" id="vanity-matches-description">${description}</p>
       ${reveal}

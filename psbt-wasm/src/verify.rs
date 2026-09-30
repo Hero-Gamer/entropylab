@@ -297,6 +297,18 @@ fn check_ecdsa(
     starts_memo: &mut AnalysisMemo<scriptcode::Shape>,
 ) -> Option<Result<(), String>> {
     let hash_type = *sig.last()? as u32;
+    // SIGHASH_SINGLE on an input with no corresponding output: legacy
+    // consensus assigns the constant-one digest (the "SIGHASH_SINGLE bug")
+    // and segwit v0 a zero hashOutputs. The signature is still verified
+    // against that consensus digest — but it commits to no output, so the
+    // condition is named alongside the verdict (audit C3-8).
+    if hash_type & 0x1f == 0x03 && index >= cache.transaction().output.len() {
+        problems.push(Problem::warning(
+            format!("input {index}"),
+            "sighash_single_no_output",
+            "signature uses SIGHASH_SINGLE with no corresponding output: its digest commits to no output (legacy: the constant-one digest; segwit v0: a zero hashOutputs)",
+        ));
+    }
     let p2wpkh_code;
     let (version, script): (SigVersion, &[u8]) = match spend {
         Spend::P2wpkh => {
@@ -1518,6 +1530,83 @@ mod tests {
     /// the annex-less message — valid only if the annex were dropped — must be
     /// named. The reference digests are built byte by byte from the BIP-341
     /// message layout here, not by the sighash code under test.
+    /// SIGHASH_SINGLE on an input with no corresponding output: legacy
+    /// consensus assigns the constant-one digest (the "SIGHASH_SINGLE bug")
+    /// and segwit v0 a zero hashOutputs — either way the signature commits
+    /// to no output and must be named, never quietly verified (audit C3-8).
+    #[test]
+    fn sighash_single_without_a_matching_output_is_named() {
+        let secp = Secp256k1::new();
+        let key = SecretKey::from_slice(&[1u8; 32]).unwrap();
+        let pubkey = bitcoin::PublicKey::new(key.public_key(&secp));
+        let claim = TxOut {
+            value: Amount::from_sat(50_000),
+            script_pubkey: ScriptBuf::new_p2pkh(&pubkey.pubkey_hash()),
+        };
+        let (prev, txid) = prev_tx_for(&claim);
+        let build_tx = |outputs: usize| Transaction {
+            version: bitcoin::transaction::Version(2),
+            lock_time: bitcoin::locktime::absolute::LockTime::ZERO,
+            input: vec![
+                TxIn {
+                    previous_output: OutPoint { txid: Txid::from_raw_hash(bitcoin::hashes::sha256d::Hash::from_byte_array([0x22; 32])), vout: 0 },
+                    script_sig: ScriptBuf::new(),
+                    sequence: Sequence::MAX,
+                    witness: Witness::new(),
+                },
+                TxIn {
+                    previous_output: OutPoint { txid, vout: 0 },
+                    script_sig: ScriptBuf::new(),
+                    sequence: Sequence::MAX,
+                    witness: Witness::new(),
+                },
+            ],
+            output: (0..outputs)
+                .map(|_| TxOut { value: Amount::from_sat(1000), script_pubkey: ScriptBuf::from_bytes(vec![0x51]) })
+                .collect(),
+        };
+        // The construction really is the bug case: consensus gives input 1's
+        // SIGHASH_SINGLE signature the constant-one digest (uint256 1, so the
+        // 1 sits in the first byte of the internal byte order), and this
+        // signature verifies against exactly that digest.
+        let mut one = [0u8; 32];
+        one[0] = 1;
+        let message = Message::from_digest_slice(&one).unwrap();
+        let sig = secp.sign_ecdsa(&message, &key);
+        assert!(secp.verify_ecdsa(&message, &sig, &key.public_key(&secp)).is_ok());
+        let mut value = sig.serialize_der().to_vec();
+        value.push(0x03); // SIGHASH_SINGLE
+        let sigmap = || {
+            vec![
+                pair("00", &hex_encode(&encode::serialize(&prev))),
+                pair(&format!("02{}", hex_encode(&pubkey.to_bytes())), &hex_encode(&value)),
+            ]
+        };
+        // One output, so input 1 has no matching output: the condition is
+        // named, and the verdict is unchanged — the constant-one signature
+        // verifies, so there is no invalid-signature report.
+        let problems = analyze(&build_tx(1), &[vec![], sigmap()]);
+        assert!(
+            problems.iter().any(|p| p.code == "sighash_single_no_output" && p.severity == WARNING),
+            "the constant-one digest must not verify quietly: {problems:?}"
+        );
+        assert!(
+            !problems.iter().any(|p| p.code == "partial_sig_invalid"),
+            "verification still ran and passed: {problems:?}"
+        );
+        // With a matching output the same signature shape takes the ordinary
+        // path (a digest exists; this one simply does not verify against it).
+        let problems = analyze(&build_tx(2), &[vec![], sigmap()]);
+        assert!(
+            !problems.iter().any(|p| p.code == "sighash_single_no_output"),
+            "a digestible SIGHASH_SINGLE must not be misnamed: {problems:?}"
+        );
+        assert!(
+            problems.iter().any(|p| p.code == "partial_sig_invalid"),
+            "and it is still checked: {problems:?}"
+        );
+    }
+
     #[test]
     fn a_final_key_path_witness_commits_to_its_annex() {
         use bitcoin::hashes::HashEngine as _;

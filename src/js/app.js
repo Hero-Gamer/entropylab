@@ -623,7 +623,7 @@ function hodlIsMiniKey(e) {
   // The minikey alphabet is Bitcoin Base58: the decode paths enforce it, so
   // the auto-detect check must not accept the wider alphanumeric set (0, O,
   // I, l are not Base58).
-  return !t.startsWith("S") || t.length !== 22 && t.length !== 30 || !/^[1-9A-HJ-NP-Za-km-z]+$/.test(t) ? false : hodlSha256(new TextEncoder().encode(t + "?"))[0] === 0;
+  return !t.startsWith("S") || ![22, 26, 30].includes(t.length) || !/^[1-9A-HJ-NP-Za-km-z]+$/.test(t) ? false : hodlSha256(new TextEncoder().encode(t + "?"))[0] === 0;
 }
 function hodlDecodeMiniKey(e) {
   if (!hodlIsMiniKey(e)) throw hodlError("Not a valid Casascius mini private key.");
@@ -4598,7 +4598,7 @@ function hodlMiniPrivateKeyPrefix(value) {
 }
 function hodlDetectPrivateKeyKind(value) {
   let candidate = String(value ?? "").trim(), compact = candidate.replace(/\s/g, "").replace(/^0x/i, "");
-  if (/^S(?:[1-9A-HJ-NP-Za-km-z]{21}|[1-9A-HJ-NP-Za-km-z]{29})$/.test(candidate)) return "minikey";
+  if (/^S(?:[1-9A-HJ-NP-Za-km-z]{21}|[1-9A-HJ-NP-Za-km-z]{25}|[1-9A-HJ-NP-Za-km-z]{29})$/.test(candidate)) return "minikey";
   if (/^[5KL9c][1-9A-HJ-NP-Za-km-z]{50,51}$/.test(candidate)) return "wif";
   if (/^[0-9a-fA-F]{64}$/.test(compact)) return "hex-key";
   return null;
@@ -4610,7 +4610,7 @@ function hodlNormalizePrivateKeyKind(kind, value = "") {
 }
 function hodlPrivateKeyPlaceholder(kind, network = "mainnet") {
   if (kind === "hex-key") return hodlTText("64 hexadecimal characters");
-  if (kind === "minikey") return hodlTText("S… (22 or 30 Base58 characters)");
+  if (kind === "minikey") return hodlTText("S… (22, 26, or 30 Base58 characters)");
   if (kind === "brain") return hodlTText("Text to hash");
   return network === "testnet" ? hodlT("9… / c…") : hodlT("5… / K… / L…");
 }
@@ -5420,8 +5420,8 @@ function hodlGlobalSyncSourceBits(targetWords = hodlTargetWordCount) {
       let kind = hodlNormalizePrivateKeyKind(document.querySelector('input[name="kk"]:checked')?.value, String(value));
       // A brain wallet is only as strong as the text.
       if (kind === "brain") return hodlGlobalSyncUnknownBits;
-      // A minikey is a SHA-256 hash too: its strength is bounded by its 21- or
-      // 29-character base58 payload (58^n), not by the 256-bit digest.
+      // A minikey is a SHA-256 hash too: its strength is bounded by its 21-,
+      // 25-, or 29-character base58 payload (58^n), not by the 256-bit digest.
       if (kind === "minikey") {
         let payload = String(value).trim().length - 1;
         return payload > 0 ? payload * Math.log2(58) : null;
@@ -6577,12 +6577,12 @@ function hodlPrivateKeyInputAnalysis(value, kind, network, trimBrainWallet = hod
     }
     return result(counted(required2 ? count2 > required2 ? hodlTText("{count} WIF characters entered · {required} required", { count: hodlMetaToken, required: required2 }) : hodlTText("{count} of {required} WIF characters entered", { count: hodlMetaToken, required: required2 }) : hodlTText("{count} of 51 or 52 WIF characters entered", { count: hodlMetaToken }), count2, required2), { count: count2, required: required2, remaining: required2 ? Math.max(0, required2 - count2) : null });
   }
-  let invalid = entries.filter((entry, index) => index === 0 ? entry.character !== "S" : !/^[1-9A-HJ-NP-Za-km-z]$/.test(entry.character)), count = entries.length, required = count <= 22 ? 22 : 30, excess = entries.slice(30);
+  let invalid = entries.filter((entry, index) => index === 0 ? entry.character !== "S" : !/^[1-9A-HJ-NP-Za-km-z]$/.test(entry.character)), count = entries.length, required = count <= 22 ? 22 : count <= 26 ? 26 : 30, excess = entries.slice(30);
   invalidRanges.push(...invalid.map((entry) => [entry.start, entry.end]), ...excess.map((entry) => [entry.start, entry.end]));
   if (invalid.length) errors.push(invalidError(invalid.length, hodlTText("use S followed by Bitcoin Base58 characters")));
   if (excess.length) errors.push(extraError(excess.length));
   if (!count) next = hodlTText("Start with S");
-  if ((count === 22 || count === 30) && !errors.length) try {
+  if ((count === 22 || count === 26 || count === 30) && !errors.length) try {
     hodlAssertPrivateKeyKind(value, network, selected);
     ready = true;
     done = hodlTText("Checksum valid · ready to derive");
@@ -6590,7 +6590,7 @@ function hodlPrivateKeyInputAnalysis(value, kind, network, trimBrainWallet = hod
     markAll();
     errors.push(error.message || hodlTText("Invalid Mini-key checksum"));
   }
-  return result(counted(count > 30 ? hodlTText("{count} Mini-key characters entered · 30 maximum", { count: hodlMetaToken }) : count ? hodlTText("{count} of {required} Mini-key characters entered", { count: hodlMetaToken, required }) : hodlTText("{count} of 22 or 30 Mini-key characters entered", { count: hodlMetaToken }), count, required), { count, required, remaining: Math.max(0, required - count) });
+  return result(counted(count > 30 ? hodlTText("{count} Mini-key characters entered · 30 maximum", { count: hodlMetaToken }) : count ? hodlTText("{count} of {required} Mini-key characters entered", { count: hodlMetaToken, required }) : hodlTText("{count} of 22, 26, or 30 Mini-key characters entered", { count: hodlMetaToken }), count, required), { count, required, remaining: Math.max(0, required - count) });
 }
 function hodlRenderPrivateKeyInputState(input) {
   if (!input) return null;
@@ -7209,7 +7209,7 @@ function hodlFilterKey(e, t) {
 }
 function hodlDecodeMiniPrivateKey(value) {
   let candidate = String(value ?? "").trim();
-  if (!/^S(?:[1-9A-HJ-NP-Za-km-z]{21}|[1-9A-HJ-NP-Za-km-z]{29})$/.test(candidate)) throw hodlError("Mini keys must start with S and contain 22 or 30 Bitcoin Base58 characters.");
+  if (!/^S(?:[1-9A-HJ-NP-Za-km-z]{21}|[1-9A-HJ-NP-Za-km-z]{25}|[1-9A-HJ-NP-Za-km-z]{29})$/.test(candidate)) throw hodlError("Mini keys must start with S and contain 22, 26, or 30 Bitcoin Base58 characters.");
   return hodlDecodeMiniKey(candidate);
 }
 function hodlAssertPrivateKeyKind(value, network, kind, trimBrainWallet = false) {

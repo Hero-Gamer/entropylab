@@ -626,7 +626,9 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   assert.match(app, /prefixes=network==="testnet"\?\["9","c"\]:\["5","K","L"\]/);
   assert.match(app, /space\.disabled=kind!=="brain"/);
   assert.match(app, /function hodlDecodeMiniPrivateKey\(value\)/);
-  assert.match(app, /\^S\(\?:\[1-9A-HJ-NP-Za-km-z\]\{21\}\|\[1-9A-HJ-NP-Za-km-z\]\{29\}\)\$/);
+  // The minikey shape guard: S plus a 21-, 25-, or 29-character Base58 body
+  // (the format's 22-, 26-, and 30-character forms).
+  assert.match(app, /\^S\(\?:\[1-9A-HJ-NP-Za-km-z\]\{21\}\|\[1-9A-HJ-NP-Za-km-z\]\{25\}\|\[1-9A-HJ-NP-Za-km-z\]\{29\}\)\$/);
   assert.match(app, /function hodlPassphraseKeyboardMarkup\(\)/);
   assert.match(app, /function hodlPrivateKeyKeyboardMarkup\(\)/);
   assert.match(app, /function hodlBindPassphraseKeyboard\(inputId="pass",toggleId="passphrase-keyboard-toggle",inputName="passphrase",keyboardId="passphrase-keyboard"\)/);

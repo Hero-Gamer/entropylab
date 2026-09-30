@@ -32,10 +32,10 @@ tool manufactures randomness, "I verified the output" stops being true.
 **In policy:** deterministic transformations of user input (same input → same
 output), user-typed randomness, and fixed published test vectors.
 
-**The one exception (already in the code):** the Heads/Tails control uses
-`crypto.getRandomValues()` only to pick which *equivalent* die face to display
-(1–3 = Heads, 4–6 = Tails). The number is discarded on render and carries zero
-entropy. New exceptions: argue them in an issue first, never in a pull request.
+There is no exception in the code: Heads/Tails and coin-flip entry record a
+fixed equivalent die face deterministically, so no browser randomness is used
+anywhere (the former die-face display exception was removed in 3b1ea62). New
+exceptions: argue them in an issue first, never in a pull request.
 
 ## 2. Keep it simple
 

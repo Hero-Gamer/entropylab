@@ -24,7 +24,7 @@ use bitcoin::blockdata::script::{Instruction, Script};
 use bitcoin::consensus::{encode, Decodable};
 use bitcoin::hashes::{hash160, sha256, sha256d, Hash};
 use bitcoin::secp256k1::{self, Message, PublicKey, Secp256k1, XOnlyPublicKey};
-use bitcoin::sighash::{EcdsaSighashType, Prevouts, SighashCache, TapSighashType};
+use bitcoin::sighash::{Annex, EcdsaSighashType, Prevouts, SighashCache, TapSighashType};
 use bitcoin::taproot::{ControlBlock, LeafVersion, TapLeafHash};
 use bitcoin::{Amount, ScriptBuf, TapSighash, Transaction, TxOut, Witness};
 
@@ -391,18 +391,27 @@ fn check_ecdsa(
 /// BIP-341 sighash for a taproot input. Every input needs a resolved claim —
 /// the digest commits to all of them — so a partial claim set makes every
 /// taproot signature unverifiable (the caller then stays silent: an
-/// unverifiable signature is not an invalid one).
+/// unverifiable signature is not an invalid one). `annex` is the final
+/// witness's annex when it has one: the message must commit to it
+/// (spend_type bit 0, sha_annex) or a valid signature is flagged and an
+/// annex-less one passes. Partial signatures carry no annex (PSBTv0 has no
+/// field for one).
 fn taproot_sighash_key_spend(
     cache: &mut SighashCache<&Transaction>,
     index: usize,
     prevouts: &Option<Vec<TxOut>>,
+    annex: Option<&[u8]>,
     sighash_type: TapSighashType,
 ) -> Option<[u8; 32]> {
     let prevouts = prevouts.as_ref()?;
+    // taproot_key_spend_signature_hash has no annex parameter; encode the
+    // BIP-341 message directly (the caller checked the 0x50 prefix).
+    let annex = annex.map(|bytes| Annex::new(bytes).expect("annex starts with 0x50"));
+    let mut engine = TapSighash::engine();
     cache
-        .taproot_key_spend_signature_hash(index, &Prevouts::All(prevouts), sighash_type)
-        .ok()
-        .map(|h| h.to_byte_array())
+        .taproot_encode_signing_data_to(&mut engine, index, &Prevouts::All(prevouts), annex, None, sighash_type)
+        .ok()?;
+    Some(TapSighash::from_engine(engine).to_byte_array())
 }
 
 /// BIP-342 sighash for a script-path signature that committed to
@@ -550,7 +559,7 @@ fn check_tap_sigs(
             Ok((sig, ty)) if !budget.take(problems) => {
                 let _ = (sig, ty);
             }
-            Ok((sig, ty)) => match taproot_sighash_key_spend(cache, index, prevouts, ty) {
+            Ok((sig, ty)) => match taproot_sighash_key_spend(cache, index, prevouts, None, ty) {
                 None => {} // prevout set incomplete: cannot compute, cannot accuse
                 Some(digest) => {
                     if let Err(why) = check_schnorr(digest, &sig, output_key) {
@@ -820,11 +829,12 @@ fn check_final_witness(
         }
         Spend::P2tr(output_key) => {
             // BIP-341: with at least two stack elements, a last element
-            // starting with 0x50 is the annex and comes off first.
-            let items = if items.len() >= 2 && items.last().is_some_and(|last| !last.is_empty() && last[0] == 0x50) {
-                &items[..items.len() - 1]
+            // starting with 0x50 is the annex — it comes off the stack but
+            // stays in the signature message.
+            let (items, annex) = if items.len() >= 2 && items.last().is_some_and(|last| !last.is_empty() && last[0] == 0x50) {
+                (&items[..items.len() - 1], Some(items[items.len() - 1]))
             } else {
-                &items[..]
+                (&items[..], None)
             };
             if items.len() == 1 {
                 match read_tap_sig(items[0], "final key-path signature") {
@@ -832,7 +842,7 @@ fn check_final_witness(
                     Ok((sig, ty)) if !budget.take(problems) => {
                         let _ = (sig, ty);
                     }
-                    Ok((sig, ty)) => match taproot_sighash_key_spend(cache, index, prevouts, ty) {
+                    Ok((sig, ty)) => match taproot_sighash_key_spend(cache, index, prevouts, annex, ty) {
                         Some(digest) => {
                             if let Err(why) = check_schnorr(digest, &sig, output_key) {
                                 problems.push(Problem::error(scope, "final_witness_bad", format!("final {why}")));
@@ -1500,6 +1510,66 @@ mod tests {
         ];
         let problems = analyze(&tx, &[map]);
         assert!(problems.is_empty(), "{problems:?}");
+    }
+
+    /// BIP-341: when a final key-path witness carries an annex, the signature
+    /// message commits to it (spend_type bit 0 set, sha_annex appended). A
+    /// signature made over the annex-bearing message must pass; one made over
+    /// the annex-less message — valid only if the annex were dropped — must be
+    /// named. The reference digests are built byte by byte from the BIP-341
+    /// message layout here, not by the sighash code under test.
+    #[test]
+    fn a_final_key_path_witness_commits_to_its_annex() {
+        use bitcoin::hashes::HashEngine as _;
+        use bitcoin::key::TapTweak as _;
+        let secp = Secp256k1::new();
+        let key = secp256k1::Keypair::from_secret_key(&secp, &SecretKey::from_slice(&[1u8; 32]).unwrap());
+        let (xonly, _parity) = key.x_only_public_key();
+        let (tx, _) = fixture();
+        let claim = TxOut {
+            value: Amount::from_sat(50_000),
+            script_pubkey: ScriptBuf::new_p2tr(&secp, xonly, None),
+        };
+        let tweaked = key.tap_tweak(&secp, None).to_keypair();
+        let annex = [0x50, 0xaa, 0xbb, 0xcc];
+        // SigMsg for the fixture transaction (version 2, locktime 0, one
+        // input spending txid 0x11…:0 with sequence MAX, one 1000-sat OP_TRUE
+        // output), SIGHASH_DEFAULT, key path (ext_flag 0).
+        let sigmsg = |with_annex: bool| {
+            let sha = |bytes: &[u8]| sha256::Hash::hash(bytes).to_byte_array();
+            let mut msg = vec![0x00, 0x00]; // epoch, SIGHASH_DEFAULT
+            msg.extend_from_slice(&2i32.to_le_bytes()); // nVersion
+            msg.extend_from_slice(&0u32.to_le_bytes()); // nLockTime
+            msg.extend_from_slice(&sha(&[[0x11; 32].as_slice(), &0u32.to_le_bytes()].concat())); // sha_prevouts
+            msg.extend_from_slice(&sha(&50_000u64.to_le_bytes())); // sha_amounts
+            msg.extend_from_slice(&sha(&[&[0x22], claim.script_pubkey.as_bytes()].concat())); // sha_scriptpubkeys
+            msg.extend_from_slice(&sha(&0xffff_ffffu32.to_le_bytes())); // sha_sequences
+            msg.extend_from_slice(&sha(&[1_000u64.to_le_bytes().as_slice(), &[0x01, 0x51]].concat())); // sha_outputs
+            msg.push(if with_annex { 0x01 } else { 0x00 }); // spend_type
+            msg.extend_from_slice(&0u32.to_le_bytes()); // input index
+            if with_annex {
+                // sha_annex commits to the annex as serialized in the
+                // witness, 0x50 prefix included.
+                msg.extend_from_slice(&sha(&[&[annex.len() as u8], annex.as_slice()].concat()));
+            }
+            let mut engine = TapSighash::engine();
+            engine.input(&msg);
+            TapSighash::from_engine(engine).to_byte_array()
+        };
+        let sign = |with_annex: bool| {
+            secp.sign_schnorr_no_aux_rand(&Message::from_digest_slice(&sigmsg(with_annex)).unwrap(), &tweaked).serialize().to_vec()
+        };
+        let map_for = |sig: &[u8]| {
+            let witness = Witness::from_slice(&[sig.to_vec(), annex.to_vec()]);
+            vec![pair("01", &witness_utxo_value(&claim)), pair("08", &hex_encode(&encode::serialize(&witness)))]
+        };
+        // Signed over the annex-bearing message: valid, no problems.
+        let problems = analyze(&tx, &[map_for(&sign(true))]);
+        assert!(problems.is_empty(), "{problems:?}");
+        // Signed over the annex-less message but spending with an annex:
+        // consensus would reject it, so the verifier must name it.
+        let problems = analyze(&tx, &[map_for(&sign(false))]);
+        assert!(problems.iter().any(|p| p.code == "final_witness_bad" && p.severity == ERROR), "{problems:?}");
     }
 
     #[test]

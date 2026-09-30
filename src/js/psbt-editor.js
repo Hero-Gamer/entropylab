@@ -79,7 +79,8 @@ export const satsToBtc = (sats) => {
 
 // How the edited PSBT is shown as a QR: small files fit one static code
 // carrying the base64 text; larger ones become an animated ur:crypto-psbt
-// sequence (BCR-2020-005 — Sparrow, SeedSigner and Coldcard Q scan those).
+// sequence (BCR-2020-005 with BCR-2024-001 fixed-rate MUR fragments —
+// Sparrow, SeedSigner and Coldcard Q scan those).
 // The UR fragments are uppercased so the QR encodes in the denser
 // alphanumeric mode; UR parsing lowercases before decoding.
 export const PSBT_QR_STATIC_MAX_BYTES = 800;

@@ -11991,9 +11991,13 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
     // Resolve all declarations as a set: agreeing claims count once,
     // disagreeing claims count as nothing and are flagged, and the verified
     // non-witness amount is preferred for display when both agree.
+    // Agreement covers the script too: same amount but different scripts
+    // means the two fields name different previous outputs (audit C3-7), and
+    // resolving to either would split the input's display (non-witness
+    // script) from its sighash basis (witness script).
     let claim = null, claimConflict = false;
     if (witnessUtxo && nonWitnessUtxo) {
-      if (witnessUtxo.amount === nonWitnessUtxo.amount) claim = nonWitnessUtxo;
+      if (witnessUtxo.amount === nonWitnessUtxo.amount && hodlEq(witnessUtxo.script, nonWitnessUtxo.script)) claim = nonWitnessUtxo;
       else claimConflict = true;
     } else claim = witnessUtxo || nonWitnessUtxo;
     if (claim) {
@@ -12025,7 +12029,12 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
     let parsedTapSignatures = tapSignatures.reduce((count, tapSig) => count + (tapSig.r ? 1 : 0), 0);
     tapSignatureCount += parsedTapSignatures;
     html.push("<p class='psbt-kv'><strong>Input " + index + "</strong> \xB7 " + hodlHexRev(previous.txid) + " : " + previous.vout + (claim ? "<br><span class='psbt-amount'>" + hodlSats(claim.amount) + " BTC claimed</span><br><span class='psbt-address'>" + hodlEscapeHtml(destination) + "</span>" : "<br>" + hodlEscapeHtml(destination)) + "<br>" + (signatures.length + parsedTapSignatures ? "<span class='psbt-sig-present'>" + (signatures.length + parsedTapSignatures) + " signature(s) present</span>" : finalized ? "<span class='psbt-sig-finalized'>Finalized input data present</span>" : "<span class='psbt-sig-unsigned'>Not signed yet</span>") + "<br><span class='psbt-sig-policy'>" + (declaredSighashError ? "Declared sighash policy unreadable: " + hodlEscapeHtml(declaredSighashError) : "Signature policy: " + hodlEscapeHtml(declaredLabel)) + "</span></p>");
-    if (claimConflict) html.push("<p class='psbt-bad'><strong>Conflicting previous-output claims:</strong> input " + index + " declares " + hodlSats(witnessUtxo.amount) + " BTC in its witness UTXO but " + hodlSats(nonWitnessUtxo.amount) + " BTC in its non-witness UTXO (checked against the embedded previous transaction). Neither amount is trusted and the fee is left unknown.</p>");
+    if (claimConflict) {
+      let conflictReason = witnessUtxo.amount !== nonWitnessUtxo.amount
+        ? "declares " + hodlSats(witnessUtxo.amount) + " BTC in its witness UTXO but " + hodlSats(nonWitnessUtxo.amount) + " BTC in its non-witness UTXO (checked against the embedded previous transaction). Neither amount is trusted"
+        : "names different previous-output scripts in its witness UTXO and its non-witness UTXO (the non-witness side checked against the embedded previous transaction). Neither claim is trusted";
+      html.push("<p class='psbt-bad'><strong>Conflicting previous-output claims:</strong> input " + index + " " + conflictReason + " and the fee is left unknown.</p>");
+    }
     if (nonWitnessError) html.push("<p class='psbt-bad'><strong>Non-witness UTXO problem:</strong> input " + index + ": " + hodlEscapeHtml(nonWitnessError) + " That field claims nothing.</p>");
     let inputEnvelopes = (inscriptionReport.inputs[index] && inscriptionReport.inputs[index].envelopes) || [];
     inputEnvelopes.forEach((envelope) => {

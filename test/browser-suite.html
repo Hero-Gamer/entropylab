@@ -3984,6 +3984,35 @@
     await until(() => !document.getElementById("calc-card").hidden, "key workspace");
   });
 
+  await test("the PSBT inspector flags a witness/non-witness script conflict at one amount (audit C3-7)", async () => {
+    // Both UTXO declarations claim 5,000 sats, but the witness UTXO names a
+    // P2WPKH script while the (txid-verified) embedded previous transaction
+    // pays OP_TRUE: the two fields name different previous outputs. An
+    // amount-only comparison used to resolve that as agreement, show a fee,
+    // and split the input between the two scripts.
+    const prev = "02000000010000000000000000000000000000000000000000000000000000000000000000ffffffff00ffffffff018813000000000000015100000000";
+    const txid = "a1ffda2c00f515e3677a9a469cf37dd89b26c4e312c083f58126900d73d5cff2"; // dsha256(prev), internal byte order
+    const unsigned = "02000000" + "01" + txid + "00000000" + "00" + "ffffffff" + "01" + "e803000000000000" + "01" + "51" + "00000000";
+    const witnessUtxo = "8813000000000000" + "16" + "0014" + "22".repeat(20);
+    const psbtHex = "70736274ff" + "0100" + "3d" + unsigned + "00" + "0101" + "1f" + witnessUtxo + "0100" + "3d" + prev + "00" + "00";
+    document.querySelector('#workspace [data-workspace="psbt"]').click();
+    document.querySelector('#psbt-tool-tabs [data-psbt-tool="inspector"]').click();
+    await until(() => !document.getElementById("psbt-card").hidden, "PSBT Inspector");
+    const box = document.getElementById("psbt-text");
+    input(box, btoa(psbtHex.match(/../g).map((pair) => String.fromCharCode(parseInt(pair, 16))).join("")));
+    document.getElementById("psbt-go").click();
+    await until(() => document.getElementById("psbt-out").textContent.includes("Tx inputs") || document.getElementById("psbt-error").textContent, "script-conflict report");
+    equal(document.getElementById("psbt-error").textContent, "", "inspector rejected the script-conflict fixture");
+    const out = document.getElementById("psbt-out").textContent;
+    assert(out.includes("Conflicting previous-output claims"), "script conflict at one amount was not flagged");
+    assert(out.includes("Fee unknown"), "a conflicted input must void the fee");
+    assert(!out.includes("Unverified fee"), "a fee was derived from conflicting scripts");
+    input(box, "");
+    document.getElementById("psbt-wipe").click();
+    document.querySelector('#workspace [data-workspace="calc"]').click();
+    await until(() => !document.getElementById("calc-card").hidden, "key workspace");
+  });
+
   await test("the PSBT Inspector's nonce verdict ignores the Nonce Inspector's Jade transcript", async () => {
     // Two strict-DER ECDSA signatures with distinct r and no UTXO data: with no
     // digest to check, each one counts as unsupported, so nonce coverage is

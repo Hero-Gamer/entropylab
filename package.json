@@ -4,7 +4,7 @@
   "description": "Self-contained, air-gapped Bitcoin key and wallet calculator",
   "private": true,
   "type": "module",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "Unlicense",
   "packageManager": "npm@11.17.0",
   "scripts": {
     "build": "node scripts/build.mjs",

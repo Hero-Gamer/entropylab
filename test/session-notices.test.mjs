@@ -34,12 +34,11 @@ const harness = async () => {
     addEventListener(type, callback) { this.listeners[type] = callback; },
     append(...kids) { this.children.push(...kids); },
     remove() { this.removed = true; },
-    insertAdjacentElement(_position, element) { placed.push(element); },
   });
   globalThis.document = {
     createElement: fakeEl,
-    getElementById: (id) => (id === "beta-warning" ? fakeEl("aside") : null),
-    body: { prepend: (el) => placed.push(el) },
+    getElementById: () => null,
+    body: { append: (el) => placed.push(el) },
     addEventListener: (type, callback) => { listeners[type] = callback; },
   };
   globalThis.addEventListener = (type, callback) => { listeners[type] = callback; };
@@ -194,9 +193,8 @@ test("Lightning copies of the entropy and root xprv fire the clipboard notice; t
     id, value: "", textContent: "", innerHTML: "", hidden: false, dataset: {}, children: [], listeners: {},
     setAttribute() {}, append(...kids) { this.children.push(...kids); }, remove() {},
     addEventListener(type, callback) { this.listeners[type] = callback; },
-    insertAdjacentElement(_position, element) { placed.push(element); },
   });
-  for (const id of ["ln-go", "ln-wipe", "ln-format", "ln-network", "ln-out", "ln-session", "beta-warning"]) elements.set(id, fakeEl(id));
+  for (const id of ["ln-go", "ln-wipe", "ln-format", "ln-network", "ln-out", "ln-session"]) elements.set(id, fakeEl(id));
   // Decoded aezeed entropy is 16 bytes (32 hex): the classifier alone cannot
   // see it, so the control must say it is secret.
   elements.set("ln-entropy", Object.assign(fakeEl("ln-entropy"), { textContent: "0".repeat(32) }));
@@ -208,7 +206,7 @@ test("Lightning copies of the entropy and root xprv fire the clipboard notice; t
       getElementById: (id) => elements.get(id) ?? null,
       createElement: () => fakeEl(""),
       addEventListener: (type, callback) => { listeners[type] = callback; },
-      body: { prepend: (element) => placed.push(element) },
+      body: { append: (element) => placed.push(element) },
     },
     addEventListener: (type, callback) => { listeners[type] = callback; },
   });

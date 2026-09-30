@@ -18,10 +18,11 @@
 //      clear memory, and nothing here advises deleting hiberfil.sys or the
 //      pagefile (on SSDs that does not erase them either).
 //
-// The banner reuses the beta-warning paradigm verbatim: same markup, classes
-// and placement, dismissible, no-print, memory-only state (nothing is
-// remembered across page loads, and a page hide re-arms the session). A kind
-// shows once per page session; a second notice queues behind a visible one.
+// The banner reuses the beta-warning paradigm (same markup and classes),
+// pinned to the foot of the viewport: dismissible, no-print, memory-only
+// state (nothing is remembered across page loads, and a page hide re-arms
+// the session). A kind shows once per page session; a second notice queues
+// behind a visible one.
 // `data-notice-kind` is the test hook.
 import { t } from "./i18n.js";
 import { hodlSessionNoticeTexts } from "./i18n-labels.js";
@@ -55,11 +56,9 @@ let clipboardShown = false, preSessionShown = false; // once-per-session flags
 let current = null; // the visible aside
 const pending = []; // kinds queued behind the visible notice
 
-const place = (element) => {
-  const banner = document.getElementById("beta-warning");
-  if (banner) banner.insertAdjacentElement("afterend", element);
-  else document.body.prepend(element);
-};
+// Pinned to the viewport (the CSS), so it shows wherever the user has
+// scrolled to when the click that fired it happened.
+const place = (element) => document.body.append(element);
 
 const build = (kind) => {
   const aside = document.createElement("aside");

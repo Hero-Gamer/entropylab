@@ -37,7 +37,7 @@ import { wasmExports as hodlWasm, withInput as hodlWasmIn, withOutput as hodlWas
 // Published test vectors run through that same engine before boot; a host
 // that computes any of them wrong never gets a seed field (self-test.js).
 import { selfTestGate as hodlSelfTestGate, SELF_TESTS as hodlSelfTests, PSBT_SELF_TESTS as hodlPsbtSelfTests } from "./self-test.js";
-import { psbtWasmReady } from "./psbt-wasm.js";
+import { psbtWasmReady, psbtInspectDoc } from "./psbt-wasm.js";
 import { indexHdKey, indexSingleKey, matchOwnership, pathLabel } from "./ownership.js";
 import { hex as hodlHex } from "./coders.js";
 import { addressFor, addressFromScript, descriptorDerive, p2pkhScript, p2shP2wpkhScript, p2shScript, p2trKeyScript, p2wpkhScript, p2wshScript } from "./addresses.js";
@@ -9724,7 +9724,35 @@ function hodlParsePsbt(bytes) {
     outputs.push(map.entries);
   }
   if (offset !== bytes.length) throw new Error("PSBT contains trailing data or extra maps.");
-  return { tx, global: globalMap.entries, inputs, outputs };
+  return { tx, global: globalMap.entries, inputs, outputs, raw: bytes };
+}
+
+// The inspector's own parser is throw-or-render: a file can violate BIP-174
+// or consensus rules without tripping a structural check (a non-witness UTXO
+// txid mismatch, a witness/non-witness claim conflict, a malformed typed
+// value) and would render as an ordinary report (audit C3-6). Cross-check
+// with the reference layer (rust-bitcoin through the PSBT WASM module) and
+// surface its error-severity verdict. Memoized on the parsed object so a
+// locale re-render does not re-run the analysis.
+function hodlPsbtReferenceVerdict(psbt) {
+  if (psbt.referenceVerdict) return psbt.referenceVerdict;
+  let verdict;
+  try {
+    let doc = psbtInspectDoc(psbt.raw),
+      problems = [];
+    if (doc.rustBitcoinError) problems.push("rust-bitcoin: " + doc.rustBitcoinError);
+    for (let problem of doc.problems || []) if (problem.severity === "error") problems.push(problem.scope + ": " + problem.message);
+    // The document's error count is taken before its list truncation.
+    let unlisted = Math.max(0, (doc.errorCount ?? problems.length) - problems.length);
+    verdict = problems.length ? { state: "problem", problems, unlisted } : { state: "complete", problems: [], unlisted: 0 };
+  } catch (exception) {
+    let message = exception instanceof Error ? exception.message : String(exception);
+    verdict = /not initialized/.test(message)
+      ? { state: "incomplete", problems: [], unlisted: 0 }
+      : { state: "problem", problems: ["The reference parser rejects this file: " + message], unlisted: 0 };
+  }
+  psbt.referenceVerdict = verdict;
+  return verdict;
 }
 function hodlSats(number) {
   let value = typeof number === "bigint" ? number : BigInt(number), negative = value < 0n;
@@ -11937,6 +11965,11 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
     transcriptError = exception.message || String(exception);
   }
   html.push("<hr class='result-divider'>");
+  let referenceVerdict = hodlPsbtReferenceVerdict(psbt);
+  if (referenceVerdict.state === "problem") {
+    let shown = referenceVerdict.problems.slice(0, 5), more = referenceVerdict.problems.length - shown.length + referenceVerdict.unlisted;
+    html.push("<p class='psbt-bad'><strong>" + hodlT("Not a valid PSBT.") + "</strong> " + hodlT("The reference layer (rust-bitcoin) reports error-severity BIP-174 / consensus problems; treat every field below with suspicion:") + "<br>" + shown.map(hodlEscapeHtml).join("<br>") + (more > 0 ? "<br>" + hodlT("…and {n} more.", { n: more }) : "") + "</p>");
+  }
   html.push("<p class='label psbt-section-label'>" + hodlT("Tx outputs") + " <span class='label-value'>(" + tx.outputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction sends bitcoin") + "</p>");
   let ownershipMap = hodlSessionOwnership(network);
   tx.outputs.forEach((output, index) => {
@@ -12202,6 +12235,15 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
         : "No session key was loaded, so output ownership and change derivation were not checked.",
     },
     hodlPsbtNonceCheck(reused, possible, nonceIncomplete),
+    {
+      label: "BIP-174 / consensus cross-check",
+      state: referenceVerdict.state,
+      detail: referenceVerdict.state === "problem"
+        ? "The reference layer (rust-bitcoin) reports error-severity problems; see the banner at the top of this report."
+        : referenceVerdict.state === "complete"
+          ? "rust-bitcoin parsed this file and reported no error-severity BIP-174 or consensus problem."
+          : "The reference layer was unavailable, so validity was checked only by the built-in parser.",
+    },
     {
       label: "Taproot inscription scan",
       state: inscriptionScanIncomplete ? "incomplete" : "complete",

@@ -3954,6 +3954,36 @@
     await until(() => !document.getElementById("calc-card").hidden, "key workspace");
   });
 
+  await test("the PSBT inspector banners a BIP-174-invalid file it can render (audit C3-6)", async () => {
+    // The unsigned transaction spends txid 0x11…:0, but the input's
+    // non-witness UTXO embeds an unrelated transaction — BIP-174 makes that
+    // file invalid, and the throw-or-render JS parser used to present it as
+    // an ordinary report with only a per-input note. The reference-layer
+    // cross-check must banner it and the summary must say Problem found.
+    const le32 = (n) => [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff];
+    const le64 = (n) => { const out = []; let v = BigInt(n); for (let i = 0; i < 8; i++) { out.push(Number(v & 255n)); v >>= 8n; } return out; };
+    const varint = (n) => (n < 0xfd ? [n] : [0xfd, n & 0xff, n >> 8]);
+    const prev = [...le32(2), 1, ...new Array(32).fill(0), ...le32(0xffffffff), 0, ...le32(0xffffffff), 1, ...le64(42000), 1, 0x51, ...le32(0)];
+    const unsigned = [...le32(2), 1, ...new Array(32).fill(0x11), ...le32(0), 0, ...le32(0xffffffff), 1, ...le64(1000), 1, 0x51, ...le32(0)];
+    const psbt = [0x70, 0x73, 0x62, 0x74, 0xff, 1, 0, ...varint(unsigned.length), ...unsigned, 0, 1, 0, ...varint(prev.length), ...prev, 0, 0];
+    document.querySelector('#workspace [data-workspace="psbt"]').click();
+    document.querySelector('#psbt-tool-tabs [data-psbt-tool="inspector"]').click();
+    await until(() => !document.getElementById("psbt-card").hidden, "PSBT Inspector");
+    const box = document.getElementById("psbt-text");
+    input(box, btoa(String.fromCharCode(...psbt)));
+    document.getElementById("psbt-go").click();
+    await until(() => document.getElementById("psbt-out").textContent.includes("cross-check") || document.getElementById("psbt-error").textContent, "invalid-vector report");
+    equal(document.getElementById("psbt-error").textContent, "", "inspector rejected the renderable-but-invalid fixture");
+    const out = document.getElementById("psbt-out").textContent;
+    assert(out.includes("Not a valid PSBT."), "the invalid file rendered without a banner");
+    assert(out.includes("BIP-174 / consensus cross-check — Problem found"), "the summary row did not mark the cross-check a problem");
+    assert(out.includes("ISSUES FOUND"), "an invalid file did not dominate the overall verdict");
+    input(box, "");
+    document.getElementById("psbt-wipe").click();
+    document.querySelector('#workspace [data-workspace="calc"]').click();
+    await until(() => !document.getElementById("calc-card").hidden, "key workspace");
+  });
+
   await test("the PSBT Inspector's nonce verdict ignores the Nonce Inspector's Jade transcript", async () => {
     // Two strict-DER ECDSA signatures with distinct r and no UTXO data: with no
     // digest to check, each one counts as unsupported, so nonce coverage is

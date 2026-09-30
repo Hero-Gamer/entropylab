@@ -166,6 +166,14 @@ for (const match of app.matchAll(/^import \{([^}]*)\} from "\.\/([\w.-]+)";$/gm)
 
 let loads = 0;
 export async function loadAppFunctions(names, { stubs = {}, settable = [] } = {}) {
+  // The session-notice calls (#627) are UI side effects; a slice runs under
+  // Node without a document, so they default to no-ops unless the suite
+  // supplies its own stub to observe them.
+  stubs = {
+    sessionNoticeSessionEnded() {}, sessionNoticePrivateMaterialAccepted() {},
+    sessionNoticeSecretCopied() {}, sessionNoticeSecretCopyText() {},
+    ...stubs,
+  };
   const included = new Set(), queue = [...names];
   while (queue.length) {
     const name = queue.pop();

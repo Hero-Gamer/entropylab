@@ -1082,6 +1082,15 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
 :root[data-beta-banner-dismissed] #beta-warning,
 :root[data-intro-dismissed] #site-intro { display: none; }
 .beta-warning-text, .online-warning-text { flex: 1; }
+/* Session notices (#627) are the beta banner, pinned: they answer a click
+   made anywhere down the page, so they float at the viewport's foot instead
+   of at the top of the document, clear of the fixed header and under the
+   modals. One shows at a time. */
+.session-notice {
+  position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 50;
+  max-width: 720px; margin: 0 auto; border-radius: 12px;
+  box-shadow: 0 16px 36px rgb(0 0 0 / 55%);
+}
 /* line-height 1 so the label sits where the padding puts it: the banner's 1.5
    would add half its leading above the caps as invisible space. The gap down
    to the sentence is then an explicit margin. */

@@ -138,6 +138,7 @@ function enableDerivation(c) {
     },
     hodlThrowIfFailed() {}, hodlSetWorkspaceError() {}, hodlSetSelectedScriptType() {},
     hodlSnapshotKeySummary() {}, hodlJournalCaptureDerivedKey() {}, hodlFocusWalletResult() {},
+    sessionNoticePrivateMaterialAccepted() {}, // session-notices.test.mjs covers the notice
     // The shared-fingerprint confirmation is a modal; the browser suite
     // drives it. Here the user proceeds, so the commit logic runs.
     hodlConfirmKeyFingerprint: () => Promise.resolve(true),
@@ -156,7 +157,8 @@ function enableDerivation(c) {
   // Keep the real cancellation control declarations with the controller,
   // including the generation fence supplied by the separate lifecycle fix.
   runInNewContext(app.slice(app.indexOf("class HodlDerivationCancelledError"), app.indexOf("function hodlDerivationButton")), c);
-  runInNewContext(loadSlice("hodlCalculateKey"), c);
+  for (const name of ["hodlResultHasSeed", "hodlResultHasRoot", "hodlResultHasSingleKey", "hodlResultHasImportedPrivate", "hodlCalculateKey"])
+    runInNewContext(loadSlice(name), c);
 }
 
 test("only a successful fresh derivation retires an imported input and publishes the genuine wallet", async () => {

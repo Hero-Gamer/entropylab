@@ -48,10 +48,11 @@ export const initAddressQr = (renderQr, icons = {}, { frames = null } = {}) => {
   overlay.className = "modal-overlay addr-qr-overlay no-print";
   overlay.id = "addr-qr-overlay";
   overlay.hidden = true;
-  // The address text and the icon after it both copy. Only the icon takes a
-  // tab stop, so a keyboard reaches one copy control, not two. The icon turning
-  // to a check is the visible confirmation; the note speaks it, unseen, so the
-  // centred address never shifts.
+  // The address text and the copy button both copy. Only the button takes a
+  // tab stop, so a keyboard reaches one copy control, not two. The button sits
+  // with Close in the actions row, copy on the left and Close on the right, so
+  // the address keeps the card's full width. The icon turning to a check is the
+  // visible confirmation; the note speaks it, unseen.
   overlay.innerHTML = `
     <div class="modal-card addr-qr-card" role="dialog" aria-modal="true" aria-labelledby="addr-qr-title">
       <p class="modal-title addr-qr-title" id="addr-qr-title"></p>
@@ -59,11 +60,11 @@ export const initAddressQr = (renderQr, icons = {}, { frames = null } = {}) => {
       <p class="field-note addr-qr-note" id="addr-qr-note" aria-live="polite"></p>
       <p class="addr-qr-address-row">
         <button type="button" class="mono addr-qr-address" id="addr-qr-address" tabindex="-1"></button>
-        <button type="button" class="copy-button addr-qr-copy" id="addr-qr-copy"></button>
         <span class="sr-only" id="addr-qr-copied" aria-live="polite"></span>
       </p>
       <div class="row addr-qr-actions">
-        <button class="btn secondary" id="addr-qr-close" type="button"></button>
+        <button type="button" class="copy-button boxed-copy-button addr-qr-copy" id="addr-qr-copy"></button>
+        <button class="btn red" id="addr-qr-close" type="button"></button>
       </div>
     </div>`;
   document.body.append(overlay);

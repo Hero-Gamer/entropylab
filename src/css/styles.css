@@ -221,7 +221,7 @@ button:not(:disabled):active *,
    own ring is the one mark that can never be mistaken for a meaning colour. */
 .btn, .segmented-control > .tab, .dice-input-pad button, .card-suit-pad button, .card-undo-button,
 .seed-keyboard-key, .seed-keyboard-space, .seed-keyboard-mode, .session-key-option, .msig-session-key,
-.theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button, .addr-qr,
+.theme-toggle, .seed-keyboard-toggle, .boxed-copy-button, .network-picker-button, .locale-control .custom-select-button, .addr-qr,
 .beta-warning-dismiss, .intro-dismiss, .psbted-viz-box:has(> .psbted-viz-open), .psbted-viz-tx, .exp-cell {
   --hover-edge: var(--selection-accent); --hover-ink: var(--selection-accent-ink);
   cursor: pointer; transition: background-color .14s ease, border-color .14s ease, color .14s ease;
@@ -231,7 +231,7 @@ button:not(:disabled):active *,
    for as long as the pointer sat on it. */
 .btn:not(:disabled):hover,
 .segmented-control > .tab:not(:disabled):not(.active):not([aria-pressed="true"]):hover,
-:is(.dice-input-pad button, .card-suit-pad button, .card-undo-button, .seed-keyboard-key, .seed-keyboard-space, .seed-keyboard-mode, .session-key-option, .msig-session-key):not(:disabled):not(.active):hover,
+:is(.dice-input-pad button, .card-suit-pad button, .card-undo-button, .seed-keyboard-key, .seed-keyboard-space, .seed-keyboard-mode, .session-key-option, .msig-session-key, .boxed-copy-button):not(:disabled):not(.active):hover,
 :is(.theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button, .addr-qr, .beta-warning-dismiss, .intro-dismiss, .psbted-viz-tx, .exp-cell):hover,
 .psbted-viz-box:has(> .psbted-viz-open):not(:has(input:hover)):hover {
   border-color: var(--hover-edge); background: var(--bg); color: var(--hover-ink);
@@ -249,7 +249,7 @@ button:not(:disabled):active *,
 @media (prefers-reduced-motion: reduce) {
   .btn, .segmented-control > .tab, .dice-input-pad button, .card-suit-pad button, .card-undo-button,
   .seed-keyboard-key, .seed-keyboard-space, .seed-keyboard-mode,
-  .theme-toggle, .seed-keyboard-toggle, .network-picker-button, .locale-control .custom-select-button, .addr-qr,
+  .theme-toggle, .seed-keyboard-toggle, .boxed-copy-button, .network-picker-button, .locale-control .custom-select-button, .addr-qr,
   .beta-warning-dismiss, .intro-dismiss, .psbted-viz-box:has(> .psbted-viz-open), .psbted-viz-tx, .exp-cell { transition: none; }
 }
 /* The colour variants carry their rest colours and their three tokens, and
@@ -446,8 +446,9 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
    so it was muting the colour .err asks for. The error line states it here. */
 .passphrase-bip39-status.err { color: var(--danger); }
 .passphrase-keyboard-host .seed-keyboard { margin-top: var(--space-control); margin-right: auto; margin-left: 0; }
-/* The theme toggle shares this button chrome; it is not a keyboard toggle. */
-.seed-keyboard-toggle, .theme-toggle {
+/* The theme toggle and the boxed copy buttons (seed phrase rows, the address
+   QR popup) share this button chrome; none of them is a keyboard toggle. */
+.seed-keyboard-toggle, .theme-toggle, .copy-button.boxed-copy-button {
   display: grid; place-items: center; flex: 0 0 44px; width: 44px; min-height: 44px; height: auto; padding: 5px;
   border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--muted);
 }
@@ -770,8 +771,10 @@ details.lab-entropy > summary {
 .meta-cue { color: var(--meta-cue-ink, var(--ok-bright)); }
 .meta-cue.is-next { --meta-cue-ink: var(--selection-accent-ink); }
 .meta-cue.is-error { --meta-cue-ink: var(--danger-bright); }
+/* The title sits on the row's floor, next to the words it names; the taller
+   copy button rises above it rather than pushing it up off the grid. */
 .seed-word-copy-row {
-  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  display: flex; align-items: flex-end; justify-content: flex-end; gap: 8px;
   margin-top: var(--space-component); margin-bottom: var(--space-control);
 }
 /* The seed phrase title owns its row and the copy button trails it, so the
@@ -798,6 +801,9 @@ details.lab-entropy > summary {
 .copy-button:disabled { color: var(--faint); cursor: not-allowed; }
 .copy-button:not(:disabled) { color: var(--selection-accent); }
 .copy-button:not(:disabled):hover { color: var(--accent); }
+/* A boxed copy button wears button chrome, so it follows the button grammar:
+   plain ink at rest, orange only under the pointer. */
+.copy-button.boxed-copy-button:not(:disabled) { color: var(--fg); }
 .copy-button.is-copied, .copy-button.is-copied:not(:disabled),
 .copy-button.is-copied:not(:disabled):hover { color: var(--ok-bright); }
 .dice-word-grid {
@@ -2053,7 +2059,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   font-size: 12px; overflow-wrap: anywhere; cursor: pointer;
 }
 .addr-qr-address:hover { color: var(--selection-accent-ink); }
-.addr-qr-actions { margin-top: var(--space-component); justify-content: center; }
+.addr-qr-actions { margin-top: var(--space-component); justify-content: space-between; }
 /* Shown when Derive Key is pressed with less entropy than recommended. The
    card carries the station vocabulary: a label titles it, the shortfall is a
    private note, the counts are help text, and the actions close it as a split
@@ -2439,10 +2445,11 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .msig-import { margin: 0 0 var(--space-section); padding: 0 0 var(--space-component); border-bottom: 1px solid var(--border); }
 :is(#key-edit-note, #msig-edit-note) { --edge-note-space-before: 0px; --edge-note-space-after: var(--space-component); }
 .msig-import textarea { min-height: 72px; }
-/* An edge note that opens a disclosure's revealed content takes no gap above
-   it — whether it sits straight under the summary or inside the first field. */
+/* An edge note, titled or not, that opens a disclosure's revealed content
+   takes no gap above it — whether it sits straight under the summary or
+   inside the first field. */
 :is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary + .edge-note,
-:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary + * > .edge-note:first-child { margin-top: 0; }
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary + * > :is(.edge-note, .edge-note-titled):first-child { margin-top: 0; }
 .msig-import .btn { margin-top: var(--space-control); }
 .msig-threshold-control {
   --msig-slider-inset: 14px;

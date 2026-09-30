@@ -59,7 +59,9 @@ export function hodlCatalogHasControlCharacters(value) {
 
 // The u flag makes the class match code points, not UTF-16 units: without it
 // the astral ranges (language tags, U+E0001) would land as surrogate halves.
-const hodlNeutralizeControls = (value) => String(value ?? "").replace(new RegExp(hodlControlSource, "gu"), "\uFFFD");
+// Exported for the other untrusted-text surfaces (the PSBT inspectors), which
+// neutralize through the same table.
+export const hodlNeutralizeControls = (value) => String(value ?? "").replace(new RegExp(hodlControlSource, "gu"), "\uFFFD");
 
 // Preserve only the entities this function emits itself, making sanitization
 // idempotent. Every other ampersand is escaped, including numeric and named

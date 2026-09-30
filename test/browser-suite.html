@@ -3906,6 +3906,54 @@
     await until(() => !document.getElementById("calc-card").hidden, "key workspace");
   });
 
+  await test("the PSBT inspector budgets sighash reconstruction on a many-signature file (audit C3-3)", async () => {
+    // Each SIGHASH_ALL digest reconstruction re-reads the whole transaction;
+    // unbudgeted, a few thousand of them froze the tab for tens of seconds on
+    // one paste. 300 well-formed SIGHASH_ALL signatures exceed the 256-check
+    // budget: the verdict must say incomplete — never complete — and the run
+    // must return. The fixture is plain byte building: P2WPKH witness UTXOs
+    // and DER-parsable (but not valid) signatures, r = i+1, s = count+i+1.
+    const varint = (n) => (n < 0xfd ? [n] : n <= 0xffff ? [0xfd, n & 0xff, n >> 8] : [0xfe, n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff]);
+    const count = 300;
+    const tx = [];
+    const txpush = (...chunks) => { for (const byte of chunks.flat(2)) tx.push(byte); };
+    txpush(2, 0, 0, 0, varint(count));
+    for (let i = 0; i < count; i++) txpush(new Array(32).fill(i & 0xff), [0, 0, 0, 0], 0, [0xff, 0xff, 0xff, 0xff]);
+    txpush(1, [0xe8, 0x03, 0, 0, 0, 0, 0, 0], [0x01, 0x51], [0, 0, 0, 0]);
+    const bytes = [0x70, 0x73, 0x62, 0x74, 0xff, 0x01, 0x00, ...varint(tx.length), ...tx, 0x00];
+    const push = (...chunks) => { for (const byte of chunks.flat(2)) bytes.push(byte); };
+    const word = (n) => [(n >> 24) & 0xff, (n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+    const be = (n) => { const out = []; let v = n; while (v) { out.unshift(v & 0xff); v >>= 8; } return out; };
+    for (let i = 0; i < count; i++) {
+      const script = [0x00, 0x14, ...new Array(20).fill(i & 0xff)];
+      push(varint(1), 0x01, varint(8 + 1 + script.length), [...new Array(8).fill(0x40), script.length, ...script]);
+      // Minimal DER integers (small positive scalars, distinct r per
+      // signature) so the signatures parse and draw on the budget.
+      const rb = be(i + 1), sb = be(count + i + 1);
+      const body = [0x02, rb.length, ...rb, 0x02, sb.length, ...sb];
+      const value = [0x30, body.length, ...body, 0x01];
+      push(varint(34), [0x02, i % 2 ? 0x03 : 0x02, ...new Array(28).fill(0), ...word(0x1000 + i)], varint(value.length), value, 0x00);
+    }
+    push(0x00);
+    let binary = "";
+    for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.slice(offset, offset + 8192));
+    document.querySelector('#workspace [data-workspace="psbt"]').click();
+    document.querySelector('#psbt-tool-tabs [data-psbt-tool="inspector"]').click();
+    await until(() => !document.getElementById("psbt-card").hidden, "PSBT Inspector");
+    const box = document.getElementById("psbt-text");
+    input(box, btoa(binary));
+    document.getElementById("psbt-go").click();
+    await until(() => document.getElementById("psbt-out").textContent.includes("Nonce analysis") || document.getElementById("psbt-error").textContent, "budgeted report");
+    equal(document.getElementById("psbt-error").textContent, "", "inspector rejected the many-signature fixture");
+    const out = document.getElementById("psbt-out").textContent;
+    assert(out.includes("Nonce analysis — Incomplete"), "past the budget the nonce verdict must be incomplete, not complete");
+    assert(!out.includes("Nonce analysis — Completed"), "an over-budget file reported a completed nonce analysis");
+    input(box, "");
+    document.getElementById("psbt-wipe").click();
+    document.querySelector('#workspace [data-workspace="calc"]').click();
+    await until(() => !document.getElementById("calc-card").hidden, "key workspace");
+  });
+
   await test("the PSBT Inspector's nonce verdict ignores the Nonce Inspector's Jade transcript", async () => {
     // Two strict-DER ECDSA signatures with distinct r and no UTXO data: with no
     // digest to check, each one counts as unsupported, so nonce coverage is

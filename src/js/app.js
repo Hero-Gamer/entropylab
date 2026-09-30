@@ -9877,7 +9877,7 @@ function hodlLooksSignature(item) {
   // DER sequence plus the appended sighash byte: 9 to 73 bytes.
   return item.length >= 9 && item.length <= 73 && item[0] === 48;
 }
-function hodlFinalSigs(entries, witnessUtxo, tx, index) {
+function hodlFinalSigs(entries, witnessUtxo, tx, index, signatureChecks) {
   let items = [], candidates = [], malformed = false;
   for (let entry of hodlFind(entries, 7)) {
     if (entry.keydata.length) { malformed = true; continue; }
@@ -9909,8 +9909,14 @@ function hodlFinalSigs(entries, witnessUtxo, tx, index) {
     let signature = { pubkey: null, der: item.slice(0, -1), sighash: item[item.length - 1], raw: item };
     // Ownership is established by cryptographic verification, never by stack
     // position. Without a reconstructable digest, only a single unambiguous
-    // candidate key can claim the signature.
-    let sighash = witnessUtxo && scriptCode ? hodlBip143(tx, index, scriptCode, witnessUtxo.amount, signature.sighash) : null;
+    // candidate key can claim the signature. Digest reconstruction draws on
+    // the render's shared budget (audit C3-3): exhausted, ownership falls
+    // back to the unambiguous-candidate rule below.
+    let sighash = null;
+    if (witnessUtxo && scriptCode && signature.sighash === 1 && (!signatureChecks || signatureChecks.remaining > 0)) {
+      if (signatureChecks) signatureChecks.remaining -= 1;
+      sighash = hodlBip143(tx, index, scriptCode, witnessUtxo.amount, signature.sighash);
+    }
     if (sighash) for (let candidate of candidates) {
       try {
         if (hodlSecp256k1.verify(signature.der, sighash, candidate, { prehash: false, format: "der", lowS: false })) {
@@ -10014,27 +10020,40 @@ function hodlCompareNonces(rValues) {
   let reused = [],
     possible = [],
     crossKey = [];
-  for (let first = 0; first < rValues.length; first++)
-    for (let second = first + 1; second < rValues.length; second++) {
-      let a = rValues[first],
-        b = rValues[second];
-      if (!hodlEq(a.r, b.r)) continue;
-      // The claimed pubkey is attacker-controlled metadata for partial
-      // signatures: the same r under two different claimed keys must not
-      // silently skip the comparison — it is itself the red flag (issue
-      // #353). A verified signature's claimed key *is* the verified key.
-      if (!hodlEq(a.pubkey, b.pubkey)) {
-        crossKey.push([a, b]);
-        continue;
+  // A consolidation PSBT can carry thousands of signatures; an all-pairs
+  // scan of them froze the inspector (audit C3-3). Buckets only ever form
+  // between records sharing one r value, so group by r first and compare
+  // within groups — same pairs, same verdicts.
+  let byR = new Map();
+  for (let record of rValues) {
+    let tag = hodlHex.encode(record.r);
+    let group = byR.get(tag);
+    if (!group) byR.set(tag, (group = []));
+    group.push(record);
+  }
+  for (let group of byR.values()) {
+    if (group.length < 2) continue;
+    for (let first = 0; first < group.length; first++)
+      for (let second = first + 1; second < group.length; second++) {
+        let a = group[first],
+          b = group[second];
+        // The claimed pubkey is attacker-controlled metadata for partial
+        // signatures: the same r under two different claimed keys must not
+        // silently skip the comparison — it is itself the red flag (issue
+        // #353). A verified signature's claimed key *is* the verified key.
+        if (!hodlEq(a.pubkey, b.pubkey)) {
+          crossKey.push([a, b]);
+          continue;
+        }
+        if (a.valid && b.valid && a.sighash && b.sighash && !hodlEq(a.sighash, b.sighash)) reused.push([a, b]);
+        // Same input with an unreconstructed digest (a non-SIGHASH_ALL
+        // signature) can still be a key leak — different sighash types commit
+        // to different digests — so the pair is possible reuse, not silence
+        // (audit C3-2). Both digests known and equal means one signature
+        // copied, which stays quiet.
+        else if (a.input !== b.input || !a.sighash || !b.sighash) possible.push([a, b]);
       }
-      if (a.valid && b.valid && a.sighash && b.sighash && !hodlEq(a.sighash, b.sighash)) reused.push([a, b]);
-      // Same input with an unreconstructed digest (a non-SIGHASH_ALL
-      // signature) can still be a key leak — different sighash types commit
-      // to different digests — so the pair is possible reuse, not silence
-      // (audit C3-2). Both digests known and equal means one signature
-      // copied, which stays quiet.
-      else if (a.input !== b.input || !a.sighash || !b.sighash) possible.push([a, b]);
-    }
+  }
   return {
     reused,
     possible,
@@ -11893,7 +11912,11 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
     policyProblems = 0,
     policyIncomplete = 0,
     unsupportedNonceChecks = 0,
-    feeInconsistent = 0;
+    feeInconsistent = 0,
+    // One digest-reconstruction budget per render, shared by the partial
+    // signatures and the finalized-field scan (audit C3-3); 256 mirrors the
+    // consensus layer's MAX_SIGNATURE_CHECKS.
+    signatureChecks = { remaining: 256 };
   let inscriptionReport = { inputs: [], envelopes: [] }, inscriptionScanIncomplete = false;
   try {
     inscriptionReport = inspectPsbtInscriptions(psbt);
@@ -11955,7 +11978,7 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
     if (finalized) {
       // Finalized signatures moved into the final script fields must not
       // escape repeated-nonce analysis (issue #87).
-      let finalMaterial = hodlFinalSigs(entries, witnessUtxo, tx, index);
+      let finalMaterial = hodlFinalSigs(entries, witnessUtxo, tx, index, signatureChecks);
       // A finalized input whose fields yield no analyzable ECDSA signature
       // (for example a Taproot-only witness) never yields a clean or
       // no-signatures verdict.
@@ -12008,8 +12031,22 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
       let parts = hodlSigParts(signature.der),
         looseR = parts ? parts.r : hodlDerRLoose(signature.der),
         scriptCode = hodlInputScriptCode(entries, witnessUtxo),
-        sighash = witnessUtxo && scriptCode ? hodlBip143(tx, index, scriptCode, witnessUtxo.amount, signature.sighash) : null,
-        signatureValid = parts && sighash ? hodlSecp256k1.verify(signature.der, sighash, signature.pubkey, {
+        overBudget = false,
+        sighash = null;
+      // Digest reconstruction re-reads the whole transaction per signature,
+      // so a consolidation PSBT with thousands of SIGHASH_ALL signatures
+      // turned one paste into a main-thread freeze (audit C3-3). The
+      // reconstructions share one budget per render (mirroring the consensus
+      // layer's signature-check budget); past it the signature is reported
+      // unchecked below — an incomplete verdict, never a clean one. A
+      // signature that does not parse never needed the digest at all.
+      if ((parts || looseR) && witnessUtxo && scriptCode && signature.sighash === 1) {
+        if (signatureChecks.remaining > 0) {
+          signatureChecks.remaining -= 1;
+          sighash = hodlBip143(tx, index, scriptCode, witnessUtxo.amount, signature.sighash);
+        } else overBudget = true;
+      }
+      let signatureValid = parts && sighash ? hodlSecp256k1.verify(signature.der, sighash, signature.pubkey, {
           prehash: !1,
           format: "der",
           lowS: !1
@@ -12044,6 +12081,10 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
           // An unsafe or conflicting sighash policy blocks every other check.
           message = hodlT("Signature policy problem: {problems}", { problems: sighashProblems.join(" ") });
           className = "psbt-bad";
+        } else if (overBudget) {
+          message = hodlT("Signature not inspected: this file carries more SIGHASH_ALL signatures than the per-file check budget covers.");
+          className = "psbt-warn";
+          unsupportedNonceChecks += 1;
         } else if (!parts) {
           message = hodlT("Signature is not strict DER. Its r value is still compared for nonce reuse.");
           className = "psbt-warn"

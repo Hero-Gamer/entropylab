@@ -4311,7 +4311,9 @@ function hodlRenderPassphraseInputState(input, enabled = hodlPassphraseBip39Enab
     invalid = enabled && analysis.invalidRanges.length > 0, status = document.getElementById("passphrase-bip39-status");
   input.classList.toggle("bad", invalid);
   input.setAttribute("aria-invalid", String(invalid));
-  input.setAttribute("autocapitalize", enabled ? "off" : "sentences");
+  // A passphrase is case-sensitive secret material: never let a mobile
+  // keyboard capitalize it, free-text mode included (audit finding).
+  input.setAttribute("autocapitalize", "off");
   hodlRenderInputHighlight(input, analysis.invalidRanges);
   if (status) {
     status.hidden = !enabled;
@@ -6386,7 +6388,7 @@ function hodlRenderKeyForm() {
     <p class="label" id="private-key-input-label">${hodlT("Private key or recovery passphrase")}</p>
     ${hodlSeedMetaRowMarkup("private-key-meta", true, hodlPrivateKeyKeyboardToggleMarkup())}
     ${hodlBrainWalletTrimToggleMarkup()}
-    <div class="dice-input-shell private-key-input-shell"><pre class="dice-input-highlight" id="private-key-highlight" aria-hidden="true"></pre><textarea id="key" placeholder="${hodlT("5… / K… / L…")}" aria-labelledby="private-key-input-label" aria-describedby="private-key-meta"></textarea></div><div class="passphrase-keyboard-host" id="private-keyboard-host" hidden></div></div>`;
+    <div class="dice-input-shell private-key-input-shell"><pre class="dice-input-highlight" id="private-key-highlight" aria-hidden="true"></pre><textarea id="key" placeholder="${hodlT("5… / K… / L…")}" aria-labelledby="private-key-input-label" aria-describedby="private-key-meta" autocomplete="off" spellcheck="false" autocapitalize="off"></textarea></div><div class="passphrase-keyboard-host" id="private-keyboard-host" hidden></div></div>`;
   hodlBindKeyFields();
   hodlRenderPassphraseKeyboard();
 }

@@ -135,6 +135,29 @@ test("same r without reconstructed digests is possible reuse, not a clean miss",
   assert.equal(scan.possible.length, 1);
 });
 
+test("same r on one input with an unreconstructed digest is possible reuse (audit C3-2)", () => {
+  // Two signatures by one key on one input under different sighash types
+  // (say ALL and SINGLE) commit to different digests: the same r leaks the
+  // private key. Digest reconstruction covers SIGHASH_ALL only, so this pair
+  // cannot be proven — but it must land in "possible", not drop silently to a
+  // green verdict.
+  const r = rOf("bb".repeat(32));
+  const scan = hodlCompareNonces([
+    { input: 0, r, pubkey: hodlCompressedPubkey(G_COMPRESSED), sighash: rOf("01".repeat(32)), valid: true },
+    { input: 0, r, pubkey: hodlCompressedPubkey(G_COMPRESSED), sighash: null, valid: null },
+  ]);
+  assert.equal(scan.reused.length, 0);
+  assert.equal(scan.possible.length, 1);
+  // A same-input pair whose digests are both known and equal is one
+  // signature copied, not reuse: it stays quiet.
+  const duplicate = hodlCompareNonces([
+    { input: 0, r, pubkey: hodlCompressedPubkey(G_COMPRESSED), sighash: rOf("01".repeat(32)), valid: true },
+    { input: 0, r, pubkey: hodlCompressedPubkey(G_COMPRESSED), sighash: rOf("01".repeat(32)), valid: true },
+  ]);
+  assert.equal(duplicate.reused.length, 0);
+  assert.equal(duplicate.possible.length, 0);
+});
+
 test("existing same-encoding strict detection still reports reused r", () => {
   const r = rOf("22".repeat(32));
   const scan = hodlCompareNonces([

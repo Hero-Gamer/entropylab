@@ -10028,7 +10028,12 @@ function hodlCompareNonces(rValues) {
         continue;
       }
       if (a.valid && b.valid && a.sighash && b.sighash && !hodlEq(a.sighash, b.sighash)) reused.push([a, b]);
-      else if (a.input !== b.input) possible.push([a, b]);
+      // Same input with an unreconstructed digest (a non-SIGHASH_ALL
+      // signature) can still be a key leak — different sighash types commit
+      // to different digests — so the pair is possible reuse, not silence
+      // (audit C3-2). Both digests known and equal means one signature
+      // copied, which stays quiet.
+      else if (a.input !== b.input || !a.sighash || !b.sighash) possible.push([a, b]);
     }
   return {
     reused,

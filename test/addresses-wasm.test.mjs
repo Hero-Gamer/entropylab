@@ -127,6 +127,25 @@ test("bech32m word-level encode/decode matches @scure/base including >90 chars",
   assert.equal(bech32mDecode(tampered), null);
 });
 
+test("bech32m handles HRPs up to the BIP-173 limit of 83 characters (audit A1H-5)", () => {
+  // The decode buffer was sized for the app's own short HRPs (16 bytes) and
+  // rejected standard-conforming strings with longer ones. @scure/base is the
+  // reference; both directions must agree with it.
+  for (const hrp of ["a".repeat(17), "x".repeat(83)]) {
+    const words = [0, 7, 20, 31];
+    const reference = bech32m.encode(hrp, words, 1023);
+    assert.equal(bech32mEncode(hrp, words), reference);
+    const decoded = bech32mDecode(reference);
+    assert.equal(decoded?.prefix, hrp);
+    assert.deepEqual(decoded?.words, words);
+  }
+  // 84 characters exceeds the BIP-173 maximum: our side refuses it in both
+  // directions rather than truncating the HRP. (@scure/base itself does not
+  // police the limit, so the rejection is asserted on our codec only.)
+  assert.throws(() => bech32mEncode("x".repeat(84), [0]), /bech32m encoding failed/);
+  assert.equal(bech32mDecode(bech32m.encode("x".repeat(84), [0], 1023)), null);
+});
+
 // ── descriptorDerive: rust-miniscript through the WASM boundary ──────────────
 
 test("descriptorDerive derives the app taproot multisig (sortedmulti_a)", () => {

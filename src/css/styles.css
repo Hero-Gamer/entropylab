@@ -2445,11 +2445,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .msig-import { margin: 0 0 var(--space-section); padding: 0 0 var(--space-component); border-bottom: 1px solid var(--border); }
 :is(#key-edit-note, #msig-edit-note) { --edge-note-space-before: 0px; --edge-note-space-after: var(--space-component); }
 .msig-import textarea { min-height: 72px; }
-/* An edge note, titled or not, that opens a disclosure's revealed content
-   takes no gap above it — whether it sits straight under the summary or
-   inside the first field. */
+/* An edge note that opens a disclosure's revealed content takes no gap above
+   it — whether it sits straight under the summary or inside the first field. */
 :is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary + .edge-note,
-:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary + * > :is(.edge-note, .edge-note-titled):first-child { margin-top: 0; }
+:is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary + * > .edge-note:first-child { margin-top: 0; }
 .msig-import .btn { margin-top: var(--space-control); }
 .msig-threshold-control {
   --msig-slider-inset: 14px;

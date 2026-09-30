@@ -524,18 +524,29 @@ export const psbtSanitizeHtml = (doc, title = "") => {
 export const psbtProblemsHtml = (doc, insane = false) => {
   const problems = doc?.problems;
   if (!problems) return "";
-  const errors = problems.filter((problem) => problem.severity === "error");
-  const tone = errors.length ? "bad" : problems.length ? "warn" : "ok";
-  const heading = !problems.length
+  // Severity totals come from the untruncated counts when the doc carries
+  // them: the visible list is capped, and a truncated list must never read
+  // as "no consensus violations" while an error was dropped (audit C3-4).
+  const listed = problems.filter((problem) => problem.severity === "error").length;
+  const truncated = Boolean(doc.problemsTruncated);
+  const total = doc.problemCount ?? problems.length;
+  const errorTotal = doc.errorCount ?? listed;
+  const totalsUnknown = truncated && doc.problemCount === undefined;
+  const tone = errorTotal ? "bad" : total ? "warn" : "ok";
+  const heading = !total
     ? "No consensus or signing problems found"
-    : errors.length
-      ? `${errors.length} consensus/signing problem(s)${problems.length > errors.length ? ` and ${problems.length - errors.length} warning(s)` : ""}`
-      : `${problems.length} warning(s), no consensus violations`;
-  const gate = !errors.length
-    ? ""
-    : insane
+    : errorTotal
+      ? `${errorTotal} consensus/signing problem(s)${total > errorTotal ? ` and ${total - errorTotal} warning(s)` : ""}${truncated ? " (list truncated)" : ""}`
+      : totalsUnknown
+        ? `${problems.length} warning(s) shown; the list is truncated, so error-severity problems may be hidden`
+        : `${total} warning(s), no consensus violations`;
+  const gate = errorTotal
+    ? insane
       ? "Insane editing is on — these did not block the build."
-      : "Errors block the build and export until fixed (Insane editing above disables this layer).";
+      : "Errors block the build and export until fixed (Insane editing above disables this layer)."
+    : totalsUnknown
+      ? "The build gate re-checks the full, untruncated list."
+      : "";
   const items = problems
     .map(
       (problem) =>

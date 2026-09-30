@@ -10795,11 +10795,7 @@ function hodlRenderBip85Out() {
         <p class="edge-note is-private" id="bip85-private-description">Anyone with the parent, application, and index can reproduce this child key.</p>
       </section>
       <div class="wallet-data-actions no-print">
-        <label class="privacy-bar${hodlBip85Reveal ? " is-revealed" : ""}">
-          <input type="checkbox" role="switch" id="bip85-reveal" ${hodlBip85Reveal ? "checked" : ""} aria-describedby="bip85-private-description">
-          <span class="privacy-bar-state">${hodlBip85Reveal ? hodlT("Private data visible") : hodlT("Private data hidden")}</span>
-          <span class="privacy-bar-hint">${hodlBip85Reveal ? hodlT("Hide it before sharing your screen or stepping away") : hodlT("Reveal only offline, on an air-gapped computer")}</span>
-        </label>
+        ${hodlPrivacyBarMarkup({ id: "bip85-reveal", revealed: hodlBip85Reveal, describedBy: "bip85-private-description" })}
       </div>
       <div class="wallet-data-fields">
         ${hodlBip85SecretField(derived.secretLabel, () => derived.secret, bip85SecretLength(derived), derived.app === "bip39" ? derived.entropy.length * 3 / 4 : 0)}

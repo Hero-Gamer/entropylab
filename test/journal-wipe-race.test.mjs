@@ -90,7 +90,6 @@ const loadApp = ({ onOpen = (file, password) => openDocument(file, password), on
     "hodlJournalSyncEncryptDownloads", "hodlJournalShowWork", "hodlSyncJournalTool",
     "hodlRenderJournalPageTabs", "hodlJournalApplyPageStyle", "hodlJournalSetStatus",
     "hodlShowJournalTool", "hodlJournalLog", "hodlJournalBackfillDerivedKeys",
-    "sessionNoticeSessionEnded", "sessionNoticePrivateMaterialAccepted",
     `${source}; return {
       unlock: hodlJournalUnlock,
       create: hodlJournalCreate,
@@ -105,7 +104,6 @@ const loadApp = ({ onOpen = (file, password) => openDocument(file, password), on
     noop, noop, noop,
     noop, noop, noop,
     noop, noop, noop,
-    noop, noop, // the session-notice side effects
   );
 };
 

@@ -138,7 +138,6 @@ function enableDerivation(c) {
     },
     hodlThrowIfFailed() {}, hodlSetWorkspaceError() {}, hodlSetSelectedScriptType() {},
     hodlSnapshotKeySummary() {}, hodlJournalCaptureDerivedKey() {}, hodlFocusWalletResult() {},
-    sessionNoticePrivateMaterialAccepted() {}, // session-notices.test.mjs covers the notice
     // The shared-fingerprint confirmation is a modal; the browser suite
     // drives it. Here the user proceeds, so the commit logic runs.
     hodlConfirmKeyFingerprint: () => Promise.resolve(true),

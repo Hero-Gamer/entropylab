@@ -24,7 +24,6 @@ import { aezeedDecode, BITCOIN_GENESIS_TIMESTAMP } from "./aezeed.js";
 import { wordlist as bip39English } from "./bip39-english.js";
 import { hex } from "./coders.js";
 import { t } from "./i18n.js";
-import { sessionNoticePrivateMaterialAccepted, sessionNoticeSecretCopied, sessionNoticeSessionEnded } from "./session-notices.js";
 
 // ── Derivations (DOM-free, unit-tested directly) ────────────────────────────
 
@@ -192,7 +191,6 @@ function hodlRunLn() {
     }
     hodlLnRender();
     session.textContent = "Node key derived. Decoded key material stays in page memory until you clear it.";
-    sessionNoticePrivateMaterialAccepted();
     hodlLnJournalLog("derive", `${format} ${hodlLnLast.nodePubKey.slice(0, 8)}`, "ln");
   } catch (exception) {
     hodlLnWipeMem();
@@ -227,7 +225,6 @@ export function hodlInitLn({ journalLog } = {}) {
   if (typeof journalLog === "function") hodlLnJournalLog = journalLog;
   go.onclick = hodlRunLn;
   document.getElementById("ln-wipe").onclick = () => {
-    sessionNoticeSessionEnded();
     hodlLnWipeMem();
     for (const id of ["ln-seed", "ln-pass"]) {
       const field = document.getElementById(id);
@@ -254,7 +251,6 @@ export function hodlInitLn({ journalLog } = {}) {
     if (!node) return;
     // The entropy (16 bytes, the BIP32 master seed) is too short for the
     // shape classifier, so the controls say which copies are secret.
-    if (button.dataset.lnCopy !== "ln-node-pubkey") sessionNoticeSecretCopied();
     navigator.clipboard?.writeText(node.textContent || "").catch(() => {});
   });
   document.getElementById("ln-session").textContent = hodlLnNote;

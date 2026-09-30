@@ -1298,6 +1298,26 @@
     }
   });
 
+  await test("the Sources and Important disclosures remember being shut", async () => {
+    const sources = document.getElementById("sources"), important = document.getElementById("important");
+    assert(sources && important, "The Sources or Important disclosure is missing");
+    assert(sources.compareDocumentPosition(important) & Node.DOCUMENT_POSITION_FOLLOWING, "Important does not follow Sources");
+    for (const [disclosure, key] of [[sources, "entropylab-sources-open"], [important, "entropylab-important-open"]]) {
+      const before = localStorage.getItem(key), wasOpen = disclosure.open;
+      try {
+        disclosure.open = false;
+        await until(() => localStorage.getItem(key) === "0", `${disclosure.id} to store its closed state`);
+        disclosure.open = true;
+        await until(() => localStorage.getItem(key) === "1", `${disclosure.id} to store its open state`);
+      } finally {
+        disclosure.open = wasOpen;
+        await wait(0);
+        if (before === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, before);
+      }
+    }
+  });
+
   await test("the beta disclaimer titles its warning the way the banner does", () => {
     const overlay = document.getElementById("beta-disclaimer");
     const icon = overlay && overlay.querySelector(".disclaimer-icon");

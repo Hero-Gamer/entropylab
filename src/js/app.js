@@ -17140,8 +17140,11 @@ function hodlInitSecretFieldAutoClear() {
     if (lnOut) lnOut.innerHTML = "";
     if (lnError) lnError.textContent = "";
     // Found vanity passphrases and the brought-in salt are private key
-    // material; stop the grinder and drop them too.
+    // material; stop the grinder and drop them too. The cancelled grinder
+    // keeps the run's words and passphrase in its callbacks, so drop it with
+    // the matches, as hodlVanityClearResults does (audit A35-1).
     hodlVanityCancel();
+    hodlVanityGrinder = null;
     hodlVanityMatches = [];
     hodlVanityFound = 0;
     hodlVanityReveal = false;

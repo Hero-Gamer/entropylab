@@ -367,6 +367,19 @@ test("Vanity grinder salt, matches, and running workers are cleared", () => {
   assert.match(render, /box\.style\.removeProperty\("--vanity-pass-width"\)/);
   assert.match(lifecycle, /getElementById\("vanity-error"\)/);
   assert.match(lifecycle, /vanityError\.textContent\s*=\s*""/);
+  // The grinder itself goes too: its callbacks close over the run's words and
+  // passphrase, so cancelling alone keeps them reachable (audit A35-1).
+  assert.match(lifecycle, /hodlVanityGrinder\s*=\s*null/);
+});
+
+test("pagehide drops the vanity grinder, not only the visible matches", () => {
+  // A stopped or finished grind keeps the run's seed words and passphrase
+  // alive through the grinder's callbacks; Clear Results drops it for the
+  // same reason (#546 B3), and the page lifecycle sweep must as well.
+  const { context, events } = raceHarness();
+  context.hodlVanityGrinder = { cancelled: false, cancel() { this.cancelled = true; }, secrets: "run words and passphrase" };
+  events.pagehide({});
+  assert.equal(context.hodlVanityGrinder, null, "pagehide left the vanity grinder (and its retained run secrets) reachable");
 });
 
 test("dropping the vanity key pick clears the passphrase the source block showed", () => {

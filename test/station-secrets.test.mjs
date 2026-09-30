@@ -83,6 +83,10 @@ const vanityStation = await load(["hodlVanityClearResults"], {
   stubs: { hodlRenderVanityOut: () => {}, hodlVanitySetStatus: () => {}, hodlVanitySyncControls: () => {} },
   settable: ["hodlVanityGrinder", "hodlVanityRunning"],
 });
+const vanityRender = await load(["hodlRenderVanityOut"], {
+  stubs: { hodlFillKeyTabLifehash: () => {} },
+  settable: ["hodlVanityMatches", "hodlVanityRun", "hodlVanityReveal", "hodlVanityFound"],
+});
 const station = await load(["hodlRenderLastWordPicker", "hodlBip85SessionKeyState", "hodlResultMnemonic", "hodlSeedSessionRoot", "hodlResultRootXprv", "hodlResultRootNode", "hodlSinglePrivateKey", "hodlBip85ChildFingerprint", "hodlRenderBip85Out", "hodlBip85WipeMem", "hodlSeedPhraseField"], {
   stubs: { hodlFillKeyTabLifehash: () => {} },
   settable: ["hodlBip85Children", "hodlActiveBip85", "hodlBip85Reveal"],
@@ -613,4 +617,28 @@ test("the vanity station's Wipe keeps nothing of a finished grind", async () => 
   const kept = finishedGrinder();
   vanityStation.hodlVanityClearResults();
   assert.equal(await heldCopies(kept.digest, kept.length), 0, "the station still holds the finished grind");
+});
+
+// A masked matches table must not leak what it hides, not even the passphrase
+// lengths through the column's width (audit A35-3): the mask is a fixed twelve
+// bullets, so the masked width is fixed too. Revealed, the column still fits
+// the longest passphrase shown.
+test("a masked vanity table sizes its passphrase column by the mask, not the passphrases", () => {
+  const widthWith = (passphrase, reveal) => {
+    const calls = [];
+    const out = { innerHTML: "", querySelectorAll: () => [], style: { setProperty: (name, value) => calls.push([name, value]), removeProperty() {} } };
+    globalThis.document = { getElementById: (id) => (id === "vanity-out" ? out : id === "vanity-matches-heading" ? { textContent: "" } : null) };
+    try {
+      vanityRender.__set.hodlVanityMatches([{ passphrase, counter: 7n, address: "bc1qmatch", fingerprint: "73c5da0a", savedTo: "" }]);
+      vanityRender.__set.hodlVanityRun({ method: "passphrase", script: "p2wpkh", sourceId: 1, sourceLabel: "Key 1", sourceKind: "key", passphrase: "", accountHardened: true, path: [], pathText: "m/84h/0h/0h" });
+      vanityRender.__set.hodlVanityReveal(reveal);
+      vanityRender.__set.hodlVanityFound(1);
+      vanityRender.hodlRenderVanityOut();
+    } finally {
+      delete globalThis.document;
+    }
+    return calls.find(([name]) => name === "--vanity-pass-width")?.[1];
+  };
+  assert.deepEqual([widthWith("x".repeat(13), false), widthWith("y".repeat(30), false)], ["12ch", "12ch"], "a masked table sized its column by the hidden passphrases");
+  assert.equal(widthWith("x".repeat(13), true), "13ch", "the revealed table no longer fits the shown passphrase");
 });

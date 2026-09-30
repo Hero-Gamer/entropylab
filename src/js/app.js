@@ -7432,7 +7432,7 @@ function hodlOriginScriptError(origin, kind, network, purpose, coinType = hodlCo
   // BIP44/49/84 account keys double as co-signers in their script type's
   // multisig standard: the purpose determines the script type. The 4-step
   // BIP48-style form keeps working and falls through to the checks below.
-  if ((purpose === 44 || purpose === 49 || purpose === 84) && steps.length !== 4) {
+  if ((purpose === 44 || purpose === 49 || purpose === 84)) {
     let mapped = purpose === 44 ? "p2sh" : purpose === 49 ? "p2sh-p2wsh" : "p2wsh";
     if (kind !== mapped) return `A BIP${purpose} origin belongs to ${hodlMultisigScriptLabel(mapped)} multisig; the selected script type is ${hodlMultisigScriptLabel(kind)}.`;
     let coin = `${coinType}${hardening.coinType ? "h" : ""}`;
@@ -9022,7 +9022,7 @@ function hodlMultisigPrefixCompatible(parsed, kind, purpose) {
   return false;
 }
 function hodlMultisigAccountKeyError(parsed, kind, purpose, hardening = { purpose: true, coinType: true, account: true, address: false }) {
-  if (kind === "p2tr" || purpose === 87 || ((purpose === 44 || purpose === 49 || purpose === 84) && parsed.depth === 3)) {
+  if (kind === "p2tr" || purpose === 87 || (purpose === 44 || purpose === 49 || purpose === 84)) {
     let standard = purpose === 87 ? "BIP87" : kind === "p2tr" ? "Taproot" : `BIP${purpose}`;
     if (parsed.depth !== 3) return `${standard} requires a depth-3 account key at m/purposeh/coinh/accounth; this key is depth ${parsed.depth}.`;
     if ((parsed.childNumber >= 0x80000000) !== hardening.account) return `The account index must be ${hardening.account ? "hardened" : "unhardened"}.`;
@@ -13036,6 +13036,11 @@ function hodlWipeActiveKey() {
   let state = hodlKeys[hodlActiveKey];
   hodlKeys[hodlActiveKey] = state.isLab ? hodlNewLabState() : hodlNewKeyState(state.name, state.id, state.number);
   hodlRestoreKey();
+  // Restoring the fresh state re-renders the form; dropping the still-filled
+  // seed field fires its blur, whose final-word analysis re-caches the partial
+  // phrase — so the cache goes again after the restore, not only before it
+  // (audit A35-2).
+  hodlLastWordCache.clear();
   hodlWipeUnsharedWalletRows(state.result);
   // The stations offer only the keys the Key Station still has (#546 B3).
   hodlRefreshStationKeyPickers();
@@ -16389,7 +16394,9 @@ function hodlRenderVanityOut() {
   // The matches sit in the card like its other content, not in a frame.
   // The passphrase column holds its width through the privacy switch: the
   // text box is as wide as the longer of the mask and the longest passphrase.
-  let passWidth = Math.max(12, ...hodlVanityMatches.map((match) => Array.from(match.passphrase ?? "").length));
+  // Masked, the width is the mask's own — sizing it by the passphrases would
+  // leak their lengths through the computed style (audit A35-3).
+  let passWidth = hodlVanityReveal ? Math.max(12, ...hodlVanityMatches.map((match) => Array.from(match.passphrase ?? "").length)) : 12;
   box.style.setProperty("--vanity-pass-width", `${passWidth}ch`);
   box.innerHTML = `<p class="muted label-description" id="vanity-matches-description">${description}</p>
       ${reveal}
@@ -17140,8 +17147,11 @@ function hodlInitSecretFieldAutoClear() {
     if (lnOut) lnOut.innerHTML = "";
     if (lnError) lnError.textContent = "";
     // Found vanity passphrases and the brought-in salt are private key
-    // material; stop the grinder and drop them too.
+    // material; stop the grinder and drop them too. The cancelled grinder
+    // keeps the run's words and passphrase in its callbacks, so drop it with
+    // the matches, as hodlVanityClearResults does (audit A35-1).
     hodlVanityCancel();
+    hodlVanityGrinder = null;
     hodlVanityMatches = [];
     hodlVanityFound = 0;
     hodlVanityReveal = false;

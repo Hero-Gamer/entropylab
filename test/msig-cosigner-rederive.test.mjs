@@ -140,6 +140,10 @@ test("a spec card holds the spec's key itself, never one above or below it", () 
     ["48h/0h/0h/1h", "p2sh-p2wsh", 48],
     ["87h/0h/0h", "p2tr", 87],
     ["45h", "p2sh", 45],
+    // The singlesig BIPs double as co-signer specs at their account key.
+    ["44h/0h/0h", "p2sh", 44],
+    ["49h/0h/0h", "p2sh-p2wsh", 49],
+    ["84h/0h/0h", "p2wsh", 84],
   ]) assert.deepEqual(check(path, kind, purpose), ["", ""], path);
   for (const [path, kind, purpose] of [
     // Below the spec's key: an exported receive-branch xpub, or any extra step.
@@ -155,6 +159,11 @@ test("a spec card holds the spec's key itself, never one above or below it", () 
     ["48h/1h/0h/2h/1", "p2wsh", 48], // wrong coin type under the extra one
     ["87h/0h", "p2tr", 87], // no account
     ["46h/0", "p2sh", 45], // wrong purpose under the extra one
+    // A BIP44/49/84 card holds the depth-3 account key only: the depth-4
+    // BIP48-shaped key at the card's own purpose is not that spec's key.
+    ["44h/0h/0h/2h", "p2sh", 44],
+    ["49h/0h/0h/1h", "p2sh-p2wsh", 49],
+    ["84h/0h/0h/2h", "p2wsh", 84],
   ]) assert.notDeepEqual(check(path, kind, purpose), ["", ""], path);
 });
 

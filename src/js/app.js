@@ -7432,7 +7432,7 @@ function hodlOriginScriptError(origin, kind, network, purpose, coinType = hodlCo
   // BIP44/49/84 account keys double as co-signers in their script type's
   // multisig standard: the purpose determines the script type. The 4-step
   // BIP48-style form keeps working and falls through to the checks below.
-  if ((purpose === 44 || purpose === 49 || purpose === 84) && steps.length !== 4) {
+  if ((purpose === 44 || purpose === 49 || purpose === 84)) {
     let mapped = purpose === 44 ? "p2sh" : purpose === 49 ? "p2sh-p2wsh" : "p2wsh";
     if (kind !== mapped) return `A BIP${purpose} origin belongs to ${hodlMultisigScriptLabel(mapped)} multisig; the selected script type is ${hodlMultisigScriptLabel(kind)}.`;
     let coin = `${coinType}${hardening.coinType ? "h" : ""}`;
@@ -9022,7 +9022,7 @@ function hodlMultisigPrefixCompatible(parsed, kind, purpose) {
   return false;
 }
 function hodlMultisigAccountKeyError(parsed, kind, purpose, hardening = { purpose: true, coinType: true, account: true, address: false }) {
-  if (kind === "p2tr" || purpose === 87 || ((purpose === 44 || purpose === 49 || purpose === 84) && parsed.depth === 3)) {
+  if (kind === "p2tr" || purpose === 87 || (purpose === 44 || purpose === 49 || purpose === 84)) {
     let standard = purpose === 87 ? "BIP87" : kind === "p2tr" ? "Taproot" : `BIP${purpose}`;
     if (parsed.depth !== 3) return `${standard} requires a depth-3 account key at m/purposeh/coinh/accounth; this key is depth ${parsed.depth}.`;
     if ((parsed.childNumber >= 0x80000000) !== hardening.account) return `The account index must be ${hardening.account ? "hardened" : "unhardened"}.`;

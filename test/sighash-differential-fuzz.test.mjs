@@ -201,7 +201,7 @@ const buildCase = (index) => {
   };
   return {
     label: `case ${index}: ${family} ${kind}, sighash 0x${type.toString(16).padStart(2, "0")}, input ${idx} of ${inputs}, ${outputs} output${outputs === 1 ? "" : "s"}`,
-    family, tx, idx, spend, digest,
+    family, tx, idx, spend, digest, outputs, type,
     signed: psbtWith(type),
     relabelled: psbtWith(other),
     otherType: other,
@@ -224,7 +224,18 @@ test(`rust-bitcoin (WASM) and @scure/btc-signer sign the same legacy, BIP143, an
   for (let i = 0; i < CASES; i++) {
     const c = buildCase(i);
     seen.add(c.family);
-    const verdict = signatureProblems(c.signed, c.idx);
+    // A SIGHASH_SINGLE signature whose input has no corresponding output is
+    // consensus-valid (legacy: the constant-one digest; BIP-143: a zero
+    // hashOutputs) and must still verify — but it commits to no output, so
+    // the inspector names it with a dedicated warning (audit C3-8). Expect
+    // exactly that warning on those cases, and it nowhere else.
+    const singleNoOutput = signatureProblems(c.signed, c.idx).filter((problem) => problem.code === "sighash_single_no_output");
+    if (c.family !== "bip341" && (c.type & 0x1f) === 0x03 && c.idx >= c.outputs) {
+      assert.equal(singleNoOutput.length, 1, `${c.label}: SIGHASH_SINGLE with no corresponding output was not named`);
+    } else {
+      assert.equal(singleNoOutput.length, 0, `${c.label}: the SIGHASH_SINGLE warning fired on a digestible signature`);
+    }
+    const verdict = signatureProblems(c.signed, c.idx).filter((problem) => problem.code !== "sighash_single_no_output");
     assert.deepEqual(verdict, [],
       `${c.label}: the app does not verify a signature over scure's digest ${hex(c.digest)}\n  ${verdict.map((problem) => `${problem.code}: ${problem.message}`).join("\n  ")}`);
     const relabelled = signatureProblems(c.relabelled, c.idx).filter((problem) => /_sig_invalid$/.test(problem.code));

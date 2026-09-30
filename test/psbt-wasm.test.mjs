@@ -706,6 +706,44 @@ test("a taproot derivation pair with a huge leaf count decodes to an error, not 
   assert.match(pair.decodeError, /tap bip32 derivation is truncated/);
 });
 
+test("a truncated problem list still reports its true severity totals (audit C3-4)", () => {
+  // The display list caps at 64 entries in collection order. Fixture: input 0
+  // carries 65 partial signatures that parse but do not verify (65 warnings);
+  // input 1 carries a malformed final witness for its P2WPKH claim (an error,
+  // collected after them). The counts must be taken before truncation, or the
+  // error drops out of view and the list reads as warnings-only.
+  const vi = (n) => (n < 0xfd ? [n] : n <= 0xffff ? [0xfd, n & 0xff, n >> 8] : [0xfe, n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff]);
+  const bytes = [];
+  const push = (...chunks) => { for (const chunk of chunks.flat(2)) bytes.push(chunk); };
+  // Unsigned transaction: two inputs, one 1000-sat OP_TRUE output.
+  const tx = [2, 0, 0, 0, 2];
+  for (const fill of [0xaa, 0xbb]) tx.push(...new Array(32).fill(fill), 0, 0, 0, 0, 0, 0xff, 0xff, 0xff, 0xff);
+  tx.push(1, 0xe8, 0x03, 0, 0, 0, 0, 0, 0, 1, 0x51, 0, 0, 0, 0);
+  push([0x70, 0x73, 0x62, 0x74, 0xff], [0x01, 0x00], vi(tx.length), tx, 0x00);
+  // Input 0: a P2WPKH witness UTXO plus 65 well-formed but invalid partial
+  // signatures (r = s = 1 under distinct junk keys).
+  const witnessUtxo = (fill) => [0x50, 0xc3, 0, 0, 0, 0, 0, 0, 0x16, 0x00, 0x14, ...new Array(20).fill(fill)];
+  push(vi(1), [0x01], vi(31), witnessUtxo(0x11));
+  for (let i = 0; i < 65; i++) {
+    const pub = [0x02, ...new Array(28).fill(0), (i >> 8) & 0xff, i & 0xff, 0x00, 0x01];
+    const sig = [0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x01, 0x01];
+    push(vi(34), [0x02, ...pub], vi(sig.length), sig);
+  }
+  push(0x00);
+  // Input 1: same claim, plus a three-item final witness — structurally bad
+  // for P2WPKH, an error-severity problem.
+  push(vi(1), [0x01], vi(31), witnessUtxo(0x22));
+  const badWitness = [0x03, 0x01, 0xaa, 0x01, 0xbb, 0x01, 0xcc];
+  push(vi(1), [0x08], vi(badWitness.length), badWitness, 0x00);
+  push(0x00);
+  const doc = psbtInspectDoc(Uint8Array.from(bytes));
+  assert.equal(doc.problemsTruncated, true);
+  assert.equal(doc.problems.length, 64, "the display list is capped");
+  assert.ok(doc.problems.every((p) => p.severity === "warning"), "the kept entries are all warnings");
+  assert.equal(doc.errorCount, 1, "the hidden error must still be counted");
+  assert.equal(doc.problemCount, 66, "the total must count what was dropped");
+});
+
 test("build and inspect limits agree: exactly 10,000 pairs per map round-trips (issue #355)", () => {
   // The inspector counted the terminator slot against the cap while the
   // builder did not, so exactly 10,000 pairs built fine but refused to

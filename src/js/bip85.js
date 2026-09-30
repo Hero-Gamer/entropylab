@@ -52,7 +52,11 @@ export function wipeBytes(bytes) {
 // Parses a plain (unhardened) BIP32 child index; the caller applies the
 // hardening. Passing an already-hardened value (>= 2^31) is rejected.
 export function parseChildIndex(value, label = "index") {
-  let n = typeof value === "number" ? value : Number(String(value ?? "").trim());
+  // Number() alone would accept "1e3", "0x10", and "5.0": the digits a user
+  // sees must be the index they get, so strings are plain decimal only.
+  let text = typeof value === "number" ? null : String(value ?? "").trim();
+  if (text !== null && !/^[0-9]+$/.test(text)) throw new Error(`${label} must be an integer from ${INDEX_MIN} to ${INDEX_MAX}.`);
+  let n = typeof value === "number" ? value : Number(text);
   if (!Number.isInteger(n) || n < INDEX_MIN || n > INDEX_MAX) throw new Error(`${label} must be an integer from ${INDEX_MIN} to ${INDEX_MAX}.`);
   return n;
 }

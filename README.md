@@ -463,12 +463,12 @@ for convenient access. Do not enter seed phrases, private keys, or other secret
 wallet material into an internet-connected device; use the downloaded HTML on
 a trusted air-gapped computer for sensitive operations.
 
-EntropyLab does not generate wallet entropy. The optional BitBox Heads/Tails
-controls use browser randomness only to choose an equivalent displayed die
-face: 1–3 all mean Heads and 4–6 all mean Tails, so that numeric choice does not
-change the resulting BitBox entropy. Wallet security still depends on the
-quality and secrecy of the entropy, seed phrase, passphrase, or private key
-supplied by the user.
+EntropyLab does not generate wallet entropy, and it does not use browser
+randomness anywhere. The BitBox and D++ coin-flip steps record a fixed
+equivalent die face: any face in the Heads range derives the same word as any
+other, so that choice never changes the resulting entropy. Wallet security
+still depends on the quality and secrecy of the entropy, seed phrase,
+passphrase, or private key supplied by the user.
 
 ## FAQ
 

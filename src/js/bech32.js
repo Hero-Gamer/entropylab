@@ -11,7 +11,9 @@ import { heap, wasmExports as wasm, withInput } from "./entropylab-wasm.js";
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
-const HRP_CAP = 16; // "sp" / "tsp" / "spscan" / "spspend" / "tspscan" / "tspspend" / "bc" / "tb"
+// Decode buffer for the human-readable part. BIP-173 allows 1–83 characters,
+// so size for the standard, not only the app's own short HRPs ("sp", "bc", …).
+const HRP_CAP = 84;
 const WORDS_CAP = 1024;
 const STRING_CAP = 1024;
 

@@ -39,6 +39,7 @@ function loadSlice(name) {
 // through the WASM boundary.
 const harnessSource = `
 import { secp256k1 as xe } from "../src/js/secp256k1.js";
+import { hex as hodlHex } from "../src/js/coders.js";
 import { p2shScript, p2wshScript } from "../src/js/addresses.js";
 import { wasmExports as hodlWasm, withInput as hodlWasmIn, withOutput as hodlWasmOut } from "../src/js/entropylab-wasm.js";
 import { serializeTx } from "../src/js/tx.js";
@@ -272,7 +273,9 @@ test("a Taproot-only final witness yields no ECDSA material", () => {
 
 test("the render loop merges final fields and never issues a clean verdict for unanalyzed final signatures", () => {
   const render = loadSlice("hodlRenderPsbt");
-  assert.match(render, /hodlFinalSigs\(entries, witnessUtxo, tx, index\)/);
+  // The fifth argument is the render's shared digest-reconstruction budget
+  // (audit C3-3); the wiring being guarded is that final fields merge in.
+  assert.match(render, /hodlFinalSigs\(entries, witnessUtxo, tx, index, signatureChecks\)/);
   assert.match(render, /uninspected \+= finalMaterial\.uninspected/);
   assert.match(render, /finalMaterial\.malformed/);
   // An unsupported finalized input forces the incomplete-coverage warning.

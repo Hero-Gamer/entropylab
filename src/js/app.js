@@ -37,7 +37,7 @@ import { wasmExports as hodlWasm, withInput as hodlWasmIn, withOutput as hodlWas
 // Published test vectors run through that same engine before boot; a host
 // that computes any of them wrong never gets a seed field (self-test.js).
 import { selfTestGate as hodlSelfTestGate, SELF_TESTS as hodlSelfTests, PSBT_SELF_TESTS as hodlPsbtSelfTests } from "./self-test.js";
-import { psbtWasmReady } from "./psbt-wasm.js";
+import { psbtWasmReady, psbtInspectDoc } from "./psbt-wasm.js";
 import { indexHdKey, indexSingleKey, matchOwnership, pathLabel } from "./ownership.js";
 import { hex as hodlHex } from "./coders.js";
 import { addressFor, addressFromScript, descriptorDerive, p2pkhScript, p2shP2wpkhScript, p2shScript, p2trKeyScript, p2wpkhScript, p2wshScript } from "./addresses.js";
@@ -623,7 +623,7 @@ function hodlIsMiniKey(e) {
   // The minikey alphabet is Bitcoin Base58: the decode paths enforce it, so
   // the auto-detect check must not accept the wider alphanumeric set (0, O,
   // I, l are not Base58).
-  return !t.startsWith("S") || t.length !== 22 && t.length !== 30 || !/^[1-9A-HJ-NP-Za-km-z]+$/.test(t) ? false : hodlSha256(new TextEncoder().encode(t + "?"))[0] === 0;
+  return !t.startsWith("S") || ![22, 26, 30].includes(t.length) || !/^[1-9A-HJ-NP-Za-km-z]+$/.test(t) ? false : hodlSha256(new TextEncoder().encode(t + "?"))[0] === 0;
 }
 function hodlDecodeMiniKey(e) {
   if (!hodlIsMiniKey(e)) throw hodlError("Not a valid Casascius mini private key.");
@@ -4311,7 +4311,9 @@ function hodlRenderPassphraseInputState(input, enabled = hodlPassphraseBip39Enab
     invalid = enabled && analysis.invalidRanges.length > 0, status = document.getElementById("passphrase-bip39-status");
   input.classList.toggle("bad", invalid);
   input.setAttribute("aria-invalid", String(invalid));
-  input.setAttribute("autocapitalize", enabled ? "off" : "sentences");
+  // A passphrase is case-sensitive secret material: never let a mobile
+  // keyboard capitalize it, free-text mode included (audit finding).
+  input.setAttribute("autocapitalize", "off");
   hodlRenderInputHighlight(input, analysis.invalidRanges);
   if (status) {
     status.hidden = !enabled;
@@ -4596,7 +4598,7 @@ function hodlMiniPrivateKeyPrefix(value) {
 }
 function hodlDetectPrivateKeyKind(value) {
   let candidate = String(value ?? "").trim(), compact = candidate.replace(/\s/g, "").replace(/^0x/i, "");
-  if (/^S(?:[1-9A-HJ-NP-Za-km-z]{21}|[1-9A-HJ-NP-Za-km-z]{29})$/.test(candidate)) return "minikey";
+  if (/^S(?:[1-9A-HJ-NP-Za-km-z]{21}|[1-9A-HJ-NP-Za-km-z]{25}|[1-9A-HJ-NP-Za-km-z]{29})$/.test(candidate)) return "minikey";
   if (/^[5KL9c][1-9A-HJ-NP-Za-km-z]{50,51}$/.test(candidate)) return "wif";
   if (/^[0-9a-fA-F]{64}$/.test(compact)) return "hex-key";
   return null;
@@ -4608,7 +4610,7 @@ function hodlNormalizePrivateKeyKind(kind, value = "") {
 }
 function hodlPrivateKeyPlaceholder(kind, network = "mainnet") {
   if (kind === "hex-key") return hodlTText("64 hexadecimal characters");
-  if (kind === "minikey") return hodlTText("S… (22 or 30 Base58 characters)");
+  if (kind === "minikey") return hodlTText("S… (22, 26, or 30 Base58 characters)");
   if (kind === "brain") return hodlTText("Text to hash");
   return network === "testnet" ? hodlT("9… / c…") : hodlT("5… / K… / L…");
 }
@@ -5418,8 +5420,8 @@ function hodlGlobalSyncSourceBits(targetWords = hodlTargetWordCount) {
       let kind = hodlNormalizePrivateKeyKind(document.querySelector('input[name="kk"]:checked')?.value, String(value));
       // A brain wallet is only as strong as the text.
       if (kind === "brain") return hodlGlobalSyncUnknownBits;
-      // A minikey is a SHA-256 hash too: its strength is bounded by its 21- or
-      // 29-character base58 payload (58^n), not by the 256-bit digest.
+      // A minikey is a SHA-256 hash too: its strength is bounded by its 21-,
+      // 25-, or 29-character base58 payload (58^n), not by the 256-bit digest.
       if (kind === "minikey") {
         let payload = String(value).trim().length - 1;
         return payload > 0 ? payload * Math.log2(58) : null;
@@ -6386,7 +6388,7 @@ function hodlRenderKeyForm() {
     <p class="label" id="private-key-input-label">${hodlT("Private key or recovery passphrase")}</p>
     ${hodlSeedMetaRowMarkup("private-key-meta", true, hodlPrivateKeyKeyboardToggleMarkup())}
     ${hodlBrainWalletTrimToggleMarkup()}
-    <div class="dice-input-shell private-key-input-shell"><pre class="dice-input-highlight" id="private-key-highlight" aria-hidden="true"></pre><textarea id="key" placeholder="${hodlT("5… / K… / L…")}" aria-labelledby="private-key-input-label" aria-describedby="private-key-meta"></textarea></div><div class="passphrase-keyboard-host" id="private-keyboard-host" hidden></div></div>`;
+    <div class="dice-input-shell private-key-input-shell"><pre class="dice-input-highlight" id="private-key-highlight" aria-hidden="true"></pre><textarea id="key" placeholder="${hodlT("5… / K… / L…")}" aria-labelledby="private-key-input-label" aria-describedby="private-key-meta" autocomplete="off" spellcheck="false" autocapitalize="off"></textarea></div><div class="passphrase-keyboard-host" id="private-keyboard-host" hidden></div></div>`;
   hodlBindKeyFields();
   hodlRenderPassphraseKeyboard();
 }
@@ -6575,12 +6577,12 @@ function hodlPrivateKeyInputAnalysis(value, kind, network, trimBrainWallet = hod
     }
     return result(counted(required2 ? count2 > required2 ? hodlTText("{count} WIF characters entered · {required} required", { count: hodlMetaToken, required: required2 }) : hodlTText("{count} of {required} WIF characters entered", { count: hodlMetaToken, required: required2 }) : hodlTText("{count} of 51 or 52 WIF characters entered", { count: hodlMetaToken }), count2, required2), { count: count2, required: required2, remaining: required2 ? Math.max(0, required2 - count2) : null });
   }
-  let invalid = entries.filter((entry, index) => index === 0 ? entry.character !== "S" : !/^[1-9A-HJ-NP-Za-km-z]$/.test(entry.character)), count = entries.length, required = count <= 22 ? 22 : 30, excess = entries.slice(30);
+  let invalid = entries.filter((entry, index) => index === 0 ? entry.character !== "S" : !/^[1-9A-HJ-NP-Za-km-z]$/.test(entry.character)), count = entries.length, required = count <= 22 ? 22 : count <= 26 ? 26 : 30, excess = entries.slice(30);
   invalidRanges.push(...invalid.map((entry) => [entry.start, entry.end]), ...excess.map((entry) => [entry.start, entry.end]));
   if (invalid.length) errors.push(invalidError(invalid.length, hodlTText("use S followed by Bitcoin Base58 characters")));
   if (excess.length) errors.push(extraError(excess.length));
   if (!count) next = hodlTText("Start with S");
-  if ((count === 22 || count === 30) && !errors.length) try {
+  if ((count === 22 || count === 26 || count === 30) && !errors.length) try {
     hodlAssertPrivateKeyKind(value, network, selected);
     ready = true;
     done = hodlTText("Checksum valid · ready to derive");
@@ -6588,7 +6590,7 @@ function hodlPrivateKeyInputAnalysis(value, kind, network, trimBrainWallet = hod
     markAll();
     errors.push(error.message || hodlTText("Invalid Mini-key checksum"));
   }
-  return result(counted(count > 30 ? hodlTText("{count} Mini-key characters entered · 30 maximum", { count: hodlMetaToken }) : count ? hodlTText("{count} of {required} Mini-key characters entered", { count: hodlMetaToken, required }) : hodlTText("{count} of 22 or 30 Mini-key characters entered", { count: hodlMetaToken }), count, required), { count, required, remaining: Math.max(0, required - count) });
+  return result(counted(count > 30 ? hodlTText("{count} Mini-key characters entered · 30 maximum", { count: hodlMetaToken }) : count ? hodlTText("{count} of {required} Mini-key characters entered", { count: hodlMetaToken, required }) : hodlTText("{count} of 22, 26, or 30 Mini-key characters entered", { count: hodlMetaToken }), count, required), { count, required, remaining: Math.max(0, required - count) });
 }
 function hodlRenderPrivateKeyInputState(input) {
   if (!input) return null;
@@ -7207,7 +7209,7 @@ function hodlFilterKey(e, t) {
 }
 function hodlDecodeMiniPrivateKey(value) {
   let candidate = String(value ?? "").trim();
-  if (!/^S(?:[1-9A-HJ-NP-Za-km-z]{21}|[1-9A-HJ-NP-Za-km-z]{29})$/.test(candidate)) throw hodlError("Mini keys must start with S and contain 22 or 30 Bitcoin Base58 characters.");
+  if (!/^S(?:[1-9A-HJ-NP-Za-km-z]{21}|[1-9A-HJ-NP-Za-km-z]{25}|[1-9A-HJ-NP-Za-km-z]{29})$/.test(candidate)) throw hodlError("Mini keys must start with S and contain 22, 26, or 30 Bitcoin Base58 characters.");
   return hodlDecodeMiniKey(candidate);
 }
 function hodlAssertPrivateKeyKind(value, network, kind, trimBrainWallet = false) {
@@ -9722,7 +9724,35 @@ function hodlParsePsbt(bytes) {
     outputs.push(map.entries);
   }
   if (offset !== bytes.length) throw new Error("PSBT contains trailing data or extra maps.");
-  return { tx, global: globalMap.entries, inputs, outputs };
+  return { tx, global: globalMap.entries, inputs, outputs, raw: bytes };
+}
+
+// The inspector's own parser is throw-or-render: a file can violate BIP-174
+// or consensus rules without tripping a structural check (a non-witness UTXO
+// txid mismatch, a witness/non-witness claim conflict, a malformed typed
+// value) and would render as an ordinary report (audit C3-6). Cross-check
+// with the reference layer (rust-bitcoin through the PSBT WASM module) and
+// surface its error-severity verdict. Memoized on the parsed object so a
+// locale re-render does not re-run the analysis.
+function hodlPsbtReferenceVerdict(psbt) {
+  if (psbt.referenceVerdict) return psbt.referenceVerdict;
+  let verdict;
+  try {
+    let doc = psbtInspectDoc(psbt.raw),
+      problems = [];
+    if (doc.rustBitcoinError) problems.push("rust-bitcoin: " + doc.rustBitcoinError);
+    for (let problem of doc.problems || []) if (problem.severity === "error") problems.push(problem.scope + ": " + problem.message);
+    // The document's error count is taken before its list truncation.
+    let unlisted = Math.max(0, (doc.errorCount ?? problems.length) - problems.length);
+    verdict = problems.length ? { state: "problem", problems, unlisted } : { state: "complete", problems: [], unlisted: 0 };
+  } catch (exception) {
+    let message = exception instanceof Error ? exception.message : String(exception);
+    verdict = /not initialized/.test(message)
+      ? { state: "incomplete", problems: [], unlisted: 0 }
+      : { state: "problem", problems: ["The reference parser rejects this file: " + message], unlisted: 0 };
+  }
+  psbt.referenceVerdict = verdict;
+  return verdict;
 }
 function hodlSats(number) {
   let value = typeof number === "bigint" ? number : BigInt(number), negative = value < 0n;
@@ -9875,7 +9905,7 @@ function hodlLooksSignature(item) {
   // DER sequence plus the appended sighash byte: 9 to 73 bytes.
   return item.length >= 9 && item.length <= 73 && item[0] === 48;
 }
-function hodlFinalSigs(entries, witnessUtxo, tx, index) {
+function hodlFinalSigs(entries, witnessUtxo, tx, index, signatureChecks) {
   let items = [], candidates = [], malformed = false;
   for (let entry of hodlFind(entries, 7)) {
     if (entry.keydata.length) { malformed = true; continue; }
@@ -9907,8 +9937,14 @@ function hodlFinalSigs(entries, witnessUtxo, tx, index) {
     let signature = { pubkey: null, der: item.slice(0, -1), sighash: item[item.length - 1], raw: item };
     // Ownership is established by cryptographic verification, never by stack
     // position. Without a reconstructable digest, only a single unambiguous
-    // candidate key can claim the signature.
-    let sighash = witnessUtxo && scriptCode ? hodlBip143(tx, index, scriptCode, witnessUtxo.amount, signature.sighash) : null;
+    // candidate key can claim the signature. Digest reconstruction draws on
+    // the render's shared budget (audit C3-3): exhausted, ownership falls
+    // back to the unambiguous-candidate rule below.
+    let sighash = null;
+    if (witnessUtxo && scriptCode && signature.sighash === 1 && (!signatureChecks || signatureChecks.remaining > 0)) {
+      if (signatureChecks) signatureChecks.remaining -= 1;
+      sighash = hodlBip143(tx, index, scriptCode, witnessUtxo.amount, signature.sighash);
+    }
     if (sighash) for (let candidate of candidates) {
       try {
         if (hodlSecp256k1.verify(signature.der, sighash, candidate, { prehash: false, format: "der", lowS: false })) {
@@ -10012,22 +10048,40 @@ function hodlCompareNonces(rValues) {
   let reused = [],
     possible = [],
     crossKey = [];
-  for (let first = 0; first < rValues.length; first++)
-    for (let second = first + 1; second < rValues.length; second++) {
-      let a = rValues[first],
-        b = rValues[second];
-      if (!hodlEq(a.r, b.r)) continue;
-      // The claimed pubkey is attacker-controlled metadata for partial
-      // signatures: the same r under two different claimed keys must not
-      // silently skip the comparison — it is itself the red flag (issue
-      // #353). A verified signature's claimed key *is* the verified key.
-      if (!hodlEq(a.pubkey, b.pubkey)) {
-        crossKey.push([a, b]);
-        continue;
+  // A consolidation PSBT can carry thousands of signatures; an all-pairs
+  // scan of them froze the inspector (audit C3-3). Buckets only ever form
+  // between records sharing one r value, so group by r first and compare
+  // within groups — same pairs, same verdicts.
+  let byR = new Map();
+  for (let record of rValues) {
+    let tag = hodlHex.encode(record.r);
+    let group = byR.get(tag);
+    if (!group) byR.set(tag, (group = []));
+    group.push(record);
+  }
+  for (let group of byR.values()) {
+    if (group.length < 2) continue;
+    for (let first = 0; first < group.length; first++)
+      for (let second = first + 1; second < group.length; second++) {
+        let a = group[first],
+          b = group[second];
+        // The claimed pubkey is attacker-controlled metadata for partial
+        // signatures: the same r under two different claimed keys must not
+        // silently skip the comparison — it is itself the red flag (issue
+        // #353). A verified signature's claimed key *is* the verified key.
+        if (!hodlEq(a.pubkey, b.pubkey)) {
+          crossKey.push([a, b]);
+          continue;
+        }
+        if (a.valid && b.valid && a.sighash && b.sighash && !hodlEq(a.sighash, b.sighash)) reused.push([a, b]);
+        // Same input with an unreconstructed digest (a non-SIGHASH_ALL
+        // signature) can still be a key leak — different sighash types commit
+        // to different digests — so the pair is possible reuse, not silence
+        // (audit C3-2). Both digests known and equal means one signature
+        // copied, which stays quiet.
+        else if (a.input !== b.input || !a.sighash || !b.sighash) possible.push([a, b]);
       }
-      if (a.valid && b.valid && a.sighash && b.sighash && !hodlEq(a.sighash, b.sighash)) reused.push([a, b]);
-      else if (a.input !== b.input) possible.push([a, b]);
-    }
+  }
   return {
     reused,
     possible,
@@ -11886,7 +11940,11 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
     policyProblems = 0,
     policyIncomplete = 0,
     unsupportedNonceChecks = 0,
-    feeInconsistent = 0;
+    feeInconsistent = 0,
+    // One digest-reconstruction budget per render, shared by the partial
+    // signatures and the finalized-field scan (audit C3-3); 256 mirrors the
+    // consensus layer's MAX_SIGNATURE_CHECKS.
+    signatureChecks = { remaining: 256 };
   let inscriptionReport = { inputs: [], envelopes: [] }, inscriptionScanIncomplete = false;
   try {
     inscriptionReport = inspectPsbtInscriptions(psbt);
@@ -11907,6 +11965,11 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
     transcriptError = exception.message || String(exception);
   }
   html.push("<hr class='result-divider'>");
+  let referenceVerdict = hodlPsbtReferenceVerdict(psbt);
+  if (referenceVerdict.state === "problem") {
+    let shown = referenceVerdict.problems.slice(0, 5), more = referenceVerdict.problems.length - shown.length + referenceVerdict.unlisted;
+    html.push("<p class='psbt-bad'><strong>" + hodlT("Not a valid PSBT.") + "</strong> " + hodlT("The reference layer (rust-bitcoin) reports error-severity BIP-174 / consensus problems; treat every field below with suspicion:") + "<br>" + shown.map(hodlEscapeHtml).join("<br>") + (more > 0 ? "<br>" + hodlT("…and {n} more.", { n: more }) : "") + "</p>");
+  }
   html.push("<p class='label psbt-section-label'>" + hodlT("Tx outputs") + " <span class='label-value'>(" + tx.outputs.length + ")</span></p><p class='muted label-description'>" + hodlT("Where this transaction sends bitcoin") + "</p>");
   let ownershipMap = hodlSessionOwnership(network);
   tx.outputs.forEach((output, index) => {
@@ -11928,9 +11991,13 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
     // Resolve all declarations as a set: agreeing claims count once,
     // disagreeing claims count as nothing and are flagged, and the verified
     // non-witness amount is preferred for display when both agree.
+    // Agreement covers the script too: same amount but different scripts
+    // means the two fields name different previous outputs (audit C3-7), and
+    // resolving to either would split the input's display (non-witness
+    // script) from its sighash basis (witness script).
     let claim = null, claimConflict = false;
     if (witnessUtxo && nonWitnessUtxo) {
-      if (witnessUtxo.amount === nonWitnessUtxo.amount) claim = nonWitnessUtxo;
+      if (witnessUtxo.amount === nonWitnessUtxo.amount && hodlEq(witnessUtxo.script, nonWitnessUtxo.script)) claim = nonWitnessUtxo;
       else claimConflict = true;
     } else claim = witnessUtxo || nonWitnessUtxo;
     if (claim) {
@@ -11948,7 +12015,7 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
     if (finalized) {
       // Finalized signatures moved into the final script fields must not
       // escape repeated-nonce analysis (issue #87).
-      let finalMaterial = hodlFinalSigs(entries, witnessUtxo, tx, index);
+      let finalMaterial = hodlFinalSigs(entries, witnessUtxo, tx, index, signatureChecks);
       // A finalized input whose fields yield no analyzable ECDSA signature
       // (for example a Taproot-only witness) never yields a clean or
       // no-signatures verdict.
@@ -11962,7 +12029,12 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
     let parsedTapSignatures = tapSignatures.reduce((count, tapSig) => count + (tapSig.r ? 1 : 0), 0);
     tapSignatureCount += parsedTapSignatures;
     html.push("<p class='psbt-kv'><strong>Input " + index + "</strong> \xB7 " + hodlHexRev(previous.txid) + " : " + previous.vout + (claim ? "<br><span class='psbt-amount'>" + hodlSats(claim.amount) + " BTC claimed</span><br><span class='psbt-address'>" + hodlEscapeHtml(destination) + "</span>" : "<br>" + hodlEscapeHtml(destination)) + "<br>" + (signatures.length + parsedTapSignatures ? "<span class='psbt-sig-present'>" + (signatures.length + parsedTapSignatures) + " signature(s) present</span>" : finalized ? "<span class='psbt-sig-finalized'>Finalized input data present</span>" : "<span class='psbt-sig-unsigned'>Not signed yet</span>") + "<br><span class='psbt-sig-policy'>" + (declaredSighashError ? "Declared sighash policy unreadable: " + hodlEscapeHtml(declaredSighashError) : "Signature policy: " + hodlEscapeHtml(declaredLabel)) + "</span></p>");
-    if (claimConflict) html.push("<p class='psbt-bad'><strong>Conflicting previous-output claims:</strong> input " + index + " declares " + hodlSats(witnessUtxo.amount) + " BTC in its witness UTXO but " + hodlSats(nonWitnessUtxo.amount) + " BTC in its non-witness UTXO (checked against the embedded previous transaction). Neither amount is trusted and the fee is left unknown.</p>");
+    if (claimConflict) {
+      let conflictReason = witnessUtxo.amount !== nonWitnessUtxo.amount
+        ? "declares " + hodlSats(witnessUtxo.amount) + " BTC in its witness UTXO but " + hodlSats(nonWitnessUtxo.amount) + " BTC in its non-witness UTXO (checked against the embedded previous transaction). Neither amount is trusted"
+        : "names different previous-output scripts in its witness UTXO and its non-witness UTXO (the non-witness side checked against the embedded previous transaction). Neither claim is trusted";
+      html.push("<p class='psbt-bad'><strong>Conflicting previous-output claims:</strong> input " + index + " " + conflictReason + " and the fee is left unknown.</p>");
+    }
     if (nonWitnessError) html.push("<p class='psbt-bad'><strong>Non-witness UTXO problem:</strong> input " + index + ": " + hodlEscapeHtml(nonWitnessError) + " That field claims nothing.</p>");
     let inputEnvelopes = (inscriptionReport.inputs[index] && inscriptionReport.inputs[index].envelopes) || [];
     inputEnvelopes.forEach((envelope) => {
@@ -12001,8 +12073,22 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
       let parts = hodlSigParts(signature.der),
         looseR = parts ? parts.r : hodlDerRLoose(signature.der),
         scriptCode = hodlInputScriptCode(entries, witnessUtxo),
-        sighash = witnessUtxo && scriptCode ? hodlBip143(tx, index, scriptCode, witnessUtxo.amount, signature.sighash) : null,
-        signatureValid = parts && sighash ? hodlSecp256k1.verify(signature.der, sighash, signature.pubkey, {
+        overBudget = false,
+        sighash = null;
+      // Digest reconstruction re-reads the whole transaction per signature,
+      // so a consolidation PSBT with thousands of SIGHASH_ALL signatures
+      // turned one paste into a main-thread freeze (audit C3-3). The
+      // reconstructions share one budget per render (mirroring the consensus
+      // layer's signature-check budget); past it the signature is reported
+      // unchecked below — an incomplete verdict, never a clean one. A
+      // signature that does not parse never needed the digest at all.
+      if ((parts || looseR) && witnessUtxo && scriptCode && signature.sighash === 1) {
+        if (signatureChecks.remaining > 0) {
+          signatureChecks.remaining -= 1;
+          sighash = hodlBip143(tx, index, scriptCode, witnessUtxo.amount, signature.sighash);
+        } else overBudget = true;
+      }
+      let signatureValid = parts && sighash ? hodlSecp256k1.verify(signature.der, sighash, signature.pubkey, {
           prehash: !1,
           format: "der",
           lowS: !1
@@ -12037,6 +12123,10 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
           // An unsafe or conflicting sighash policy blocks every other check.
           message = hodlT("Signature policy problem: {problems}", { problems: sighashProblems.join(" ") });
           className = "psbt-bad";
+        } else if (overBudget) {
+          message = hodlT("Signature not inspected: this file carries more SIGHASH_ALL signatures than the per-file check budget covers.");
+          className = "psbt-warn";
+          unsupportedNonceChecks += 1;
         } else if (!parts) {
           message = hodlT("Signature is not strict DER. Its r value is still compared for nonce reuse.");
           className = "psbt-warn"
@@ -12154,6 +12244,15 @@ function hodlRenderPsbt(psbt, nonceSourceTag = new Uint8Array(), nonceCheckedAt 
         : "No session key was loaded, so output ownership and change derivation were not checked.",
     },
     hodlPsbtNonceCheck(reused, possible, nonceIncomplete),
+    {
+      label: "BIP-174 / consensus cross-check",
+      state: referenceVerdict.state,
+      detail: referenceVerdict.state === "problem"
+        ? "The reference layer (rust-bitcoin) reports error-severity problems; see the banner at the top of this report."
+        : referenceVerdict.state === "complete"
+          ? "rust-bitcoin parsed this file and reported no error-severity BIP-174 or consensus problem."
+          : "The reference layer was unavailable, so validity was checked only by the built-in parser.",
+    },
     {
       label: "Taproot inscription scan",
       state: inscriptionScanIncomplete ? "incomplete" : "complete",

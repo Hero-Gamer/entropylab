@@ -1284,6 +1284,11 @@ fn inspect(bytes: &[u8]) -> Result<String, String> {
             problems.push(verify::Problem::warning("transaction".into(), "fee_impossible", error.to_string()));
         }
     }
+    // Count before truncating: the display list is capped, but the severity
+    // totals must describe the whole list or a crafted file could push every
+    // error off it and read as warnings-only (audit C3-4).
+    let problem_count = problems.len();
+    let error_count = problems.iter().filter(|p| p.severity == verify::ERROR).count();
     let problems_truncated = problems.len() > MAX_PROBLEMS;
     problems.truncate(MAX_PROBLEMS);
 
@@ -1307,6 +1312,8 @@ fn inspect(bytes: &[u8]) -> Result<String, String> {
             "message": p.message,
         })).collect::<Vec<_>>(),
         "problemsTruncated": problems_truncated,
+        "problemCount": problem_count,
+        "errorCount": error_count,
     });
     let text = serde_json::to_string(&doc).map_err(|e| format!("JSON encode failed: {e}"))?;
     if text.len() > MAX_JSON_BYTES {

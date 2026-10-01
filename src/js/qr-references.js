@@ -22,7 +22,7 @@
 // referenceQrSvg are pure and unit-tested under Node.
 
 import { renderSVG as uqrRenderSvg } from "uqr";
-import { trapModalFocus } from "./modal-focus.js";
+import { createModal } from "./modal.js";
 import { copyText } from "./clipboard.js";
 
 const NETWORK_TAG_ID = "network-status";
@@ -50,17 +50,11 @@ const pageIsOffline = () => {
   return !!tag && tag.dataset.state === "offline";
 };
 
-let overlayEl = null;
-let lastFocused = null;
+let modal = null, overlayEl = null;
 
-const closeOverlay = () => {
-  if (!overlayEl) return;
-  overlayEl.hidden = true;
-  lastFocused?.focus?.({ preventScroll: true });
-  lastFocused = null;
-};
+const closeOverlay = () => modal?.hide();
 
-const openOverlay = (url, label) => {
+const openOverlay = (url, label, opener) => {
   if (!overlayEl) return;
   const qrSvg = referenceQrSvg(url);
   const card = overlayEl.querySelector(".qr-ref-card");
@@ -82,28 +76,21 @@ const openOverlay = (url, label) => {
     });
   });
   card.querySelector("#qr-ref-close").addEventListener("click", closeOverlay);
-  overlayEl.hidden = false;
-  card.querySelector("#qr-ref-close").focus();
+  modal.show(card.querySelector("#qr-ref-close"), opener);
 };
 
 export const initQrReferences = () => {
   if (document.getElementById("qr-ref-overlay")) return;
-  overlayEl = document.createElement("div");
-  overlayEl.className = "modal-overlay qr-ref-overlay no-print";
-  overlayEl.id = "qr-ref-overlay";
-  overlayEl.hidden = true;
+  modal = createModal({
+    id: "qr-ref-overlay",
+    className: "qr-ref-overlay",
+    card: `<div class="modal-card qr-ref-card"></div>`,
+    focusables: () => [...overlayEl.querySelectorAll("button")],
+    onDismiss: closeOverlay,
+  });
+  overlayEl = modal.overlay;
   overlayEl.setAttribute("role", "dialog");
   overlayEl.setAttribute("aria-modal", "true");
-  overlayEl.innerHTML = `<div class="modal-card qr-ref-card"></div>`;
-  document.body.append(overlayEl);
-
-  trapModalFocus(overlayEl, () => [...overlayEl.querySelectorAll("button")]);
-  overlayEl.addEventListener("click", (event) => {
-    if (event.target === overlayEl) closeOverlay();
-  });
-  overlayEl.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeOverlay();
-  });
 
   // Event delegation: handles links present at boot and links created later
   // (e.g. by dynamic re-renders) without any per-link registration.
@@ -114,7 +101,6 @@ export const initQrReferences = () => {
     event.preventDefault();
     const url = anchor.getAttribute("href");
     const label = anchor.textContent?.trim() || url;
-    lastFocused = anchor;
-    openOverlay(url, label);
+    openOverlay(url, label, anchor);
   });
 };

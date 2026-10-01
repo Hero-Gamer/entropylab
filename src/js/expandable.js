@@ -1,4 +1,5 @@
-import { trapModalFocus } from "./modal-focus.js";
+import { createModal } from "./modal.js";
+import { copyText, showCopiedIcon } from "./clipboard.js";
 // Expandable cells: one standard truncation for long text in dense UI tables,
 // with a click-to-expand overlay window for viewing (and, when the cell is
 // editable, editing) the full value.
@@ -57,25 +58,30 @@ export const expandableHtml = (text, { label = "Full value", editAttrs = "" } = 
     `${escapeHtml(preview)} <span class="exp-len">${escapeHtml(expandSizeLabel(value))}</span></button>`;
 };
 
-export const initExpandable = () => {
+export const initExpandable = ({ copy: copyIcon = () => "", copied: copiedIcon = () => "" } = {}) => {
   if (document.getElementById("exp-overlay")) return;
-  const overlay = document.createElement("div");
-  overlay.className = "modal-overlay exp-overlay no-print";
-  overlay.id = "exp-overlay";
-  overlay.hidden = true;
-  overlay.innerHTML = `
+  const modal = createModal({
+    id: "exp-overlay",
+    className: "exp-overlay",
+    focusables: () => [...overlay.querySelectorAll("textarea, button")],
+    onDismiss: () => close(),
+    card: `
     <div class="modal-card exp-card" role="dialog" aria-modal="true" aria-labelledby="exp-title">
       <p class="modal-title exp-title" id="exp-title"></p>
       <p class="exp-meta muted" id="exp-meta"></p>
       <textarea id="exp-text" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
-      <div class="row exp-actions">
-        <button class="btn secondary" id="exp-copy" type="button">Copy</button>
-        <button class="btn primary" id="exp-apply" type="button">Apply</button>
-        <button class="btn secondary" id="exp-close" type="button">Close</button>
+      <div class="row modal-actions">
+        <button type="button" class="copy-button boxed-copy-button" id="exp-copy" aria-label="Copy" title="Copy"></button>
+        <span class="modal-actions-end">
+          <button class="btn primary" id="exp-apply" type="button">Apply</button>
+          <button class="btn red" id="exp-close" type="button">Close</button>
+        </span>
       </div>
-    </div>`;
-  document.body.append(overlay);
-  const text = overlay.querySelector("#exp-text"), apply = overlay.querySelector("#exp-apply");
+    </div>`,
+  });
+  const overlay = modal.overlay;
+  const text = overlay.querySelector("#exp-text"), apply = overlay.querySelector("#exp-apply"), copyButton = overlay.querySelector("#exp-copy");
+  copyButton.innerHTML = copyIcon();
   let cell = null;
 
   // A cell value can hold an entire previous transaction, or a pasted PSBT
@@ -87,15 +93,14 @@ export const initExpandable = () => {
     overlay.querySelector("#exp-meta").textContent = "";
   };
   const close = () => {
-    overlay.hidden = true;
+    modal.hide();
     release();
-    cell?.focus({ preventScroll: true });
     cell = null;
   };
   // The overlay is a body-level sibling of every wiped view, so station and
   // editor wipes cannot reach it; it tears itself down with the page.
   const teardown = () => {
-    overlay.hidden = true;
+    modal.hide({ restoreFocus: false });
     release();
     cell = null;
   };
@@ -112,24 +117,22 @@ export const initExpandable = () => {
     const editable = "expEdit" in target.dataset;
     text.readOnly = !editable;
     apply.hidden = !editable;
-    overlay.hidden = false;
-    text.focus();
+    // A check left over from the last opening goes back to the copy icon.
+    clearTimeout(copyButton.copiedTimer);
+    copyButton.classList.remove("is-copied");
+    copyButton.innerHTML = copyIcon();
+    modal.show(text, target);
   };
 
-  trapModalFocus(overlay, () => [...overlay.querySelectorAll("textarea, button")]);
   document.addEventListener("click", (event) => {
     const target = event.target.closest?.(".exp-cell");
     if (target) open(target);
   });
-  overlay.addEventListener("click", (event) => {
-    if (event.target === overlay) close();
-  });
-  overlay.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") close();
-  });
   overlay.querySelector("#exp-close").addEventListener("click", close);
-  overlay.querySelector("#exp-copy").addEventListener("click", () => {
-    navigator.clipboard?.writeText(text.value).catch(() => {});
+  copyButton.addEventListener("click", () => {
+    copyText(text.value, { host: overlay }).then((copied) => {
+      if (copied && modal.isOpen()) showCopiedIcon(copyButton, { copyIcon: copyIcon(), copiedIcon: copiedIcon() });
+    });
   });
   apply.addEventListener("click", () => {
     if (!cell) return;

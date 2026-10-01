@@ -16,6 +16,7 @@ import { addressFromScript } from "./addresses.js";
 import { hodlNeutralizeControls } from "./i18n-sanitize.js";
 import { psbtInspectDoc, psbtBuildBytes, psbtWasmReady } from "./psbt-wasm.js";
 import { comparePsbtDocs } from "./psbt-diff.js";
+import { copyText } from "./clipboard.js";
 import { expandableHtml, EXPAND_LIMIT, initExpandable } from "./expandable.js";
 import { psbtVizHtml } from "./psbt-viz.js";
 import { parseOpReturn } from "./opreturn.js";
@@ -572,7 +573,7 @@ export const psbtProblemsHtml = (doc, insane = false) => {
 // header network picker's choice, read through the `networkDefault` getter
 // (mainnet/testnet), and re-decoded live when the picker changes it (the
 // "hodl:network-default" document event).
-export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = () => "" } = {}) => {
+export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = () => "", copyIcon = () => "" } = {}) => {
   const load = document.getElementById("psbted-load");
   if (!load) return;
   const $ = (id) => document.getElementById(id);
@@ -587,7 +588,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = 
   // Clears the highlight a diagram box leaves on the section it jumps to.
   let anchorTimer = null;
 
-  initExpandable();
+  initExpandable({ copy: copyIcon, copied: copiedIcon });
   // Edits saved in the expandable editor window are field edits, exactly
   // like typing in the plain value inputs: they rebuild live.
   out.addEventListener("expandable:apply", (event) => {
@@ -832,11 +833,11 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = 
     };
     $("psbted-copy-b64").onclick = () => {
       if (stale) return;
-      navigator.clipboard?.writeText(b64).then(() => confirmCopy("psbted-copied-b64")).catch(() => {});
+      copyText(b64).then((copied) => { if (copied) confirmCopy("psbted-copied-b64"); });
     };
     $("psbted-copy-hex").onclick = () => {
       if (stale) return;
-      navigator.clipboard?.writeText(hex).then(() => confirmCopy("psbted-copied-hex")).catch(() => {});
+      copyText(hex).then((copied) => { if (copied) confirmCopy("psbted-copied-hex"); });
     };
     // The binary download round-trips with wallet software: Sparrow and
     // Coldcard read the .psbt file this produces.

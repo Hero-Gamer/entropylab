@@ -154,8 +154,9 @@
 // second step that names what the browser cannot protect (memory written to
 // disk, clipboard copies, what a restart does not erase), and only that
 // second acknowledgement is stored and lets the user into the page. That
-// second button stays disabled until the reader types the number three into
-// the field beside it, the proof that the list above was read. The markup
+// second button stays disabled until the reader types the digit the step
+// spells out (a fresh random digit each time, shown as a word: "seven"), the
+// proof that the list above was read. The markup
 // ships in the static template outside #btc-calc so application boot (which
 // replaces that node's contents) cannot wipe it, and it starts hidden so a
 // host without JavaScript never sees an overlay it cannot dismiss — this
@@ -173,8 +174,9 @@
   const stepTwo = document.getElementById("beta-disclaimer-step-2");
   const confirm = document.getElementById("beta-disclaimer-confirm");
   const proof = document.getElementById("beta-disclaimer-proof");
-  if (!overlay || !accept || !stepOne || !stepTwo || !confirm || !proof) return;
-  const KEY = "entropylab-beta-accepted";
+  const proofWord = document.getElementById("beta-disclaimer-proof-word");
+  if (!overlay || !accept || !stepOne || !stepTwo || !confirm || !proof || !proofWord) return;
+  const KEY = "entropylab-disclaimer-accepted";
   const VERSION = "{{VERSION}}";
   let accepted = false;
   try {
@@ -203,7 +205,13 @@
     if (document.activeElement === proof && !confirm.disabled) confirm.focus();
     else proof.focus();
   });
-  const proven = () => String(proof.value).trim() === "3";
+  // A digit from the CSPRNG the checks above vouched for; bytes 250-255
+  // are drawn again so every digit is equally likely.
+  const byte = new Uint8Array(1);
+  do crypto.getRandomValues(byte); while (byte[0] >= 250);
+  const digit = byte[0] % 10;
+  proofWord.textContent = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"][digit];
+  const proven = () => String(proof.value).trim() === String(digit);
   const syncProof = () => {
     confirm.disabled = !proven();
     confirm.setAttribute("aria-disabled", String(confirm.disabled));

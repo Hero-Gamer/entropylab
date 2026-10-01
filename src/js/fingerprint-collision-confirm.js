@@ -12,7 +12,7 @@
 // trap. Escape and a backdrop click cancel.
 
 import { t } from "./i18n.js";
-import { trapModalFocus } from "./modal-focus.js";
+import { createModal } from "./modal.js";
 
 export const fingerprintCollisionCardHtml = () => `
   <div class="modal-card is-warning fingerprint-collision-card" id="fingerprint-collision-dialog" role="dialog" aria-modal="true" aria-labelledby="fingerprint-collision-title" aria-describedby="fingerprint-collision-message">
@@ -30,12 +30,14 @@ export const fingerprintCollisionCardHtml = () => `
 // shows the warning for that fingerprint; exactly one of the callbacks runs.
 export const initFingerprintCollisionConfirm = () => {
   if (document.getElementById("fingerprint-collision-overlay")) return null;
-  const overlay = document.createElement("div");
-  overlay.className = "modal-overlay fingerprint-collision-overlay no-print";
-  overlay.id = "fingerprint-collision-overlay";
-  overlay.hidden = true;
-  overlay.innerHTML = fingerprintCollisionCardHtml();
-  document.body.append(overlay);
+  const modal = createModal({
+    id: "fingerprint-collision-overlay",
+    className: "fingerprint-collision-overlay",
+    card: fingerprintCollisionCardHtml(),
+    focusables: () => [proceedButton, cancelButton],
+    onDismiss: () => settle(false),
+  });
+  const overlay = modal.overlay;
   const message = overlay.querySelector("#fingerprint-collision-message"),
     advice = overlay.querySelector("#fingerprint-collision-advice"),
     cancelButton = overlay.querySelector("#fingerprint-collision-cancel"),
@@ -44,32 +46,21 @@ export const initFingerprintCollisionConfirm = () => {
   advice.textContent = t("Rename one of the tabs to tell them apart by clicking on the tab label.");
   proceedButton.textContent = t("I Understand");
   cancelButton.textContent = t("Cancel");
-  let lastFocused = null, pending = null;
+  let pending = null;
 
   const settle = (proceed) => {
     const callbacks = pending;
     pending = null;
-    overlay.hidden = true;
-    lastFocused?.focus?.({ preventScroll: true });
-    lastFocused = null;
+    modal.hide();
     (proceed ? callbacks?.onProceed : callbacks?.onCancel)?.();
   };
   const open = (fingerprint, onProceed, onCancel) => {
     if (pending) settle(false);
     message.textContent = t("Another wallet open in this session also has fingerprint {fingerprint}. A fingerprint is only 4 bytes, so different wallets can share one: these are separate wallets.", { fingerprint });
     pending = { onProceed, onCancel };
-    lastFocused = document.activeElement;
-    overlay.hidden = false;
-    proceedButton.focus();
+    modal.show(proceedButton);
   };
   proceedButton.addEventListener("click", () => settle(true));
   cancelButton.addEventListener("click", () => settle(false));
-  overlay.addEventListener("click", (event) => {
-    if (event.target === overlay) settle(false);
-  });
-  overlay.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") settle(false);
-  });
-  trapModalFocus(overlay, () => [proceedButton, cancelButton]);
-  return { open, isOpen: () => !overlay.hidden };
+  return { open, isOpen: modal.isOpen };
 };

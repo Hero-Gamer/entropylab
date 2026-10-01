@@ -113,6 +113,7 @@ import {
   wipeJournal,
 } from "./journal.js";
 import { keyVaultIdentity, parseKeyVault, serializeKeyVault } from "./keymanager.js";
+import { copyText } from "./clipboard.js";
 const hodlBip39Wordlist = Object.freeze(bip39English);
 function hodlNote(key, vars) {
   return vars == null ? { key } : { key, vars };
@@ -1037,22 +1038,7 @@ function hodlInitDescriptorCopy() {
         if (note.isConnected) note.textContent = "";
       }, 1600);
     };
-    let fallback = () => {
-      let field = document.createElement("textarea");
-      field.value = value;
-      field.setAttribute("readonly", "");
-      field.style.position = "fixed";
-      field.style.left = "-9999px";
-      document.body.append(field);
-      field.select();
-      try {
-        if (document.execCommand("copy")) done();
-      } finally {
-        field.remove();
-      }
-    };
-    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(value).then(done).catch(fallback);
-    else fallback();
+    copyText(value).then((copied) => { if (copied) done(); });
   });
 }
 // A long value the user is meant to move somewhere else — a descriptor, an
@@ -2016,9 +2002,9 @@ function hodlCopyMsigCoreImportDescriptors() {
   if (!json) return;
   let button = document.getElementById("msig-copy-importdescriptors");
   let label = hodlTText("Copy Core importdescriptors");
-  let done = () => {
+  let done = (copied) => {
     json = "";
-    if (!button) return;
+    if (!copied || !button) return;
     button.classList.add("is-copied");
     button.textContent = hodlTText("Copied");
     clearTimeout(button.hodlCopiedTimer);
@@ -2028,24 +2014,7 @@ function hodlCopyMsigCoreImportDescriptors() {
       button.textContent = label;
     }, 1600);
   };
-  let fallback = () => {
-    let field = document.createElement("textarea");
-    field.value = json;
-    field.setAttribute("readonly", "");
-    field.style.position = "fixed";
-    field.style.left = "-9999px";
-    document.body.appendChild(field);
-    field.select();
-    try {
-      document.execCommand("copy");
-      done();
-    } finally {
-      field.value = "";
-      field.remove();
-    }
-  };
-  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(json).then(done).catch(fallback);
-  else fallback();
+  copyText(json).then(done);
 }
 function hodlDownloadMsigCoreImportDescriptors() {
   let json = "";
@@ -2083,21 +2052,7 @@ function hodlCopyMsigBip388Policy() {
     return;
   }
   if (!text) return;
-  let done = () => { text = ""; };
-  let fallback = () => {
-    let field = document.createElement("textarea");
-    field.value = text;
-    field.setAttribute("readonly", "");
-    field.style.position = "fixed";
-    field.style.left = "-9999px";
-    document.body.appendChild(field);
-    field.select();
-    try { document.execCommand("copy"); } catch {}
-    field.remove();
-    done();
-  };
-  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(text).then(done).catch(fallback);
-  else fallback();
+  copyText(text).then(() => { text = ""; });
 }
 function hodlDownloadMsigBip388Policy() {
   let text = "";
@@ -5784,23 +5739,7 @@ function hodlCopySeedPhraseButton(button) {
   let done = () => {
     hodlShowSeedPhraseCopied(button);
   };
-  let fallback = () => {
-    let field = document.createElement("textarea");
-    field.value = phrase;
-    field.setAttribute("readonly", "");
-    field.style.position = "fixed";
-    field.style.left = "-9999px";
-    document.body.appendChild(field);
-    field.select();
-    try {
-      document.execCommand("copy");
-      done();
-    } finally {
-      field.remove();
-    }
-  };
-  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(phrase).then(done).catch(fallback);
-  else fallback();
+  copyText(phrase).then((copied) => { if (copied) done(); });
 }
 function hodlRenderDiceWordGrid(container, words, targetWords = hodlTargetWordCount, provisional = false) {
   if (!container) return;
@@ -10746,23 +10685,7 @@ function hodlCopyBip85Child(button) {
       if (note?.isConnected) note.textContent = "";
     }, 1600);
   };
-  let fallback = () => {
-    let field = document.createElement("textarea");
-    field.value = phrase;
-    field.setAttribute("readonly", "");
-    field.style.position = "fixed";
-    field.style.left = "-9999px";
-    document.body.appendChild(field);
-    field.select();
-    try {
-      document.execCommand("copy");
-      done();
-    } finally {
-      field.remove();
-    }
-  };
-  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(phrase).then(done).catch(fallback);
-  else fallback();
+  copyText(phrase).then((copied) => { if (copied) done(); });
 }
 function hodlRenderBip85Out() {
   let box = document.getElementById("bip85-out");
@@ -10795,11 +10718,7 @@ function hodlRenderBip85Out() {
         <p class="edge-note is-private" id="bip85-private-description">Anyone with the parent, application, and index can reproduce this child key.</p>
       </section>
       <div class="wallet-data-actions no-print">
-        <label class="privacy-bar${hodlBip85Reveal ? " is-revealed" : ""}">
-          <input type="checkbox" role="switch" id="bip85-reveal" ${hodlBip85Reveal ? "checked" : ""} aria-describedby="bip85-private-description">
-          <span class="privacy-bar-state">${hodlBip85Reveal ? hodlT("Private data visible") : hodlT("Private data hidden")}</span>
-          <span class="privacy-bar-hint">${hodlBip85Reveal ? hodlT("Hide it before sharing your screen or stepping away") : hodlT("Reveal only offline, on an air-gapped computer")}</span>
-        </label>
+        ${hodlPrivacyBarMarkup({ id: "bip85-reveal", revealed: hodlBip85Reveal, describedBy: "bip85-private-description" })}
       </div>
       <div class="wallet-data-fields">
         ${hodlBip85SecretField(derived.secretLabel, () => derived.secret, bip85SecretLength(derived), derived.app === "bip39" ? derived.entropy.length * 3 / 4 : 0)}
@@ -11699,7 +11618,7 @@ function hodlInitSp() {
     if (!button) return;
     let node = document.getElementById(button.dataset.spCopy);
     if (!node) return;
-    navigator.clipboard?.writeText(node.textContent || "").catch(() => {});
+    copyText(node.textContent || "");
   });
   hodlSpSetMode("receive");
 }
@@ -15393,23 +15312,7 @@ function hodlJournalCopy(button, label) {
       if (button.isConnected) button.textContent = label;
     }, 1600);
   };
-  let fallback = () => {
-    let field = document.createElement("textarea");
-    field.value = phrase;
-    field.setAttribute("readonly", "");
-    field.style.position = "fixed";
-    field.style.left = "-9999px";
-    document.body.appendChild(field);
-    field.select();
-    try {
-      document.execCommand("copy");
-      done();
-    } finally {
-      field.remove();
-    }
-  };
-  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(phrase).then(done).catch(fallback);
-  else fallback();
+  copyText(phrase).then((copied) => { if (copied) done(); });
 }
 function hodlJournalClearFields() {
   for (let id of ["journal-create-password", "journal-create-confirm", "journal-open-password", "journal-input", "journal-phrase", "journal-label", "journal-entry-notes", "journal-search"]) {
@@ -16168,8 +16071,11 @@ function hodlVanityEstimate() {
       ? `At about ${hodlVanityFormatCount(Math.round(rate))} candidates/s${hodlVanityRunning ? "" : ` on ${Math.max(1, Math.min(64, Number(document.getElementById("vanity-workers")?.value) || 1))} worker${Number(document.getElementById("vanity-workers")?.value) === 1 ? "" : "s"}`}, expect a match roughly every ${hodlVanityFormatDuration(Number(work) / rate)}.`
       : hodlVanityBenchPending ? "Measuring this device…" : method === "derivation" ? "Derivation grind: each candidate is a few BIP32 child steps." : "Passphrase grind: each candidate is a full BIP39 seed stretch.";
     estimateEl.textContent = `Prefix “${prefix}” matches about 1 in ${hodlVanityFormatCount(work)} ${hodlVanityScript().label} candidates on average. ${timing}`;
+    estimateEl.hidden = false;
   } catch {
+    // A grey note with nothing in it would still draw its box.
     estimateEl.textContent = "";
+    estimateEl.hidden = true;
   }
 }
 function hodlVanityStopFirstChanged() {
@@ -16276,23 +16182,7 @@ function hodlCopyVanityValue(button, value, label) {
       if (note) note.textContent = "";
     }, 1600);
   };
-  let fallback = () => {
-    let field = document.createElement("textarea");
-    field.value = value;
-    field.setAttribute("readonly", "");
-    field.style.position = "fixed";
-    field.style.left = "-9999px";
-    document.body.appendChild(field);
-    field.select();
-    try {
-      document.execCommand("copy");
-      done();
-    } finally {
-      field.remove();
-    }
-  };
-  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(value).then(done).catch(fallback);
-  else fallback();
+  copyText(value).then((copied) => { if (copied) done(); });
 }
 // The master fingerprint the key will carry once a match is applied: a new
 // passphrase is a new seed, so each passphrase-grind row is its own
@@ -16331,7 +16221,7 @@ function hodlRenderVanityOut() {
     return;
   }
   let run = hodlVanityRun, derivation = run.method === "derivation", meta = VANITY_SCRIPTS[run.script] ?? VANITY_SCRIPTS.p2wpkh, label = hodlEscapeHtml(run.sourceLabel);
-  let copyMarkup = (attribute, index, title) => `<button type="button" class="copy-button" ${attribute}="${index}" aria-label="${title}" title="${title}">${hodlClipboardIconMarkup()}</button><span class="vanity-copied muted" aria-live="polite"></span>`;
+  let copyMarkup = (attribute, index, title) => `<button type="button" class="copy-button boxed-copy-button" ${attribute}="${index}" aria-label="${title}" title="${title}">${hodlClipboardIconMarkup()}</button><span class="vanity-copied muted" aria-live="polite"></span>`;
   let keyCell = (match) => `<td class="vanity-key-cell">${hodlVanityKeyMarkup(hodlVanityMatchFingerprint(match, run))}</td>`;
   let applyMarkup = (match, index) => run.sourceKind === "bip85"
     ? `<span class="vanity-saved">${hodlT("BIP-85 child unchanged")}</span>`
@@ -16348,7 +16238,7 @@ function hodlRenderVanityOut() {
       return `<tr><th scope="row">${index + 1}</th><td class="mono">${match.index}${run.accountHardened ? "'" : ""}</td><td class="mono">${hodlEscapeHtml(hodlDisplayDerivationPath(match.path))}</td>${address}${keyCell(match)}<td class="vanity-apply-cell">${applyMarkup(match, index)}</td></tr>`;
     }
     let secret = hodlVanityReveal
-      ? `<span class="mono vanity-pass-text">${hodlEscapeHtml(match.passphrase)}</span>`
+      ? `<span class="mono vanity-pass-text table-private-field-value">${hodlEscapeHtml(match.passphrase)}</span>`
       : `<span class="mono vanity-pass-text" aria-hidden="true">${hodlEscapeHtml("•".repeat(12))}</span><span class="sr-only">${hodlT("Passphrase hidden — turn on the Private data switch above to reveal")}</span>`;
     return `<tr><th scope="row">${index + 1}</th><td class="mono">${match.counter.toString()}</td><td><span class="vanity-secret">${secret}${copyMarkup("data-vanity-copy", index, "Copy passphrase")}</span></td>${address}${keyCell(match)}<td class="vanity-apply-cell">${applyMarkup(match, index)}</td></tr>`;
   }).join("");
@@ -16734,7 +16624,7 @@ function hodlInitWorkspace() {
   hodlInitJournalNotebook();
   hodlInitMsig();
   hodlInitPsbt();
-  initPsbtEditor({ networkDefault: () => hodlNetworkDefault, copiedIcon: hodlCopiedIconMarkup });
+  initPsbtEditor({ networkDefault: () => hodlNetworkDefault, copiedIcon: hodlCopiedIconMarkup, copyIcon: hodlClipboardIconMarkup });
   hodlInitBip85();
   hodlInitVanity();
   hodlInitSp();
@@ -16849,7 +16739,7 @@ function hodlApplyTheme(mode) {
 // for a wallet tool. Re-hiding it on a later visit belongs to the inline head
 // script, which runs before first paint; boot is far too late to avoid a
 // flash, so this only has to handle the click.
-var hodlBetaBannerStorageKey = "entropylab-beta-banner-dismissed";
+var hodlBetaBannerStorageKey = "entropylab-disclaimer-banner-dismissed";
 // The introduction is put away for good, remembered the same way the banner
 // is and keyed to this build, so a new release introduces itself once more.
 // Storage the browser refuses simply means it returns. Re-hiding it on a
@@ -17265,7 +17155,7 @@ async function hodlBoot() {
   hodlInitDerivationControls();
   hodlInitAddressBenchmark();
   hodlInitSegmentedControls();
-  initQrReferences();
+  initQrReferences({ copy: hodlClipboardIconMarkup, copied: hodlCopiedIconMarkup });
   hodlInitDescriptorCopy();
   hodlInitLocale(hodlApplyLocale);
 }

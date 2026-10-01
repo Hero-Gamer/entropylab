@@ -37,20 +37,21 @@ const workingCrypto = () => {
   };
 };
 
-// The startup checks draw longer arrays; the disclaimer's proof digit draws a
-// single byte, which these tests feed from a queue.
-const proofCrypto = (bytes) => {
+// The disclaimer's proof digit is not drawn from the CSPRNG; a single-byte
+// draw (the old proof digit's shape) fails the test that asserts it is gone.
+const noProofDrawCrypto = () => {
   const base = workingCrypto();
   return {
     getRandomValues(array) {
-      if (array.length === 1) {
-        array[0] = bytes.shift();
-        return array;
-      }
+      if (array.length === 1) throw new Error("the disclaimer drew from the CSPRNG");
       return base.getRandomValues(array);
     },
   };
 };
+
+// A performance.now() stand-in whose readings the tests set: the first is
+// taken when the overlay is revealed, the next when "I Understand" is pressed.
+const fakeClock = (...readings) => ({ now: () => readings.shift() });
 const DIGIT_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 
 // A minimal in-memory localStorage stand-in for the disclaimer gate tests.
@@ -146,6 +147,7 @@ const loadModule = (overrides = {}) => {
     normalizeImpl: undefined, // when present in overrides, replaces String.prototype.normalize
     elements: {}, // DOM elements the disclaimer gate can find, by id
     storage: memoryStorage(),
+    performanceImpl: fakeClock(0, 0),
     ...overrides,
   };
   const body = { innerHTML: PAGE };
@@ -164,6 +166,7 @@ const loadModule = (overrides = {}) => {
     WebAssembly: options.webAssemblyImpl,
     Uint8Array,
     localStorage: options.storage,
+    performance: options.performanceImpl,
     // Run callbacks synchronously so assertions see the post-fade state.
     requestAnimationFrame: (fn) => fn(),
     setTimeout: (fn) => fn(),
@@ -379,7 +382,8 @@ test("the compiled application ships the inlined barrage", () => {
 test("the beta disclaimer shows on first boot and acceptance is stored for the running version", () => {
   const { calls, elements, attributes } = disclaimerDom();
   const storage = memoryStorage();
-  loadModule({ elements, storage, cryptoImpl: proofCrypto([7]) });
+  // 12.7 s from reveal to "I Understand": tenths digit 7.
+  loadModule({ elements, storage, performanceImpl: fakeClock(1000, 13700) });
   assert.equal(elements["beta-disclaimer"].hidden, false, "the overlay was not revealed");
   assert.ok(calls.shown, "the fade-in class was not applied");
   assert.ok(calls.focused, "the accept button was not focused");
@@ -396,9 +400,9 @@ test("the beta disclaimer shows on first boot and acceptance is stored for the r
   assert.equal(attributes["aria-labelledby"], "beta-disclaimer-confirm-title", "the dialog is not named by the second step");
   assert.equal(attributes["aria-describedby"], "beta-disclaimer-confirm-text", "the dialog is not described by the second step");
   assert.equal(typeof calls.onConfirm, "function", "no confirm handler was registered");
-  // The second acknowledgement waits for proof of reading: a digit drawn
-  // from the CSPRNG, shown as a word, typed back as the digit.
-  assert.equal(elements["beta-disclaimer-proof-word"].textContent, "seven", "the proof word is not the drawn digit");
+  // The second acknowledgement waits for proof of reading: a digit taken
+  // from the reading time, shown as a word, typed back as the digit.
+  assert.equal(elements["beta-disclaimer-proof-word"].textContent, "seven", "the proof word is not the timed digit");
   const confirm = elements["beta-disclaimer-confirm"];
   assert.equal(confirm.disabled, true, "the second step's button was enabled before the proof");
   calls.onConfirm();
@@ -411,7 +415,7 @@ test("the beta disclaimer shows on first boot and acceptance is stored for the r
     assert.equal(storage.dump()["entropylab-disclaimer-accepted"], undefined, `${JSON.stringify(wrong)} passed the gate`);
   }
   calls.type(" 7 ");
-  assert.equal(confirm.disabled, false, "the button stayed disabled after typing the drawn digit");
+  assert.equal(confirm.disabled, false, "the button stayed disabled after typing the timed digit");
   calls.onConfirm();
   assert.equal(storage.dump()["entropylab-disclaimer-accepted"], "{{VERSION}}");
   assert.ok(calls.dismissed, "the fade-out class was not applied");
@@ -465,16 +469,41 @@ test("the compiled disclaimer acceptance is keyed to the package version", () =>
   );
 });
 
-// The proof digit is uniform over 0-9: bytes 250-255 would favour 0-5 under a
-// plain modulo, so they are drawn again instead.
-test("the proof digit rejects the biased top of the byte range and shows the next draw", () => {
+// The proof digit comes from how long the first step was open, in tenths of
+// a second, mod 10 — never from the CSPRNG. Tenths rather than milliseconds
+// so a clock coarsened to 100 ms (Firefox resistFingerprinting, Tor Browser)
+// still yields every digit instead of always 0.
+test("the proof digit is the tenths digit of the first step's reading time and draws no randomness", () => {
+  for (const [shown, accepted, expected] of [
+    [500, 500, 0], // pressed instantly
+    [500, 599.9, 0], // still inside the first tenth
+    [500, 600, 1],
+    [0, 4300, 3],
+    [250, 9250, 0], // 9.0 s wraps to 0
+    [0, 100000, 0], // a 100 ms-clamped clock reads exact hundreds
+    [0, 100400, 4],
+  ]) {
+    const { calls, elements } = disclaimerDom();
+    loadModule({ elements, cryptoImpl: noProofDrawCrypto(), performanceImpl: fakeClock(shown, accepted) });
+    calls.onClick();
+    assert.equal(
+      elements["beta-disclaimer-proof-word"].textContent,
+      DIGIT_WORDS[expected],
+      `${accepted - shown} ms did not give ${expected}`,
+    );
+    calls.type(String((expected + 1) % 10));
+    assert.equal(elements["beta-disclaimer-confirm"].disabled, true, "a digit other than the timed one was accepted");
+    calls.type(String(expected));
+    assert.equal(elements["beta-disclaimer-confirm"].disabled, false, "the timed digit did not enable the button");
+  }
+});
+
+// Before "I Understand" there is no digit yet, so nothing typed can pass.
+test("no proof is accepted before the first step is acknowledged", () => {
   const { calls, elements } = disclaimerDom();
-  const storage = memoryStorage();
-  loadModule({ elements, storage, cryptoImpl: proofCrypto([250, 255, 4]) });
-  assert.equal(elements["beta-disclaimer-proof-word"].textContent, "four", "a biased byte was used for the proof digit");
-  calls.onClick();
-  calls.type("0");
-  assert.equal(elements["beta-disclaimer-confirm"].disabled, true, "250 % 10 was accepted");
-  calls.type("4");
-  assert.equal(elements["beta-disclaimer-confirm"].disabled, false, "the redrawn digit did not enable the button");
+  loadModule({ elements, performanceImpl: fakeClock(0, 0) });
+  for (const value of ["", "0", "undefined", "null", "NaN"]) {
+    calls.type(value);
+    assert.equal(elements["beta-disclaimer-confirm"].disabled, true, `${JSON.stringify(value)} enabled the button early`);
+  }
 });

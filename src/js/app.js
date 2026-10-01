@@ -16071,8 +16071,11 @@ function hodlVanityEstimate() {
       ? `At about ${hodlVanityFormatCount(Math.round(rate))} candidates/s${hodlVanityRunning ? "" : ` on ${Math.max(1, Math.min(64, Number(document.getElementById("vanity-workers")?.value) || 1))} worker${Number(document.getElementById("vanity-workers")?.value) === 1 ? "" : "s"}`}, expect a match roughly every ${hodlVanityFormatDuration(Number(work) / rate)}.`
       : hodlVanityBenchPending ? "Measuring this device…" : method === "derivation" ? "Derivation grind: each candidate is a few BIP32 child steps." : "Passphrase grind: each candidate is a full BIP39 seed stretch.";
     estimateEl.textContent = `Prefix “${prefix}” matches about 1 in ${hodlVanityFormatCount(work)} ${hodlVanityScript().label} candidates on average. ${timing}`;
+    estimateEl.hidden = false;
   } catch {
+    // A grey note with nothing in it would still draw its box.
     estimateEl.textContent = "";
+    estimateEl.hidden = true;
   }
 }
 function hodlVanityStopFirstChanged() {
@@ -16218,7 +16221,7 @@ function hodlRenderVanityOut() {
     return;
   }
   let run = hodlVanityRun, derivation = run.method === "derivation", meta = VANITY_SCRIPTS[run.script] ?? VANITY_SCRIPTS.p2wpkh, label = hodlEscapeHtml(run.sourceLabel);
-  let copyMarkup = (attribute, index, title) => `<button type="button" class="copy-button" ${attribute}="${index}" aria-label="${title}" title="${title}">${hodlClipboardIconMarkup()}</button><span class="vanity-copied muted" aria-live="polite"></span>`;
+  let copyMarkup = (attribute, index, title) => `<button type="button" class="copy-button boxed-copy-button" ${attribute}="${index}" aria-label="${title}" title="${title}">${hodlClipboardIconMarkup()}</button><span class="vanity-copied muted" aria-live="polite"></span>`;
   let keyCell = (match) => `<td class="vanity-key-cell">${hodlVanityKeyMarkup(hodlVanityMatchFingerprint(match, run))}</td>`;
   let applyMarkup = (match, index) => run.sourceKind === "bip85"
     ? `<span class="vanity-saved">${hodlT("BIP-85 child unchanged")}</span>`
@@ -16235,7 +16238,7 @@ function hodlRenderVanityOut() {
       return `<tr><th scope="row">${index + 1}</th><td class="mono">${match.index}${run.accountHardened ? "'" : ""}</td><td class="mono">${hodlEscapeHtml(hodlDisplayDerivationPath(match.path))}</td>${address}${keyCell(match)}<td class="vanity-apply-cell">${applyMarkup(match, index)}</td></tr>`;
     }
     let secret = hodlVanityReveal
-      ? `<span class="mono vanity-pass-text">${hodlEscapeHtml(match.passphrase)}</span>`
+      ? `<span class="mono vanity-pass-text table-private-field-value">${hodlEscapeHtml(match.passphrase)}</span>`
       : `<span class="mono vanity-pass-text" aria-hidden="true">${hodlEscapeHtml("•".repeat(12))}</span><span class="sr-only">${hodlT("Passphrase hidden — turn on the Private data switch above to reveal")}</span>`;
     return `<tr><th scope="row">${index + 1}</th><td class="mono">${match.counter.toString()}</td><td><span class="vanity-secret">${secret}${copyMarkup("data-vanity-copy", index, "Copy passphrase")}</span></td>${address}${keyCell(match)}<td class="vanity-apply-cell">${applyMarkup(match, index)}</td></tr>`;
   }).join("");

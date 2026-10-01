@@ -446,7 +446,7 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 /* The theme toggle and the boxed copy buttons (seed phrase rows, the address
    QR popup) share this button chrome; none of them is a keyboard toggle. */
 .seed-keyboard-toggle, .theme-toggle, .copy-button.boxed-copy-button {
-  display: grid; place-items: center; flex: 0 0 44px; width: 44px; min-height: 44px; height: auto; padding: 5px;
+  display: grid; place-items: center; flex: 0 0 var(--box-size, 44px); width: var(--box-size, 44px); min-height: var(--box-size, 44px); height: auto; padding: 5px;
   border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--muted);
 }
 .seed-keyboard-toggle[aria-expanded="true"] { color: var(--selection-accent); border-color: var(--selection-accent); }
@@ -1681,7 +1681,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .vanity-prefix-plus { flex: 0 0 auto; color: var(--muted); font-size: 14px; }
 .vanity-prefix-row input:not([type="radio"]):not([type="checkbox"]) { width: 100%; min-width: 0; margin-top: 0; text-align: center; }
 .vanity-secret { display: inline-flex; align-items: center; gap: 6px; }
-.vanity-secret .copy-button { flex: 0 0 auto; }
+/* In the match table the copy box takes the Update Key button's height, so
+   every control in the row sits on one line. */
+.vanity-secret { --box-size: 36px; }
 /* The selected key, restated where the grind reads from it with the key
    view's own summary block (.key-summary), then its starting passphrase
    verbatim. */
@@ -1693,11 +1695,13 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 #vanity-out > .wallet-data-actions { margin-bottom: var(--space-component); }
 #vanity-out tbody :is(td, th) { vertical-align: middle; }
 .vanity-pass-text { display: inline-block; width: var(--vanity-pass-width, 12ch); white-space: nowrap; }
-/* Scanning breaks: the formula, the found-passphrase note, the stop switch,
-   and the closing action row each open on the wider seam. The formula's gap
-   is its label's own margin, since the grid around it does not collapse. */
+/* Scanning breaks: the formula, the stop switch, and the closing action row
+   each open on the wider seam. The formula's gap is its label's own margin,
+   since the grid around it does not collapse. Mode, after the two opening
+   notes, takes a step more than a label's usual gap. */
 #vanity-prefix-label,
-#vanity-card > :is(.edge-note.is-public, .vanity-first-row, .current-item-actions) { margin-top: var(--space-major); }
+#vanity-card > :is(.vanity-first-row, .current-item-actions) { margin-top: var(--space-major); }
+#vanity-method-label { margin-top: var(--space-intro); }
 .vanity-key { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; white-space: nowrap; }
 .vanity-key code { font-family: var(--mono); }
 .vanity-apply { min-height: 36px; padding: 4px 12px; font-size: 12px; }

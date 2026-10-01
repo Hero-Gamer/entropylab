@@ -158,7 +158,10 @@
 // spells out (shown as a word: "seven"), the proof that the list above was
 // read. The digit is not random: it is how long the first step was open, in
 // tenths of a second, mod 10 — a page that exists to guard entropy draws none
-// for a reading check. The markup
+// for a reading check. Each digit has its own whole sentence in the markup,
+// hidden, and the gate only shows one: the i18n sweep and the catalog
+// extractor see all ten, so the sentence is translated whatever the digit
+// (a word written in here would stay English). The markup
 // ships in the static template outside #btc-calc so application boot (which
 // replaces that node's contents) cannot wipe it, and it starts hidden so a
 // host without JavaScript never sees an overlay it cannot dismiss — this
@@ -176,8 +179,8 @@
   const stepTwo = document.getElementById("beta-disclaimer-step-2");
   const confirm = document.getElementById("beta-disclaimer-confirm");
   const proof = document.getElementById("beta-disclaimer-proof");
-  const proofWord = document.getElementById("beta-disclaimer-proof-word");
-  if (!overlay || !accept || !stepOne || !stepTwo || !confirm || !proof || !proofWord) return;
+  const proofTexts = Array.from({ length: 10 }, (_, n) => document.getElementById(`beta-disclaimer-proof-text-${n}`));
+  if (!overlay || !accept || !stepOne || !stepTwo || !confirm || !proof || proofTexts.includes(null)) return;
   const KEY = "entropylab-disclaimer-accepted";
   const VERSION = "{{VERSION}}";
   let accepted = false;
@@ -224,7 +227,9 @@
     // Tenths, not milliseconds: a clock coarsened to 100 ms (Firefox
     // resistFingerprinting, Tor Browser) would otherwise always give 0.
     digit = Math.floor((performance.now() - shownAt) / 100) % 10;
-    proofWord.textContent = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"][digit];
+    proofTexts.forEach((text, n) => {
+      text.hidden = n !== digit;
+    });
     syncProof();
     stepOne.hidden = true;
     stepTwo.hidden = false;

@@ -16739,7 +16739,7 @@ function hodlApplyTheme(mode) {
 // for a wallet tool. Re-hiding it on a later visit belongs to the inline head
 // script, which runs before first paint; boot is far too late to avoid a
 // flash, so this only has to handle the click.
-var hodlBetaBannerStorageKey = "entropylab-beta-banner-dismissed";
+var hodlBetaBannerStorageKey = "entropylab-disclaimer-banner-dismissed";
 // The introduction is put away for good, remembered the same way the banner
 // is and keyed to this build, so a new release introduces itself once more.
 // Storage the browser refuses simply means it returns. Re-hiding it on a

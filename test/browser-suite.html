@@ -403,10 +403,12 @@
     const select = document.getElementById("locale-select");
     assert(select, "Locale select is missing");
     const pitchItem = document.querySelector(".pitch-list li");
-    const betaBanner = document.querySelector(".beta-warning-text");
+    // A rich block whose copy is settled: the online banner (the beta banner's
+    // wording is still moving, so its catalog entry can lag the source).
+    const richBanner = document.querySelector(".online-warning-text");
     const download = document.querySelector(".download-html");
     const modeOption = document.querySelector("#key-mode-select option");
-    assert(pitchItem && betaBanner && download && modeOption, "Fixture elements for the locale switch are missing");
+    assert(pitchItem && richBanner && download && modeOption, "Fixture elements for the locale switch are missing");
     equal(pitchItem.textContent, "Save this air-gapped bitcoin calculator to a removable drive and open it on a computer that never goes online.", "Pitch starts in English");
     select.value = "es";
     select.dispatchEvent(new Event("change", { bubbles: true }));
@@ -414,7 +416,7 @@
     // Static shell text, a rich (markup-bearing) block, an aria-label, and a
     // t()-rendered dynamic label all follow the switch.
     equal(pitchItem.textContent, "Guarda esta calculadora de bitcoin aislada de internet en una unidad extraíble y ábrela en una computadora que nunca se conecte a internet.", "Static shell text did not translate");
-    assert(betaBanner.querySelector("strong")?.textContent === "Software en beta", "Rich banner did not translate: " + betaBanner.textContent);
+    assert(richBanner.querySelector("strong")?.textContent === "Versión en línea", "Rich banner did not translate: " + richBanner.textContent);
     equal(download.getAttribute("aria-label"), "Descargar EntropyLab", "aria-label did not translate");
     equal(modeOption.textContent, "Tiradas de dados", "The method dropdown did not re-render in Spanish");
     // Switching back restores the English originals, not a stale translation.
@@ -3084,7 +3086,7 @@
       // The choice is remembered for this build, so a reload does not bring
       // the banner back until the next release.
       assert(
-        localStorage.getItem("entropylab-beta-banner-dismissed") === currentVersion.replace(/^v/, ""),
+        localStorage.getItem("entropylab-disclaimer-banner-dismissed") === currentVersion.replace(/^v/, ""),
         "Dismissal was not persisted against this build's version",
       );
       // A visit after a dismissal never paints the banner: the inline head
@@ -3095,7 +3097,7 @@
       assert(getComputedStyle(banner).display === "none", "The pre-paint attribute did not hide the banner");
     } finally {
       delete document.documentElement.dataset.betaBannerDismissed;
-      localStorage.removeItem("entropylab-beta-banner-dismissed");
+      localStorage.removeItem("entropylab-disclaimer-banner-dismissed");
       banner.hidden = false;
     }
   });

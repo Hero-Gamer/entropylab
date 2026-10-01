@@ -37,6 +37,22 @@ const workingCrypto = () => {
   };
 };
 
+// The startup checks draw longer arrays; the disclaimer's proof digit draws a
+// single byte, which these tests feed from a queue.
+const proofCrypto = (bytes) => {
+  const base = workingCrypto();
+  return {
+    getRandomValues(array) {
+      if (array.length === 1) {
+        array[0] = bytes.shift();
+        return array;
+      }
+      return base.getRandomValues(array);
+    },
+  };
+};
+const DIGIT_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+
 // A minimal in-memory localStorage stand-in for the disclaimer gate tests.
 const memoryStorage = (initial = {}) => ({
   getItem: (key) => (key in initial ? initial[key] : null),
@@ -101,6 +117,7 @@ const disclaimerDom = () => {
     proof.value = value;
     calls.onProofInput?.();
   };
+  const word = { textContent: "three" };
   const stepOne = { hidden: false }, stepTwo = { hidden: true };
   return {
     calls,
@@ -112,6 +129,7 @@ const disclaimerDom = () => {
       "beta-disclaimer-step-2": stepTwo,
       "beta-disclaimer-confirm": confirm,
       "beta-disclaimer-proof": proof,
+      "beta-disclaimer-proof-word": word,
     },
   };
 };
@@ -361,7 +379,7 @@ test("the compiled application ships the inlined barrage", () => {
 test("the beta disclaimer shows on first boot and acceptance is stored for the running version", () => {
   const { calls, elements, attributes } = disclaimerDom();
   const storage = memoryStorage();
-  loadModule({ elements, storage });
+  loadModule({ elements, storage, cryptoImpl: proofCrypto([7]) });
   assert.equal(elements["beta-disclaimer"].hidden, false, "the overlay was not revealed");
   assert.ok(calls.shown, "the fade-in class was not applied");
   assert.ok(calls.focused, "the accept button was not focused");
@@ -369,7 +387,7 @@ test("the beta disclaimer shows on first boot and acceptance is stored for the r
   assert.equal(typeof calls.onClick, "function", "no accept handler was registered");
   calls.onClick();
   // Step one accepted: step two shows, and nothing is stored or dismissed yet.
-  assert.equal(storage.dump()["entropylab-beta-accepted"], undefined, "the first acknowledgement stored acceptance");
+  assert.equal(storage.dump()["entropylab-disclaimer-accepted"], undefined, "the first acknowledgement stored acceptance");
   assert.equal(calls.dismissed, false, "the first acknowledgement dismissed the gate");
   assert.equal(calls.removed, 0, "the first acknowledgement removed the gate");
   assert.equal(elements["beta-disclaimer-step-1"].hidden, true, "the first step stayed visible");
@@ -378,29 +396,31 @@ test("the beta disclaimer shows on first boot and acceptance is stored for the r
   assert.equal(attributes["aria-labelledby"], "beta-disclaimer-confirm-title", "the dialog is not named by the second step");
   assert.equal(attributes["aria-describedby"], "beta-disclaimer-confirm-text", "the dialog is not described by the second step");
   assert.equal(typeof calls.onConfirm, "function", "no confirm handler was registered");
-  // The second acknowledgement waits for proof of reading: the number three.
+  // The second acknowledgement waits for proof of reading: a digit drawn
+  // from the CSPRNG, shown as a word, typed back as the digit.
+  assert.equal(elements["beta-disclaimer-proof-word"].textContent, "seven", "the proof word is not the drawn digit");
   const confirm = elements["beta-disclaimer-confirm"];
   assert.equal(confirm.disabled, true, "the second step's button was enabled before the proof");
   calls.onConfirm();
-  assert.equal(storage.dump()["entropylab-beta-accepted"], undefined, "an unproven click stored acceptance");
+  assert.equal(storage.dump()["entropylab-disclaimer-accepted"], undefined, "an unproven click stored acceptance");
   assert.equal(calls.dismissed, false, "an unproven click dismissed the gate");
-  for (const wrong of ["4", "three", "33", "0"]) {
+  for (const wrong of ["3", "seven", "77", "0", "8"]) {
     calls.type(wrong);
     assert.equal(confirm.disabled, true, `the button enabled for ${JSON.stringify(wrong)}`);
     calls.onConfirm();
-    assert.equal(storage.dump()["entropylab-beta-accepted"], undefined, `${JSON.stringify(wrong)} passed the gate`);
+    assert.equal(storage.dump()["entropylab-disclaimer-accepted"], undefined, `${JSON.stringify(wrong)} passed the gate`);
   }
-  calls.type(" 3 ");
-  assert.equal(confirm.disabled, false, "the button stayed disabled after typing 3");
+  calls.type(" 7 ");
+  assert.equal(confirm.disabled, false, "the button stayed disabled after typing the drawn digit");
   calls.onConfirm();
-  assert.equal(storage.dump()["entropylab-beta-accepted"], "{{VERSION}}");
+  assert.equal(storage.dump()["entropylab-disclaimer-accepted"], "{{VERSION}}");
   assert.ok(calls.dismissed, "the fade-out class was not applied");
   assert.equal(calls.removed, 1, "the overlay was not removed after the fade");
 });
 
 test("a stored acceptance for the running version skips the beta disclaimer", () => {
   const { calls, elements } = disclaimerDom();
-  loadModule({ elements, storage: memoryStorage({ "entropylab-beta-accepted": "{{VERSION}}" }) });
+  loadModule({ elements, storage: memoryStorage({ "entropylab-disclaimer-accepted": "{{VERSION}}" }) });
   assert.equal(elements["beta-disclaimer"].hidden, true, "the overlay was revealed");
   assert.equal(calls.shown, false);
   assert.equal(calls.removed, 1, "the accepted overlay was not removed outright");
@@ -408,7 +428,7 @@ test("a stored acceptance for the running version skips the beta disclaimer", ()
 
 test("an acceptance stored under another version re-asks", () => {
   const { calls, elements } = disclaimerDom();
-  loadModule({ elements, storage: memoryStorage({ "entropylab-beta-accepted": "0.0.0" }) });
+  loadModule({ elements, storage: memoryStorage({ "entropylab-disclaimer-accepted": "0.0.0" }) });
   assert.equal(elements["beta-disclaimer"].hidden, false, "the overlay stayed hidden");
   assert.ok(calls.shown, "the disclaimer did not re-ask");
 });
@@ -428,7 +448,7 @@ test("unavailable storage fails open: the disclaimer still shows and dismissal s
   assert.ok(calls.shown, "the disclaimer did not show");
   calls.onClick();
   assert.equal(calls.dismissed, false, "the first acknowledgement dismissed the gate");
-  calls.type("3");
+  calls.type(String(DIGIT_WORDS.indexOf(elements["beta-disclaimer-proof-word"].textContent)));
   calls.onConfirm();
   assert.ok(calls.dismissed, "the fade-out class was not applied");
   assert.equal(calls.removed, 1, "the overlay was not removed after the fade");
@@ -438,9 +458,23 @@ test("the compiled disclaimer acceptance is keyed to the package version", () =>
   ensureBuild();
   const compiled = read("entropylab.html");
   const { version } = JSON.parse(read("package.json"));
-  assert.match(compiled, /const KEY = "entropylab-beta-accepted";/);
+  assert.match(compiled, /const KEY = "entropylab-disclaimer-accepted";/);
   assert.ok(
     compiled.includes(`const VERSION = "${version}";`),
     "the compiled gate does not embed the package version",
   );
+});
+
+// The proof digit is uniform over 0-9: bytes 250-255 would favour 0-5 under a
+// plain modulo, so they are drawn again instead.
+test("the proof digit rejects the biased top of the byte range and shows the next draw", () => {
+  const { calls, elements } = disclaimerDom();
+  const storage = memoryStorage();
+  loadModule({ elements, storage, cryptoImpl: proofCrypto([250, 255, 4]) });
+  assert.equal(elements["beta-disclaimer-proof-word"].textContent, "four", "a biased byte was used for the proof digit");
+  calls.onClick();
+  calls.type("0");
+  assert.equal(elements["beta-disclaimer-confirm"].disabled, true, "250 % 10 was accepted");
+  calls.type("4");
+  assert.equal(elements["beta-disclaimer-confirm"].disabled, false, "the redrawn digit did not enable the button");
 });

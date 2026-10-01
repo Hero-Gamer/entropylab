@@ -155,8 +155,10 @@
 // disk, clipboard copies, what a restart does not erase), and only that
 // second acknowledgement is stored and lets the user into the page. That
 // second button stays disabled until the reader types the digit the step
-// spells out (a fresh random digit each time, shown as a word: "seven"), the
-// proof that the list above was read. The markup
+// spells out (shown as a word: "seven"), the proof that the list above was
+// read. The digit is not random: it is how long the first step was open, in
+// tenths of a second, mod 10 — a page that exists to guard entropy draws none
+// for a reading check. The markup
 // ships in the static template outside #btc-calc so application boot (which
 // replaces that node's contents) cannot wipe it, and it starts hidden so a
 // host without JavaScript never sees an overlay it cannot dismiss — this
@@ -187,6 +189,7 @@
     return;
   }
   overlay.hidden = false;
+  const shownAt = performance.now();
   // Two frames: let the overlay paint once at opacity 0 so the is-visible
   // class below actually runs the fade-in transition.
   requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -205,13 +208,9 @@
     if (document.activeElement === proof && !confirm.disabled) confirm.focus();
     else proof.focus();
   });
-  // A digit from the CSPRNG the checks above vouched for; bytes 250-255
-  // are drawn again so every digit is equally likely.
-  const byte = new Uint8Array(1);
-  do crypto.getRandomValues(byte); while (byte[0] >= 250);
-  const digit = byte[0] % 10;
-  proofWord.textContent = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"][digit];
-  const proven = () => String(proof.value).trim() === String(digit);
+  // Set by "I Understand"; until then nothing typed can match it.
+  let digit = null;
+  const proven = () => digit !== null && String(proof.value).trim() === String(digit);
   const syncProof = () => {
     confirm.disabled = !proven();
     confirm.setAttribute("aria-disabled", String(confirm.disabled));
@@ -222,6 +221,11 @@
     if (event.key === "Enter" && proven()) confirm.click();
   });
   accept.addEventListener("click", () => {
+    // Tenths, not milliseconds: a clock coarsened to 100 ms (Firefox
+    // resistFingerprinting, Tor Browser) would otherwise always give 0.
+    digit = Math.floor((performance.now() - shownAt) / 100) % 10;
+    proofWord.textContent = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"][digit];
+    syncProof();
     stepOne.hidden = true;
     stepTwo.hidden = false;
     overlay.setAttribute("aria-labelledby", "beta-disclaimer-confirm-title");

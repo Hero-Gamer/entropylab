@@ -23,6 +23,7 @@
 
 import { renderSVG as uqrRenderSvg } from "uqr";
 import { trapModalFocus } from "./modal-focus.js";
+import { copyText } from "./clipboard.js";
 
 const NETWORK_TAG_ID = "network-status";
 
@@ -74,10 +75,11 @@ const openOverlay = (url, label) => {
     </div>`;
   const copyBtn = card.querySelector("#qr-ref-copy");
   copyBtn.addEventListener("click", () => {
-    navigator.clipboard?.writeText(url).then(() => {
+    copyText(url, { host: overlayEl }).then((copied) => {
+      if (!copied) return;
       copyBtn.textContent = "Copied";
       setTimeout(() => { copyBtn.textContent = "Copy URL"; }, 1500);
-    }).catch(() => {});
+    });
   });
   card.querySelector("#qr-ref-close").addEventListener("click", closeOverlay);
   overlayEl.hidden = false;

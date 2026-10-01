@@ -113,6 +113,7 @@ import {
   wipeJournal,
 } from "./journal.js";
 import { keyVaultIdentity, parseKeyVault, serializeKeyVault } from "./keymanager.js";
+import { copyText } from "./clipboard.js";
 const hodlBip39Wordlist = Object.freeze(bip39English);
 function hodlNote(key, vars) {
   return vars == null ? { key } : { key, vars };
@@ -1037,22 +1038,7 @@ function hodlInitDescriptorCopy() {
         if (note.isConnected) note.textContent = "";
       }, 1600);
     };
-    let fallback = () => {
-      let field = document.createElement("textarea");
-      field.value = value;
-      field.setAttribute("readonly", "");
-      field.style.position = "fixed";
-      field.style.left = "-9999px";
-      document.body.append(field);
-      field.select();
-      try {
-        if (document.execCommand("copy")) done();
-      } finally {
-        field.remove();
-      }
-    };
-    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(value).then(done).catch(fallback);
-    else fallback();
+    copyText(value).then((copied) => { if (copied) done(); });
   });
 }
 // A long value the user is meant to move somewhere else — a descriptor, an
@@ -2016,9 +2002,9 @@ function hodlCopyMsigCoreImportDescriptors() {
   if (!json) return;
   let button = document.getElementById("msig-copy-importdescriptors");
   let label = hodlTText("Copy Core importdescriptors");
-  let done = () => {
+  let done = (copied) => {
     json = "";
-    if (!button) return;
+    if (!copied || !button) return;
     button.classList.add("is-copied");
     button.textContent = hodlTText("Copied");
     clearTimeout(button.hodlCopiedTimer);
@@ -2028,24 +2014,7 @@ function hodlCopyMsigCoreImportDescriptors() {
       button.textContent = label;
     }, 1600);
   };
-  let fallback = () => {
-    let field = document.createElement("textarea");
-    field.value = json;
-    field.setAttribute("readonly", "");
-    field.style.position = "fixed";
-    field.style.left = "-9999px";
-    document.body.appendChild(field);
-    field.select();
-    try {
-      document.execCommand("copy");
-      done();
-    } finally {
-      field.value = "";
-      field.remove();
-    }
-  };
-  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(json).then(done).catch(fallback);
-  else fallback();
+  copyText(json).then(done);
 }
 function hodlDownloadMsigCoreImportDescriptors() {
   let json = "";
@@ -2083,21 +2052,7 @@ function hodlCopyMsigBip388Policy() {
     return;
   }
   if (!text) return;
-  let done = () => { text = ""; };
-  let fallback = () => {
-    let field = document.createElement("textarea");
-    field.value = text;
-    field.setAttribute("readonly", "");
-    field.style.position = "fixed";
-    field.style.left = "-9999px";
-    document.body.appendChild(field);
-    field.select();
-    try { document.execCommand("copy"); } catch {}
-    field.remove();
-    done();
-  };
-  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(text).then(done).catch(fallback);
-  else fallback();
+  copyText(text).then(() => { text = ""; });
 }
 function hodlDownloadMsigBip388Policy() {
   let text = "";
@@ -5784,23 +5739,7 @@ function hodlCopySeedPhraseButton(button) {
   let done = () => {
     hodlShowSeedPhraseCopied(button);
   };
-  let fallback = () => {
-    let field = document.createElement("textarea");
-    field.value = phrase;
-    field.setAttribute("readonly", "");
-    field.style.position = "fixed";
-    field.style.left = "-9999px";
-    document.body.appendChild(field);
-    field.select();
-    try {
-      document.execCommand("copy");
-      done();
-    } finally {
-      field.remove();
-    }
-  };
-  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(phrase).then(done).catch(fallback);
-  else fallback();
+  copyText(phrase).then((copied) => { if (copied) done(); });
 }
 function hodlRenderDiceWordGrid(container, words, targetWords = hodlTargetWordCount, provisional = false) {
   if (!container) return;
@@ -10746,23 +10685,7 @@ function hodlCopyBip85Child(button) {
       if (note?.isConnected) note.textContent = "";
     }, 1600);
   };
-  let fallback = () => {
-    let field = document.createElement("textarea");
-    field.value = phrase;
-    field.setAttribute("readonly", "");
-    field.style.position = "fixed";
-    field.style.left = "-9999px";
-    document.body.appendChild(field);
-    field.select();
-    try {
-      document.execCommand("copy");
-      done();
-    } finally {
-      field.remove();
-    }
-  };
-  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(phrase).then(done).catch(fallback);
-  else fallback();
+  copyText(phrase).then((copied) => { if (copied) done(); });
 }
 function hodlRenderBip85Out() {
   let box = document.getElementById("bip85-out");
@@ -11695,7 +11618,7 @@ function hodlInitSp() {
     if (!button) return;
     let node = document.getElementById(button.dataset.spCopy);
     if (!node) return;
-    navigator.clipboard?.writeText(node.textContent || "").catch(() => {});
+    copyText(node.textContent || "");
   });
   hodlSpSetMode("receive");
 }
@@ -15389,23 +15312,7 @@ function hodlJournalCopy(button, label) {
       if (button.isConnected) button.textContent = label;
     }, 1600);
   };
-  let fallback = () => {
-    let field = document.createElement("textarea");
-    field.value = phrase;
-    field.setAttribute("readonly", "");
-    field.style.position = "fixed";
-    field.style.left = "-9999px";
-    document.body.appendChild(field);
-    field.select();
-    try {
-      document.execCommand("copy");
-      done();
-    } finally {
-      field.remove();
-    }
-  };
-  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(phrase).then(done).catch(fallback);
-  else fallback();
+  copyText(phrase).then((copied) => { if (copied) done(); });
 }
 function hodlJournalClearFields() {
   for (let id of ["journal-create-password", "journal-create-confirm", "journal-open-password", "journal-input", "journal-phrase", "journal-label", "journal-entry-notes", "journal-search"]) {
@@ -16272,23 +16179,7 @@ function hodlCopyVanityValue(button, value, label) {
       if (note) note.textContent = "";
     }, 1600);
   };
-  let fallback = () => {
-    let field = document.createElement("textarea");
-    field.value = value;
-    field.setAttribute("readonly", "");
-    field.style.position = "fixed";
-    field.style.left = "-9999px";
-    document.body.appendChild(field);
-    field.select();
-    try {
-      document.execCommand("copy");
-      done();
-    } finally {
-      field.remove();
-    }
-  };
-  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(value).then(done).catch(fallback);
-  else fallback();
+  copyText(value).then((copied) => { if (copied) done(); });
 }
 // The master fingerprint the key will carry once a match is applied: a new
 // passphrase is a new seed, so each passphrase-grind row is its own

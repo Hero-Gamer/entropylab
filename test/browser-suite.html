@@ -2216,8 +2216,19 @@
     equal(body.value, `${frozenTimestamp}kitchen table dice`, "typing the first note should keep the visible timestamp in place");
     assert(!notesCopy.disabled && notesCopy.dataset.phrase === body.value, "the copy button should hold the current readable page once a note exists");
     body.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
-    notesCopy.click();
-    await until(() => notesCopy.classList.contains("is-copied"), "the notepad copy confirmation check");
+    // A copy confirms only once the clipboard has taken the text, and a
+    // headless browser's clipboard refuses a scripted click, so the clipboard
+    // is stood in for here, the way the QR overlay test does.
+    let copiedNote = null;
+    const clipboardWrite = navigator.clipboard.writeText;
+    navigator.clipboard.writeText = (value) => { copiedNote = value; return Promise.resolve(); };
+    try {
+      notesCopy.click();
+      await until(() => notesCopy.classList.contains("is-copied"), "the notepad copy confirmation check");
+    } finally {
+      navigator.clipboard.writeText = clipboardWrite;
+    }
+    equal(copiedNote, body.value, "the notepad copy put a different text on the clipboard");
     const okReference = document.createElement("span");
     okReference.style.color = "var(--ok-bright)";
     document.body.appendChild(okReference);
@@ -2482,8 +2493,18 @@
     equal(getComputedStyle(logOut).backgroundColor, "rgb(0, 0, 0)", "the log output should be black in dark mode");
     if (previousRootTheme === null) document.documentElement.removeAttribute("data-theme");
     else document.documentElement.setAttribute("data-theme", previousRootTheme);
-    logCopy.click();
-    await until(() => logCopy.classList.contains("is-copied"), "the session-log copy confirmation check");
+    // A copy confirms only once the clipboard has taken the text (see the
+    // notepad copy above), so the clipboard is stood in for here too.
+    let copiedLog = null;
+    const logClipboardWrite = navigator.clipboard.writeText;
+    navigator.clipboard.writeText = (value) => { copiedLog = value; return Promise.resolve(); };
+    try {
+      logCopy.click();
+      await until(() => logCopy.classList.contains("is-copied"), "the session-log copy confirmation check");
+    } finally {
+      navigator.clipboard.writeText = logClipboardWrite;
+    }
+    equal(copiedLog, logCopy.dataset.phrase, "the log copy put a different text on the clipboard");
     const logAfterCopy = logOut.textContent;
     assert(/journal\tcopy  session-log/.test(logAfterCopy), "the log should record its own copy control");
     equal(logCopy.dataset.phrase, logAfterCopy, "the log clipboard control should copy the complete visible output, including the copy action");

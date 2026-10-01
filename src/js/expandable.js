@@ -1,4 +1,5 @@
 import { trapModalFocus } from "./modal-focus.js";
+import { copyText } from "./clipboard.js";
 // Expandable cells: one standard truncation for long text in dense UI tables,
 // with a click-to-expand overlay window for viewing (and, when the cell is
 // editable, editing) the full value.
@@ -129,7 +130,7 @@ export const initExpandable = () => {
   });
   overlay.querySelector("#exp-close").addEventListener("click", close);
   overlay.querySelector("#exp-copy").addEventListener("click", () => {
-    navigator.clipboard?.writeText(text.value).catch(() => {});
+    copyText(text.value, { host: overlay });
   });
   apply.addEventListener("click", () => {
     if (!cell) return;

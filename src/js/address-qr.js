@@ -11,6 +11,7 @@
 
 import { t } from "./i18n.js";
 import { trapModalFocus } from "./modal-focus.js";
+import { copyText } from "./clipboard.js";
 
 // An address or an xpub reads in full; a PSBT export does not, so anything
 // past this length shows head and tail around an ellipsis. The code and the
@@ -106,25 +107,15 @@ export const initAddressQr = (renderQr, icons = {}, { frames = null } = {}) => {
   const copy = () => {
     const value = payload;
     if (!value) return;
-    // Inside the dialog, so focus returns to the copy icon rather than
-    // falling out of the overlay when the helper field is removed.
-    const fallback = () => {
-      const field = document.createElement("textarea");
-      field.value = value;
-      field.setAttribute("readonly", "");
-      field.style.position = "fixed";
-      field.style.left = "-9999px";
-      overlay.append(field);
-      field.select();
-      try {
-        if (document.execCommand("copy")) showCopied();
-      } finally {
-        field.remove();
-        copyButton.focus({ preventScroll: true });
-      }
-    };
-    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(value).then(showCopied, fallback);
-    else fallback();
+    // The fallback field goes inside the dialog, and focus comes back to the
+    // copy button if removing that field let it fall out of the overlay.
+    copyText(value, { host: overlay }).then((copied) => {
+      // The overlay may have closed, or moved on to another address, while
+      // the clipboard answered: confirm only the copy still on show.
+      if (overlay.hidden || payload !== value) return;
+      if (copied) showCopied();
+      if (!overlay.contains(document.activeElement)) copyButton.focus({ preventScroll: true });
+    });
   };
   resetCopied();
 

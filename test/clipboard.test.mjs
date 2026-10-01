@@ -1,0 +1,115 @@
+// One clipboard writer for the whole app (src/js/clipboard.js).
+//
+// Security contract: the text handed in is written to the clipboard and kept
+// nowhere else. The Clipboard API is used when the page has it; when it is
+// missing or refuses, a hidden field carries the text only for the copy and is
+// emptied and removed afterwards, whether the copy worked or threw. The
+// promise reports whether the clipboard really took the text, so a caller
+// never shows "Copied" for a copy that failed. And no other module writes the
+// clipboard itself, so every copy goes through this one path.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+
+const root = new URL("..", import.meta.url).pathname;
+const { copyText } = await import("../src/js/clipboard.js");
+
+// A page with just enough DOM for the fallback: the fields it appends, what
+// execCommand saw selected, and whether each field was emptied and removed.
+const fakePage = ({ clipboard, execResult = true, execThrows = false } = {}) => {
+  const fields = [];
+  const host = { appended: [], append(field) { this.appended.push(field); field.parent = this; } };
+  let selected = null;
+  const document = {
+    body: host,
+    createElement: (tag) => {
+      const field = {
+        tag, value: "", attributes: {}, style: {}, removed: false,
+        setAttribute(name, value) { this.attributes[name] = value; },
+        select() { selected = this.value; },
+        remove() { this.removed = true; this.valueAtRemoval = this.value; },
+      };
+      fields.push(field);
+      return field;
+    },
+    execCommand: (command) => {
+      assert.equal(command, "copy");
+      if (execThrows) throw new Error("denied");
+      return execResult;
+    },
+  };
+  const navigator = clipboard === undefined ? {} : { clipboard };
+  return { document, navigator, fields, host, selected: () => selected };
+};
+const run = async (page, text, options) => {
+  const saved = { document: globalThis.document, navigator: globalThis.navigator };
+  Object.defineProperty(globalThis, "document", { value: page.document, configurable: true, writable: true });
+  Object.defineProperty(globalThis, "navigator", { value: page.navigator, configurable: true, writable: true });
+  try {
+    return await copyText(text, options);
+  } finally {
+    Object.defineProperty(globalThis, "document", { value: saved.document, configurable: true, writable: true });
+    Object.defineProperty(globalThis, "navigator", { value: saved.navigator, configurable: true, writable: true });
+  }
+};
+const PHRASE = "abandon arm moon abandon abandon abandon abandon abandon abandon abandon abandon ability";
+
+test("the Clipboard API writes the text and nothing else is created", async () => {
+  const written = [];
+  const page = fakePage({ clipboard: { writeText: async (text) => { written.push(text); } } });
+  assert.equal(await run(page, PHRASE), true);
+  assert.deepEqual(written, [PHRASE]);
+  assert.equal(page.fields.length, 0, "a fallback field was created although the API worked");
+});
+
+test("a refused Clipboard API falls back to a hidden field that is emptied and removed", async () => {
+  const page = fakePage({ clipboard: { writeText: async () => { throw new Error("NotAllowedError"); } } });
+  assert.equal(await run(page, PHRASE), true);
+  assert.equal(page.fields.length, 1);
+  const [field] = page.fields;
+  assert.equal(page.selected(), PHRASE, "the fallback did not select the text it copies");
+  assert.equal(field.attributes.readonly, "", "the fallback field is editable");
+  assert.ok(field.removed, "the fallback field stayed in the page");
+  assert.equal(field.valueAtRemoval, "", "the fallback field kept the text after the copy");
+});
+
+test("without the Clipboard API the fallback runs and reports a failed copy as failed", async () => {
+  const page = fakePage({ execResult: false });
+  assert.equal(await run(page, PHRASE), false, "a refused execCommand was reported as copied");
+  assert.ok(page.fields[0].removed);
+  assert.equal(page.fields[0].valueAtRemoval, "");
+});
+
+test("a throwing copy still empties and removes the field, and reports failure", async () => {
+  const page = fakePage({ execThrows: true });
+  assert.equal(await run(page, PHRASE), false);
+  assert.ok(page.fields[0].removed, "the field survived a throwing copy");
+  assert.equal(page.fields[0].valueAtRemoval, "", "the field kept the text after a throwing copy");
+});
+
+test("the fallback field goes where the caller asks, so a modal keeps it inside its focus trap", async () => {
+  const page = fakePage();
+  const overlay = { appended: [], append(field) { this.appended.push(field); } };
+  assert.equal(await run(page, PHRASE, { host: overlay }), true);
+  assert.equal(overlay.appended.length, 1, "the field was not placed in the given host");
+  assert.equal(page.host.appended.length, 0, "the field went to the body instead of the host");
+});
+
+test("empty text is not copied", async () => {
+  const written = [];
+  const page = fakePage({ clipboard: { writeText: async (text) => { written.push(text); } } });
+  assert.equal(await run(page, ""), false);
+  assert.deepEqual(written, []);
+  assert.equal(page.fields.length, 0);
+});
+
+test("no module but clipboard.js writes the clipboard", () => {
+  const dir = join(root, "src/js");
+  const offenders = [];
+  for (const name of readdirSync(dir).filter((file) => file.endsWith(".js") && file !== "clipboard.js")) {
+    const source = readFileSync(join(dir, name), "utf8");
+    if (/clipboard\??\.writeText|execCommand\(\s*["']copy["']\s*\)/.test(source)) offenders.push(name);
+  }
+  assert.deepEqual(offenders, [], `clipboard writes outside clipboard.js: ${offenders.join(", ")}`);
+});

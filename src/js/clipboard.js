@@ -8,8 +8,11 @@
 // read-only field carries the text just long enough for execCommand("copy"),
 // then is emptied and removed, whether the copy worked or threw. A modal
 // passes itself as `host` so the field, and the focus select() gives it,
-// stay inside its focus trap.
+// stay inside its focus trap. Removing the focused field drops focus to the
+// body, outside a modal's trap and Escape handler, so focus then goes back
+// to whatever held it before the copy.
 const fallbackCopy = (text, host) => {
+  const focused = document.activeElement;
   const field = document.createElement("textarea");
   field.value = text;
   field.setAttribute("readonly", "");
@@ -24,6 +27,7 @@ const fallbackCopy = (text, host) => {
   } finally {
     field.value = "";
     field.remove();
+    if (focused && focused !== document.activeElement) focused.focus?.({ preventScroll: true });
   }
 };
 

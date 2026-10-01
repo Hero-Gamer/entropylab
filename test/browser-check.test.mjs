@@ -53,6 +53,9 @@ const noProofDrawCrypto = () => {
 // taken when the overlay is revealed, the next when "I Understand" is pressed.
 const fakeClock = (...readings) => ({ now: () => readings.shift() });
 const DIGIT_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+// The digits whose proof sentence the second step is showing.
+const shownProofDigits = (elements) =>
+  DIGIT_WORDS.flatMap((_, digit) => (elements[`beta-disclaimer-proof-text-${digit}`].hidden ? [] : [digit]));
 
 // A minimal in-memory localStorage stand-in for the disclaimer gate tests.
 const memoryStorage = (initial = {}) => ({
@@ -118,7 +121,8 @@ const disclaimerDom = () => {
     proof.value = value;
     calls.onProofInput?.();
   };
-  const word = { textContent: "three" };
+  // One sentence per digit, hidden, as the template ships them.
+  const proofTexts = Object.fromEntries(DIGIT_WORDS.map((_, digit) => [`beta-disclaimer-proof-text-${digit}`, { hidden: true }]));
   const stepOne = { hidden: false }, stepTwo = { hidden: true };
   return {
     calls,
@@ -130,7 +134,7 @@ const disclaimerDom = () => {
       "beta-disclaimer-step-2": stepTwo,
       "beta-disclaimer-confirm": confirm,
       "beta-disclaimer-proof": proof,
-      "beta-disclaimer-proof-word": word,
+      ...proofTexts,
     },
   };
 };
@@ -401,8 +405,8 @@ test("the beta disclaimer shows on first boot and acceptance is stored for the r
   assert.equal(attributes["aria-describedby"], "beta-disclaimer-confirm-text", "the dialog is not described by the second step");
   assert.equal(typeof calls.onConfirm, "function", "no confirm handler was registered");
   // The second acknowledgement waits for proof of reading: a digit taken
-  // from the reading time, shown as a word, typed back as the digit.
-  assert.equal(elements["beta-disclaimer-proof-word"].textContent, "seven", "the proof word is not the timed digit");
+  // from the reading time, named by its own sentence, typed back as the digit.
+  assert.deepEqual(shownProofDigits(elements), [7], "the second step does not show the timed digit's sentence alone");
   const confirm = elements["beta-disclaimer-confirm"];
   assert.equal(confirm.disabled, true, "the second step's button was enabled before the proof");
   calls.onConfirm();
@@ -452,7 +456,7 @@ test("unavailable storage fails open: the disclaimer still shows and dismissal s
   assert.ok(calls.shown, "the disclaimer did not show");
   calls.onClick();
   assert.equal(calls.dismissed, false, "the first acknowledgement dismissed the gate");
-  calls.type(String(DIGIT_WORDS.indexOf(elements["beta-disclaimer-proof-word"].textContent)));
+  calls.type(String(shownProofDigits(elements)[0]));
   calls.onConfirm();
   assert.ok(calls.dismissed, "the fade-out class was not applied");
   assert.equal(calls.removed, 1, "the overlay was not removed after the fade");
@@ -486,11 +490,7 @@ test("the proof digit is the tenths digit of the first step's reading time and d
     const { calls, elements } = disclaimerDom();
     loadModule({ elements, cryptoImpl: noProofDrawCrypto(), performanceImpl: fakeClock(shown, accepted) });
     calls.onClick();
-    assert.equal(
-      elements["beta-disclaimer-proof-word"].textContent,
-      DIGIT_WORDS[expected],
-      `${accepted - shown} ms did not give ${expected}`,
-    );
+    assert.deepEqual(shownProofDigits(elements), [expected], `${accepted - shown} ms did not show the sentence for ${expected} alone`);
     calls.type(String((expected + 1) % 10));
     assert.equal(elements["beta-disclaimer-confirm"].disabled, true, "a digit other than the timed one was accepted");
     calls.type(String(expected));
@@ -502,8 +502,29 @@ test("the proof digit is the tenths digit of the first step's reading time and d
 test("no proof is accepted before the first step is acknowledged", () => {
   const { calls, elements } = disclaimerDom();
   loadModule({ elements, performanceImpl: fakeClock(0, 0) });
+  assert.deepEqual(shownProofDigits(elements), [], "a proof sentence showed before the first step was acknowledged");
   for (const value of ["", "0", "undefined", "null", "NaN"]) {
     calls.type(value);
     assert.equal(elements["beta-disclaimer-confirm"].disabled, true, `${JSON.stringify(value)} enabled the button early`);
+  }
+});
+
+// The gate writes no words of its own. Each digit's sentence ships whole in
+// the template, hidden, so the boot i18n sweep translates all ten before the
+// reader gets there, and the catalog extractor hands each to the translators
+// as one complete sentence (a word dropped into the middle of a sentence
+// stays English and cannot be reordered around).
+test("every proof sentence ships whole and hidden in the template, as a translation source", async () => {
+  const { collectSources, normalize } = await import("../scripts/i18n-sources.mjs");
+  const sources = await collectSources(root);
+  const template = read("src/index.html");
+  for (const [digit, word] of DIGIT_WORDS.entries()) {
+    const match = template.match(new RegExp(`<span id="beta-disclaimer-proof-text-${digit}"([^>]*)>([^<]*)</span>`));
+    assert.ok(match, `the template has no proof sentence for ${digit}`);
+    assert.match(match[1], /(^|\s)hidden(\s|=|$)/, `the proof sentence for ${digit} is not hidden at birth`);
+    const sentence = normalize(match[2]);
+    assert.ok(sources.has(sentence), `the proof sentence for ${digit} is not a translation source`);
+    const named = DIGIT_WORDS.filter((name) => new RegExp(`\\b${name}\\b`).test(sentence));
+    assert.deepEqual(named, [word], `the proof sentence for ${digit} names ${named.join(", ") || "no digit"}`);
   }
 });

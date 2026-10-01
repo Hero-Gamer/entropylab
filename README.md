@@ -177,7 +177,9 @@ the limits of browser-memory cleanup.
   own purpose, account, branch, and address index) in a dedicated WebAssembly module, one Web Worker
   per CPU core, and its mainnet address of the selected type (legacy, nested
   SegWit, native SegWit, Taproot, or a BIP-352 Silent Payment code) is checked
-  against the chosen prefix. A short timing sample on tab entry (fixed
+  against the chosen prefix. For Silent Payment codes, the first custom
+  character is limited to `g f 2 t v d w 0`; later characters can use the
+  full Bech32 alphabet. A short timing sample on tab entry (fixed
   published constants, never the session's keys) turns the odds into an
   expected time to a match, and **Stop on first find** halts the grind at the
   first hit. Same key and counter always reproduce the same

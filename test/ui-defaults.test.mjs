@@ -1221,7 +1221,7 @@ test("the beta banner carries a dismiss control in a narrow right-hand column", 
   for (const markup of [shell]) {
     assert.match(
       markup,
-      /<button type="button" class="beta-warning-dismiss" id="beta-warning-dismiss" aria-label="Dismiss the beta software warning"[^>]*>/,
+      /<button type="button" class="beta-warning-dismiss" id="beta-warning-dismiss" aria-label="Dismiss the experimental software warning"[^>]*>/,
       "the dismiss button must ship in both markups",
     );
     // The label sits after the message, so the column reads last.

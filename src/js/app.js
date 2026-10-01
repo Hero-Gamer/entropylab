@@ -15920,7 +15920,12 @@ function hodlFilterVanityPrefix(value, meta = hodlVanityScript()) {
   if (lead.startsWith(meta.prefix)) text = text.slice(meta.prefix.length);
   if (meta.bech32) {
     let allowed = new Set("qpzry9x8gf2tvdw0s3jn54khce6mua7l".split(""));
-    return [...text.toLowerCase()].filter((character) => !/\s/.test(character) && allowed.has(character)).join("");
+    let filtered = "";
+    for (let character of text.toLowerCase()) {
+      if (!allowed.has(character) || (!filtered && meta.firstFree && !meta.firstFree.includes(character))) continue;
+      filtered += character;
+    }
+    return filtered;
   }
   return [...text].filter((character) => !/\s/.test(character) && "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".includes(character)).join("");
 }

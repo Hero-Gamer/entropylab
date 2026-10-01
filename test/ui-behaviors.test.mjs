@@ -174,6 +174,19 @@ test("changes that invalidate a vanity run still cancel it", () => {
   assert.equal(cancelled, 2, "script and method changes must each cancel the stale run");
 });
 
+test("Silent Payment custom characters constrain only the first free character", () => {
+  const filter = new Function(`${appSlice("hodlFilterVanityPrefix")}; return hodlFilterVanityPrefix;`)();
+  const silentPayment = { prefix: "sp1qq", bech32: true, firstFree: "gf2tvdw0" };
+  const otherBech32 = { prefix: "bc1q", bech32: true };
+  const base58 = { prefix: "1", bech32: false };
+
+  assert.equal(filter("SP1QQA GQ1Z", silentPayment), "gqz", "discard disallowed first characters and non-bech32 characters, then accept ordinary bech32 characters");
+  assert.equal(filter("qaz", silentPayment), "", "a later character cannot become the first unless it is in the eight-character set");
+  assert.equal(filter("tqz", silentPayment), "tqz", "the remaining characters use the full bech32 alphabet");
+  assert.equal(filter("qaz", otherBech32), "qaz", "other bech32 address types still allow any bech32 character first");
+  assert.equal(filter("1Love", base58), "Love", "base58 filtering keeps its existing rules");
+});
+
 // ── repeat-inputs.js ─────────────────────────────────────────────────────────
 
 class FakeInputEvent {

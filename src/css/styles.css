@@ -156,6 +156,13 @@ button:not(:disabled):active *,
    reference list reads as the page's own bottom matter rather than one more
    panel. Padding stays, so its text still aligns with the cards above. */
 .sources { margin-top: var(--space-major); background: none; border: 0; }
+/* Important follows Sources a step closer than the seam above Sources, and
+   the padding between the two goes: neither draws a card, so it would only
+   add empty space between two toggles. */
+.sources + .sources { margin-top: var(--space-intro); padding-top: 0; }
+.sources:has(+ .sources) { padding-bottom: 0; }
+/* A fine-print list steps its items like the Sources paragraphs above it. */
+.sources ul { display: grid; gap: var(--space-component); padding-left: 20px; }
 .warn { background: color-mix(in oklab, var(--danger) 12%, var(--bg)); border-color: color-mix(in oklab, var(--danger) 40%, var(--border)); }
 .muted { color: var(--muted); font-size: 14px; line-height: 1.5; }
 /* The pitch is a set of discrete claims rather than prose, so it reads as a
@@ -285,11 +292,11 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 .dice-input-shell {
   position: relative; margin-top: var(--space-control); border-radius: 12px; background: var(--bg);
 }
-.dice-input-shell textarea {
+.dice-input-shell textarea, .dice-input-shell.passphrase-input-shell input {
   position: relative; z-index: 1; margin-top: 0; background: transparent;
   color: transparent; -webkit-text-fill-color: transparent; caret-color: var(--fg); line-height: 1.45;
 }
-.dice-input-shell textarea::placeholder { color: var(--faint); -webkit-text-fill-color: var(--faint); }
+.dice-input-shell textarea::placeholder, .dice-input-shell.passphrase-input-shell input::placeholder { color: var(--faint); -webkit-text-fill-color: var(--faint); }
 .dice-input-highlight {
   position: absolute; z-index: 0; inset: 0; margin: 0; padding: 10px 12px;
   border: 1px solid transparent; border-radius: 12px; overflow: hidden; pointer-events: none;
@@ -316,7 +323,7 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 .global-sync-host .switch-row, .passphrase-bip39-options .switch-row, .passphrase-keyboard-tools > .switch-row { margin-top: 0; }
 .switch-toggle {
   display: inline-flex; align-items: center; gap: 9px; width: 100%; min-height: 24px; margin-top: 0;
-  color: var(--fg); font-size: 14px; font-weight: 600; cursor: pointer;
+  font-size: 14px; font-weight: 600; cursor: pointer;
 }
 .switch-toggle input { margin: 0; }
 .switch-note { display: block; margin: 0; color: var(--muted); font-size: 12px; font-weight: 400; line-height: 1.4; }
@@ -435,11 +442,6 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 /* Two rows where there is an explanation: the switch and its title, then the
    note under both, the way the sync switch reads. */
 .passphrase-autocomplete-toggle[hidden] { display: none; }
-.dice-input-shell.passphrase-input-shell input {
-  position: relative; z-index: 1; margin-top: 0; background: transparent;
-  color: transparent; -webkit-text-fill-color: transparent; caret-color: var(--fg); line-height: 1.45;
-}
-.dice-input-shell.passphrase-input-shell input::placeholder { color: var(--faint); -webkit-text-fill-color: var(--faint); }
 .passphrase-input-shell .dice-input-highlight { white-space: pre; overflow-wrap: normal; word-break: normal; letter-spacing: 0; }
 .passphrase-bip39-status { margin: var(--space-control) 0 0; font-weight: 400; }
 /* .field-note sits later in the cascade than .err and carries the same weight,
@@ -449,7 +451,7 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 /* The theme toggle and the boxed copy buttons (seed phrase rows, the address
    QR popup) share this button chrome; none of them is a keyboard toggle. */
 .seed-keyboard-toggle, .theme-toggle, .copy-button.boxed-copy-button {
-  display: grid; place-items: center; flex: 0 0 44px; width: 44px; min-height: 44px; height: auto; padding: 5px;
+  display: grid; place-items: center; flex: 0 0 var(--box-size, 44px); width: var(--box-size, 44px); min-height: var(--box-size, 44px); height: auto; padding: 5px;
   border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--muted);
 }
 .seed-keyboard-toggle[aria-expanded="true"] { color: var(--selection-accent); border-color: var(--selection-accent); }
@@ -481,7 +483,7 @@ textarea { display: block; min-height: 96px; letter-spacing: 0.08em; }
 .seed-keyboard-key { flex: 0 0 var(--seed-key-size); width: var(--seed-key-size); }
 .seed-keyboard-key[hidden] { display: none; }
 .seed-keyboard-delete { display: grid; place-items: center; color: var(--muted); }
-.seed-keyboard-delete svg { width: 20px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.seed-keyboard-delete svg, .seed-number-pad .seed-number-delete svg { width: 20px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .seed-keyboard-space-row { display: flex; justify-content: center; gap: 4px; }
 .seed-keyboard-mode { flex: 0 0 clamp(42px, 10vw, 64px); padding-inline: 6px; letter-spacing: -.08em; }
 .seed-keyboard-mode:disabled { cursor: not-allowed; opacity: .42; color: var(--muted); }
@@ -547,14 +549,9 @@ label.field { display: block; margin-top: var(--space-component); font-size: 14p
 @media (prefers-reduced-motion: reduce) { .choice { transition: none; } }
 .choice-grid { display: grid; gap: var(--space-control); margin-top: var(--space-control); }
 .choice-grid .choice { margin-top: 0; }
-details.lab-entropy { margin-top: var(--space-section); }
-details.lab-entropy > summary {
-  cursor: pointer; font-weight: 600; color: var(--fg);
-}
 #brain-lab { font-family: var(--mono); letter-spacing: 0; }
 @media (min-width: 720px) {
   .choice-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .choice-grid.three-up { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 .dice-input-pad { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: var(--space-control); }
 .dice-input-pad.faces-1-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -571,7 +568,6 @@ details.lab-entropy > summary {
 .dice-input-pad.entropy-keypad-base4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .dice-input-pad.seed-number-pad { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .seed-number-pad .seed-number-next { grid-column: span 4; font-family: inherit; font-size: 14px; }
-.seed-number-pad .seed-number-delete svg { width: 20px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .dice-input-pad button {
   min-height: 48px; font-family: var(--mono); font-size: 18px;
   border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--fg);
@@ -854,8 +850,6 @@ th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px; }
 td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; font-family: var(--mono); }
 .qr { max-width: 100%; background: var(--paper); border: 1px solid var(--border); border-radius: 8px; display: inline-block; }
 .qr svg { display: block; max-width: 100%; width: 140px; height: auto; aspect-ratio: 1; }
-.qr-descriptor { padding: 12px; }
-.qr-descriptor svg { width: 280px; height: auto; }
 .qr-seed { padding: 12px; }
 .qr-seed svg { width: 200px; height: auto; }
 .watch-only-qr { margin: var(--space-control) 0 var(--space-component); }
@@ -992,7 +986,8 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
 .network-picker-option[data-network="testnet"] .network-picker-option-coin { fill: var(--testnet); }
 .network-picker-option[data-network="signet"] .network-picker-option-coin { fill: var(--signet); }
 .network-picker-option[data-network="regtest"] .network-picker-option-coin { fill: var(--faint); }
-.network-picker-option:hover, .network-picker-option:focus-visible { background: color-mix(in oklab, var(--accent) 14%, var(--surface-2)); outline: none; }
+.network-picker-option:hover, .network-picker-option:focus-visible,
+.custom-select-option:hover, .custom-select-option:focus-visible { background: color-mix(in oklab, var(--accent) 14%, var(--surface-2)); outline: none; }
 .network-picker-option[aria-checked="true"] { background: color-mix(in oklab, var(--accent) 20%, var(--surface-2)); }
 .network-picker-option[aria-checked="true"] strong { color: var(--accent); }
 .network-picker-option-text { font-size: 14px; }
@@ -1060,20 +1055,18 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
   width: 100%; min-height: 38px; padding: 8px 10px; border: 0; border-radius: 8px;
   background: transparent; color: var(--fg); text-align: left; cursor: pointer;
 }
-.custom-select-option:hover, .custom-select-option:focus-visible { background: color-mix(in oklab, var(--accent) 14%, var(--surface-2)); outline: none; }
 .custom-select-option[aria-selected="true"] { background: color-mix(in oklab, var(--accent) 20%, var(--surface-2)); color: var(--accent); }
 .custom-select-option:disabled { background: transparent; color: var(--faint); cursor: not-allowed; opacity: .48; }
-.beta-warning, .online-warning {
-  margin: 0 0 12px; padding: 14px 16px; border: 0;
-  background: color-mix(in oklab, var(--danger) 14%, var(--surface));
-  color: var(--fg); font-size: 14px; line-height: 1.5;
-}
-.online-warning a { white-space: nowrap; }
 /* The banners are rows: the message takes the slack, a control column (only
    the beta banner carries one) does not. The noscript notice carries no
    control and stays a plain block, but its label is wrapped like the others
    so it takes the same treatment. */
-.beta-warning, .online-warning { display: flex; align-items: flex-start; gap: 12px; }
+.beta-warning, .online-warning {
+  display: flex; align-items: flex-start; gap: 12px; margin: 0 0 12px; padding: 14px 16px; border: 0;
+  background: color-mix(in oklab, var(--danger) 14%, var(--surface));
+  color: var(--fg); font-size: 14px; line-height: 1.5;
+}
+.online-warning a { white-space: nowrap; }
 /* The author display wins over the UA [hidden] rule, so restate it. */
 #beta-warning[hidden], #online-warning[hidden] { display: none; }
 /* Anything dismissed on an earlier visit must never paint. The inline head
@@ -1082,15 +1075,6 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
 :root[data-beta-banner-dismissed] #beta-warning,
 :root[data-intro-dismissed] #site-intro { display: none; }
 .beta-warning-text, .online-warning-text { flex: 1; }
-/* Session notices (#627) are the beta banner, pinned: they answer a click
-   made anywhere down the page, so they float at the viewport's foot instead
-   of at the top of the document, clear of the fixed header and under the
-   modals. One shows at a time. */
-.session-notice {
-  position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 50;
-  max-width: 720px; margin: 0 auto; border-radius: 12px;
-  box-shadow: 0 16px 36px rgb(0 0 0 / 55%);
-}
 /* line-height 1 so the label sits where the padding puts it: the banner's 1.5
    would add half its leading above the caps as invisible space. The gap down
    to the sentence is then an explicit margin. */
@@ -1158,6 +1142,10 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
 .disclaimer-text { margin: 0 0 28px; color: var(--fg); line-height: 1.5; }
 .disclaimer-text p { max-width: 400px; margin: 0 auto var(--space-component); }
 .disclaimer-text p:last-child { margin-bottom: 0; }
+/* The second step's answer: a one-digit field left of the button, which stays
+   disabled until the reader types 3. The field takes the button's height. */
+.disclaimer-proof-row { display: flex; justify-content: center; align-items: center; gap: var(--space-control); }
+.disclaimer-proof-row input.disclaimer-proof { width: 56px; min-width: 0; margin: 0; padding: 10px 0; text-align: center; font-size: 16px; font-weight: 700; }
 /* The network words carry the header status colours, and nothing else of it:
    that tag is a positioned pill anchored to the bar. */
 .status-word {
@@ -1212,7 +1200,6 @@ td { border-top: 1px solid var(--border); padding: 8px; vertical-align: top; fon
   html, body { background: white; color: #111; }
   /* The fixed header is hidden when printing, so drop the space it reserved. */
   .wrap { padding-top: 20px; }
-  .qr-descriptor svg { width: 52mm; height: 52mm; }
   .qr-seed svg { width: 40mm; height: 40mm; }
   .qr-policy svg { width: 42mm; height: 42mm; }
   body.msig-policy-print-mode .wrap,
@@ -1288,21 +1275,23 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   overflow-x: auto; overflow-y: hidden; overscroll-behavior-inline: contain;
   scrollbar-width: none; -ms-overflow-style: none; -webkit-overflow-scrolling: touch; cursor: grab;
 }
-.workspace-tabs::-webkit-scrollbar { display: none; width: 0; height: 0; }
-.workspace-tabs.dragging, .workspace-tabs.dragging .workspace-tab { cursor: grabbing; user-select: none; }
+.workspace-tabs::-webkit-scrollbar, .key-tabs::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.workspace-tabs.dragging, .workspace-tabs.dragging .workspace-tab,
+.key-tabs.dragging, .key-tabs.dragging .key-tab { cursor: grabbing; user-select: none; }
 .workspace-tab {
   position: relative; display: inline-flex; align-items: center; flex: 0 0 auto;
   width: max-content; min-height: 44px; padding: 0 16px; white-space: nowrap;
   border: 1px solid transparent; border-radius: 10px 10px 0 0; background: transparent;
   color: var(--muted); font-weight: 600;
 }
-.workspace-tab:not(.active):hover { background: color-mix(in oklab, var(--surface-2) 60%, transparent); color: var(--fg); }
-/* Hairlines between neighbours, dropped beside the active tab and at the end,
-   exactly as the key tabs do it. */
-.workspace-tab:not(.active)::after {
+.workspace-tab:not(.active):hover, .key-tab:not(.active):hover { background: color-mix(in oklab, var(--surface-2) 60%, transparent); color: var(--fg); }
+/* Hairlines between neighbours, dropped beside the active tab and at the end:
+   the same in the tool strip and every station's tab strip. */
+.workspace-tab:not(.active)::after, .key-tab:not(.active)::after {
   content: ""; position: absolute; top: 12px; right: -1px; width: 1px; height: 20px; background: var(--border);
 }
-.workspace-tab:last-child::after, .workspace-tab:has(+ .workspace-tab.active)::after { display: none; }
+.workspace-tab:last-child::after, .workspace-tab:has(+ .workspace-tab.active)::after,
+.key-tab:last-child::after, .key-tab:has(+ .key-tab.active)::after { display: none; }
 /* The chosen tool takes the panel's own ground and paints its bottom border in
    that same colour, cutting the strip's rule so the tab and the panel below it
    are one continuous enclosure rather than a chip resting on a line. */
@@ -1417,7 +1406,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   overflow-x: auto; overflow-y: hidden; overscroll-behavior-inline: contain; scrollbar-width: thin;
 }
 .session-key-picker[hidden] { display: none; }
-.session-key-option {
+.session-key-option, .msig-session-key {
   display: inline-flex; flex: 0 0 auto; align-items: center; gap: 8px;
   min-height: 44px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px;
   background: var(--surface-2); color: var(--fg); font-family: var(--mono); font-size: 13px; cursor: pointer;
@@ -1439,18 +1428,12 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   overflow-x: auto; overflow-y: hidden; overscroll-behavior-inline: contain; scrollbar-width: thin;
 }
 .msig-session-keys[hidden] { display: none; }
-.msig-session-key {
-  display: inline-flex; flex: 0 0 auto; align-items: center; gap: 8px;
-  min-height: 44px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px;
-  background: var(--surface-2); color: var(--fg); font-family: var(--mono); font-size: 13px; cursor: pointer;
-}
 .msig-session-key.unavailable { opacity: 0.45; filter: grayscale(0.55); cursor: not-allowed; }
 .msig-origin-fields { display: grid; grid-template-columns: minmax(150px, .7fr) minmax(0, 2fr); gap: var(--space-component); }
 .msig-origin-fields .field { min-width: 0; margin-top: 0; }
 .msig-master-fingerprint, .msig-full-path { font-family: var(--mono); }
 /* The group sits under its title exactly where the control it replaced did. */
 .msig-script-type-field .segmented-control { margin-top: var(--space-control); }
-.msig-path-components { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-component); }
 .msig-path-component { margin-top: 0; }
 .workspace-panel > :first-child { margin-top: 0; }
 .workspace-panel > :last-child { margin-bottom: 0; }
@@ -1501,8 +1484,8 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    Below the header breakpoint these go full width while that row is still two
    columns, so they part company there. */
 .key-mode-select, .seed-length-select { width: calc(50% - var(--space-component) / 2); }
-.key-mode-select .custom-select-option { display: flex; align-items: center; gap: 8px; }
-.key-mode-select .custom-select-value { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.key-mode-select .custom-select-option, .journal-format-control .custom-select-option { display: flex; align-items: center; gap: 8px; }
+.key-mode-select .custom-select-value, .journal-format-control .custom-select-value { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .segmented-control.is-stacked { flex-direction: column; flex-wrap: nowrap; width: 100%; }
 .segmented-control.is-stacked > .tab { width: 100%; flex: 1 1 auto; }
 .segmented-control.is-stacked > .tab + .tab { margin-block-start: -1px; }
@@ -1510,9 +1493,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .segmented-control.is-stacked > .tab:last-child { border-radius: 0 0 8px 8px; }
 .segmented-control.is-stacked > .tab:only-child { border-radius: 8px; }
 #msig-card[hidden], #calc-card[hidden], #psbt-card[hidden], #psbted-card[hidden], #nonce-card[hidden], #bip85-card[hidden], #sp-card[hidden], #vanity-card[hidden], #ln-card[hidden] { display: none !important; }
-#calc-card:not([hidden]), #msig-card:not([hidden]), #bip85-card:not([hidden]), #sp-card:not([hidden]), #psbt-card:not([hidden]), #psbted-card:not([hidden]), #nonce-card:not([hidden]), #vanity-card:not([hidden]), #ln-card:not([hidden]) { margin-top: 0; border-radius: 0 0 20px 20px; position: relative; z-index: 1; }
-#journal-card[hidden], #journal-notes-card[hidden], #journal-keymanager-card[hidden], #journal-state-card[hidden], #journal-log-card[hidden] { display: none !important; }
+#calc-card:not([hidden]), #msig-card:not([hidden]), #bip85-card:not([hidden]), #sp-card:not([hidden]), #psbt-card:not([hidden]), #psbted-card:not([hidden]), #nonce-card:not([hidden]), #vanity-card:not([hidden]), #ln-card:not([hidden]),
 #journal-card:not([hidden]), #journal-notes-card:not([hidden]), #journal-keymanager-card:not([hidden]), #journal-state-card:not([hidden]), #journal-log-card:not([hidden]) { margin-top: 0; border-radius: 0 0 20px 20px; position: relative; z-index: 1; }
+#journal-card[hidden], #journal-notes-card[hidden], #journal-keymanager-card[hidden], #journal-state-card[hidden], #journal-log-card[hidden] { display: none !important; }
 #journal-locked-panel[hidden], #journal-work-panel[hidden], #journal-create-panel[hidden], #journal-open-panel[hidden], #journal-editor[hidden], #journal-view[hidden] { display: none; }
 .journal-global-actions { align-items: center; }
 .journal-global-actions .journal-download-action { display: inline-flex; align-items: center; gap: 6px; }
@@ -1534,9 +1517,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .journal-empty { color: var(--muted); margin: var(--space-component) 0 0; }
 .journal-editor { margin-top: var(--space-component); }
 #journal-view { margin-top: var(--space-component); }
-.journal-note {
-  margin: 0 0 14px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2);
-}
 .journal-password-label { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; }
 .journal-password-validation { margin-inline-start: auto; font-size: 12px; font-weight: 700; line-height: 1.4; text-align: end; }
 .journal-password-validation[hidden] { display: none; }
@@ -1568,9 +1548,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .journal-format-control > span { display: block; margin-bottom: 5px; }
 .journal-format-control .custom-select { margin-top: 0; font-size: 13px; }
 .journal-format-control .custom-select-button { min-height: 44px; padding-block: 8px; }
-.journal-format-control .custom-select-value { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .journal-format-control .custom-select-value > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.journal-format-control .custom-select-option { display: flex; align-items: center; gap: 8px; }
 .journal-key-control { grid-column: 1 / -1; }
 .journal-key-option-lifehash { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 4px; image-rendering: pixelated; background: #fff; }
 .journal-key-lineage { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; }
@@ -1669,13 +1647,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .journal-log-copy.is-copied, .journal-log-copy.is-copied:not(:disabled):hover { color: var(--ok); }
 .journal-log-actions #journal-log-clear { margin-inline-start: auto; }
 #journal-state-text { min-height: 280px; letter-spacing: 0; font-size: 13px; }
-.psbt-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 14px; }
 @media (min-width: 720px) {
   .journal-format-bar { grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(120px, 1fr)); }
   .journal-key-control { grid-column: auto; }
-  .psbt-grid { grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr); }
-  .psbt-grid > .field { display: flex; flex-direction: column; }
-  .psbt-grid > .field > textarea { flex: 1; }
 }
 @media (max-width: 520px) {
   .journal-keymanager-details { grid-template-columns: 1fr; gap: 3px; }
@@ -1712,7 +1686,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .vanity-prefix-plus { flex: 0 0 auto; color: var(--muted); font-size: 14px; }
 .vanity-prefix-row input:not([type="radio"]):not([type="checkbox"]) { width: 100%; min-width: 0; margin-top: 0; text-align: center; }
 .vanity-secret { display: inline-flex; align-items: center; gap: 6px; }
-.vanity-secret .copy-button { flex: 0 0 auto; }
+/* In the match table the copy box takes the Update Key button's height, so
+   every control in the row sits on one line. */
+.vanity-secret { --box-size: 36px; }
 /* The selected key, restated where the grind reads from it with the key
    view's own summary block (.key-summary), then its starting passphrase
    verbatim. */
@@ -1724,11 +1700,13 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 #vanity-out > .wallet-data-actions { margin-bottom: var(--space-component); }
 #vanity-out tbody :is(td, th) { vertical-align: middle; }
 .vanity-pass-text { display: inline-block; width: var(--vanity-pass-width, 12ch); white-space: nowrap; }
-/* Scanning breaks: the formula, the found-passphrase note, the stop switch,
-   and the closing action row each open on the wider seam. The formula's gap
-   is its label's own margin, since the grid around it does not collapse. */
+/* Scanning breaks: the formula, the stop switch, and the closing action row
+   each open on the wider seam. The formula's gap is its label's own margin,
+   since the grid around it does not collapse. Mode, after the two opening
+   notes, takes a step more than a label's usual gap. */
 #vanity-prefix-label,
-#vanity-card > :is(.edge-note.is-public, .vanity-first-row, .current-item-actions) { margin-top: var(--space-major); }
+#vanity-card > :is(.vanity-first-row, .current-item-actions) { margin-top: var(--space-major); }
+#vanity-method-label { margin-top: var(--space-intro); }
 .vanity-key { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; white-space: nowrap; }
 .vanity-key code { font-family: var(--mono); }
 .vanity-apply { min-height: 36px; padding: 4px 12px; font-size: 12px; }
@@ -1795,12 +1773,11 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    switch rides with the editor's output instead of standing over an empty card. */
 #psbted-insane-row, #psbted-editor-label { display: none; }
 #psbted-card:has(#psbted-out > *) > :is(#psbted-insane-row, #psbted-editor-label) { display: block; }
-/* The label opens the output, a step clear of the switch and its warning. */
-.psbted-map { margin-top: var(--space-component); }
 #psbted-out :is([data-psbted-section="input:0"], [data-psbted-section="output:0"]) { margin-top: var(--space-major); }
-/* A diagram box jumps to its section and lights it for a moment. The halo
-   is painted as a spread shadow so the highlight costs no layout. */
-.psbted-map { border-radius: 4px; transition: background-color .45s ease, box-shadow .45s ease; }
+/* A map opens a step clear of the switch and its warning. A diagram box jumps
+   to its section and lights it for a moment; the halo is painted as a spread
+   shadow so the highlight costs no layout. */
+.psbted-map { margin-top: var(--space-component); border-radius: 4px; transition: background-color .45s ease, box-shadow .45s ease; }
 .psbted-map:focus { outline: none; }
 .psbted-map.is-anchored {
   background: color-mix(in oklab, var(--accent) 16%, transparent);
@@ -1843,7 +1820,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* Compact, data-table density: the fields fill their column and drop the
    global control sizing (full width comes from the fixed cell, not the
    field's own rule). */
-.psbted-pairs input, .psbted-add input, .psbted-add select { margin-top: 0; padding: 6px 8px; border-radius: 6px; font-size: 12px; min-height: 0; }
+.psbted-pairs input, .psbted-add input, .psbted-add select, .psbted-build input, .psbted-build select { margin-top: 0; padding: 6px 8px; border-radius: 6px; font-size: 12px; min-height: 0; }
 .psbted-pairs .psbted-num { min-width: 0; }
 /* The decoded address under a scriptPubKey (and in a map section's "Pays"
    line) is one long unbroken bech32 string: wrap it anywhere so it can
@@ -1856,7 +1833,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    tallest cell pushed the row past the shared 44px control height. */
 :is(.psbted-build, .psbted-add) > .btn { font-family: var(--sans); font-size: 14px; }
 .psbted-build { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; margin-top: 4px; align-items: center; }
-.psbted-build input, .psbted-build select { margin-top: 0; padding: 6px 8px; border-radius: 6px; font-size: 12px; min-height: 0; }
 /* The picker's stacking margin belongs to stacked forms; in these one-line
    rows it only knocks the controls out of alignment. */
 :is(.psbted-build, .psbted-add) > .custom-select { margin-top: 0; }
@@ -1873,9 +1849,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   border: 1px solid var(--border); background: var(--bg);
   font-family: var(--mono); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere;
 }
-.psbted-qr-block { margin: 12px 0 4px; }
-.psbted-qr { padding: 12px; }
-.psbted-qr svg { width: 240px; height: 240px; }
 .psbted-stale { opacity: 0.55; }
 .psbted-map > p { overflow-wrap: anywhere; }
 /* The shared red button (.btn.red) at the size of a table row. */
@@ -1939,7 +1912,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* Semantic comparison: the section sits below the editor output and reuses
    the editor's table density; the diff mark column stays snug like the other
    utility columns. */
-.psbted-compare { margin-top: var(--space-major); }
 /* The editor runs long, so each block opens on its own rule: the analysis
    after the maps, the export after the analysis, the comparison last. */
 #psbted-out .psbted-map + .psbted-sanitize,
@@ -1990,7 +1962,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    output amount field sits above the overlay so it stays editable. The box
    stands down while the pointer is on that field, which answers for itself. */
 .psbted-viz-open::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
-.psbted-viz input.psbted-viz-sats { position: relative; z-index: 1; cursor: text; }
 .psbted-viz-open {
   display: flex; gap: 8px; align-items: baseline; width: 100%; min-height: 0; margin: 0; padding: 0;
   border: none; border-radius: 4px; background: none; color: inherit; font-size: 13px; text-align: left;
@@ -2007,7 +1978,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .psbted-viz-amount { margin: 6px 0 0; font-family: var(--mono); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
 /* Specificity matches the global text-input rule (two classes + element,
    later in the file) so the in-box field stays compact and inline. */
-.psbted-viz input.psbted-viz-sats { width: 12ch; min-width: 0; min-height: 0; margin-top: 0; padding: 4px 8px; border-radius: 6px; font-size: 13px; font-weight: 600; }
+.psbted-viz input.psbted-viz-sats { position: relative; z-index: 1; cursor: text; width: 12ch; min-width: 0; min-height: 0; margin-top: 0; padding: 4px 8px; border-radius: 6px; font-size: 13px; font-weight: 600; }
 .psbted-viz-sub { margin: 4px 0 0; font-size: 13px; overflow-wrap: anywhere; }
 /* Quiet lines inside a box are still box text: one size for all of them. */
 :is(.psbted-viz-box, .psbted-viz-tx) .muted { font-size: 13px; }
@@ -2032,7 +2003,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere;
 }
 .exp-card textarea[readonly] { color: var(--muted); }
-.exp-actions { margin-top: var(--space-component); }
 /* The QR reference overlay mirrors the expandable and disclaimer overlays:
    a dimmed backdrop with one centered card, dismissed by clicking outside
    or pressing Escape. Shown when an external link is clicked while the
@@ -2041,7 +2011,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .qr-ref-qr svg { display: block; width: 200px; height: 200px; }
 .qr-ref-url { margin: 16px 0 0; font-size: 12px; overflow-wrap: anywhere; word-break: break-all; }
 .qr-ref-hint { margin: 12px 0 0; }
-.qr-ref-actions { margin-top: var(--space-component); justify-content: center; }
 /* Per-address QR: compact button in each address-table row, one shared overlay. */
 .addr-text {
   min-width: 0; margin: 0; padding: 0; border: 0; background: none;
@@ -2068,7 +2037,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   font-size: 12px; overflow-wrap: anywhere; cursor: pointer;
 }
 .addr-qr-address:hover { color: var(--selection-accent-ink); }
-.addr-qr-actions { margin-top: var(--space-component); justify-content: space-between; }
+/* Every viewer modal closes on one row: copy at the start, the actions that
+   answer it (Apply, then a red Close) together at the end. */
+.modal-actions { margin-top: var(--space-component); justify-content: space-between; }
+.modal-actions-end { display: flex; flex-wrap: wrap; gap: var(--space-control); margin-inline-start: auto; }
 /* Shown when Derive Key is pressed with less entropy than recommended. The
    card carries the station vocabulary: a label titles it, the shortfall is a
    private note, the counts are help text, and the actions close it as a split
@@ -2105,8 +2077,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .sp-result > .edge-note.is-public { margin-bottom: var(--space-major); }
 .sp-result > .wallet-data-actions { margin-top: var(--space-major); }
 .sp-qr svg { width: 100%; height: auto; display: block; background: #fff; border-radius: 8px; }
-.key-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.key-panel-head #modes { flex: 1 1 auto; min-width: 0; }
 /* Closes with a rule of its own; the one above it belongs to the Method
    section. Equal 16px either side of both lines, so the band reads as one. */
 .seed-length-control { margin-top: var(--space-component); padding-bottom: var(--space-component); border-bottom: 1px solid var(--border); }
@@ -2140,12 +2110,14 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .psbted-map > h3 + .label-description { margin-top: 8px; margin-bottom: 0; }
 
 :is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary + :is(.label-description, .field-note, label.field) { margin-top: 0; margin-bottom: 0; }
+/* The page-foot disclosures open straight into their paragraphs and list. */
+.sources > summary + :is(p, ul) { margin-top: 0; }
+.sources > :last-child { margin-bottom: 0; }
 /* The exception: a checkbox's own text is not a heading over content. It sits
    inside the control, on one line with the box, so it owns no gap either side.
    The components above already say margin: 0; this repeats it only to outrank
    the convention, which an id lets win over their plain class selectors. */
-.switch-toggle .label { margin: 0; }
-.switch-toggle .label { color: var(--muted); }
+.switch-toggle .label { margin: 0; color: var(--muted); }
 /* Grey at rest across the card, like the Harden qualifiers and the accordion
    toggles: a checkbox offers an option rather than naming a field, so it sits
    a step back until the pointer arrives. Set on the control as well as on the
@@ -2230,7 +2202,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 }
 .master-fingerprint-arrow.is-disabled { visibility: hidden; opacity: 0; }
 .key-settings { display: grid; gap: var(--space-component); margin-top: var(--space-section); }
-.key-settings-row {
+.key-settings-row, .msig-path-components {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-component);
 }
 .key-settings .field { min-width: 0; margin: 0; }
@@ -2598,19 +2570,11 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   .msig-threshold-labels label { font-size: 11px; }
   .msig-threshold-labels input.msig-threshold-number { flex: 0 0 auto; width: 56px !important; min-width: 56px; height: 40px; min-height: 40px !important; }
 }
-.psbt-grid { margin-top: var(--space-component); }
-.psbt-grid > .field, .psbt-grid > div > .field:first-child { margin-top: 0; }
-.bip85-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 14px; margin-top: var(--space-component); }
-.bip85-grid .field[hidden] { display: none !important; }
+.bip85-grid, .ln-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 14px; margin-top: var(--space-component); }
+:is(.bip85-grid, .ln-grid) .field[hidden] { display: none !important; }
 @media (min-width: 720px) {
-  .bip85-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .bip85-grid > .field { margin-top: 0; }
-}
-.ln-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 14px; margin-top: var(--space-component); }
-.ln-grid .field[hidden] { display: none !important; }
-@media (min-width: 720px) {
-  .ln-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .ln-grid > .field { margin-top: 0; }
+  .bip85-grid, .ln-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  :is(.bip85-grid, .ln-grid) > .field { margin-top: 0; }
 }
 /* The actions close the bench. The gap is set from here, so the shared
    .tool-actions rhythm stays 16px everywhere: adjacent margins collapse to
@@ -2627,8 +2591,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 #bip85-card.is-result-view #bip85-out { margin-top: 0; }
 #bip85-out .wallet-data-section { margin-top: 0; }
 .key-manager { margin: 14px 0 -1px; position: relative; z-index: 2; }
-.key-manager-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.key-manager-head h2 { margin: 0; }
 .key-tab-strip { display: flex; align-items: flex-end; min-width: 0; margin-top: 12px; }
 .add-key {
   width: 36px; min-width: 36px; min-height: 44px; padding: 0; border: 0; border-radius: 0;
@@ -2675,18 +2637,11 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   overflow-x: auto; overflow-y: hidden; overscroll-behavior-inline: contain;
   scrollbar-width: none; -ms-overflow-style: none; -webkit-overflow-scrolling: touch; cursor: grab;
 }
-.key-tabs::-webkit-scrollbar { display: none; width: 0; height: 0; }
-.key-tabs.dragging, .key-tabs.dragging .key-tab { cursor: grabbing; user-select: none; }
 .key-tab {
   position: relative; display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto;
   width: max-content; max-width: none; min-height: 44px; padding: 0 14px; white-space: nowrap;
   border: 1px solid transparent; border-radius: 10px 10px 0 0; background: transparent; color: var(--muted);
 }
-.key-tab:not(.active):hover { background: color-mix(in oklab, var(--surface-2) 60%, transparent); color: var(--fg); }
-.key-tab:not(.active)::after {
-  content: ""; position: absolute; top: 12px; right: -1px; width: 1px; height: 20px; background: var(--border);
-}
-.key-tab:last-child::after, .key-tab:has(+ .key-tab.active)::after { display: none; }
 .key-tab.active, .key-tab-editing {
   background: var(--surface); color: var(--fg); border-color: var(--border); border-bottom-color: var(--surface);
 }
@@ -2701,8 +2656,7 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    station keeps its higher layer). */
 .key-tabs > .key-tab.active,
 .workspace-tabs > .workspace-tab.active { z-index: 1; box-shadow: 9px 0 10px -11px rgb(0 0 0 / .9); }
-.key-tabs > .key-tab.station-tab.active { z-index: 4; }
-.key-tabs > .key-tab.station-tab.active { background: var(--surface); }
+.key-tabs > .key-tab.station-tab.active { z-index: 4; background: var(--surface); }
 /* Its opaque ground also hides the panel's top border, which every other
    inactive tab lets show through. Repaint that 1px in the tab's own bottom
    border so the strip reads as one continuous edge. */
@@ -2710,7 +2664,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-tabs > .key-tab.station-tab:not(.active):hover {
   background: color-mix(in oklab, var(--surface-2) 60%, var(--bg));
 }
-.key-tab.is-lab { font-weight: 700; }
 .key-tab:focus-visible { outline-offset: -3px; }
 .wallet-data-section { margin-top: 20px; }
 .wallet-data-section-head h3 { margin: 0 0 5px; }
@@ -2744,10 +2697,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
    convention gives it rather than the footer's row gap pushing them apart. */
 .msig-downloads-head { flex: 1 1 100%; }
 .msig-downloads-head > .label { margin-top: 0; }
-.wallet-dat-birthday { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; flex-wrap: wrap; }
-/* The birthday select's longest option is wider than a narrow phone layout;
-   let it shrink and clip — the full wording is in the help line below. */
-.wallet-dat-birthday select { width: auto; margin: 0; min-width: 0; max-width: 100%; }
 .wallet-dat-birthday-help { flex: 1 1 100%; margin: 0; }
 .wallet-dat-birthday-help code { font-family: var(--mono); }
 /* The footer's first row: the birthday title, what the choice does, then the
@@ -2783,7 +2732,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .wallet-data-fields { margin-top: var(--space-component); }
 .wallet-data-fields > :first-child { margin-top: 0; }
 .wallet-data-fields > :last-child { margin-bottom: 0; }
-.wallet-data-subtitle { margin: 20px 0 6px; color: var(--fg); font-family: var(--sans); font-size: 14px; font-weight: 700; }
 /* The result flows straight into the tool card, the way the key view does:
    no second edge inside the first. It keeps only the seam below the summary
    that the card it replaced used to supply. */
@@ -2791,8 +2739,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 /* The groups close on a rule the way the key view's do, where .key-groups
    supplies it; here they are direct children, so the last one carries it. */
 .account-result-card > .key-group:last-of-type { border-bottom: 1px solid var(--border); }
-.account-result-section { margin-top: 24px; }
-.account-result-section > .wallet-data-section-head { margin-bottom: 16px; }
 /* A note in the flow with a coloured left edge: red in a group holding data
    the privacy bar can hide (the groups with the eye), green everywhere else.
    Each note supplies only its colour. */
@@ -3003,9 +2949,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   .download-controls { gap: 4px; }
 }
 @media (max-width: 520px) {
-  .key-panel-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
-  .key-panel-head > div:first-child { grid-column: 1 / -1; grid-row: 2; width: 100%; }
-  .key-panel-head > .delete-key { grid-column: 2; grid-row: 1; justify-self: end; }
   .wallet-private-section { padding: 13px; }
   .wallet-data-actions { align-items: stretch; }
   .wallet-data-actions > * { width: 100%; justify-content: center; }
@@ -3022,7 +2965,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .key-tab-icon { display: inline-flex; flex: 0 0 auto; width: 16px; height: 16px; color: var(--key-color); }
 .key-tab-icon svg { display: block; width: 16px; height: 16px; }
 .key-tab-icon.key-tab-lab-icon { display: inline-flex; width: 16px; height: 16px; color: var(--muted); }
-.key-tab-lab-icon svg { width: 100%; height: 100%; }
 .multisig-tab-icon { display: inline-flex; flex: 0 0 auto; width: 28px; height: 23px; margin-left: -5px; }
 .multisig-tab-icon svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .key-tab-icon.key-tab-lab-icon.bench-tab-icon,

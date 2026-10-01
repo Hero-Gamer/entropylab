@@ -7,6 +7,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   hodlCatalogAllowedTags,
+  hodlCatalogHasControlCharacters,
   hodlCatalogHasMarkup,
   hodlCatalogTokens,
   hodlEscapeAttribute,
@@ -147,6 +148,24 @@ test("HTML and text catalog views are idempotent and cover every current value",
 test("the text view removes allowed formatting and leaves rejected markup inert for DOM text sinks", () => {
   assert.equal(hodlSanitizeCatalogText("Use <strong>care</strong> & verify"), "Use care & verify");
   assert.equal(hodlSanitizeCatalogText('<img src=x onerror="x">visible'), '<img src=x onerror="x">visible');
+});
+
+test("the neutralizer covers the invisible Unicode ranges (audit S36-1)", () => {
+  // Invisible or reformatting codepoints a catalog string must never carry to
+  // the page: soft hyphen, Hangul fillers and Jungseong filler, Mongolian
+  // vowel separator, Braille pattern blank, halfwidth Hangul filler, line and
+  // paragraph separators, the deprecated interlinear anchors, language tags,
+  // and the variation selectors. Both endpoints of every added range.
+  const added = [0x00ad, 0x115f, 0x1160, 0x180e, 0x2800, 0x3164, 0xffa0, 0x2028, 0x2029, 0x2065, 0x206a, 0x206f, 0xfe00, 0xfe0f, 0xe0001, 0xe0020, 0xe007f];
+  // The ranges the table already had must behave identically under the u flag:
+  // the endpoints of each, including the already-passing bidi/zero-width ones.
+  const existing = [0x00, 0x08, 0x0b, 0x0c, 0x0e, 0x1f, 0x7f, 0x9f, 0x061c, 0x200b, 0x200f, 0x202a, 0x202e, 0x2060, 0x2064, 0x2066, 0x2069, 0xfeff];
+  for (const cp of [...added, ...existing]) {
+    const char = String.fromCodePoint(cp), where = `U+${cp.toString(16).toUpperCase()}`;
+    assert.equal(hodlSanitizeCatalogText(`a${char}b`), "a\uFFFDb", `${where} in the text view`);
+    assert.equal(hodlSanitizeCatalogHtml(`a${char}b`), "a\uFFFDb", `${where} in the HTML view`);
+    assert.equal(hodlCatalogHasControlCharacters(`a${char}b`), true, `${where} is detected`);
+  }
 });
 
 test("the tokenizer sees tags the way the sanitizer does", () => {

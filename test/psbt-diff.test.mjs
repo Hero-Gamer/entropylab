@@ -44,6 +44,23 @@ const doc = (overrides = {}) => ({
   ...overrides,
 });
 
+test("a proprietary prefix's bidi and invisible characters are neutralized in the diff report (audit S36-2)", () => {
+  // describePair prints a proprietary key's decoded prefix text; raw, a
+  // bidi override in it reorders the report line it lands in.
+  const pair = {
+    key: "fcaa",
+    name: "PSBT_GLOBAL_PROPRIETARY",
+    value: "deadbeef",
+    decoded: { prefixText: "abc\u202Edef", prefix: "616263e280ae646566", subtype: 0 },
+  };
+  const before = doc({ globals: [...doc().globals, pair] });
+  const after = doc();
+  const diff = comparePsbtDocs(before, after);
+  const html = psbtDiffHtml(diff, before, after, "mainnet");
+  assert.ok(!html.includes("\u202E"), "the diff renders a live bidi override");
+  assert.ok(html.includes("abc\uFFFDdef"), "the override is not visibly neutralized");
+});
+
 test("identical documents compare equal", () => {
   const result = comparePsbtDocs(doc(), doc());
   assert.equal(result.equal, true);

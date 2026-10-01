@@ -13,8 +13,10 @@
 // is never edited directly.
 import { addressQrButtonHtml } from "./address-qr.js";
 import { addressFromScript } from "./addresses.js";
+import { hodlNeutralizeControls } from "./i18n-sanitize.js";
 import { psbtInspectDoc, psbtBuildBytes, psbtWasmReady } from "./psbt-wasm.js";
 import { comparePsbtDocs } from "./psbt-diff.js";
+import { copyText } from "./clipboard.js";
 import { expandableHtml, EXPAND_LIMIT, initExpandable } from "./expandable.js";
 import { psbtVizHtml } from "./psbt-viz.js";
 import { parseOpReturn } from "./opreturn.js";
@@ -79,7 +81,8 @@ export const satsToBtc = (sats) => {
 
 // How the edited PSBT is shown as a QR: small files fit one static code
 // carrying the base64 text; larger ones become an animated ur:crypto-psbt
-// sequence (BCR-2020-005 — Sparrow, SeedSigner and Coldcard Q scan those).
+// sequence (BCR-2020-005 with BCR-2024-001 fixed-rate MUR fragments —
+// Sparrow, SeedSigner and Coldcard Q scan those).
 // The UR fragments are uppercased so the QR encodes in the denser
 // alphanumeric mode; UR parsing lowercases before decoding.
 export const PSBT_QR_STATIC_MAX_BYTES = 800;
@@ -137,7 +140,9 @@ export const opReturnSummary = (scriptHex, valueSats = 0) => {
     } catch {
       // Not UTF-8: the hex branch below shows the payload.
     }
-    parts.push(text !== null ? `“${text.length > 80 ? `${text.slice(0, 80)}…` : text}”` : `hex ${bytesToHex(parsed.payload.slice(0, 40))}${parsed.payloadBytes > 40 ? "…" : ""}`);
+    // The payload is untrusted text: neutralize bidi/invisible codepoints so
+    // the quote cannot reorder the row around it. The script itself is raw.
+    parts.push(text !== null ? `“${hodlNeutralizeControls(text.length > 80 ? `${text.slice(0, 80)}…` : text)}”` : `hex ${bytesToHex(parsed.payload.slice(0, 40))}${parsed.payloadBytes > 40 ? "…" : ""}`);
   }
   if (burn) parts.push(`burns ${valueSats} sats — unspendable`);
   return { text: parts.join(" · "), burn };
@@ -201,7 +206,9 @@ const describePair = (pair, network) => {
     case "PSBT_GLOBAL_PROPRIETARY":
     case "PSBT_IN_PROPRIETARY":
     case "PSBT_OUT_PROPRIETARY":
-      return { text: `prefix ${d.prefixText ? JSON.stringify(d.prefixText) : d.prefix} · subtype ${d.subtype}${d.keydata ? ` · keydata ${shorten(d.keydata)}` : ""}`, tone: "" };
+      // The prefix text is the counterparty's: neutralize bidi/invisible
+      // codepoints so it cannot reorder or hide the rest of the line.
+      return { text: `prefix ${d.prefixText ? JSON.stringify(hodlNeutralizeControls(d.prefixText)) : d.prefix} · subtype ${d.subtype}${d.keydata ? ` · keydata ${shorten(d.keydata)}` : ""}`, tone: "" };
     case "PSBT_IN_NON_WITNESS_UTXO": {
       const prev = d.prevout ? ` · prevout ${d.prevout.vout}: ${d.prevout.value} sats ${addressFor(d.prevout.scriptPubKey, network) || shorten(d.prevout.scriptPubKey)}` : "";
       return { text: `txid ${d.txid} · ${d.outputCount} outputs${prev}`, tone: "" };
@@ -524,18 +531,29 @@ export const psbtSanitizeHtml = (doc, title = "") => {
 export const psbtProblemsHtml = (doc, insane = false) => {
   const problems = doc?.problems;
   if (!problems) return "";
-  const errors = problems.filter((problem) => problem.severity === "error");
-  const tone = errors.length ? "bad" : problems.length ? "warn" : "ok";
-  const heading = !problems.length
+  // Severity totals come from the untruncated counts when the doc carries
+  // them: the visible list is capped, and a truncated list must never read
+  // as "no consensus violations" while an error was dropped (audit C3-4).
+  const listed = problems.filter((problem) => problem.severity === "error").length;
+  const truncated = Boolean(doc.problemsTruncated);
+  const total = doc.problemCount ?? problems.length;
+  const errorTotal = doc.errorCount ?? listed;
+  const totalsUnknown = truncated && doc.problemCount === undefined;
+  const tone = errorTotal ? "bad" : total ? "warn" : "ok";
+  const heading = !total
     ? "No consensus or signing problems found"
-    : errors.length
-      ? `${errors.length} consensus/signing problem(s)${problems.length > errors.length ? ` and ${problems.length - errors.length} warning(s)` : ""}`
-      : `${problems.length} warning(s), no consensus violations`;
-  const gate = !errors.length
-    ? ""
-    : insane
+    : errorTotal
+      ? `${errorTotal} consensus/signing problem(s)${total > errorTotal ? ` and ${total - errorTotal} warning(s)` : ""}${truncated ? " (list truncated)" : ""}`
+      : totalsUnknown
+        ? `${problems.length} warning(s) shown; the list is truncated, so error-severity problems may be hidden`
+        : `${total} warning(s), no consensus violations`;
+  const gate = errorTotal
+    ? insane
       ? "Insane editing is on — these did not block the build."
-      : "Errors block the build and export until fixed (Insane editing above disables this layer).";
+      : "Errors block the build and export until fixed (Insane editing above disables this layer)."
+    : totalsUnknown
+      ? "The build gate re-checks the full, untruncated list."
+      : "";
   const items = problems
     .map(
       (problem) =>
@@ -555,7 +573,7 @@ export const psbtProblemsHtml = (doc, insane = false) => {
 // header network picker's choice, read through the `networkDefault` getter
 // (mainnet/testnet), and re-decoded live when the picker changes it (the
 // "hodl:network-default" document event).
-export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = () => "" } = {}) => {
+export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = () => "", copyIcon = () => "" } = {}) => {
   const load = document.getElementById("psbted-load");
   if (!load) return;
   const $ = (id) => document.getElementById(id);
@@ -570,7 +588,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = 
   // Clears the highlight a diagram box leaves on the section it jumps to.
   let anchorTimer = null;
 
-  initExpandable();
+  initExpandable({ copy: copyIcon, copied: copiedIcon });
   // Edits saved in the expandable editor window are field edits, exactly
   // like typing in the plain value inputs: they rebuild live.
   out.addEventListener("expandable:apply", (event) => {
@@ -815,11 +833,11 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = 
     };
     $("psbted-copy-b64").onclick = () => {
       if (stale) return;
-      navigator.clipboard?.writeText(b64).then(() => confirmCopy("psbted-copied-b64")).catch(() => {});
+      copyText(b64).then((copied) => { if (copied) confirmCopy("psbted-copied-b64"); });
     };
     $("psbted-copy-hex").onclick = () => {
       if (stale) return;
-      navigator.clipboard?.writeText(hex).then(() => confirmCopy("psbted-copied-hex")).catch(() => {});
+      copyText(hex).then((copied) => { if (copied) confirmCopy("psbted-copied-hex"); });
     };
     // The binary download round-trips with wallet software: Sparrow and
     // Coldcard read the .psbt file this produces.

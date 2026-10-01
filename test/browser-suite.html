@@ -403,10 +403,12 @@
     const select = document.getElementById("locale-select");
     assert(select, "Locale select is missing");
     const pitchItem = document.querySelector(".pitch-list li");
-    const betaBanner = document.querySelector(".beta-warning-text");
+    // A rich block whose copy is settled: the online banner (the beta banner's
+    // wording is still moving, so its catalog entry can lag the source).
+    const richBanner = document.querySelector(".online-warning-text");
     const download = document.querySelector(".download-html");
     const modeOption = document.querySelector("#key-mode-select option");
-    assert(pitchItem && betaBanner && download && modeOption, "Fixture elements for the locale switch are missing");
+    assert(pitchItem && richBanner && download && modeOption, "Fixture elements for the locale switch are missing");
     equal(pitchItem.textContent, "Save this air-gapped bitcoin calculator to a removable drive and open it on a computer that never goes online.", "Pitch starts in English");
     select.value = "es";
     select.dispatchEvent(new Event("change", { bubbles: true }));
@@ -414,7 +416,7 @@
     // Static shell text, a rich (markup-bearing) block, an aria-label, and a
     // t()-rendered dynamic label all follow the switch.
     equal(pitchItem.textContent, "Guarda esta calculadora de bitcoin aislada de internet en una unidad extraíble y ábrela en una computadora que nunca se conecte a internet.", "Static shell text did not translate");
-    assert(betaBanner.querySelector("strong")?.textContent === "Software en beta", "Rich banner did not translate: " + betaBanner.textContent);
+    assert(richBanner.querySelector("strong")?.textContent === "Versión en línea", "Rich banner did not translate: " + richBanner.textContent);
     equal(download.getAttribute("aria-label"), "Descargar EntropyLab", "aria-label did not translate");
     equal(modeOption.textContent, "Tiradas de dados", "The method dropdown did not re-render in Spanish");
     // Switching back restores the English originals, not a stale translation.
@@ -1295,6 +1297,26 @@
       await until(() => background() === openingBackground, "the page background to return to the opening theme");
     } finally {
       localStorage.removeItem("entropylab-theme");
+    }
+  });
+
+  await test("the Sources and Important disclosures remember being shut", async () => {
+    const sources = document.getElementById("sources"), important = document.getElementById("important");
+    assert(sources && important, "The Sources or Important disclosure is missing");
+    assert(sources.compareDocumentPosition(important) & Node.DOCUMENT_POSITION_FOLLOWING, "Important does not follow Sources");
+    for (const [disclosure, key] of [[sources, "entropylab-sources-open"], [important, "entropylab-important-open"]]) {
+      const before = localStorage.getItem(key), wasOpen = disclosure.open;
+      try {
+        disclosure.open = false;
+        await until(() => localStorage.getItem(key) === "0", `${disclosure.id} to store its closed state`);
+        disclosure.open = true;
+        await until(() => localStorage.getItem(key) === "1", `${disclosure.id} to store its open state`);
+      } finally {
+        disclosure.open = wasOpen;
+        await wait(0);
+        if (before === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, before);
+      }
     }
   });
 
@@ -2196,8 +2218,19 @@
     equal(body.value, `${frozenTimestamp}kitchen table dice`, "typing the first note should keep the visible timestamp in place");
     assert(!notesCopy.disabled && notesCopy.dataset.phrase === body.value, "the copy button should hold the current readable page once a note exists");
     body.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
-    notesCopy.click();
-    await until(() => notesCopy.classList.contains("is-copied"), "the notepad copy confirmation check");
+    // A copy confirms only once the clipboard has taken the text, and a
+    // headless browser's clipboard refuses a scripted click, so the clipboard
+    // is stood in for here, the way the QR overlay test does.
+    let copiedNote = null;
+    const clipboardWrite = navigator.clipboard.writeText;
+    navigator.clipboard.writeText = (value) => { copiedNote = value; return Promise.resolve(); };
+    try {
+      notesCopy.click();
+      await until(() => notesCopy.classList.contains("is-copied"), "the notepad copy confirmation check");
+    } finally {
+      navigator.clipboard.writeText = clipboardWrite;
+    }
+    equal(copiedNote, body.value, "the notepad copy put a different text on the clipboard");
     const okReference = document.createElement("span");
     okReference.style.color = "var(--ok-bright)";
     document.body.appendChild(okReference);
@@ -2462,8 +2495,18 @@
     equal(getComputedStyle(logOut).backgroundColor, "rgb(0, 0, 0)", "the log output should be black in dark mode");
     if (previousRootTheme === null) document.documentElement.removeAttribute("data-theme");
     else document.documentElement.setAttribute("data-theme", previousRootTheme);
-    logCopy.click();
-    await until(() => logCopy.classList.contains("is-copied"), "the session-log copy confirmation check");
+    // A copy confirms only once the clipboard has taken the text (see the
+    // notepad copy above), so the clipboard is stood in for here too.
+    let copiedLog = null;
+    const logClipboardWrite = navigator.clipboard.writeText;
+    navigator.clipboard.writeText = (value) => { copiedLog = value; return Promise.resolve(); };
+    try {
+      logCopy.click();
+      await until(() => logCopy.classList.contains("is-copied"), "the session-log copy confirmation check");
+    } finally {
+      navigator.clipboard.writeText = logClipboardWrite;
+    }
+    equal(copiedLog, logCopy.dataset.phrase, "the log copy put a different text on the clipboard");
     const logAfterCopy = logOut.textContent;
     assert(/journal\tcopy  session-log/.test(logAfterCopy), "the log should record its own copy control");
     equal(logCopy.dataset.phrase, logAfterCopy, "the log clipboard control should copy the complete visible output, including the copy action");
@@ -3043,7 +3086,7 @@
       // The choice is remembered for this build, so a reload does not bring
       // the banner back until the next release.
       assert(
-        localStorage.getItem("entropylab-beta-banner-dismissed") === currentVersion.replace(/^v/, ""),
+        localStorage.getItem("entropylab-disclaimer-banner-dismissed") === currentVersion.replace(/^v/, ""),
         "Dismissal was not persisted against this build's version",
       );
       // A visit after a dismissal never paints the banner: the inline head
@@ -3054,7 +3097,7 @@
       assert(getComputedStyle(banner).display === "none", "The pre-paint attribute did not hide the banner");
     } finally {
       delete document.documentElement.dataset.betaBannerDismissed;
-      localStorage.removeItem("entropylab-beta-banner-dismissed");
+      localStorage.removeItem("entropylab-disclaimer-banner-dismissed");
       banner.hidden = false;
     }
   });
@@ -3900,6 +3943,113 @@
     await until(() => document.getElementById("psbt-out").textContent.includes("not valid under BIP341") || document.getElementById("psbt-error").textContent, "explicit-zero sighash report");
     equal(document.getElementById("psbt-error").textContent, "", "inspector rejected the explicit-zero fixture");
     assert(document.getElementById("psbt-out").textContent.includes("not valid under BIP341"), "explicit 0x00 suffix must not read as SIGHASH_DEFAULT");
+    input(box, "");
+    document.getElementById("psbt-wipe").click();
+    document.querySelector('#workspace [data-workspace="calc"]').click();
+    await until(() => !document.getElementById("calc-card").hidden, "key workspace");
+  });
+
+  await test("the PSBT inspector budgets sighash reconstruction on a many-signature file (audit C3-3)", async () => {
+    // Each SIGHASH_ALL digest reconstruction re-reads the whole transaction;
+    // unbudgeted, a few thousand of them froze the tab for tens of seconds on
+    // one paste. 300 well-formed SIGHASH_ALL signatures exceed the 256-check
+    // budget: the verdict must say incomplete — never complete — and the run
+    // must return. The fixture is plain byte building: P2WPKH witness UTXOs
+    // and DER-parsable (but not valid) signatures, r = i+1, s = count+i+1.
+    const varint = (n) => (n < 0xfd ? [n] : n <= 0xffff ? [0xfd, n & 0xff, n >> 8] : [0xfe, n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff]);
+    const count = 300;
+    const tx = [];
+    const txpush = (...chunks) => { for (const byte of chunks.flat(2)) tx.push(byte); };
+    txpush(2, 0, 0, 0, varint(count));
+    for (let i = 0; i < count; i++) txpush(new Array(32).fill(i & 0xff), [0, 0, 0, 0], 0, [0xff, 0xff, 0xff, 0xff]);
+    txpush(1, [0xe8, 0x03, 0, 0, 0, 0, 0, 0], [0x01, 0x51], [0, 0, 0, 0]);
+    const bytes = [0x70, 0x73, 0x62, 0x74, 0xff, 0x01, 0x00, ...varint(tx.length), ...tx, 0x00];
+    const push = (...chunks) => { for (const byte of chunks.flat(2)) bytes.push(byte); };
+    const word = (n) => [(n >> 24) & 0xff, (n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+    const be = (n) => { const out = []; let v = n; while (v) { out.unshift(v & 0xff); v >>= 8; } return out; };
+    for (let i = 0; i < count; i++) {
+      const script = [0x00, 0x14, ...new Array(20).fill(i & 0xff)];
+      push(varint(1), 0x01, varint(8 + 1 + script.length), [...new Array(8).fill(0x40), script.length, ...script]);
+      // Minimal DER integers (small positive scalars, distinct r per
+      // signature) so the signatures parse and draw on the budget.
+      const rb = be(i + 1), sb = be(count + i + 1);
+      const body = [0x02, rb.length, ...rb, 0x02, sb.length, ...sb];
+      const value = [0x30, body.length, ...body, 0x01];
+      push(varint(34), [0x02, i % 2 ? 0x03 : 0x02, ...new Array(28).fill(0), ...word(0x1000 + i)], varint(value.length), value, 0x00);
+    }
+    push(0x00);
+    let binary = "";
+    for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.slice(offset, offset + 8192));
+    document.querySelector('#workspace [data-workspace="psbt"]').click();
+    document.querySelector('#psbt-tool-tabs [data-psbt-tool="inspector"]').click();
+    await until(() => !document.getElementById("psbt-card").hidden, "PSBT Inspector");
+    const box = document.getElementById("psbt-text");
+    input(box, btoa(binary));
+    document.getElementById("psbt-go").click();
+    await until(() => document.getElementById("psbt-out").textContent.includes("Nonce analysis") || document.getElementById("psbt-error").textContent, "budgeted report");
+    equal(document.getElementById("psbt-error").textContent, "", "inspector rejected the many-signature fixture");
+    const out = document.getElementById("psbt-out").textContent;
+    assert(out.includes("Nonce analysis — Incomplete"), "past the budget the nonce verdict must be incomplete, not complete");
+    assert(!out.includes("Nonce analysis — Completed"), "an over-budget file reported a completed nonce analysis");
+    input(box, "");
+    document.getElementById("psbt-wipe").click();
+    document.querySelector('#workspace [data-workspace="calc"]').click();
+    await until(() => !document.getElementById("calc-card").hidden, "key workspace");
+  });
+
+  await test("the PSBT inspector banners a BIP-174-invalid file it can render (audit C3-6)", async () => {
+    // The unsigned transaction spends txid 0x11…:0, but the input's
+    // non-witness UTXO embeds an unrelated transaction — BIP-174 makes that
+    // file invalid, and the throw-or-render JS parser used to present it as
+    // an ordinary report with only a per-input note. The reference-layer
+    // cross-check must banner it and the summary must say Problem found.
+    const le32 = (n) => [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff];
+    const le64 = (n) => { const out = []; let v = BigInt(n); for (let i = 0; i < 8; i++) { out.push(Number(v & 255n)); v >>= 8n; } return out; };
+    const varint = (n) => (n < 0xfd ? [n] : [0xfd, n & 0xff, n >> 8]);
+    const prev = [...le32(2), 1, ...new Array(32).fill(0), ...le32(0xffffffff), 0, ...le32(0xffffffff), 1, ...le64(42000), 1, 0x51, ...le32(0)];
+    const unsigned = [...le32(2), 1, ...new Array(32).fill(0x11), ...le32(0), 0, ...le32(0xffffffff), 1, ...le64(1000), 1, 0x51, ...le32(0)];
+    const psbt = [0x70, 0x73, 0x62, 0x74, 0xff, 1, 0, ...varint(unsigned.length), ...unsigned, 0, 1, 0, ...varint(prev.length), ...prev, 0, 0];
+    document.querySelector('#workspace [data-workspace="psbt"]').click();
+    document.querySelector('#psbt-tool-tabs [data-psbt-tool="inspector"]').click();
+    await until(() => !document.getElementById("psbt-card").hidden, "PSBT Inspector");
+    const box = document.getElementById("psbt-text");
+    input(box, btoa(String.fromCharCode(...psbt)));
+    document.getElementById("psbt-go").click();
+    await until(() => document.getElementById("psbt-out").textContent.includes("cross-check") || document.getElementById("psbt-error").textContent, "invalid-vector report");
+    equal(document.getElementById("psbt-error").textContent, "", "inspector rejected the renderable-but-invalid fixture");
+    const out = document.getElementById("psbt-out").textContent;
+    assert(out.includes("Not a valid PSBT."), "the invalid file rendered without a banner");
+    assert(out.includes("BIP-174 / consensus cross-check — Problem found"), "the summary row did not mark the cross-check a problem");
+    assert(out.includes("ISSUES FOUND"), "an invalid file did not dominate the overall verdict");
+    input(box, "");
+    document.getElementById("psbt-wipe").click();
+    document.querySelector('#workspace [data-workspace="calc"]').click();
+    await until(() => !document.getElementById("calc-card").hidden, "key workspace");
+  });
+
+  await test("the PSBT inspector flags a witness/non-witness script conflict at one amount (audit C3-7)", async () => {
+    // Both UTXO declarations claim 5,000 sats, but the witness UTXO names a
+    // P2WPKH script while the (txid-verified) embedded previous transaction
+    // pays OP_TRUE: the two fields name different previous outputs. An
+    // amount-only comparison used to resolve that as agreement, show a fee,
+    // and split the input between the two scripts.
+    const prev = "02000000010000000000000000000000000000000000000000000000000000000000000000ffffffff00ffffffff018813000000000000015100000000";
+    const txid = "a1ffda2c00f515e3677a9a469cf37dd89b26c4e312c083f58126900d73d5cff2"; // dsha256(prev), internal byte order
+    const unsigned = "02000000" + "01" + txid + "00000000" + "00" + "ffffffff" + "01" + "e803000000000000" + "01" + "51" + "00000000";
+    const witnessUtxo = "8813000000000000" + "16" + "0014" + "22".repeat(20);
+    const psbtHex = "70736274ff" + "0100" + "3d" + unsigned + "00" + "0101" + "1f" + witnessUtxo + "0100" + "3d" + prev + "00" + "00";
+    document.querySelector('#workspace [data-workspace="psbt"]').click();
+    document.querySelector('#psbt-tool-tabs [data-psbt-tool="inspector"]').click();
+    await until(() => !document.getElementById("psbt-card").hidden, "PSBT Inspector");
+    const box = document.getElementById("psbt-text");
+    input(box, btoa(psbtHex.match(/../g).map((pair) => String.fromCharCode(parseInt(pair, 16))).join("")));
+    document.getElementById("psbt-go").click();
+    await until(() => document.getElementById("psbt-out").textContent.includes("Tx inputs") || document.getElementById("psbt-error").textContent, "script-conflict report");
+    equal(document.getElementById("psbt-error").textContent, "", "inspector rejected the script-conflict fixture");
+    const out = document.getElementById("psbt-out").textContent;
+    assert(out.includes("Conflicting previous-output claims"), "script conflict at one amount was not flagged");
+    assert(out.includes("Fee unknown"), "a conflicted input must void the fee");
+    assert(!out.includes("Unverified fee"), "a fee was derived from conflicting scripts");
     input(box, "");
     document.getElementById("psbt-wipe").click();
     document.querySelector('#workspace [data-workspace="calc"]').click();

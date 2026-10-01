@@ -35,20 +35,12 @@ function functionSource(name) {
   return (app.slice(start - 6, start) === "async " ? "async " : "") + app.slice(start, end);
 }
 
-// The session-notice module is a UI side effect (#627); slice contexts
-// execute functions that call it, so they get the neutral stubs.
-const noticeStubs = {
-  sessionNoticeSessionEnded() {}, sessionNoticePrivateMaterialAccepted() {},
-  sessionNoticeSecretCopied() {}, sessionNoticeSecretCopyText() {},
-};
-
 function raceHarness() {
   const pending = deferred(), decryptStarted = deferred(), events = {}, effects = [];
   const fields = new Map();
   const mirrors = [".dice-input-highlight", ".dice-word-grid", "#last-words", "#brain-lab-hex"]
     .map(selector => ({ selector, textContent: "secret mnemonic" }));
   const context = vm.createContext({
-    ...noticeStubs,
     // Synthetic commit results have no markers; the notice call on the
     // derive path must see "no private material" rather than throw.
     hodlResultHasSeed: () => false, hodlResultHasRoot: () => false,
@@ -367,6 +359,19 @@ test("Vanity grinder salt, matches, and running workers are cleared", () => {
   assert.match(render, /box\.style\.removeProperty\("--vanity-pass-width"\)/);
   assert.match(lifecycle, /getElementById\("vanity-error"\)/);
   assert.match(lifecycle, /vanityError\.textContent\s*=\s*""/);
+  // The grinder itself goes too: its callbacks close over the run's words and
+  // passphrase, so cancelling alone keeps them reachable (audit A35-1).
+  assert.match(lifecycle, /hodlVanityGrinder\s*=\s*null/);
+});
+
+test("pagehide drops the vanity grinder, not only the visible matches", () => {
+  // A stopped or finished grind keeps the run's seed words and passphrase
+  // alive through the grinder's callbacks; Clear Results drops it for the
+  // same reason (#546 B3), and the page lifecycle sweep must as well.
+  const { context, events } = raceHarness();
+  context.hodlVanityGrinder = { cancelled: false, cancel() { this.cancelled = true; }, secrets: "run words and passphrase" };
+  events.pagehide({});
+  assert.equal(context.hodlVanityGrinder, null, "pagehide left the vanity grinder (and its retained run secrets) reachable");
 });
 
 test("dropping the vanity key pick clears the passphrase the source block showed", () => {
@@ -377,7 +382,6 @@ test("dropping the vanity key pick clears the passphrase the source block showed
   for (const id of ["vanity-source-block", "vanity-session-note", "vanity-source-name", "vanity-source-kind", "vanity-pass", "vanity-pass-note", "vanity-source-path", "vanity-source-lifehash"])
     elements.set(id, { textContent: "hunter2", hidden: false, disabled: false, dataset: {} });
   const context = vm.createContext({
-    ...noticeStubs,
     document: {
       getElementById: id => elements.get(id) ?? null,
       querySelector: () => null,
@@ -414,12 +418,7 @@ test("journal Lock empties the snapshot, the notepad and the session log", () =>
   journal.pages[0].notesText = "dice rolls and brain text";
   journal.log.push({ kind: "journal-unlock" });
   journal.stateText = "snapshot text";
-  let sessionEnded = 0;
   const context = vm.createContext({
-    ...noticeStubs,
-    // Lock is a user-requested teardown of private material: it owes the
-    // post-session reminder like every station wipe (#631 review).
-    sessionNoticeSessionEnded() { sessionEnded++; },
     document: { getElementById: id => elements.get(id) ?? null },
     hodlJournal: journal,
     wipeJournal,
@@ -438,7 +437,6 @@ test("journal Lock empties the snapshot, the notepad and the session log", () =>
   assert.equal(journal.pages[0].notesText, "", "Lock left notepad text behind");
   assert.equal(journal.log.length, 0, "Lock left the session log in memory");
   assert.equal(journal.stateText, "", "Lock left the snapshot's in-memory text");
-  assert.equal(sessionEnded, 1, "Lock did not end the session for the post-session reminder");
 });
 
 test("pagehide and persisted pageshow end the PSBT session, reports included", () => {
@@ -458,7 +456,6 @@ test("pagehide and persisted pageshow end the PSBT session, reports included", (
   for (const id of ["psbt-key", "psbt-pass", "psbt-text", "psbt-ax-transcript", "nonce-key", "nonce-pass", "nonce-text"]) elements.set(id, { value: "session material", dataset: {} });
   const errors = [];
   const context = vm.createContext({
-    ...noticeStubs,
     document: { getElementById: id => elements.get(id) ?? null },
     hodlPsbtWipeMem() {}, hodlPsbtClearNonceHistory() {},
     hodlPsbtLast: { rvalues: ["deadbeef"] }, hodlPsbtInspected: { psbt: "stamp" },
@@ -505,7 +502,6 @@ test("the key Wipe button drops the cached partial mnemonics", () => {
   for (const activeKey of [-1, 0]) {
     const cache = new Map([["24:abandon abandon abandon", { candidates: [] }]]);
     const context = vm.createContext({
-    ...noticeStubs,
       hodlLastWordCache: cache,
       hodlInvalidateDerivation() {},
       hodlActiveKey: activeKey,
@@ -521,6 +517,42 @@ test("the key Wipe button drops the cached partial mnemonics", () => {
     vm.runInContext(`${functionSource("hodlWipeActiveKey")}\nhodlWipeActiveKey();`, context);
     assert.equal(cache.size, 0, `Wipe (active key ${activeKey}) left partial mnemonics in the last-word cache`);
   }
+});
+
+test("the key Wipe clears the partial-phrase cache after the form restore refills it", async () => {
+  // The clear above pins that the cache goes; this pins the order. Restoring
+  // the fresh key state re-renders the form, dropping the seed field while it
+  // still holds the typed words; the blur that fires re-runs the final-word
+  // analysis, which caches the partial phrase (audit A35-2). The restore stub
+  // re-enters through the app's own hodlSeedFinalWordContext — the same call
+  // the blur's update() makes — so only a clear after the restore passes.
+  let slice;
+  const partial = Array(11).fill("abandon").join(" ");
+  const inert = new Proxy(function () {}, { get: (target, key) => key === Symbol.toPrimitive ? () => "" : key === "then" ? undefined : inert, apply: () => inert, construct: () => inert });
+  // The slice's load-time form-element lookups need a document to call into.
+  Object.assign(globalThis, { __ENTROPYLAB_TEST_HOOKS__: false, document: inert, window: inert });
+  try {
+    slice = await loadAppFunctions(["hodlWipeActiveKey", "hodlSeedFinalWordContext", "hodlLastWordCache"], {
+      stubs: {
+        hodlInvalidateDerivation() {},
+        hodlNewKeyState: (name, id, number) => ({ name, id, number, fields: {}, result: null }),
+        hodlNewLabState: () => ({ isLab: true, fields: {}, result: null }),
+        hodlRestoreKey: () => { slice.hodlSeedFinalWordContext(partial, 12); },
+        hodlWipeUnsharedWalletRows() {},
+        hodlRefreshStationKeyPickers() {},
+        hodlRefreshMsigSessionPickers() {},
+        hodlJournalLog() {},
+      },
+      settable: ["hodlKeys", "hodlActiveKey"],
+    });
+  } finally {
+    delete globalThis.document;
+    delete globalThis.window;
+  }
+  slice.__set.hodlKeys([{ name: "Key 1", id: 1, number: 1, isLab: false }]);
+  slice.__set.hodlActiveKey(0);
+  slice.hodlWipeActiveKey();
+  assert.equal(slice.hodlLastWordCache.size, 0, "Wipe left the restore's re-cached partial phrase in the last-word cache");
 });
 
 // #546 B2: an address row keeps its private key as wipeable bytes, and the
@@ -581,7 +613,6 @@ test("Wipe zeroes a wallet's row key bytes unless another key tab still shows th
     const { rows, result } = walletWithRows();
     const active = { name: "Key 1", id: 1, number: 1, isLab: false, result };
     const context = vm.createContext({
-    ...noticeStubs,
       hodlLastWordCache: new Map(), hodlInvalidateDerivation() {}, hodlActiveKey: 0,
       hodlKeys: shared ? [active, { isLab: true, result }] : [active], hodlKeyManagerPending: [], hodlWalletResult: result,
       hodlNewKeyState: () => ({ result: null }), hodlNewLabState: () => ({ result: null }),
@@ -625,7 +656,6 @@ test("an ignored key's saved copy carries no key bytes", async () => {
 // its pending keys reach; it must not reach rows a station still shows.
 test("a Key Manager reset leaves the row key bytes of a wallet a station still shows", () => {
   const context = vm.createContext({
-    ...noticeStubs,
     hodlKeyManagerIgnored: [], hodlKeyManagerIds: new Set(), hodlKeyManagerActiveId: "",
     document: { getElementById: () => null }, hodlKeyManagerStatus() {}, hodlKeyManagerRender() {},
     hodlRefreshStationKeyPickers() {}, hodlRefreshMsigSessionPickers() {},

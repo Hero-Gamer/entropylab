@@ -10,7 +10,8 @@
 // registry entries behind.
 
 import { t } from "./i18n.js";
-import { trapModalFocus } from "./modal-focus.js";
+import { createModal } from "./modal.js";
+import { copyText } from "./clipboard.js";
 
 // An address or an xpub reads in full; a PSBT export does not, so anything
 // past this length shows head and tail around an ellipsis. The code and the
@@ -44,16 +45,17 @@ export const addressQrButtonHtml = (address, label, { animate = "" } = {}) => {
 // wears the glyphs every other copy button in the app does.
 export const initAddressQr = (renderQr, icons = {}, { frames = null } = {}) => {
   if (typeof renderQr !== "function" || document.getElementById("addr-qr-overlay")) return;
-  const overlay = document.createElement("div");
-  overlay.className = "modal-overlay addr-qr-overlay no-print";
-  overlay.id = "addr-qr-overlay";
-  overlay.hidden = true;
   // The address text and the copy button both copy. Only the button takes a
   // tab stop, so a keyboard reaches one copy control, not two. The button sits
   // with Close in the actions row, copy on the left and Close on the right, so
   // the address keeps the card's full width. The icon turning to a check is the
   // visible confirmation; the note speaks it, unseen.
-  overlay.innerHTML = `
+  const modal = createModal({
+    id: "addr-qr-overlay",
+    className: "addr-qr-overlay",
+    focusables: () => [text, copyButton, closeButton],
+    onDismiss: () => close(),
+    card: `
     <div class="modal-card addr-qr-card" role="dialog" aria-modal="true" aria-labelledby="addr-qr-title">
       <p class="modal-title addr-qr-title" id="addr-qr-title"></p>
       <div class="qr addr-qr-image" id="addr-qr-image"></div>
@@ -62,12 +64,13 @@ export const initAddressQr = (renderQr, icons = {}, { frames = null } = {}) => {
         <button type="button" class="mono addr-qr-address" id="addr-qr-address" tabindex="-1"></button>
         <span class="sr-only" id="addr-qr-copied" aria-live="polite"></span>
       </p>
-      <div class="row addr-qr-actions">
+      <div class="row modal-actions">
         <button type="button" class="copy-button boxed-copy-button addr-qr-copy" id="addr-qr-copy"></button>
         <button class="btn red" id="addr-qr-close" type="button"></button>
       </div>
-    </div>`;
-  document.body.append(overlay);
+    </div>`,
+  });
+  const overlay = modal.overlay;
   const title = overlay.querySelector("#addr-qr-title"),
     image = overlay.querySelector("#addr-qr-image"),
     note = overlay.querySelector("#addr-qr-note"),
@@ -81,8 +84,7 @@ export const initAddressQr = (renderQr, icons = {}, { frames = null } = {}) => {
     copiedIcon = icons.copied?.() ?? "";
   text.title = copyLabel;
   image.title = copyLabel;
-  let button = null,
-    payload = "", // the full value; the line above may show it shortened
+  let payload = "", // the full value; the line above may show it shortened
     frameTimer = 0, // cycling a UR sequence, when the payload needs one
     copiedTimer = 0;
 
@@ -106,30 +108,20 @@ export const initAddressQr = (renderQr, icons = {}, { frames = null } = {}) => {
   const copy = () => {
     const value = payload;
     if (!value) return;
-    // Inside the dialog, so focus returns to the copy icon rather than
-    // falling out of the overlay when the helper field is removed.
-    const fallback = () => {
-      const field = document.createElement("textarea");
-      field.value = value;
-      field.setAttribute("readonly", "");
-      field.style.position = "fixed";
-      field.style.left = "-9999px";
-      overlay.append(field);
-      field.select();
-      try {
-        if (document.execCommand("copy")) showCopied();
-      } finally {
-        field.remove();
-        copyButton.focus({ preventScroll: true });
-      }
-    };
-    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") navigator.clipboard.writeText(value).then(showCopied, fallback);
-    else fallback();
+    // The fallback field goes inside the dialog, and focus comes back to the
+    // copy button if removing that field let it fall out of the overlay.
+    copyText(value, { host: overlay }).then((copied) => {
+      // The overlay may have closed, or moved on to another address, while
+      // the clipboard answered: confirm only the copy still on show.
+      if (overlay.hidden || payload !== value) return;
+      if (copied) showCopied();
+      if (!overlay.contains(document.activeElement)) copyButton.focus({ preventScroll: true });
+    });
   };
   resetCopied();
 
   const close = () => {
-    overlay.hidden = true;
+    modal.hide();
     clearInterval(frameTimer);
     frameTimer = 0;
     note.textContent = "";
@@ -139,13 +131,11 @@ export const initAddressQr = (renderQr, icons = {}, { frames = null } = {}) => {
     image.replaceChildren(); // drop the rendered QR so a closed overlay holds no stale address
     payload = "";
     resetCopied();
-    button?.focus({ preventScroll: true });
-    button = null;
   };
   // The overlay is a body-level sibling of every wiped view, so station and
   // editor wipes cannot reach it; it tears itself down with the page.
   const teardown = () => {
-    overlay.hidden = true;
+    modal.hide({ restoreFocus: false });
     clearInterval(frameTimer);
     frameTimer = 0;
     note.textContent = "";
@@ -153,7 +143,6 @@ export const initAddressQr = (renderQr, icons = {}, { frames = null } = {}) => {
     text.textContent = "";
     image.replaceChildren();
     payload = "";
-    button = null;
   };
   addEventListener("pagehide", teardown);
   addEventListener("pageshow", (event) => {
@@ -162,7 +151,6 @@ export const initAddressQr = (renderQr, icons = {}, { frames = null } = {}) => {
   const open = (target) => {
     const value = target.dataset.addressQr ?? "";
     if (!value) return;
-    button = target;
     clearInterval(frameTimer);
     frameTimer = 0;
     title.textContent = target.dataset.addressQrLabel || value;
@@ -191,20 +179,12 @@ export const initAddressQr = (renderQr, icons = {}, { frames = null } = {}) => {
       }
     }
     resetCopied();
-    overlay.hidden = false;
-    closeButton.focus();
+    modal.show(closeButton, target);
   };
 
-  trapModalFocus(overlay, () => [text, copyButton, closeButton]);
   document.addEventListener("click", (event) => {
     const target = event.target.closest?.("[data-address-qr]");
     if (target) open(target);
-  });
-  overlay.addEventListener("click", (event) => {
-    if (event.target === overlay) close();
-  });
-  overlay.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") close();
   });
   closeButton.addEventListener("click", close);
   text.addEventListener("click", copy);

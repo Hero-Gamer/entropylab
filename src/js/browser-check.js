@@ -149,7 +149,16 @@
 </main>`;
 })();
 
-// Beta disclaimer: a modal gate the user must explicitly accept. The markup
+// Beta disclaimer: a modal gate the user must explicitly accept, twice. The
+// first step warns that the tool is beta; its "I Understand" swaps in a
+// second step that names what the browser cannot protect (memory written to
+// disk, clipboard copies, what a restart does not erase), and only that
+// second acknowledgement is stored and lets the user into the page. That
+// second button stays disabled until the reader types the digit the step
+// spells out (shown as a word: "seven"), the proof that the list above was
+// read. The digit is not random: it is how long the first step was open, in
+// tenths of a second, mod 10 — a page that exists to guard entropy draws none
+// for a reading check. The markup
 // ships in the static template outside #btc-calc so application boot (which
 // replaces that node's contents) cannot wipe it, and it starts hidden so a
 // host without JavaScript never sees an overlay it cannot dismiss — this
@@ -163,8 +172,13 @@
 (() => {
   const overlay = document.getElementById("beta-disclaimer");
   const accept = document.getElementById("beta-disclaimer-accept");
-  if (!overlay || !accept) return;
-  const KEY = "entropylab-beta-accepted";
+  const stepOne = document.getElementById("beta-disclaimer-step-1");
+  const stepTwo = document.getElementById("beta-disclaimer-step-2");
+  const confirm = document.getElementById("beta-disclaimer-confirm");
+  const proof = document.getElementById("beta-disclaimer-proof");
+  const proofWord = document.getElementById("beta-disclaimer-proof-word");
+  if (!overlay || !accept || !stepOne || !stepTwo || !confirm || !proof || !proofWord) return;
+  const KEY = "entropylab-disclaimer-accepted";
   const VERSION = "{{VERSION}}";
   let accepted = false;
   try {
@@ -175,6 +189,7 @@
     return;
   }
   overlay.hidden = false;
+  const shownAt = performance.now();
   // Two frames: let the overlay paint once at opacity 0 so the is-visible
   // class below actually runs the fade-in transition.
   requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -184,10 +199,41 @@
   // The gate cannot import the shared helper (it is inlined through its own
   // build token), so the same cycle is repeated here. It stays unescapable:
   // no Escape, no backdrop click, only the acknowledgement.
+  // On the second step Tab moves between the proof field and the button,
+  // which has nothing else to reach.
   overlay.addEventListener?.("keydown", (event) => {
-    if (event.key === "Tab") event.preventDefault();
+    if (event.key !== "Tab") return;
+    event.preventDefault();
+    if (stepTwo.hidden) return;
+    if (document.activeElement === proof && !confirm.disabled) confirm.focus();
+    else proof.focus();
+  });
+  // Set by "I Understand"; until then nothing typed can match it.
+  let digit = null;
+  const proven = () => digit !== null && String(proof.value).trim() === String(digit);
+  const syncProof = () => {
+    confirm.disabled = !proven();
+    confirm.setAttribute("aria-disabled", String(confirm.disabled));
+  };
+  syncProof();
+  proof.addEventListener("input", syncProof);
+  proof.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && proven()) confirm.click();
   });
   accept.addEventListener("click", () => {
+    // Tenths, not milliseconds: a clock coarsened to 100 ms (Firefox
+    // resistFingerprinting, Tor Browser) would otherwise always give 0.
+    digit = Math.floor((performance.now() - shownAt) / 100) % 10;
+    proofWord.textContent = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"][digit];
+    syncProof();
+    stepOne.hidden = true;
+    stepTwo.hidden = false;
+    overlay.setAttribute("aria-labelledby", "beta-disclaimer-confirm-title");
+    overlay.setAttribute("aria-describedby", "beta-disclaimer-confirm-text");
+    proof.focus();
+  });
+  confirm.addEventListener("click", () => {
+    if (!proven()) return;
     try {
       localStorage.setItem(KEY, VERSION);
     } catch (e) {}

@@ -23,7 +23,8 @@
 // the dialog itself, which acknowledges nothing).
 
 import { t } from "./i18n.js";
-import { nextDialogFocus, trapModalFocus } from "./modal-focus.js";
+import { nextDialogFocus } from "./modal-focus.js";
+import { createModal } from "./modal.js";
 
 // Re-exported: the confirmation's own suite drives the step directly.
 export { nextDialogFocus };
@@ -74,12 +75,14 @@ export const lowEntropyConfirmCardHtml = () => `
 // records the acknowledgement and then runs onProceed.
 export const initLowEntropyConfirm = () => {
   if (document.getElementById("low-entropy-overlay")) return null;
-  const overlay = document.createElement("div");
-  overlay.className = "modal-overlay low-entropy-overlay no-print";
-  overlay.id = "low-entropy-overlay";
-  overlay.hidden = true;
-  overlay.innerHTML = lowEntropyConfirmCardHtml();
-  document.body.append(overlay);
+  const modal = createModal({
+    id: "low-entropy-overlay",
+    className: "low-entropy-overlay",
+    card: lowEntropyConfirmCardHtml(),
+    focusables: () => focusables,
+    onDismiss: () => close(),
+  });
+  const overlay = modal.overlay;
   const title = overlay.querySelector("#low-entropy-title"),
     shortfall = overlay.querySelector("#low-entropy-shortfall"),
     recommended = overlay.querySelector("#low-entropy-recommended"),
@@ -95,14 +98,11 @@ export const initLowEntropyConfirm = () => {
   proceedButton.textContent = t("Derive Key Anyway");
   const acknowledgement = createLowEntropyAcknowledgement();
   const focusables = [ack, proceedButton, moreButton];
-  let lastFocused = null;
   let proceed = null;
 
   const close = () => {
-    overlay.hidden = true;
     proceed = null;
-    lastFocused?.focus?.({ preventScroll: true });
-    lastFocused = null;
+    modal.hide();
   };
   const open = (warning, onProceed) => {
     if (typeof onProceed !== "function") return;
@@ -113,11 +113,9 @@ export const initLowEntropyConfirm = () => {
     });
     ack.checked = false;
     proceed = onProceed;
-    lastFocused = document.activeElement;
-    overlay.hidden = false;
     // The safe choice is the default focus: one more Enter adds entropy
     // instead of deriving.
-    moreButton.focus();
+    modal.show(moreButton);
   };
   moreButton.addEventListener("click", close);
   proceedButton.addEventListener("click", () => {
@@ -126,12 +124,5 @@ export const initLowEntropyConfirm = () => {
     close();
     run?.();
   });
-  overlay.addEventListener("click", (event) => {
-    if (event.target === overlay) close();
-  });
-  overlay.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") close();
-  });
-  trapModalFocus(overlay, () => focusables);
-  return { open, close, isOpen: () => !overlay.hidden, isAcknowledged: acknowledgement.isAcknowledged };
+  return { open, close, isOpen: modal.isOpen, isAcknowledged: acknowledgement.isAcknowledged };
 };

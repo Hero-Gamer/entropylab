@@ -12,6 +12,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseRawTx, serializeTx } from "../src/js/tx.js";
 import { sha256 } from "../src/js/hashes.js";
+import { psbtInspectDoc } from "../src/js/psbt-wasm.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const app = readFileSync(join(root, "..", "src/js/app.js"), "utf8");
@@ -108,6 +109,41 @@ test("a witness-serialized non-witness UTXO matches by txid, never by wtxid (iss
   // included is the lie the check exists to catch.
   const byWtxid = { txid: new Uint8Array(txidOf(prev)), vout: 0 };
   assert.throws(() => hodlNonWitUtxo([entry(0, prev)], byWtxid), /does not match the input's previous output/);
+});
+
+// The reference-layer cross-check behind the inspector's validity banner
+// (audit C3-6): the JS parser is throw-or-render, so a file that is invalid
+// per BIP-174 but structurally readable used to render as an ordinary report.
+const hodlPsbtReferenceVerdict = new Function(
+  "psbtInspectDoc",
+  `${loadSlice("hodlPsbtReferenceVerdict")}; return hodlPsbtReferenceVerdict;`,
+)(psbtInspectDoc);
+
+test("the reference cross-check flags a BIP-174-invalid file the JS parser renders (audit C3-6)", () => {
+  const varint = (n) => (n < 0xfd ? [n] : [0xfd, n & 0xff, n >> 8]);
+  const psbtOf = (outpointTxid, nonWitness) => {
+    const unsigned = [
+      ...le32(2), 1, ...outpointTxid, ...le32(0), 0, ...le32(0xffffffff),
+      1, ...le64(1000), 1, 0x51,
+      ...le32(0),
+    ];
+    return new Uint8Array([
+      0x70, 0x73, 0x62, 0x74, 0xff,
+      1, 0, ...varint(unsigned.length), ...unsigned, 0,
+      1, 0, ...varint(nonWitness.length), ...nonWitness, 0,
+      0, // the one output's (empty) map
+    ]);
+  };
+  const prev = prevTx(42000);
+  // The non-witness UTXO's txid does not match the spent outpoint: BIP-174
+  // makes that an invalid PSBT (its first signer check fails).
+  const invalid = psbtOf(new Uint8Array(32).fill(0x11), prev);
+  const verdict = hodlPsbtReferenceVerdict({ raw: invalid });
+  assert.equal(verdict.state, "problem");
+  assert.ok(verdict.problems.some((problem) => /txid|previous output/i.test(problem)), verdict.problems.join(" | "));
+  // The same file with a matching claim cross-checks clean.
+  const valid = psbtOf(new Uint8Array(txidOf(prev)), prev);
+  assert.equal(hodlPsbtReferenceVerdict({ raw: valid }).state, "complete");
 });
 
 test("the report resolves claims as a set and flags conflicts (issue #350)", () => {

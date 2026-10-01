@@ -626,7 +626,9 @@ test("seed phrase mode has a lowercase Jade-style on-screen keyboard", () => {
   assert.match(app, /prefixes=network==="testnet"\?\["9","c"\]:\["5","K","L"\]/);
   assert.match(app, /space\.disabled=kind!=="brain"/);
   assert.match(app, /function hodlDecodeMiniPrivateKey\(value\)/);
-  assert.match(app, /\^S\(\?:\[1-9A-HJ-NP-Za-km-z\]\{21\}\|\[1-9A-HJ-NP-Za-km-z\]\{29\}\)\$/);
+  // The minikey shape guard: S plus a 21-, 25-, or 29-character Base58 body
+  // (the format's 22-, 26-, and 30-character forms).
+  assert.match(app, /\^S\(\?:\[1-9A-HJ-NP-Za-km-z\]\{21\}\|\[1-9A-HJ-NP-Za-km-z\]\{25\}\|\[1-9A-HJ-NP-Za-km-z\]\{29\}\)\$/);
   assert.match(app, /function hodlPassphraseKeyboardMarkup\(\)/);
   assert.match(app, /function hodlPrivateKeyKeyboardMarkup\(\)/);
   assert.match(app, /function hodlBindPassphraseKeyboard\(inputId="pass",toggleId="passphrase-keyboard-toggle",inputName="passphrase",keyboardId="passphrase-keyboard"\)/);
@@ -1162,13 +1164,13 @@ test("the beta notice sits at the top of the page as a banner", () => {
     const live = markup.slice(wrapper).replace(/<!--[\s\S]*?-->/g, "");
     // It is a load-time warning again, so it keeps the alert role and leads
     // the wrap, ahead of the hosted-site warning and the pitch card.
-    assert.match(live, /<aside class="beta-warning no-print" id="beta-warning" role="alert">\s*<div class="beta-warning-text"(?: [^>]*)?><strong>Beta software<\/strong> EntropyLab is experimental and should only be used for testing and educational purposes\.<\/div>/);
+    assert.match(live, /<aside class="beta-warning no-print" id="beta-warning" role="alert">\s*<div class="beta-warning-text"(?: [^>]*)?><strong>[^<]+<\/strong> [^<]+<\/div>/);
     assert.ok(
-      live.indexOf("<strong>Beta software") < live.indexOf('id="online-warning"'),
+      live.indexOf('id="beta-warning"') < live.indexOf('id="online-warning"'),
       "the beta banner must precede the online warning",
     );
     assert.ok(
-      live.indexOf("<strong>Beta software") < live.indexOf('class="kicker"'),
+      live.indexOf('id="beta-warning"') < live.indexOf('class="kicker"'),
       "the beta banner must precede the pitch card",
     );
     // The closing footer disclaimer is gone; the only other .beta-warning is
@@ -1242,7 +1244,7 @@ test("the beta banner carries a dismiss control in a narrow right-hand column", 
   assert.match(app, /banner\.hidden\s*=\s*!0|banner\.hidden\s*=\s*true/);
   // The dismissal outlives a reload, keyed to the build version so every
   // release warns again, and wrapped so a storage-less origin still boots.
-  assert.match(app, /"entropylab-beta-banner-dismissed"/);
+  assert.match(app, /"entropylab-disclaimer-banner-dismissed"/);
   assert.match(appWhitespace, /try\{localStorage\.setItem\(hodlBetaBannerStorageKey,"\{\{VERSION\}\}"\)\}catch/);
   // Re-hiding on a later visit runs before first paint, not at boot: the
   // application waits on the WebAssembly module, so a banner hidden there
@@ -1250,7 +1252,7 @@ test("the beta banner carries a dismiss control in a narrow right-hand column", 
   // and the stylesheet keeps the row out of the very first frame.
   assert.match(
     template,
-    /try\{var d=document\.documentElement\.dataset,v="\{\{VERSION\}\}";if\(localStorage\.getItem\("entropylab-beta-banner-dismissed"\)===v\)d\.betaBannerDismissed="";if\(localStorage\.getItem\("entropylab-intro-dismissed"\)===v\)d\.introDismissed=""\}catch\(e\)\{\}/,
+    /try\{var d=document\.documentElement\.dataset,v="\{\{VERSION\}\}";if\(localStorage\.getItem\("entropylab-disclaimer-banner-dismissed"\)===v\)d\.betaBannerDismissed="";if\(localStorage\.getItem\("entropylab-intro-dismissed"\)===v\)d\.introDismissed=""\}catch\(e\)\{\}/,
   );
   assert.ok(
     template.indexOf("betaBannerDismissed") < template.indexOf("<body"),
@@ -1278,7 +1280,7 @@ test("the online and noscript warnings are titled like the beta banner", () => {
   }
   assert.match(shell, /<div class="beta-warning-text"><strong>JavaScript is required<\/strong> EntropyLab performs wallet/);
   // No lead-in colons anywhere: the label is a line of its own now.
-  assert.doesNotMatch(`${shell}\n${app}`, /<strong>(Online version|JavaScript is required|Beta software):<\/strong>/);
+  assert.doesNotMatch(`${shell}\n${app}`, /<strong>(Online version|JavaScript is required|Experimental software):<\/strong>/);
   // The noscript notice carries no control: there is no JavaScript running to
   // answer one. It takes the label treatment and nothing else.
   const noscript = shell.slice(shell.indexOf("<noscript>"), shell.indexOf("</noscript>"));
@@ -1307,7 +1309,7 @@ test("the beta disclaimer gates the page as a modal until accepted", () => {
     template,
     /<div class="modal-overlay disclaimer-overlay no-print" id="beta-disclaimer" role="alertdialog" aria-modal="true" aria-labelledby="beta-disclaimer-title" aria-describedby="beta-disclaimer-text" hidden>/,
   );
-  assert.match(template, /<p class="modal-warning-title disclaimer-title" id="beta-disclaimer-title"[^>]*>Beta software<\/p>/);
+  assert.match(template, /<p class="modal-warning-title disclaimer-title" id="beta-disclaimer-title"[^>]*>[^<]+<\/p>/);
   assert.match(template, /<button class="btn primary" id="beta-disclaimer-accept" type="button"[^>]*>I Understand<\/button>/);
   // The fade: transparent until .is-visible, faded out and inert once
   // .is-dismissed, and motion-free when the user prefers reduced motion.
@@ -1716,7 +1718,7 @@ test("one PSBT workspace contains PSBT Inspector, PSBT Editor and Nonce Inspecto
   }
   assert.match(appSource, /import \{ initPsbtEditor, psbtBytesFromText as hodlPsbtBytesFromText, psbtBytesFromUpload, psbtQrPlan as hodlPsbtQrPlan \} from "\.\/psbt-editor\.js"/);
   // The editor reads the header picker's network through the passed getter.
-  assert.match(appSource, /initPsbtEditor\(\{ networkDefault: \(\) => hodlNetworkDefault, copiedIcon: hodlCopiedIconMarkup \}\)/);
+  assert.match(appSource, /initPsbtEditor\(\{ networkDefault: \(\) => hodlNetworkDefault, copiedIcon: hodlCopiedIconMarkup, copyIcon: hodlClipboardIconMarkup \}\)/);
 });
 
 test("Journal gates its five tools behind the local notebook", () => {

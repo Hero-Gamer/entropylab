@@ -176,6 +176,18 @@ test("range checks reject values the BIP does not define", () => {
   assert.throws(() => deriveApplication(root, { app: "rsa" }), /Unknown BIP-85 application/);
 });
 
+test("parseChildIndex accepts plain decimal notation only (audit A1H-3)", () => {
+  // Number() reads "1e3" as 1000 and "0x10" as 16: anyone typing those
+  // derives a different child than the digits on screen suggest.
+  assert.equal(parseChildIndex("1000"), 1000);
+  assert.equal(parseChildIndex(" 42 "), 42);
+  assert.equal(parseChildIndex("007"), 7);
+  assert.equal(parseChildIndex(INDEX_MAX), INDEX_MAX);
+  for (const bad of ["1e3", "1E3", "0x10", "0b101", "1_000", "5.0", "+5", "-1", "", "   ", "abc", "12 34"]) {
+    assert.throws(() => parseChildIndex(bad), /0 to 2147483647/, JSON.stringify(bad));
+  }
+});
+
 test("watch-only roots cannot derive children", () => {
   let watch = HDKey.fromExtendedKey(root.publicExtendedKey);
   assert.equal(watch.privateKey, null);

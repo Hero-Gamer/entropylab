@@ -166,3 +166,23 @@ test("psbtProblemsHtml lists problems escaped, in the sanitize section's style",
   // Under insane editing the same list says it did not gate.
   assert.match(psbtProblemsHtml(bad, true), /did not block the build/);
 });
+
+test("psbtProblemsHtml reads the untruncated severity totals (audit C3-4)", () => {
+  // The display list caps at 64 entries; the heading must come from the
+  // doc's pre-truncation counts, or 64 early warnings would read as "no
+  // consensus violations" while errors were dropped from view.
+  const warnings = Array.from({ length: 64 }, (_, i) => ({ severity: "warning", scope: "input 0", code: "w", message: `warning ${i}` }));
+  const doc = { problems: warnings, problemsTruncated: true, problemCount: 66, errorCount: 2 };
+  const html = psbtProblemsHtml(doc, false);
+  assert.match(html, /2 consensus\/signing problem\(s\) and 64 warning\(s\)/);
+  assert.match(html, /Errors block the build/);
+  assert.doesNotMatch(html, /no consensus violations/);
+  // A legacy doc without the totals must never claim cleanliness from a
+  // truncated list either: it says the totals are unknown and points at the
+  // build gate instead.
+  const legacy = psbtProblemsHtml({ problems: warnings, problemsTruncated: true }, false);
+  assert.doesNotMatch(legacy, /no consensus violations/);
+  assert.match(legacy, /truncated/);
+  // Untruncated legacy docs keep the old headings.
+  assert.match(psbtProblemsHtml({ problems: warnings.slice(0, 3), problemsTruncated: false }, false), /3 warning\(s\), no consensus violations/);
+});

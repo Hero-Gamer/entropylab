@@ -156,6 +156,11 @@ button:not(:disabled):active *,
    reference list reads as the page's own bottom matter rather than one more
    panel. Padding stays, so its text still aligns with the cards above. */
 .sources { margin-top: var(--space-major); background: none; border: 0; }
+/* Important follows Sources a step closer than the seam above Sources, and
+   the padding between the two goes: neither draws a card, so it would only
+   add empty space between two toggles. */
+.sources + .sources { margin-top: var(--space-intro); padding-top: 0; }
+.sources:has(+ .sources) { padding-bottom: 0; }
 /* A fine-print list steps its items like the Sources paragraphs above it. */
 .sources ul { display: grid; gap: var(--space-component); padding-left: 20px; }
 .warn { background: color-mix(in oklab, var(--danger) 12%, var(--bg)); border-color: color-mix(in oklab, var(--danger) 40%, var(--border)); }
@@ -2105,6 +2110,9 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .psbted-map > h3 + .label-description { margin-top: 8px; margin-bottom: 0; }
 
 :is(.derivation-advanced, .key-group, .msig-import, .sources, .wallet-advanced) > summary + :is(.label-description, .field-note, label.field) { margin-top: 0; margin-bottom: 0; }
+/* The page-foot disclosures open straight into their paragraphs and list. */
+.sources > summary + :is(p, ul) { margin-top: 0; }
+.sources > :last-child { margin-bottom: 0; }
 /* The exception: a checkbox's own text is not a heading over content. It sits
    inside the control, on one line with the box, so it owns no gap either side.
    The components above already say margin: 0; this repeats it only to outrank

@@ -11,8 +11,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = new URL("..", import.meta.url).pathname;
+const root = fileURLToPath(new URL("..", import.meta.url));
 const { copyText } = await import("../src/js/clipboard.js");
 
 // A page with just enough DOM for the fallback: the fields it appends, what

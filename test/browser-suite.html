@@ -1954,6 +1954,8 @@
     script.value = "sp";
     script.dispatchEvent(new Event("change", { bubbles: true }));
     await wait(0);
+    input(document.getElementById("vanity-prefix"), "SP1QQA GQ1Z");
+    equal(document.getElementById("vanity-prefix").value, "gqz", "Silent Payment custom characters use the restricted first character and full bech32 alphabet thereafter");
     input(document.getElementById("vanity-prefix"), "SP1QQT");
     equal(document.getElementById("vanity-prefix").value, "t", "a pasted copy of the fixed prefix is not repeated in the custom characters");
     equal(document.getElementById("vanity-prefix-result").textContent, "sp1qqt", "the formula composes the lowercased bech32 Silent Payment prefix");

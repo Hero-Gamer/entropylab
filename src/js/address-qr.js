@@ -64,7 +64,7 @@ export const initAddressQr = (renderQr, icons = {}, { frames = null } = {}) => {
         <button type="button" class="mono addr-qr-address" id="addr-qr-address" tabindex="-1"></button>
         <span class="sr-only" id="addr-qr-copied" aria-live="polite"></span>
       </p>
-      <div class="row addr-qr-actions">
+      <div class="row modal-actions">
         <button type="button" class="copy-button boxed-copy-button addr-qr-copy" id="addr-qr-copy"></button>
         <button class="btn red" id="addr-qr-close" type="button"></button>
       </div>

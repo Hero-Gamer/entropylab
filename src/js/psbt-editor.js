@@ -573,7 +573,7 @@ export const psbtProblemsHtml = (doc, insane = false) => {
 // header network picker's choice, read through the `networkDefault` getter
 // (mainnet/testnet), and re-decoded live when the picker changes it (the
 // "hodl:network-default" document event).
-export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = () => "" } = {}) => {
+export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = () => "", copyIcon = () => "" } = {}) => {
   const load = document.getElementById("psbted-load");
   if (!load) return;
   const $ = (id) => document.getElementById(id);
@@ -588,7 +588,7 @@ export const initPsbtEditor = ({ networkDefault = () => "mainnet", copiedIcon = 
   // Clears the highlight a diagram box leaves on the section it jumps to.
   let anchorTimer = null;
 
-  initExpandable();
+  initExpandable({ copy: copyIcon, copied: copiedIcon });
   // Edits saved in the expandable editor window are field edits, exactly
   // like typing in the plain value inputs: they rebuild live.
   out.addEventListener("expandable:apply", (event) => {

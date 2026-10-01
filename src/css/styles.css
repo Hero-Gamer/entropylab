@@ -1998,7 +1998,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere;
 }
 .exp-card textarea[readonly] { color: var(--muted); }
-.exp-actions { margin-top: var(--space-component); }
 /* The QR reference overlay mirrors the expandable and disclaimer overlays:
    a dimmed backdrop with one centered card, dismissed by clicking outside
    or pressing Escape. Shown when an external link is clicked while the
@@ -2007,7 +2006,6 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
 .qr-ref-qr svg { display: block; width: 200px; height: 200px; }
 .qr-ref-url { margin: 16px 0 0; font-size: 12px; overflow-wrap: anywhere; word-break: break-all; }
 .qr-ref-hint { margin: 12px 0 0; }
-.qr-ref-actions { margin-top: var(--space-component); justify-content: center; }
 /* Per-address QR: compact button in each address-table row, one shared overlay. */
 .addr-text {
   min-width: 0; margin: 0; padding: 0; border: 0; background: none;
@@ -2034,7 +2032,10 @@ input.bad, textarea.bad { border-color: var(--danger) !important; }
   font-size: 12px; overflow-wrap: anywhere; cursor: pointer;
 }
 .addr-qr-address:hover { color: var(--selection-accent-ink); }
-.addr-qr-actions { margin-top: var(--space-component); justify-content: space-between; }
+/* Every viewer modal closes on one row: copy at the start, the actions that
+   answer it (Apply, then a red Close) together at the end. */
+.modal-actions { margin-top: var(--space-component); justify-content: space-between; }
+.modal-actions-end { display: flex; flex-wrap: wrap; gap: var(--space-control); margin-inline-start: auto; }
 /* Shown when Derive Key is pressed with less entropy than recommended. The
    card carries the station vocabulary: a label titles it, the shortfall is a
    private note, the counts are help text, and the actions close it as a split

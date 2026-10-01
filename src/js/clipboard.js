@@ -38,3 +38,24 @@ export const copyText = async (text, { host = document.body } = {}) => {
   }
   return fallbackCopy(text, host);
 };
+
+// The icon-button confirmation every boxed copy control shows: the clipboard
+// icon turns to a green check for a moment, then back. The icons come from the
+// caller (app.js owns the glyphs), and a new copy restarts the timer.
+export const showCopiedIcon = (button, { copyIcon = "", copiedIcon = "", label = "Copy", copiedLabel = "Copied", ms = 1600 } = {}) => {
+  const reset = () => {
+    button.classList.remove("is-copied");
+    button.innerHTML = copyIcon;
+    button.setAttribute("aria-label", label);
+    button.title = label;
+  };
+  clearTimeout(button.copiedTimer);
+  button.classList.add("is-copied");
+  button.innerHTML = copiedIcon;
+  button.setAttribute("aria-label", copiedLabel);
+  button.title = copiedLabel;
+  button.copiedTimer = setTimeout(() => {
+    if (button.isConnected) reset();
+  }, ms);
+  return reset;
+};

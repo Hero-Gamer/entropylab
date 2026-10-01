@@ -163,8 +163,9 @@ air-gapped computer.
   his main seed in EntropyLab, so the phone wallet can always be recreated
   from the backup he already has.
 - **Grace** runs Bitcoin workshops. On a test network, she walks her class
-  from a handful of dice rolls to a seed phrase, keys, and addresses, showing
-  every step on screen instead of describing a black box.
+  from a handful of dice rolls to a seed phrase, derivation paths, keys, and
+  addresses, using EntropyLab's interactive UI to show every step on screen
+  instead of describing a black box.
 - **Heidi** is a developer building wallet software. She checks her
   library's derivations against EntropyLab on regtest, comparing seeds,
   fingerprints, descriptors, and addresses step by step.
@@ -175,7 +176,7 @@ air-gapped computer.
   DNS record EntropyLab prints to his domain so donors can pay a name instead
   of a long code.
 - **Judy** runs a small shop and wants a payment address customers can
-  recognise at a glance. She uses EntropyLab to search for an address
+  recognise at a glance. She uses EntropyLab to search for a vanity address
   starting with a few letters of her shop's name, derived from her own seed, and writes down
   the passphrase or account number it finds. The address stays recoverable
   from her existing backup, with no new key to keep safe.

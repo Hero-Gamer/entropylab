@@ -18,18 +18,25 @@ const { copyText } = await import("../src/js/clipboard.js");
 
 // A page with just enough DOM for the fallback: the fields it appends, what
 // execCommand saw selected, and whether each field was emptied and removed.
+// Focus behaves as in a browser: select() moves it into the field, and
+// removing the focused field drops it to the body.
 const fakePage = ({ clipboard, execResult = true, execThrows = false } = {}) => {
   const fields = [];
   const host = { appended: [], append(field) { this.appended.push(field); field.parent = this; } };
   let selected = null;
   const document = {
     body: host,
+    activeElement: null,
     createElement: (tag) => {
       const field = {
         tag, value: "", attributes: {}, style: {}, removed: false,
         setAttribute(name, value) { this.attributes[name] = value; },
-        select() { selected = this.value; },
-        remove() { this.removed = true; this.valueAtRemoval = this.value; },
+        select() { selected = this.value; document.activeElement = this; },
+        remove() {
+          this.removed = true;
+          this.valueAtRemoval = this.value;
+          if (document.activeElement === this) document.activeElement = host;
+        },
       };
       fields.push(field);
       return field;
@@ -95,6 +102,45 @@ test("the fallback field goes where the caller asks, so a modal keeps it inside 
   assert.equal(await run(page, PHRASE, { host: overlay }), true);
   assert.equal(overlay.appended.length, 1, "the field was not placed in the given host");
   assert.equal(page.host.appended.length, 0, "the field went to the body instead of the host");
+});
+
+// The copy control the reader clicked, holding focus when the copy starts.
+const focusedControl = (page) => {
+  const control = {
+    focusCalls: [],
+    focus(options) {
+      this.focusCalls.push(options);
+      page.document.activeElement = this;
+    },
+  };
+  page.document.activeElement = control;
+  return control;
+};
+
+// Inside a modal, focus left on the body would sit outside the overlay's
+// focus trap and Escape handler: Tab would walk the page behind the dialog
+// and Escape would stop closing it. So a fallback copy hands focus back to
+// the control that had it, whether the copy worked, failed or threw.
+test("a fallback copy hands focus back to the control that had it", async () => {
+  for (const [name, options] of [
+    ["a refused Clipboard API", { clipboard: { writeText: async () => { throw new Error("NotAllowedError"); } } }],
+    ["a refused execCommand", { execResult: false }],
+    ["a throwing execCommand", { execThrows: true }],
+  ]) {
+    const page = fakePage(options);
+    const control = focusedControl(page);
+    await run(page, PHRASE, { host: { append() {} } });
+    assert.equal(page.document.activeElement, control, `focus stayed off the copy control after ${name}`);
+    assert.deepEqual(control.focusCalls, [{ preventScroll: true }], `focus came back with a scroll after ${name}`);
+  }
+});
+
+test("a Clipboard API copy leaves focus alone", async () => {
+  const page = fakePage({ clipboard: { writeText: async () => {} } });
+  const control = focusedControl(page);
+  assert.equal(await run(page, PHRASE), true);
+  assert.equal(page.document.activeElement, control);
+  assert.deepEqual(control.focusCalls, [], "the copy control was refocused although nothing took focus");
 });
 
 test("empty text is not copied", async () => {

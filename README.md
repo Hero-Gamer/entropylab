@@ -31,7 +31,8 @@ the limits of browser-memory cleanup.
   transcripts (binary through base64), hexadecimal entropy, BIP39 seed
   phrases, extended keys, WIF keys, raw private keys, and Casascius mini
   private keys. Optional live chi-squared fairness analysis flags biased dice
-  as rolls are entered.
+  as rolls are entered for hashed-dice and BitBox input. D++ omits the panel
+  because a complete transcript cannot reach the panel's Pearson threshold.
   All five BIP39 phrase lengths (12, 15, 18, 21, and 24 words) are supported
   for every entropy entry method. A separate **Brain wallet — lab** mode hashes
   exact UTF-8 text with SHA-256 and uses the 32-byte digest as 256-bit BIP39
